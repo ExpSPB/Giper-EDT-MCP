@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 import com.ditrix.edt.mcp.server.protocol.ClientCapabilities;
@@ -58,6 +59,7 @@ public final class McpSessionRegistry
     private final int maxSessions;
     private final long ttlMillis;
     private final LongSupplier clock;
+    private volatile Consumer<String> sessionClosedListener;
 
     public McpSessionRegistry()
     {
@@ -74,6 +76,11 @@ public final class McpSessionRegistry
     /**
      * Creates a session after a successful initialize. Returns {@code null} when the cap is reached.
      */
+    public void setSessionClosedListener(Consumer<String> sessionClosedListener)
+    {
+        this.sessionClosedListener = sessionClosedListener;
+    }
+
     public McpTransportSession create(String requestedPath, String protocolVersion,
         ClientCapabilities capabilities)
     {
@@ -111,12 +118,22 @@ public final class McpSessionRegistry
 
     public boolean close(String sessionId)
     {
-        return sessionId != null && sessions.remove(sessionId) != null;
+        boolean removed = sessionId != null && sessions.remove(sessionId) != null;
+        if (removed)
+        {
+            fireClosed(sessionId);
+        }
+        return removed;
     }
 
     public void shutdown()
     {
+        List<String> ids = new ArrayList<>(sessions.keySet());
         sessions.clear();
+        for (String id : ids)
+        {
+            fireClosed(id);
+        }
     }
 
     public int size()
@@ -138,7 +155,19 @@ public final class McpSessionRegistry
         }
         for (String id : expired)
         {
-            sessions.remove(id);
+            if (sessions.remove(id) != null)
+            {
+                fireClosed(id);
+            }
+        }
+    }
+
+    private void fireClosed(String sessionId)
+    {
+        Consumer<String> listener = sessionClosedListener;
+        if (listener != null && sessionId != null)
+        {
+            listener.accept(sessionId);
         }
     }
 }

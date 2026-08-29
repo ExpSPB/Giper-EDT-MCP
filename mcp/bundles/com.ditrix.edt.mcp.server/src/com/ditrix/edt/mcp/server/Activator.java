@@ -42,6 +42,7 @@ import com.ditrix.edt.mcp.server.bridge.IEdtMcpBridge;
 import com.ditrix.edt.mcp.server.history.McpCallHistoryFileLog;
 import com.ditrix.edt.mcp.server.preferences.ToolSettingsService;
 import com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepository;
+import com.ditrix.edt.mcp.server.profiles.ProfileNotificationService;
 import com.ditrix.edt.mcp.server.profiles.ToolProfileRepository;
 import com.ditrix.edt.mcp.server.utils.BackgroundJobs;
 import com.ditrix.edt.mcp.server.utils.Log;
@@ -102,6 +103,7 @@ public class Activator extends AbstractUIPlugin
                 ToolSettingsService.getInstance().mirrorDefaultToLegacy(current.getDefault());
             }
         });
+        toolProfileRepository.addListener(new ProfileNotificationService());
 
         boolean headless = isHeadless();
         if (!headless)

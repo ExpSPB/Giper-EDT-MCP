@@ -120,12 +120,13 @@ public class McpHttpHandler implements HttpHandler
                 exchange.close();
                 return;
             }
-            if (bindSession(exchange, context) == null)
+            McpRequestContext bound = bindSession(exchange, context);
+            if (bound == null)
             {
                 exchange.close();
                 return;
             }
-            handleSseInDedicatedPool(exchange);
+            handleSseInDedicatedPool(exchange, bound);
             return;
         }
 
@@ -217,7 +218,7 @@ public class McpHttpHandler implements HttpHandler
      * The exchange lifecycle (including close) is managed entirely by the SSE thread,
      * so the main pool thread is released immediately.
      */
-    private void handleSseInDedicatedPool(HttpExchange exchange)
+    private void handleSseInDedicatedPool(HttpExchange exchange, McpRequestContext context)
     {
         ExecutorService sse = server.getSseExecutor();
         if (sse == null || sse.isShutdown())
@@ -243,7 +244,7 @@ public class McpHttpHandler implements HttpHandler
             sse.submit(() -> {
                 try
                 {
-                    handleSseStream(exchange);
+                    handleSseStream(exchange, context);
                 }
                 catch (IOException e)
                 {
@@ -428,7 +429,7 @@ public class McpHttpHandler implements HttpHandler
      * that require an established SSE stream before sending POST requests.
      * The server keeps the connection alive with periodic heartbeats.
      */
-    private void handleSseStream(HttpExchange exchange) throws IOException
+    private void handleSseStream(HttpExchange exchange, McpRequestContext context) throws IOException
     {
         String acceptHeader = exchange.getRequestHeaders().getFirst("Accept"); //$NON-NLS-1$
 
@@ -446,7 +447,9 @@ public class McpHttpHandler implements HttpHandler
             // comments. Both heartbeat and broadcast writes go through the registered
             // SseStream, which serializes them so frames never interleave.
             java.io.OutputStream os = exchange.getResponseBody();
-            SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(os);
+            SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance()
+                .register(os, context != null ? context.getSessionId() : null,
+                    context != null ? context.getRequestedPath() : McpEndpoint.LEGACY_PATH);
             try
             {
                 while (!Thread.currentThread().isInterrupted()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability

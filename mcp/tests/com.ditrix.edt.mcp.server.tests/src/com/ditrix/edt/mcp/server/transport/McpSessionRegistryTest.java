@@ -88,4 +88,22 @@ public class McpSessionRegistryTest
         assertEquals(0, registry.size());
         assertEquals(LookupStatus.UNKNOWN, registry.lookup(second.getId(), "/mcp/profiles/review", true).getStatus()); //$NON-NLS-1$
     }
+
+    @Test
+    public void closeAndExpiryNotifyListener()
+    {
+        AtomicLong clock = new AtomicLong(1_000L);
+        McpSessionRegistry registry = new McpSessionRegistry(10, 100L, clock::get);
+        java.util.ArrayList<String> closed = new java.util.ArrayList<>();
+        registry.setSessionClosedListener(closed::add);
+        McpTransportSession first = registry.create("/mcp", "2025-11-25", ClientCapabilities.ABSENT); //$NON-NLS-1$ //$NON-NLS-2$
+        McpTransportSession second = registry.create("/mcp/profiles/review", "2025-11-25", //$NON-NLS-1$ //$NON-NLS-2$
+            ClientCapabilities.ABSENT);
+        assertTrue(registry.close(first.getId()));
+        assertEquals(1, closed.size());
+        clock.set(1_250L);
+        assertEquals(LookupStatus.UNKNOWN, registry.lookup(second.getId(), "/mcp/profiles/review", true).getStatus()); //$NON-NLS-1$
+        assertEquals(2, closed.size());
+        assertTrue(closed.contains(second.getId()));
+    }
 }

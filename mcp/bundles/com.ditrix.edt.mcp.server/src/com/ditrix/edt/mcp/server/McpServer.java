@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.ditrix.edt.mcp.server.preferences.PreferenceConstants;
 import com.ditrix.edt.mcp.server.profiles.ToolProfileMigration;
+import com.ditrix.edt.mcp.server.SseStreamRegistry;
 import com.ditrix.edt.mcp.server.protocol.McpProtocolHandler;
 import com.ditrix.edt.mcp.server.tools.BuiltInToolRegistrar;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
@@ -56,6 +57,12 @@ public class McpServer
 
     /** Path-bound MCP sessions for the 2025-11-25 transport. */
     private final McpSessionRegistry sessionRegistry = new McpSessionRegistry();
+
+    public McpServer()
+    {
+        sessionRegistry.setSessionClosedListener(
+            id -> SseStreamRegistry.getInstance().unregisterBySession(id));
+    }
 
     /** Main thread pool for POST/OPTIONS/DELETE requests */
     private ThreadPoolExecutor mainExecutor;
