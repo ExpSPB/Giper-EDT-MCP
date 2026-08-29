@@ -34,20 +34,12 @@
       <horizontalAlign>Left</horizontalAlign>
     </extInfo>
   </items>
-  <autoCommandBar>
-    <name>FormCommandBar</name>
-    <id>-1</id>
-    <horizontalAlign>Left</horizontalAlign>
-    <autoFill>true</autoFill>
-  </autoCommandBar>
   <saveWindowSettings>true</saveWindowSettings>
   <autoTitle>true</autoTitle>
   <autoUrl>true</autoUrl>
-  <group>Auto</group>
   <autoFillCheck>true</autoFillCheck>
   <allowFormCustomize>true</allowFormCustomize>
   <enabled>true</enabled>
-  <showTitle>auto</showTitle>
   <showCloseButton>true</showCloseButton>
   <commandInterface>
     <navigationPanel/>
