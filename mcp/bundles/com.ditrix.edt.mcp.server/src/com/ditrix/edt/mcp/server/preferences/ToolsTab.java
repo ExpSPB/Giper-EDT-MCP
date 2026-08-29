@@ -142,6 +142,11 @@ public class ToolsTab
         createDetailPanel(sash);
 
         sash.setWeights(new int[]{40, 60});
+
+        // Full refresh only after tree / preset / count widgets exist.
+        // createProfileBar() fills the profile fields earlier; calling refreshProfileUi()
+        // there NPEs and Eclipse shows "The current page contains invalid values".
+        refreshProfileUi();
     }
 
     public Composite getControl()
@@ -175,6 +180,10 @@ public class ToolsTab
             @Override
             public void widgetSelected(SelectionEvent e)
             {
+                if (updatingProfileFields)
+                {
+                    return;
+                }
                 flushProfileFields();
                 int idx = profileCombo.getSelectionIndex();
                 if (idx >= 0 && idx < model.getDrafts().size())
@@ -242,7 +251,7 @@ public class ToolsTab
         warnGd.horizontalSpan = 2;
         fallbackWarning.setLayoutData(warnGd);
 
-        refreshProfileUi();
+        refreshProfileFields();
     }
 
     private Button addActionButton(Composite parent, String text, Runnable action)
@@ -394,6 +403,18 @@ public class ToolsTab
 
     private void refreshProfileUi()
     {
+        refreshProfileFields();
+        refreshCheckStates();
+        selectMatchingPreset();
+        updateCountLabel();
+    }
+
+    private void refreshProfileFields()
+    {
+        if (profileCombo == null || displayNameText == null)
+        {
+            return;
+        }
         updatingProfileFields = true;
         try
         {
@@ -423,8 +444,10 @@ public class ToolsTab
                 profileCombo.select(selected);
             }
             ToolProfile current = model.getSelected();
-            displayNameText.setText(current == null ? "" : current.getDisplayName()); //$NON-NLS-1$
-            descriptionText.setText(current == null ? "" : current.getDescription()); //$NON-NLS-1$
+            displayNameText.setText(current == null || current.getDisplayName() == null
+                ? "" : current.getDisplayName()); //$NON-NLS-1$
+            descriptionText.setText(current == null || current.getDescription() == null
+                ? "" : current.getDescription()); //$NON-NLS-1$
             endpointText.setText(profileUrl(current == null ? ToolProfile.DEFAULT_ID : current.getId()));
             fallbackWarning.setVisible(current != null && current.isDefault());
             boolean canMutate = model.canDeleteSelected();
@@ -437,9 +460,6 @@ public class ToolsTab
         {
             updatingProfileFields = false;
         }
-        refreshCheckStates();
-        selectMatchingPreset();
-        updateCountLabel();
     }
 
     private String profileUrl(String profileId)
@@ -864,6 +884,10 @@ public class ToolsTab
 
     private void refreshCheckStates()
     {
+        if (treeViewer == null)
+        {
+            return;
+        }
         updatingChecks = true;
         try
         {
@@ -902,6 +926,10 @@ public class ToolsTab
 
     private void selectMatchingPreset()
     {
+        if (presetCombo == null)
+        {
+            return;
+        }
         ToolPreset matched = model.matchPreset();
         ToolPreset[] presets = ToolPreset.values();
         for (int i = 0; i < presets.length; i++)
@@ -916,6 +944,10 @@ public class ToolsTab
 
     private void updateCountLabel()
     {
+        if (countLabel == null)
+        {
+            return;
+        }
         int total = 0;
         int enabled = 0;
         for (ToolGroup group : ToolGroup.values())

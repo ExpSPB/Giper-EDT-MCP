@@ -10,7 +10,10 @@ every `tools/call` to the EDT instance that owns the requested project.
 
 The proxy is a plain Java process (no Eclipse, no OSGi). The EDT plugin is **not**
 modified in any way: the proxy talks to ordinary EDT-MCP servers over their normal
-`/mcp` endpoint using the same MCP Streamable HTTP wire contract.
+`/mcp` and `/mcp/profiles/<id>` endpoints using the same MCP Streamable HTTP wire
+contract. Profile routing is fail-closed: backends that do not share the same
+effective profile id, fallback state and tool-list fingerprint are not one
+surface.
 
 ## Quick start
 
@@ -35,8 +38,8 @@ edt-mcp-proxy listening on :8764, scanning 8765-8774
 ```
 
 Then connect your MCP client (Claude, Copilot, Cursor, ...) to
-`http://127.0.0.1:8764/mcp` — exactly as you would connect it to a single EDT-MCP
-server, just a different port.
+`http://127.0.0.1:8764/mcp` or `http://127.0.0.1:8764/mcp/profiles/<id>` —
+exactly as you would connect it to a single EDT-MCP server, just a different port.
 
 ## CLI subcommands
 

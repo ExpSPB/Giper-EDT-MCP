@@ -1,10 +1,11 @@
 """
 e2e tests for get_server_status (kind: read).
 
-Self-diagnosis tool. It takes NO input parameters (getInputSchema() is an empty
-JsonSchemaBuilder.object().build()) and execute() reads NOTHING from the params
-map. ResponseType is JSON, so the real payload is a dict in r.structured (NOT
-r.text — for a JSON tool r.text is just the placeholder/content text).
+Self-diagnosis tool. Optional `includeProfiles` / `includeProfileTools` add
+discovery; the default call (no args) is still a snapshot. ResponseType is JSON,
+so the real payload is a dict in r.structured (NOT r.text — for a JSON tool
+r.text is just the placeholder/content text). Profile-path coverage lives in
+test_profiles.py.
 
 It returns a fixed snapshot of the running server:
   port, running, protocolVersion, pluginVersion, edtVersion,

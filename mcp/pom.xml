@@ -14,7 +14,7 @@
   <parent>
     <groupId>com.ditrix.edt.mcp</groupId>
     <artifactId>bom</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.1-SNAPSHOT</version>
     <relativePath>./bom/pom.xml</relativePath>
   </parent>
 
@@ -62,5 +62,4 @@
     <module>features</module>
     <module>repositories</module>
   </modules>
-
 </project>
