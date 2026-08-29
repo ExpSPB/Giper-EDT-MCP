@@ -11,10 +11,12 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import com.ditrix.edt.mcp.server.Activator;
 import com.ditrix.edt.mcp.server.preferences.ToolSettingsService;
+import com.ditrix.edt.mcp.server.profiles.ProfileToolPolicy;
 
 /**
  * Registry for MCP tools.
@@ -34,6 +36,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      * the whole previous catalogue or the whole new one.
      */
     private volatile Map<String, IMcpTool> tools = new ConcurrentHashMap<>();
+    private final AtomicLong catalogRevision = new AtomicLong(0);
 
     private McpToolRegistry()
     {
@@ -62,6 +65,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
             return;
         }
         tools.put(tool.getName(), tool);
+        catalogRevision.incrementAndGet();
         Activator.logInfo("Registered MCP tool: " + tool.getName()); //$NON-NLS-1$
     }
 
@@ -93,6 +97,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
         }
         // The single point where readers switch over, and they switch over completely.
         tools = published;
+        catalogRevision.incrementAndGet();
     }
 
     /**
@@ -131,11 +136,10 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
 
     /**
      * Returns only enabled tools (filtered by ToolSettingsService).
-     * This is the method used by the MCP protocol handler to determine
-     * which tools are exposed to clients.
      *
-     * @return collection of enabled tools
+     * @deprecated use {@link ProfileToolPolicy#publishedTools(boolean)} with an explicit resolution
      */
+    @Deprecated
     public Collection<IMcpTool> getEnabledTools()
     {
         Set<String> disabled = ToolSettingsService.getInstance().getDisabledTools();
@@ -160,7 +164,9 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      * by name (the protocol handler gates calls on {@link #isToolEnabled} only).
      *
      * @return the visible tools
+     * @deprecated use {@link ProfileToolPolicy#publishedTools(boolean)}
      */
+    @Deprecated
     public Collection<IMcpTool> getVisibleTools()
     {
         Collection<IMcpTool> enabled = getEnabledTools();
@@ -179,7 +185,9 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      *
      * @param name the tool name
      * @return true if the tool is registered and enabled
+     * @deprecated use {@link ProfileToolPolicy#isCallable(String)}
      */
+    @Deprecated
     public boolean isToolEnabled(String name)
     {
         if (name == null)
@@ -188,6 +196,11 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
         }
         return tools.containsKey(name)
             && ToolSettingsService.getInstance().isToolEnabled(name);
+    }
+
+    public long getCatalogRevision()
+    {
+        return catalogRevision.get();
     }
     
     /**
@@ -209,5 +222,6 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
     public void clear()
     {
         tools = new ConcurrentHashMap<>();
+        catalogRevision.incrementAndGet();
     }
 }

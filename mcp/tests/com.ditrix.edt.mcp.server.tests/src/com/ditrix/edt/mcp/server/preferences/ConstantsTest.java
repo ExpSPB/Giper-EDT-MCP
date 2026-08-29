@@ -29,6 +29,8 @@ public class ConstantsTest
         assertNotNull(PreferenceConstants.PREF_CHECKS_FOLDER);
         assertNotNull(PreferenceConstants.PREF_PLAIN_TEXT_MODE);
         assertNotNull(PreferenceConstants.PREF_DISABLED_TOOLS);
+        assertNotNull(PreferenceConstants.PREF_TOOL_PROFILES_JSON);
+        assertNotNull(PreferenceConstants.PREF_TOOL_PROFILES_BACKUP);
     }
 
     @Test

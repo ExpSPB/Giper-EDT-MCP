@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.ditrix.edt.mcp.server.preferences.PreferenceConstants;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileMigration;
 import com.ditrix.edt.mcp.server.protocol.McpProtocolHandler;
 import com.ditrix.edt.mcp.server.tools.BuiltInToolRegistrar;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
@@ -174,6 +175,7 @@ public class McpServer
     void registerTools()
     {
         BuiltInToolRegistrar.registerAll(McpToolRegistry.getInstance());
+        ToolProfileMigration.migrateIfNeeded();
     }
 
     /**

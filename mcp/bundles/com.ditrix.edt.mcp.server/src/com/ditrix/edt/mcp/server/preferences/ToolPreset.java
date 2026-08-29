@@ -69,6 +69,39 @@ public enum ToolPreset
     }
 
     /**
+     * Allowlist produced by applying this preset to {@code catalog}.
+     * {@link #CUSTOM} is a computed UI state and has no stored allowlist.
+     */
+    public Set<String> toAllowlist(Set<String> catalog)
+    {
+        if (this == CUSTOM || disabledTools == null || catalog == null)
+        {
+            return Set.of();
+        }
+        Set<String> allowed = new HashSet<>(catalog);
+        allowed.removeAll(disabledTools);
+        return Set.copyOf(allowed);
+    }
+
+    /**
+     * Finds the preset whose allowlist matches {@code allowed} against {@code catalog},
+     * or {@link #CUSTOM} when none match.
+     */
+    public static ToolPreset matchAllowlist(Set<String> allowed, Set<String> catalog)
+    {
+        if (catalog == null)
+        {
+            return CUSTOM;
+        }
+        Set<String> disabled = new HashSet<>(catalog);
+        if (allowed != null)
+        {
+            disabled.removeAll(allowed);
+        }
+        return matchPreset(disabled);
+    }
+
+    /**
      * Finds the preset that matches the given disabled tools set, or CUSTOM if none match.
      * Unknown tool names (e.g. from older plugin versions) are ignored during comparison.
      */

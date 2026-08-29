@@ -44,6 +44,12 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         store.setDefault(PreferenceConstants.PREF_DISABLED_TOOLS,
             PreferenceConstants.DEFAULT_DISABLED_TOOLS);
 
+        // Multi-profile document (empty until first migration / UI save)
+        store.setDefault(PreferenceConstants.PREF_TOOL_PROFILES_JSON,
+            PreferenceConstants.DEFAULT_TOOL_PROFILES_JSON);
+        store.setDefault(PreferenceConstants.PREF_TOOL_PROFILES_BACKUP,
+            PreferenceConstants.DEFAULT_TOOL_PROFILES_BACKUP);
+
         // Progressive tool disclosure (dynamic toolsets)
         store.setDefault(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE,
             PreferenceConstants.DEFAULT_PROGRESSIVE_DISCLOSURE);

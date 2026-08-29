@@ -6,16 +6,25 @@
 
 package com.ditrix.edt.mcp.server.preferences;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.ditrix.edt.mcp.server.Activator;
+import com.ditrix.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import com.ditrix.edt.mcp.server.profiles.ProfileDocumentState;
+import com.ditrix.edt.mcp.server.profiles.ReplaceResult;
+import com.ditrix.edt.mcp.server.profiles.ToolProfile;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileRepository;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileSnapshot;
 
 /**
  * Service managing tool enablement state.
@@ -115,9 +124,25 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
 
     private static final ToolSettingsService INSTANCE = new ToolSettingsService();
 
+    /** Test seam: injected repository so the facade can be verified without Activator. */
+    private static volatile ToolProfileRepository repositoryOverride;
+
+    /** Test seam: injected store so legacy reads/mirrors do not need Activator. */
+    private static volatile IPreferenceStore storeOverride;
+
     private ToolSettingsService()
     {
         // Singleton
+    }
+
+    public static void setRepositoryOverrideForTest(ToolProfileRepository repository)
+    {
+        repositoryOverride = repository;
+    }
+
+    public static void setStoreOverrideForTest(IPreferenceStore store)
+    {
+        storeOverride = store;
     }
 
     /**
@@ -135,6 +160,11 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
      */
     public Set<String> getDisabledTools()
     {
+        ToolProfileRepository repository = profiles();
+        if (repository != null && repository.getDocumentState() == ProfileDocumentState.VALID)
+        {
+            return disabledFromDefault(repository.getSnapshot().getDefault());
+        }
         IPreferenceStore store = getStore();
         if (store == null)
         {
@@ -310,6 +340,12 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
      */
     public void setDisabledTools(Set<String> disabledTools)
     {
+        ToolProfileRepository repository = profiles();
+        if (repository != null && repository.getDocumentState() == ProfileDocumentState.VALID)
+        {
+            updateDefaultAllowlist(repository, disabledTools == null ? Set.of() : disabledTools);
+            return;
+        }
         IPreferenceStore store = getStore();
         if (store == null)
         {
@@ -317,6 +353,28 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         }
         String value = serializeDisabledTools(disabledTools);
         store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, value);
+    }
+
+    /**
+     * Writes the downgrade mirror of {@code default} into {@link PreferenceConstants#PREF_DISABLED_TOOLS}.
+     * Does not read that key back into the profile document.
+     */
+    public void mirrorDefaultToLegacy(ToolProfile defaultProfile)
+    {
+        mirrorDefaultToLegacy(getStore(), defaultProfile);
+    }
+
+    /**
+     * Testable downgrade mirror: writes the complement of {@code default} into the legacy key.
+     */
+    public void mirrorDefaultToLegacy(IPreferenceStore store, ToolProfile defaultProfile)
+    {
+        if (store == null || defaultProfile == null)
+        {
+            return;
+        }
+        store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS,
+            serializeDisabledTools(disabledFromDefault(defaultProfile)));
     }
 
     /**
@@ -468,7 +526,80 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
 
     private IPreferenceStore getStore()
     {
+        if (storeOverride != null)
+        {
+            return storeOverride;
+        }
         Activator activator = Activator.getDefault();
         return activator != null ? activator.getPreferenceStore() : null;
+    }
+
+    private ToolProfileRepository profiles()
+    {
+        if (repositoryOverride != null)
+        {
+            return repositoryOverride;
+        }
+        Activator activator = Activator.getDefault();
+        return activator != null ? activator.getToolProfileRepository() : null;
+    }
+
+    private Set<String> disabledFromDefault(ToolProfile defaultProfile)
+    {
+        Set<String> catalog = catalogNames();
+        Set<String> disabled = new TreeSet<>(catalog);
+        if (defaultProfile != null)
+        {
+            disabled.removeAll(defaultProfile.getAllowedTools());
+        }
+        return Set.copyOf(disabled);
+    }
+
+    private void updateDefaultAllowlist(ToolProfileRepository repository, Set<String> disabledTools)
+    {
+        ToolProfileSnapshot current = repository.getSnapshot();
+        ToolProfile existing = current.getDefault();
+        Set<String> catalog = catalogNames();
+        Set<String> nextAllowed = new TreeSet<>();
+        for (String name : catalog)
+        {
+            if (!disabledTools.contains(name))
+            {
+                nextAllowed.add(name);
+            }
+        }
+        if (existing != null)
+        {
+            for (String name : existing.getAllowedTools())
+            {
+                if (!catalog.contains(name) && !disabledTools.contains(name))
+                {
+                    nextAllowed.add(name);
+                }
+            }
+        }
+        ToolProfile nextDefault = (existing == null
+            ? DefaultToolProfileFactory.createDefault(nextAllowed)
+            : existing.toBuilder().allowedTools(nextAllowed).build());
+        List<ToolProfile> profiles = new ArrayList<>();
+        for (ToolProfile profile : current.asList())
+        {
+            profiles.add(profile.isDefault() ? nextDefault : profile);
+        }
+        if (existing == null)
+        {
+            profiles.add(nextDefault);
+        }
+        ReplaceResult result = repository.replaceAll(current.getDocumentRevision(),
+            ToolProfileSnapshot.of(current.getDocumentRevision(), profiles));
+        if (result.isAccepted() || result.getStatus() == ReplaceResult.Status.NO_OP)
+        {
+            mirrorDefaultToLegacy(result.getSnapshot().getDefault());
+        }
+    }
+
+    private static Set<String> catalogNames()
+    {
+        return ToolGroup.allToolNames();
     }
 }

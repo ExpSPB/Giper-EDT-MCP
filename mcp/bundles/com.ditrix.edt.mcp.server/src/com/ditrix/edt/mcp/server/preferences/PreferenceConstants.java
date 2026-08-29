@@ -103,6 +103,26 @@ public final class PreferenceConstants
     /** The raw {@code git} command tool is powerful, so it ships DISABLED by default (opt-in). */
     public static final String DEFAULT_DISABLED_TOOLS = "git,ask_workmate"; //$NON-NLS-1$
 
+    // === Multi-profile tool surfaces ===
+
+    /**
+     * Versioned JSON document of named tool profiles. Empty means the document has not been
+     * created yet and the first-run migration from {@link #PREF_DISABLED_TOOLS} may still run.
+     */
+    public static final String PREF_TOOL_PROFILES_JSON = "mcpToolProfiles"; //$NON-NLS-1$
+
+    /**
+     * Backup of a malformed {@link #PREF_TOOL_PROFILES_JSON} value. The original key is never
+     * auto-overwritten; the UI copies the broken document here before a conscious save.
+     */
+    public static final String PREF_TOOL_PROFILES_BACKUP = "mcpToolProfilesBackup"; //$NON-NLS-1$
+
+    /** Default: no profile document yet. */
+    public static final String DEFAULT_TOOL_PROFILES_JSON = ""; //$NON-NLS-1$
+
+    /** Default: no backup. */
+    public static final String DEFAULT_TOOL_PROFILES_BACKUP = ""; //$NON-NLS-1$
+
     // === Progressive tool disclosure (dynamic toolsets) ===
 
     /**
