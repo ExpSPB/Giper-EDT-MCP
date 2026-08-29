@@ -8,6 +8,8 @@ package com.ditrix.edt.mcp.server.preferences;
 
 import java.io.IOException;
 
+import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.preference.PreferencePage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
@@ -22,6 +24,7 @@ import org.eclipse.ui.IWorkbenchPreferencePage;
 
 import com.ditrix.edt.mcp.server.Activator;
 import com.ditrix.edt.mcp.server.McpServer;
+import com.ditrix.edt.mcp.server.profiles.ReplaceResult;
 import com.ditrix.edt.mcp.server.protocol.McpConstants;
 
 /**
@@ -101,15 +104,45 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     @Override
     public boolean performOk()
     {
-        boolean toolsChanged = toolsTab.hasChanges();
+        IPreferenceStore store = getPreferenceStore();
+        int previousPort = store.getInt(PreferenceConstants.PREF_PORT);
+        boolean previousRemote = store.getBoolean(PreferenceConstants.PREF_ALLOW_REMOTE_ACCESS);
+        String previousToken = store.getString(PreferenceConstants.PREF_AUTH_TOKEN);
 
-        generalTab.performOk();
+        ReplaceResult profiles = toolsTab.saveProfiles();
+        if (profiles.getStatus() == ReplaceResult.Status.CONFLICT)
+        {
+            boolean reload = MessageDialog.openQuestion(getShell(),
+                Messages.ToolsTab_ConflictTitle, Messages.ToolsTab_ConflictMessage);
+            if (reload)
+            {
+                toolsTab.reloadProfiles();
+            }
+            toolsTab.performOk();
+            generalTab.performOk();
+            historyTab.performOk();
+            privacyTab.performOk();
+            return false;
+        }
+        if (profiles.getStatus() == ReplaceResult.Status.REJECTED)
+        {
+            MessageDialog.openError(getShell(), Messages.ToolsTab_Profile, profiles.getMessage());
+            toolsTab.performOk();
+            generalTab.performOk();
+            historyTab.performOk();
+            privacyTab.performOk();
+            return false;
+        }
+
         toolsTab.performOk();
+        generalTab.performOk();
         historyTab.performOk();
         privacyTab.performOk();
 
-        // If tool enablement changed and server is running, restart to apply
-        if (toolsChanged)
+        boolean transportChanged = previousPort != store.getInt(PreferenceConstants.PREF_PORT)
+            || previousRemote != store.getBoolean(PreferenceConstants.PREF_ALLOW_REMOTE_ACCESS)
+            || !previousToken.equals(store.getString(PreferenceConstants.PREF_AUTH_TOKEN));
+        if (transportChanged)
         {
             McpServer server = Activator.getDefault().getMcpServer();
             if (server != null && server.isRunning())
@@ -117,11 +150,11 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
                 try
                 {
                     server.restart(generalTab.getPort());
-                    Activator.logInfo("MCP Server restarted after tool configuration change"); //$NON-NLS-1$
+                    Activator.logInfo("MCP Server restarted after transport setting change"); //$NON-NLS-1$
                 }
                 catch (IOException e)
                 {
-                    Activator.logError("Failed to restart MCP Server after tool change", e); //$NON-NLS-1$
+                    Activator.logError("Failed to restart MCP Server after transport change", e); //$NON-NLS-1$
                 }
             }
         }
