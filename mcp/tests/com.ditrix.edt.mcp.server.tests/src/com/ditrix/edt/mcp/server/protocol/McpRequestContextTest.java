@@ -23,6 +23,7 @@ import com.ditrix.edt.mcp.server.profiles.FallbackReason;
 import com.ditrix.edt.mcp.server.profiles.ProfileResolver;
 import com.ditrix.edt.mcp.server.profiles.ToolProfile;
 import com.ditrix.edt.mcp.server.profiles.ToolProfileSnapshot;
+import com.ditrix.edt.mcp.server.tools.IMcpTool;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -93,5 +94,51 @@ public class McpRequestContextTest
         assertTrue(McpRequestContext.legacyDefault().isLegacyCompatibilityWrapper());
         assertEquals("default", McpRequestContext.legacyDefault().effectiveProfileId()); //$NON-NLS-1$
         assertEquals(Set.of(), DefaultToolProfileFactory.createSafeDefault().getAllowedTools());
+    }
+
+    @Test
+    public void httpContextAppliesProfilePolicyWhileLegacyWrapperDoesNot()
+    {
+        McpToolRegistry.getInstance().register(new IMcpTool()
+        {
+            @Override
+            public String getName()
+            {
+                return "alpha_probe"; //$NON-NLS-1$
+            }
+
+            @Override
+            public String getDescription()
+            {
+                return "probe"; //$NON-NLS-1$
+            }
+
+            @Override
+            public String getInputSchema()
+            {
+                return "{\"type\":\"object\"}"; //$NON-NLS-1$
+            }
+
+            @Override
+            public String execute(java.util.Map<String, String> params)
+            {
+                return "{\"success\":true}"; //$NON-NLS-1$
+            }
+        });
+
+        String listHttp = handler.processRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", //$NON-NLS-1$
+            McpRequestContext.builder().requestedPath("/mcp/profiles/review").build()); //$NON-NLS-1$
+        assertFalse(listHttp.contains("alpha_probe")); //$NON-NLS-1$
+
+        String listLegacy = handler.processRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}"); //$NON-NLS-1$
+        assertTrue(listLegacy.contains("alpha_probe")); //$NON-NLS-1$
+
+        String callHttp = handler.processRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\"," //$NON-NLS-1$
+            + "\"params\":{\"name\":\"alpha_probe\",\"arguments\":{}}}", //$NON-NLS-1$
+            McpRequestContext.builder().requestedPath("/mcp/profiles/review").build()); //$NON-NLS-1$
+        assertTrue(callHttp.contains("not allowed by profile") || callHttp.contains("disabled")); //$NON-NLS-1$ //$NON-NLS-2$
     }
 }

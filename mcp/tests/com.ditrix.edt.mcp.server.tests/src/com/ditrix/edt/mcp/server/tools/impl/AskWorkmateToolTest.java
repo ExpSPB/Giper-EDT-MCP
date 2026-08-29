@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,7 +28,12 @@ import org.eclipse.core.resources.IProject;
 import org.junit.After;
 import org.junit.Test;
 
+import com.ditrix.edt.mcp.server.protocol.McpRequestContext;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolAnnotations;
+import com.ditrix.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import com.ditrix.edt.mcp.server.profiles.ProfileResolver;
+import com.ditrix.edt.mcp.server.profiles.ToolProfile;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileSnapshot;
 import com.ditrix.edt.mcp.server.tools.IMcpTool;
 import com.ditrix.edt.mcp.server.tools.IMcpTool.ResponseType;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
@@ -493,6 +499,43 @@ public class AskWorkmateToolTest
         assertTrue(preamble.contains("mcp.apply(\"list_projects\", \"{}\")")); //$NON-NLS-1$
         assertFalse("no projectName argument can be honest here", //$NON-NLS-1$
             preamble.contains("projectName")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testNarrowProfilePreambleDoesNotHandOutTheDefaultBiFunction()
+    {
+        McpToolRegistry.getInstance().clear();
+        McpToolRegistry.getInstance().register(new NamedProbeTool("list_projects")); //$NON-NLS-1$
+        McpToolRegistry.getInstance().register(new NamedProbeTool("write_module_source")); //$NON-NLS-1$
+        try
+        {
+            McpRequestContext review = McpRequestContext.builder()
+                .resolution(ProfileResolver.resolve("review", false, ToolProfileSnapshot.of(1L, List.of( //$NON-NLS-1$
+                    DefaultToolProfileFactory.createSafeDefault(),
+                    ToolProfile.builder()
+                        .id("review") //$NON-NLS-1$
+                        .displayName("Review") //$NON-NLS-1$
+                        .allowedTools(Set.of("list_projects")) //$NON-NLS-1$
+                        .build()))))
+                .requestedPath("/mcp/review") //$NON-NLS-1$
+                .legacyCompatibilityWrapper(false)
+                .build();
+
+            AtomicReference<String> sent = new AtomicReference<>();
+            tool(questionCapturingGateway(sent)).execute(params("question", "q"), review); //$NON-NLS-1$ //$NON-NLS-2$
+
+            String preamble = sent.get();
+            assertTrue(preamble.contains("Do NOT call the BiFunction apply")); //$NON-NLS-1$
+            assertTrue(preamble.contains("callTool")); //$NON-NLS-1$
+            assertTrue(preamble.contains("review")); //$NON-NLS-1$
+            assertTrue(preamble.contains("list_projects")); //$NON-NLS-1$
+            assertFalse(preamble.contains("write_module_source")); //$NON-NLS-1$
+            assertFalse(preamble.contains("mcp.apply(")); //$NON-NLS-1$
+        }
+        finally
+        {
+            McpToolRegistry.getInstance().clear();
+        }
     }
 
     /**

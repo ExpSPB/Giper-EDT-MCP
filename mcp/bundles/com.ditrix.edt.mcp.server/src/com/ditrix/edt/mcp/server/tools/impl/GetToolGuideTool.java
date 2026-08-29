@@ -11,7 +11,9 @@ import java.util.Map;
 import com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilder;
 import com.ditrix.edt.mcp.server.protocol.JsonUtils;
 import com.ditrix.edt.mcp.server.protocol.McpConstants;
+import com.ditrix.edt.mcp.server.protocol.McpRequestContext;
 import com.ditrix.edt.mcp.server.protocol.ToolResult;
+import com.ditrix.edt.mcp.server.profiles.ProfileToolPolicy;
 import com.ditrix.edt.mcp.server.tools.IMcpTool;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
 import com.ditrix.edt.mcp.server.utils.GuideRenderer;
@@ -76,6 +78,12 @@ public class GetToolGuideTool implements IMcpTool
     @Override
     public String execute(Map<String, String> params)
     {
+        return execute(params, McpRequestContext.legacyDefault());
+    }
+
+    @Override
+    public String execute(Map<String, String> params, McpRequestContext context)
+    {
         String err = JsonUtils.requireArgument(params, KEY_TOOL_NAME);
         if (err != null)
         {
@@ -83,11 +91,23 @@ public class GetToolGuideTool implements IMcpTool
         }
 
         String toolName = params.get(KEY_TOOL_NAME);
-        IMcpTool tool = McpToolRegistry.getInstance().getTool(toolName);
+        McpToolRegistry registry = McpToolRegistry.getInstance();
+        IMcpTool tool = registry.getTool(toolName);
         if (tool == null)
         {
             return ToolResult.error("Unknown tool: " + toolName //$NON-NLS-1$
                 + ". Call tools/list to see available tool names.").toJson(); //$NON-NLS-1$
+        }
+
+        if (context != null && context.getResolution() != null
+            && context.getResolution().isExplicitEndpoint())
+        {
+            ProfileToolPolicy policy = new ProfileToolPolicy(context.getResolution(),
+                registry.getAllTools());
+            if (!policy.isGuideVisible(toolName))
+            {
+                return ToolResult.error(policy.deniedMessage(toolName)).toJson();
+            }
         }
 
         return GuideRenderer.render(tool);

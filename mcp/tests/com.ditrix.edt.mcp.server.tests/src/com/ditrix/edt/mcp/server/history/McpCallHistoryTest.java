@@ -129,6 +129,49 @@ public class McpCallHistoryTest
     }
 
     @Test
+    public void testRecordStoresProfileAndSessionFields()
+    {
+        McpCallHistory history = new McpCallHistory();
+        history.record("tools/call", "t", "{}", "{}", 3L, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            "review", "review", null, "sess-9"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        McpCallRecord record = history.snapshot().get(0);
+        assertEquals("review", record.getRequestedProfileId()); //$NON-NLS-1$
+        assertEquals("review", record.getEffectiveProfileId()); //$NON-NLS-1$
+        assertEquals("sess-9", record.getSessionId()); //$NON-NLS-1$
+        assertEquals(null, record.getFallbackReason());
+    }
+
+    @Test
+    public void testBindRequestMetaIsPickedUpByLegacyRecordOverload()
+    {
+        McpCallHistory history = new McpCallHistory();
+        McpCallHistory.bindRequestMeta(com.ditrix.edt.mcp.server.protocol.McpRequestContext.builder()
+            .sessionId("sess-bind") //$NON-NLS-1$
+            .build());
+        try
+        {
+            history.record("tools/call", "t", "r", null, 0L); //$NON-NLS-1$
+        }
+        finally
+        {
+            McpCallHistory.clearRequestMeta();
+        }
+        McpCallRecord record = history.snapshot().get(0);
+        assertEquals("default", record.getEffectiveProfileId()); //$NON-NLS-1$
+        assertEquals("sess-bind", record.getSessionId()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testLegacyRecordOverloadLeavesProfileFieldsNull()
+    {
+        McpCallHistory history = new McpCallHistory();
+        history.record("tools/call", "t", "r", null, 0L); //$NON-NLS-1$
+        McpCallRecord record = history.snapshot().get(0);
+        assertEquals(null, record.getRequestedProfileId());
+        assertEquals(null, record.getSessionId());
+    }
+
+    @Test
     public void testDisabledRecordingIsANoOp()
     {
         McpCallHistory history = new McpCallHistory();

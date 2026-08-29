@@ -788,6 +788,11 @@ public class McpHistoryView extends ViewPart implements McpCallHistory.HistoryLi
     private String buildDisplayText(McpCallRecord record)
     {
         StringBuilder sb = new StringBuilder();
+        String context = profileContextLabel(record);
+        if (!context.isEmpty())
+        {
+            sb.append(context).append("\n\n"); //$NON-NLS-1$
+        }
         sb.append(Messages.McpHistoryView_RequestSection).append('\n');
         sb.append(prettyOrNone(record.getRequestJson()));
         sb.append("\n\n").append(Messages.McpHistoryView_ResponseSection).append('\n'); //$NON-NLS-1$
@@ -804,10 +809,83 @@ public class McpHistoryView extends ViewPart implements McpCallHistory.HistoryLi
      */
     private String buildClipboardJson(McpCallRecord record)
     {
+        return prettyGson.toJson(clipboardModel(record));
+    }
+
+    /**
+     * SWT-free history model: request/response plus requested/effective profile,
+     * fallback reason and session id. Used by Copy-JSON and unit tests.
+     *
+     * @param record the record (never {@code null})
+     * @return a JSON object with those fields
+     */
+    static JsonObject clipboardModel(McpCallRecord record)
+    {
         JsonObject root = new JsonObject();
+        if (record.getRequestedProfileId() != null)
+        {
+            root.addProperty("requestedProfileId", record.getRequestedProfileId()); //$NON-NLS-1$
+        }
+        if (record.getEffectiveProfileId() != null)
+        {
+            root.addProperty("effectiveProfileId", record.getEffectiveProfileId()); //$NON-NLS-1$
+        }
+        if (record.getFallbackReason() != null)
+        {
+            root.addProperty("fallbackReason", record.getFallbackReason()); //$NON-NLS-1$
+        }
+        if (record.getSessionId() != null)
+        {
+            root.addProperty("sessionId", record.getSessionId()); //$NON-NLS-1$
+        }
         root.add("request", asJsonOrString(record.getRequestJson())); //$NON-NLS-1$
         root.add("response", asJsonOrString(record.getResponseJson())); //$NON-NLS-1$
-        return prettyGson.toJson(root);
+        return root;
+    }
+
+    /**
+     * One-line profile/session summary for the detail pane. Empty when every
+     * field is null (legacy records).
+     *
+     * @param record the record (may be {@code null})
+     * @return a label, never {@code null}
+     */
+    static String profileContextLabel(McpCallRecord record)
+    {
+        if (record == null)
+        {
+            return ""; //$NON-NLS-1$
+        }
+        StringBuilder sb = new StringBuilder();
+        if (record.getRequestedProfileId() != null)
+        {
+            sb.append("requestedProfile=").append(record.getRequestedProfileId()); //$NON-NLS-1$
+        }
+        if (record.getEffectiveProfileId() != null)
+        {
+            if (sb.length() > 0)
+            {
+                sb.append(' ');
+            }
+            sb.append("effectiveProfile=").append(record.getEffectiveProfileId()); //$NON-NLS-1$
+        }
+        if (record.getFallbackReason() != null)
+        {
+            if (sb.length() > 0)
+            {
+                sb.append(' ');
+            }
+            sb.append("fallback=").append(record.getFallbackReason()); //$NON-NLS-1$
+        }
+        if (record.getSessionId() != null)
+        {
+            if (sb.length() > 0)
+            {
+                sb.append(' ');
+            }
+            sb.append("session=").append(record.getSessionId()); //$NON-NLS-1$
+        }
+        return sb.toString();
     }
 
     /**
@@ -815,7 +893,7 @@ public class McpHistoryView extends ViewPart implements McpCallHistory.HistoryLi
      * {@code null} (→ JSON null) or not parseable (e.g. a body carrying the truncation
      * marker), so the enclosing object is always valid JSON.
      */
-    private static JsonElement asJsonOrString(String json)
+    static JsonElement asJsonOrString(String json)
     {
         if (json == null)
         {

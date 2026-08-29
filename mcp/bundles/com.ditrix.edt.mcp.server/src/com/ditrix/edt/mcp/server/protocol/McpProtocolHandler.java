@@ -16,6 +16,7 @@ import com.ditrix.edt.mcp.server.McpServer;
 import com.ditrix.edt.mcp.server.UserSignal;
 import com.ditrix.edt.mcp.server.history.McpCallHistory;
 import com.ditrix.edt.mcp.server.preferences.PreferenceConstants;
+import com.ditrix.edt.mcp.server.profiles.ProfileToolPolicy;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResult;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcResponse;
@@ -23,6 +24,7 @@ import com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResult;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolsListResult;
 import com.ditrix.edt.mcp.server.tools.IMcpTool;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
+import com.ditrix.edt.mcp.server.tools.Toolsets;
 import com.ditrix.edt.mcp.server.utils.DcsXmlCodec;
 import com.ditrix.edt.mcp.server.utils.GuideRenderer;
 import com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressor;
@@ -303,7 +305,7 @@ public class McpProtocolHandler
             // Check for tools/list method
             if (McpConstants.METHOD_TOOLS_LIST.equals(method))
             {
-                return buildToolsListResponse(requestId);
+                return buildToolsListResponse(requestId, context);
             }
             
             // Check for tools/call method
@@ -315,13 +317,13 @@ public class McpProtocolHandler
             // Check for resources/list method (serves the per-tool guide:// docs)
             if (McpConstants.METHOD_RESOURCES_LIST.equals(method))
             {
-                return buildResourcesListResponse(requestId);
+                return buildResourcesListResponse(requestId, context);
             }
 
             // Check for resources/read method (returns one guide:// Markdown body)
             if (McpConstants.METHOD_RESOURCES_READ.equals(method))
             {
-                return handleResourcesRead(request, requestId);
+                return handleResourcesRead(request, requestId, context);
             }
 
             // Ping utility (MCP basic utilities): a connection-health check that takes no
@@ -400,13 +402,9 @@ public class McpProtocolHandler
             return buildErrorResponse(McpConstants.ERROR_METHOD_NOT_FOUND, "Tool not found: " + toolName, requestId); //$NON-NLS-1$
         }
 
-        // Check if tool is enabled
-        if (!toolRegistry.isToolEnabled(toolName))
+        if (!isCallable(toolName, context))
         {
-            String msg = "Tool '" + toolName + "' is disabled by the user. " //$NON-NLS-1$ //$NON-NLS-2$
-                + "If this functionality is needed, ask the user to enable it: " //$NON-NLS-1$
-                + "EDT Preferences \u2192 MCP Server \u2192 Tools tab \u2192 check '" + toolName + "'."; //$NON-NLS-1$ //$NON-NLS-2$
-            return buildToolCallTextResponse(msg, requestId);
+            return buildToolCallTextResponse(deniedMessage(toolName, context), requestId);
         }
         
         Activator.logInfo("Processing tools/call: " + tool.getName()); //$NON-NLS-1$
@@ -1021,11 +1019,11 @@ public class McpProtocolHandler
     /**
      * Builds tools/list response dynamically from registry.
      */
-    private String buildToolsListResponse(Object requestId)
+    private String buildToolsListResponse(Object requestId, McpRequestContext context)
     {
         ToolsListResult result = new ToolsListResult();
 
-        for (IMcpTool tool : toolRegistry.getVisibleTools())
+        for (IMcpTool tool : listedTools(context))
         {
             // Parse inputSchema from JSON string to JsonElement. The SHAPE a call is
             // built from goes over the wire; the prose around it stops here, except the
@@ -1063,10 +1061,10 @@ public class McpProtocolHandler
      * @param requestId the JSON-RPC request id to echo
      * @return the serialized JSON-RPC response
      */
-    private String buildResourcesListResponse(Object requestId)
+    private String buildResourcesListResponse(Object requestId, McpRequestContext context)
     {
         JsonArray resources = new JsonArray();
-        for (IMcpTool tool : toolRegistry.getVisibleTools())
+        for (IMcpTool tool : listedTools(context))
         {
             String name = tool.getName();
             JsonObject resource = new JsonObject();
@@ -1094,7 +1092,7 @@ public class McpProtocolHandler
      * @param requestId the JSON-RPC request id to echo
      * @return the serialized JSON-RPC response (result or error)
      */
-    private String handleResourcesRead(JsonRpcRequest request, Object requestId)
+    private String handleResourcesRead(JsonRpcRequest request, Object requestId, McpRequestContext context)
     {
         String uri = request != null ? request.getStringParam("uri") : null; //$NON-NLS-1$
         if (uri == null || !uri.startsWith(McpConstants.GUIDE_URI_SCHEME))
@@ -1106,7 +1104,7 @@ public class McpProtocolHandler
 
         String toolName = uri.substring(McpConstants.GUIDE_URI_SCHEME.length());
         IMcpTool tool = toolRegistry.getTool(toolName);
-        if (tool == null)
+        if (tool == null || (usesProfilePolicy(context) && !isCallable(toolName, context)))
         {
             return buildErrorResponse(McpConstants.ERROR_INVALID_PARAMS,
                 "Unknown guide resource: " + uri //$NON-NLS-1$
@@ -1124,6 +1122,43 @@ public class McpProtocolHandler
         JsonObject result = new JsonObject();
         result.add("contents", contents); //$NON-NLS-1$
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, result));
+    }
+
+    private boolean usesProfilePolicy(McpRequestContext context)
+    {
+        return context != null && !context.isLegacyCompatibilityWrapper();
+    }
+
+    private java.util.Collection<IMcpTool> listedTools(McpRequestContext context)
+    {
+        if (usesProfilePolicy(context))
+        {
+            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
+                .publishedTools(Toolsets.isProgressiveDisclosureEnabled());
+        }
+        return toolRegistry.getVisibleTools();
+    }
+
+    private boolean isCallable(String toolName, McpRequestContext context)
+    {
+        if (usesProfilePolicy(context))
+        {
+            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
+                .isCallable(toolName);
+        }
+        return toolRegistry.isToolEnabled(toolName);
+    }
+
+    private String deniedMessage(String toolName, McpRequestContext context)
+    {
+        if (usesProfilePolicy(context))
+        {
+            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
+                .deniedMessage(toolName);
+        }
+        return "Tool '" + toolName + "' is disabled by the user. " //$NON-NLS-1$ //$NON-NLS-2$
+            + "If this functionality is needed, ask the user to enable it: " //$NON-NLS-1$
+            + "EDT Preferences \u2192 MCP Server \u2192 Tools tab \u2192 check '" + toolName + "'."; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     /**

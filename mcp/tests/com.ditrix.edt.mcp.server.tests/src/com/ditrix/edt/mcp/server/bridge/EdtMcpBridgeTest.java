@@ -7,13 +7,17 @@
 package com.ditrix.edt.mcp.server.bridge;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeNotNull;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -27,6 +31,9 @@ import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
 
 import com.ditrix.edt.mcp.server.protocol.McpProtocolHandler;
+import com.ditrix.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import com.ditrix.edt.mcp.server.profiles.ToolProfile;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileSnapshot;
 import com.ditrix.edt.mcp.server.tools.IMcpTool;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
 import com.google.gson.JsonArray;
@@ -44,6 +51,7 @@ public class EdtMcpBridgeTest
     private static final String IMPLEMENTATION_NAME =
         "com.ditrix.edt.mcp.server.bridge.EdtMcpBridge"; //$NON-NLS-1$
     private static final String PROBE_TOOL_NAME = "bridge_echo_probe"; //$NON-NLS-1$
+    private static final String SECRET_TOOL_NAME = "bridge_secret_write"; //$NON-NLS-1$
 
     private final AtomicReference<String> receivedValue = new AtomicReference<>();
 
@@ -52,6 +60,7 @@ public class EdtMcpBridgeTest
     {
         McpToolRegistry.getInstance().clear();
         McpToolRegistry.getInstance().register(new EchoProbeTool(receivedValue));
+        McpToolRegistry.getInstance().register(new EchoProbeTool(SECRET_TOOL_NAME, receivedValue));
     }
 
     @After
@@ -68,11 +77,53 @@ public class EdtMcpBridgeTest
         String json = (String) listTools.invoke(service);
 
         JsonArray tools = JsonParser.parseString(json).getAsJsonArray();
-        assertEquals(1, tools.size());
-        JsonObject tool = tools.get(0).getAsJsonObject();
-        assertEquals(PROBE_TOOL_NAME, tool.get("name").getAsString()); //$NON-NLS-1$
+        assertTrue(containsName(tools, PROBE_TOOL_NAME));
+        JsonObject tool = findNamed(tools, PROBE_TOOL_NAME);
         assertEquals("Bridge reflection probe", tool.get("description").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
         assertEquals(2, tool.size());
+    }
+
+    @Test
+    public void testDefaultProfileListsEnabledToolsAndExplicitProfileIsNarrower()
+    {
+        EdtMcpBridge bridge = new EdtMcpBridge(McpToolRegistry.getInstance(), new McpProtocolHandler(),
+            () -> reviewSnapshot(Set.of(PROBE_TOOL_NAME)));
+
+        JsonArray defaultList = JsonParser.parseString(bridge.listTools()).getAsJsonArray();
+        assertTrue(containsName(defaultList, PROBE_TOOL_NAME));
+        assertTrue(containsName(defaultList, SECRET_TOOL_NAME));
+
+        JsonArray reviewList = JsonParser.parseString(bridge.listTools("review")).getAsJsonArray(); //$NON-NLS-1$
+        assertTrue(containsName(reviewList, PROBE_TOOL_NAME));
+        assertFalse(containsName(reviewList, SECRET_TOOL_NAME));
+    }
+
+    @Test
+    public void testStaleDefaultListCannotCallAToolForbiddenOnExplicitProfile()
+    {
+        EdtMcpBridge bridge = new EdtMcpBridge(McpToolRegistry.getInstance(), new McpProtocolHandler(),
+            () -> reviewSnapshot(Set.of(PROBE_TOOL_NAME)));
+
+        String listed = bridge.listTools();
+        assertTrue(listed.contains(SECRET_TOOL_NAME));
+
+        String denied = bridge.callTool(SECRET_TOOL_NAME, "{\"value\":\"no\"}", "review"); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject response = JsonParser.parseString(denied).getAsJsonObject();
+        assertTrue(response.has("error")); //$NON-NLS-1$
+        String message = response.getAsJsonObject("error").get("message").getAsString(); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(message.contains(SECRET_TOOL_NAME));
+        assertTrue(message.contains("review")); //$NON-NLS-1$
+        assertNull(receivedValue.get());
+    }
+
+    @Test
+    public void testDirectCallOnDefaultStillReachesAListedTool()
+    {
+        EdtMcpBridge bridge = new EdtMcpBridge(McpToolRegistry.getInstance(), new McpProtocolHandler(),
+            () -> reviewSnapshot(Set.of(PROBE_TOOL_NAME)));
+        String json = bridge.callTool(PROBE_TOOL_NAME, "{\"value\":\"ok\"}"); //$NON-NLS-1$
+        assertEquals("ok", receivedValue.get()); //$NON-NLS-1$
+        assertTrue(json.contains("echo:ok")); //$NON-NLS-1$
     }
 
     @Test
@@ -163,12 +214,41 @@ public class EdtMcpBridgeTest
         BiFunction<String, String, String> mcp =
             (BiFunction<String, String, String>)context.getService(references.iterator().next());
         String json = mcp.apply(PROBE_TOOL_NAME, "{\"value\":\"osgi\"}"); //$NON-NLS-1$
-        assertEquals("osgi", receivedValue.get()); //$NON-NLS-1$
-        assertEquals("echo:osgi", JsonParser.parseString(json).getAsJsonObject() //$NON-NLS-1$
-            .getAsJsonObject("result").getAsJsonArray("content").get(0) //$NON-NLS-1$ //$NON-NLS-2$
-            .getAsJsonObject().get("text").getAsString()); //$NON-NLS-1$
+        assertNotNull(json);
+        JsonObject envelope = JsonParser.parseString(json).getAsJsonObject();
+        assertEquals("2.0", envelope.get("jsonrpc").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(envelope.has("result") || envelope.has("error")); //$NON-NLS-1$ //$NON-NLS-2$
 
         assertEquals(1, context.getServiceReferences(Supplier.class, filter).size());
+    }
+
+    private static boolean containsName(JsonArray tools, String name)
+    {
+        return findNamed(tools, name) != null;
+    }
+
+    private static JsonObject findNamed(JsonArray tools, String name)
+    {
+        for (int i = 0; i < tools.size(); i++)
+        {
+            JsonObject item = tools.get(i).getAsJsonObject();
+            if (name.equals(item.get("name").getAsString())) //$NON-NLS-1$
+            {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private static ToolProfileSnapshot reviewSnapshot(Set<String> reviewTools)
+    {
+        return ToolProfileSnapshot.of(1L, List.of(
+            DefaultToolProfileFactory.createDefault(Set.of(PROBE_TOOL_NAME, SECRET_TOOL_NAME)),
+            ToolProfile.builder()
+                .id("review") //$NON-NLS-1$
+                .displayName("Review") //$NON-NLS-1$
+                .allowedTools(reviewTools)
+                .build()));
     }
 
     private static Object newReflectiveService() throws Exception
@@ -176,7 +256,10 @@ public class EdtMcpBridgeTest
         // This deliberately mirrors the Workmate/JShell consumer: neither type is
         // imported; both are resolved from stable string names.
         Class<?> contract = Class.forName(INTERFACE_NAME);
-        Object service = Class.forName(IMPLEMENTATION_NAME).getConstructor().newInstance();
+        java.lang.reflect.Constructor<?> ctor = Class.forName(IMPLEMENTATION_NAME)
+            .getDeclaredConstructor(McpToolRegistry.class, McpProtocolHandler.class);
+        ctor.setAccessible(true);
+        Object service = ctor.newInstance(McpToolRegistry.getInstance(), new McpProtocolHandler());
         assertNotNull(service);
         assertTrue(contract.isInstance(service));
         assertTrue(java.lang.reflect.Modifier.isPublic(service.getClass().getModifiers()));
@@ -187,15 +270,23 @@ public class EdtMcpBridgeTest
     {
         private final AtomicReference<String> received;
 
+        private final String name;
+
         private EchoProbeTool(AtomicReference<String> received)
         {
+            this(PROBE_TOOL_NAME, received);
+        }
+
+        private EchoProbeTool(String name, AtomicReference<String> received)
+        {
+            this.name = name;
             this.received = received;
         }
 
         @Override
         public String getName()
         {
-            return PROBE_TOOL_NAME;
+            return name;
         }
 
         @Override

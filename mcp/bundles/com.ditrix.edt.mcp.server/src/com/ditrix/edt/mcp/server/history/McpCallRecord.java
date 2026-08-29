@@ -56,6 +56,28 @@ public final class McpCallRecord
     /** Character count of the response payload BEFORE any truncation (0 when null). */
     private final int originalResponseChars;
 
+    /** Profile id the caller asked for; {@code null} on the legacy overload. */
+    private final String requestedProfileId;
+
+    /** Profile id that actually authorized the call; {@code null} on the legacy overload. */
+    private final String effectiveProfileId;
+
+    /** Why the requested profile was not used; {@code null} when there was no fallback. */
+    private final String fallbackReason;
+
+    /** MCP session id; {@code null} when the exchange had none. */
+    private final String sessionId;
+
+    /**
+     * Legacy constructor: profile and session fields are {@code null}.
+     */
+    public McpCallRecord(long timestampMs, String method, String toolName, String requestJson,
+        String responseJson, long durationMs, int originalRequestChars, int originalResponseChars)
+    {
+        this(timestampMs, method, toolName, requestJson, responseJson, durationMs, originalRequestChars,
+            originalResponseChars, null, null, null, null);
+    }
+
     /**
      * Creates an immutable call record. The {@code requestJson} / {@code responseJson}
      * bodies are stored verbatim (the caller caps them for the bounded ring); the
@@ -72,7 +94,8 @@ public final class McpCallRecord
      * @param originalResponseChars the response length BEFORE truncation (0 when null)
      */
     public McpCallRecord(long timestampMs, String method, String toolName, String requestJson,
-        String responseJson, long durationMs, int originalRequestChars, int originalResponseChars)
+        String responseJson, long durationMs, int originalRequestChars, int originalResponseChars,
+        String requestedProfileId, String effectiveProfileId, String fallbackReason, String sessionId)
     {
         this.timestampMs = timestampMs;
         this.method = method;
@@ -82,6 +105,10 @@ public final class McpCallRecord
         this.durationMs = durationMs;
         this.originalRequestChars = originalRequestChars;
         this.originalResponseChars = originalResponseChars;
+        this.requestedProfileId = requestedProfileId;
+        this.effectiveProfileId = effectiveProfileId;
+        this.fallbackReason = fallbackReason;
+        this.sessionId = sessionId;
     }
 
     /**
@@ -154,5 +181,37 @@ public final class McpCallRecord
     public int getOriginalResponseChars()
     {
         return originalResponseChars;
+    }
+
+    /**
+     * @return the requested profile id, or {@code null}
+     */
+    public String getRequestedProfileId()
+    {
+        return requestedProfileId;
+    }
+
+    /**
+     * @return the effective profile id, or {@code null}
+     */
+    public String getEffectiveProfileId()
+    {
+        return effectiveProfileId;
+    }
+
+    /**
+     * @return the fallback reason name, or {@code null}
+     */
+    public String getFallbackReason()
+    {
+        return fallbackReason;
+    }
+
+    /**
+     * @return the MCP session id, or {@code null}
+     */
+    public String getSessionId()
+    {
+        return sessionId;
     }
 }

@@ -101,13 +101,15 @@ public class LegacyMcpSurfaceCharacterizationTest
     }
 
     @Test
-    public void bridgeListToolsReturnsEveryRegisteredToolNotOnlyEnabled()
+    public void bridgeListToolsOnLiveDefaultOmitsToolsOutsideTheAllowlist()
     {
         registry.register(new BaselineTool("bridge_listed")); //$NON-NLS-1$
         String json = new EdtMcpBridge().listTools();
         JsonArray tools = JsonParser.parseString(json).getAsJsonArray();
-        assertEquals(1, tools.size());
-        assertEquals("bridge_listed", tools.get(0).getAsJsonObject().get("name").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        for (int i = 0; i < tools.size(); i++)
+        {
+            assertFalse("bridge_listed".equals(tools.get(i).getAsJsonObject().get("name").getAsString())); //$NON-NLS-1$ //$NON-NLS-2$
+        }
     }
 
     @Test

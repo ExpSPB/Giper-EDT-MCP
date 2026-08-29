@@ -7,13 +7,24 @@
 package com.ditrix.edt.mcp.server.bridge;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
+import com.ditrix.edt.mcp.server.Activator;
+import com.ditrix.edt.mcp.server.history.McpCallHistory;
 import com.ditrix.edt.mcp.server.protocol.GsonProvider;
 import com.ditrix.edt.mcp.server.protocol.JsonUtils;
 import com.ditrix.edt.mcp.server.protocol.McpConstants;
 import com.ditrix.edt.mcp.server.protocol.McpProtocolHandler;
+import com.ditrix.edt.mcp.server.protocol.McpRequestContext;
+import com.ditrix.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import com.ditrix.edt.mcp.server.profiles.ProfileResolver;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileRepository;
+import com.ditrix.edt.mcp.server.profiles.ProfileToolPolicy;
+import com.ditrix.edt.mcp.server.profiles.ToolProfile;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileSnapshot;
 import com.ditrix.edt.mcp.server.tools.IMcpTool;
 import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
 import com.google.gson.JsonArray;
@@ -42,27 +53,44 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
 
     private final McpToolRegistry registry;
     private final McpProtocolHandler protocolHandler;
+    private final Supplier<ToolProfileSnapshot> snapshotSupplier;
 
     /** Creates a bridge backed by the live singleton tool registry. */
     public EdtMcpBridge()
     {
-        this(McpToolRegistry.getInstance(), new McpProtocolHandler());
+        this(McpToolRegistry.getInstance(), new McpProtocolHandler(), EdtMcpBridge::liveOrAllowAll);
     }
 
-    /** Package-private seam for focused headless tests. */
+    /** Package-private seam for focused headless tests (allow-all default profile). */
     EdtMcpBridge(McpToolRegistry registry, McpProtocolHandler protocolHandler)
+    {
+        this(registry, protocolHandler, () -> allowAllRegistered(registry));
+    }
+
+    /** Package-private seam with an explicit profile document. */
+    EdtMcpBridge(McpToolRegistry registry, McpProtocolHandler protocolHandler,
+        Supplier<ToolProfileSnapshot> snapshotSupplier)
     {
         this.registry = registry;
         this.protocolHandler = protocolHandler;
+        this.snapshotSupplier = snapshotSupplier == null
+            ? DefaultToolProfileFactory::createSafeSnapshot
+            : snapshotSupplier;
     }
 
     @Override
     public String listTools()
     {
+        return listTools(ToolProfile.DEFAULT_ID);
+    }
+
+    @Override
+    public String listTools(String profileId)
+    {
         BridgeActivity.callStarted();
         try
         {
-            return renderToolList();
+            return renderToolList(contextFor(profileId));
         }
         finally
         {
@@ -70,10 +98,11 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
         }
     }
 
-    private String renderToolList()
+    private String renderToolList(McpRequestContext context)
     {
+        ProfileToolPolicy policy = policyFor(context);
         JsonArray result = new JsonArray();
-        registry.getAllTools().stream()
+        policy.publishedTools(false).stream()
             .sorted(Comparator.comparing(IMcpTool::getName))
             .forEach(tool -> {
                 JsonObject item = new JsonObject();
@@ -87,12 +116,18 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
     @Override
     public String callTool(String toolName, String argsJson)
     {
+        return callTool(toolName, argsJson, ToolProfile.DEFAULT_ID);
+    }
+
+    @Override
+    public String callTool(String toolName, String argsJson, String profileId)
+    {
         // Bracketed, not just counted: a caller waiting on an assistant turn needs to see that
         // work is under way, and one tool that runs for minutes ticks the counter only once.
         BridgeActivity.callStarted();
         try
         {
-            return dispatchToolCall(toolName, argsJson);
+            return dispatchToolCall(toolName, argsJson, contextFor(profileId));
         }
         finally
         {
@@ -100,7 +135,7 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
         }
     }
 
-    private String dispatchToolCall(String toolName, String argsJson)
+    private String dispatchToolCall(String toolName, String argsJson, McpRequestContext context)
     {
         JsonElement arguments;
         try
@@ -133,7 +168,67 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
         request.addProperty("method", McpConstants.METHOD_TOOLS_CALL); //$NON-NLS-1$
         request.add("params", params); //$NON-NLS-1$
 
-        return protocolHandler.processRequest(GsonProvider.toJson(request));
+        ProfileToolPolicy policy = policyFor(context);
+        if (!policy.isCallable(toolName))
+        {
+            return JsonUtils.buildJsonRpcError(McpConstants.ERROR_METHOD_NOT_FOUND,
+                policy.deniedMessage(toolName), BRIDGE_REQUEST_ID);
+        }
+
+        McpCallHistory.bindRequestMeta(context);
+        try
+        {
+            return protocolHandler.processRequest(GsonProvider.toJson(request), context);
+        }
+        finally
+        {
+            McpCallHistory.clearRequestMeta();
+        }
+    }
+
+    private McpRequestContext contextFor(String profileId)
+    {
+        ToolProfileSnapshot snapshot = snapshotSupplier.get();
+        if (profileId == null || profileId.isBlank() || ToolProfile.DEFAULT_ID.equals(profileId))
+        {
+            return McpRequestContext.builder()
+                .resolution(ProfileResolver.resolveDefault(snapshot))
+                .requestedPath("/mcp") //$NON-NLS-1$
+                .legacyCompatibilityWrapper(true)
+                .build();
+        }
+        return McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve(profileId, false, snapshot))
+            .requestedPath("/mcp/profiles/" + profileId) //$NON-NLS-1$
+            .legacyCompatibilityWrapper(false)
+            .build();
+    }
+
+    private ProfileToolPolicy policyFor(McpRequestContext context)
+    {
+        return new ProfileToolPolicy(context.getResolution(), registry.getAllTools());
+    }
+
+    private static ToolProfileSnapshot liveOrAllowAll()
+    {
+        Activator activator = Activator.getDefault();
+        if (activator != null)
+        {
+            ToolProfileRepository repository = activator.getToolProfileRepository();
+            if (repository != null)
+            {
+                return repository.getSnapshot();
+            }
+        }
+        return allowAllRegistered(McpToolRegistry.getInstance());
+    }
+
+    private static ToolProfileSnapshot allowAllRegistered(McpToolRegistry registry)
+    {
+        return ToolProfileSnapshot.of(1L, List.of(
+            DefaultToolProfileFactory.createDefault(registry.getAllTools().stream()
+                .map(IMcpTool::getName)
+                .collect(Collectors.toSet()))));
     }
 
     /**

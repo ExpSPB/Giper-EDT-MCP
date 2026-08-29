@@ -54,6 +54,23 @@ public class McpHistoryViewFilterTest
     // ------------------------------------------------------------------ statKey
 
     @Test
+    public void testProfileContextLabelAndClipboardModelCarryBothProfileIds()
+    {
+        McpCallRecord record = new McpCallRecord(TS, "tools/call", "list_projects", "{}", OK, 5L, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            2, OK.length(), "review", "default", "UNKNOWN_PROFILE", "sess-z"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        String label = McpHistoryView.profileContextLabel(record);
+        assertTrue(label.contains("requestedProfile=review")); //$NON-NLS-1$
+        assertTrue(label.contains("effectiveProfile=default")); //$NON-NLS-1$
+        assertTrue(label.contains("fallback=UNKNOWN_PROFILE")); //$NON-NLS-1$
+        assertTrue(label.contains("session=sess-z")); //$NON-NLS-1$
+
+        com.google.gson.JsonObject model = McpHistoryView.clipboardModel(record);
+        assertEquals("review", model.get("requestedProfileId").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("default", model.get("effectiveProfileId").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("sess-z", model.get("sessionId").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
     public void testStatKeyUsesToolNameForToolsCall()
     {
         assertEquals("get_metadata", //$NON-NLS-1$
