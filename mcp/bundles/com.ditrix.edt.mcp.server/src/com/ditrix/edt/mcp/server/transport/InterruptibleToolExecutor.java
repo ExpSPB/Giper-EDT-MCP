@@ -9,6 +9,7 @@ package com.ditrix.edt.mcp.server.transport;
 import com.ditrix.edt.mcp.server.ActiveToolCall;
 import com.ditrix.edt.mcp.server.McpServer;
 import com.ditrix.edt.mcp.server.protocol.McpProtocolHandler;
+import com.ditrix.edt.mcp.server.protocol.McpRequestContext;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -47,6 +48,11 @@ public class InterruptibleToolExecutor
      */
     public String execute(HttpExchange exchange, String requestBody) throws Exception // NOSONAR propagates checked exceptions across the reflective boundary by design
     {
+        return execute(exchange, requestBody, McpRequestContext.legacyDefault());
+    }
+
+    public String execute(HttpExchange exchange, String requestBody, McpRequestContext context) throws Exception // NOSONAR propagates checked exceptions across the reflective boundary by design
+    {
         // Extract request ID and tool name for ActiveToolCall via the shared parser.
         JsonRpcRequest request = protocolHandler.parse(requestBody);
         Object requestId = request != null ? McpProtocolHandler.normalizeId(request.getId()) : null;
@@ -65,7 +71,8 @@ public class InterruptibleToolExecutor
         Thread executionThread = new Thread(() -> {
             try
             {
-                resultContainer[0] = protocolHandler.processRequest(requestBody);
+                resultContainer[0] = protocolHandler.processRequest(requestBody,
+                    context == null ? McpRequestContext.legacyDefault() : context);
             }
             catch (Exception e)
             {

@@ -19,8 +19,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.ditrix.edt.mcp.server.Activator;
 import com.ditrix.edt.mcp.server.McpServer;
 import com.ditrix.edt.mcp.server.SseStreamRegistry;
+import com.ditrix.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import com.ditrix.edt.mcp.server.profiles.ProfileResolver;
+import com.ditrix.edt.mcp.server.profiles.ToolProfileRepository;
 import com.ditrix.edt.mcp.server.protocol.McpConstants;
 import com.ditrix.edt.mcp.server.protocol.McpProtocolHandler;
+import com.ditrix.edt.mcp.server.protocol.McpRequestContext;
 import com.ditrix.edt.mcp.server.protocol.JsonUtils;
 import com.ditrix.edt.mcp.server.tools.impl.GetEdtVersionTool;
 import com.sun.net.httpserver.HttpExchange;
@@ -87,6 +91,18 @@ public class McpHttpHandler implements HttpHandler
             return;
         }
 
+        McpRequestContext context;
+        try
+        {
+            context = contextOf(exchange);
+        }
+        catch (InvalidMcpEndpointException e)
+        {
+            HttpTransport.sendResponse(exchange, 400, JsonUtils.buildSimpleError(e.getMessage()));
+            return;
+        }
+        Activator.logDebug("MCP endpoint " + context.getRequestedPath()); //$NON-NLS-1$
+
         if ("GET".equals(method)) //$NON-NLS-1$
         {
             handleSseInDedicatedPool(exchange);
@@ -133,7 +149,7 @@ public class McpHttpHandler implements HttpHandler
 
             if ("POST".equals(method)) //$NON-NLS-1$
             {
-                handleMcpRequest(exchange);
+                handleMcpRequest(exchange, context);
             }
             else if ("DELETE".equals(method)) //$NON-NLS-1$
             {
@@ -258,7 +274,7 @@ public class McpHttpHandler implements HttpHandler
         }
     }
 
-    private void handleMcpRequest(HttpExchange exchange) throws IOException
+    private void handleMcpRequest(HttpExchange exchange, McpRequestContext context) throws IOException
     {
         // The request counter is incremented by McpProtocolHandler, not here: calls also
         // arrive through the in-process bridge, and counting at the transport left the
@@ -299,7 +315,7 @@ public class McpHttpHandler implements HttpHandler
             if (isToolCall)
             {
                 // Handle tool calls with interruptible execution
-                response = interruptibleExecutor.execute(exchange, requestBody);
+                response = interruptibleExecutor.execute(exchange, requestBody, context);
                 if (response == null)
                 {
                     // Response was already sent (user interrupted)
@@ -308,7 +324,7 @@ public class McpHttpHandler implements HttpHandler
             }
             else
             {
-                response = protocolHandler.processRequest(requestBody);
+                response = protocolHandler.processRequest(requestBody, context);
             }
 
             // null response means notification (no response needed)
@@ -462,5 +478,17 @@ public class McpHttpHandler implements HttpHandler
             exchange.getResponseHeaders().add(CONTENT_TYPE, "application/json"); //$NON-NLS-1$
             HttpTransport.sendResponse(exchange, 200, response);
         }
+    }
+
+    static McpRequestContext contextOf(HttpExchange exchange) throws InvalidMcpEndpointException
+    {
+        McpEndpoint endpoint = McpEndpointResolver.resolve(exchange.getRequestURI().getRawPath());
+        Activator activator = Activator.getDefault();
+        ToolProfileRepository repository = activator != null ? activator.getToolProfileRepository() : null;
+        return McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve(endpoint.getRequestedProfileId(), endpoint.isLegacy(),
+                repository != null ? repository.getSnapshot() : DefaultToolProfileFactory.createSafeSnapshot()))
+            .requestedPath(endpoint.canonicalPath())
+            .build();
     }
 }

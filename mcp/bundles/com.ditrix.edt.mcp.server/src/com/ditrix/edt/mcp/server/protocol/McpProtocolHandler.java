@@ -136,6 +136,14 @@ public class McpProtocolHandler
      */
     public String processRequest(String requestBody)
     {
+        return processRequest(requestBody, McpRequestContext.legacyDefault());
+    }
+
+    /**
+     * Same choke point as {@link #processRequest(String)} with an explicit request context.
+     */
+    public String processRequest(String requestBody, McpRequestContext context)
+    {
         long startNanos = System.nanoTime();
         // Parse once at the choke point; parse() swallows a JSON syntax error and
         // returns null, and dispatch() treats a null request as an invalid request —
@@ -144,7 +152,7 @@ public class McpProtocolHandler
         String response = null;
         try
         {
-            response = dispatch(request);
+            response = dispatch(request, context == null ? McpRequestContext.legacyDefault() : context);
         }
         finally
         {
@@ -244,7 +252,7 @@ public class McpProtocolHandler
      * @return JSON response with correct id from request ({@code null} for a
      *         notification answered with 202 Accepted)
      */
-    private String dispatch(JsonRpcRequest request)
+    private String dispatch(JsonRpcRequest request, McpRequestContext context)
     {
         // Per JSON-RPC 2.0: when the id cannot be determined (parse error /
         // invalid request) the error response id MUST be null. A real id from
@@ -278,8 +286,12 @@ public class McpProtocolHandler
                 // store it server-scoped so later tools/call (and future protocol
                 // features) can gate on it. Absent / malformed capabilities resolve
                 // to ClientCapabilities.ABSENT, which keeps every default permissive.
-                clientCapabilities.set(parseClientCapabilities(request));
-                return buildInitializeResponse(requestId, clientVersion);
+                ClientCapabilities parsed = parseClientCapabilities(request);
+                if (context.isLegacyCompatibilityWrapper())
+                {
+                    clientCapabilities.set(parsed);
+                }
+                return buildInitializeResponse(requestId, clientVersion, context.withClientCapabilities(parsed));
             }
             
             // Check for initialized notification (no response needed, but return 202)
@@ -297,7 +309,7 @@ public class McpProtocolHandler
             // Check for tools/call method
             if (McpConstants.METHOD_TOOLS_CALL.equals(method))
             {
-                return handleToolCall(request, requestId);
+                return handleToolCall(request, requestId, context);
             }
 
             // Check for resources/list method (serves the per-tool guide:// docs)
@@ -377,7 +389,7 @@ public class McpProtocolHandler
     /**
      * Handles a tools/call request.
      */
-    private String handleToolCall(JsonRpcRequest request, Object requestId)
+    private String handleToolCall(JsonRpcRequest request, Object requestId, McpRequestContext context)
     {
         String toolName = request != null ? request.getToolName() : null;
         
@@ -410,7 +422,7 @@ public class McpProtocolHandler
         }
         
         // Execute the tool (timed + logged + status-bar cleared in one place).
-        String result = executeToolTimed(tool, params, server);
+        String result = executeToolTimed(tool, params, server, context);
 
         // PII redaction (#242): the single wire-serialization choke point.
         // A no-op unless redaction is enabled AND the tool is flagged returnsInfobaseData -
@@ -449,7 +461,8 @@ public class McpProtocolHandler
      * @return the raw tool result payload (may be {@code null} only if {@code execute} returned
      *         {@code null})
      */
-    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server)
+    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server,
+        McpRequestContext context)
     {
         String result = null;
         long startNanos = System.nanoTime();
@@ -477,7 +490,7 @@ public class McpProtocolHandler
         }
         try
         {
-            result = tool.execute(params);
+            result = tool.execute(params, context);
             threw = false;
             return result;
         }
@@ -933,18 +946,33 @@ public class McpProtocolHandler
      * supported version ({@link McpConstants#PROTOCOL_VERSION}) so the client can
      * decide whether it can proceed.
      */
-    private String buildInitializeResponse(Object requestId, String clientVersion)
+    private String buildInitializeResponse(Object requestId, String clientVersion, McpRequestContext context)
     {
         // Echo the client's version only if we actually support it; otherwise
         // negotiate down to our latest supported version.
         String version = McpConstants.isSupportedVersion(clientVersion)
             ? clientVersion : McpConstants.PROTOCOL_VERSION;
+        String serverName = McpConstants.SERVER_NAME;
+        if (!context.isLegacyCompatibilityWrapper()
+            && context.getResolution() != null
+            && context.getResolution().isExplicitEndpoint())
+        {
+            serverName = McpConstants.SERVER_NAME + "/" + context.effectiveProfileId(); //$NON-NLS-1$
+        }
         InitializeResult result = new InitializeResult(
             version,
-            McpConstants.SERVER_NAME,
+            serverName,
             McpConstants.PLUGIN_VERSION,
             McpConstants.AUTHOR
         );
+        if (!context.isLegacyCompatibilityWrapper()
+            && context.getResolution() != null
+            && context.getResolution().isFallbackApplied())
+        {
+            result.setInstructions("Requested profile '" + context.getResolution().getRequestedProfileId()
+                + "' is unavailable (" + context.getResolution().getFallbackReason()
+                + "). Connected to profile 'default' instead. Call get_server_status to confirm."); //$NON-NLS-1$
+        }
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, result));
     }
 

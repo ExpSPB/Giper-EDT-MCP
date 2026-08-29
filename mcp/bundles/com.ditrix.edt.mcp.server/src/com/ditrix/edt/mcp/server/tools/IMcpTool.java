@@ -8,6 +8,7 @@ package com.ditrix.edt.mcp.server.tools;
 
 import java.util.Map;
 
+import com.ditrix.edt.mcp.server.protocol.McpRequestContext;
 import com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolAnnotations;
 import com.ditrix.edt.mcp.server.utils.GuideLoader;
 
@@ -90,6 +91,15 @@ public interface IMcpTool
      * @return result string (format depends on getResponseType())
      */
     String execute(Map<String, String> params);
+
+    /**
+     * Context-aware entry used by the protocol dispatcher. The default keeps existing
+     * implementations binary-compatible by delegating to {@link #execute(Map)}.
+     */
+    default String execute(Map<String, String> params, McpRequestContext context)
+    {
+        return execute(params);
+    }
     
     /**
      * Returns the response content type for this tool.

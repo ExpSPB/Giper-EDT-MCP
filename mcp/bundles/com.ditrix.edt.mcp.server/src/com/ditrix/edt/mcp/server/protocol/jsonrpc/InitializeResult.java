@@ -14,6 +14,7 @@ public class InitializeResult
     private String protocolVersion;
     private Capabilities capabilities;
     private ServerInfo serverInfo;
+    private String instructions;
     
     public InitializeResult(String protocolVersion, String serverName, String serverVersion, String author)
     {
@@ -35,6 +36,16 @@ public class InitializeResult
     public ServerInfo getServerInfo()
     {
         return serverInfo;
+    }
+
+    public String getInstructions()
+    {
+        return instructions;
+    }
+
+    public void setInstructions(String instructions)
+    {
+        this.instructions = instructions;
     }
     
     /**
