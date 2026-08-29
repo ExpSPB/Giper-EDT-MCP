@@ -74,6 +74,10 @@ public class BackendRegistryTest
         assertEquals(ports[1], registry.byProject("ProjectB").getPort()); //$NON-NLS-1$
         assertEquals(List.of("ProjectA", "ProjectB"), registry.knownProjects()); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("a completed refresh must record a timestamp", registry.lastRefreshMillis() > 0); //$NON-NLS-1$
+        assertEquals("discovery list_projects must use the /mcp channel", 1, backendOne.getInitializeCount()); //$NON-NLS-1$
+        ProfileGroupSnapshot group = registry.groupFor(ProfileEndpoint.legacyDefault());
+        assertEquals(ports[0], group.getDonor().getPort());
+        assertTrue(group.getIncompatible().isEmpty());
     }
 
     // ---- duplicateProjects() with overlapping projects ----

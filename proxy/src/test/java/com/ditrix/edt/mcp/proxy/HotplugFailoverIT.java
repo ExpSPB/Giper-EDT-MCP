@@ -69,6 +69,10 @@ public class HotplugFailoverIT
         proxy.start();
         client = new McpTestClient(proxy.port());
         client.handshake();
+        McpTestClient profileClient = new McpTestClient(proxy.port(), "/mcp/profiles/default"); //$NON-NLS-1$
+        profileClient.handshake();
+        assertTrue("explicit default must handshake independently", //$NON-NLS-1$
+            profileClient.sessionId() != null && !profileClient.sessionId().equals(client.sessionId()));
     }
 
     /** Stops the proxy and whatever backends a scenario left running. */

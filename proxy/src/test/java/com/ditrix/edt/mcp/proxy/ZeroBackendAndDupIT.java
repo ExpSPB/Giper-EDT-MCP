@@ -91,6 +91,8 @@ public class ZeroBackendAndDupIT
             McpTestClient.PROTOCOL_VERSION, initResult.get("protocolVersion").getAsString()); //$NON-NLS-1$
         assertEquals("serverInfo must identify the proxy", "edt-mcp-proxy", //$NON-NLS-1$ //$NON-NLS-2$
             initResult.getAsJsonObject("serverInfo").get("name").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("zero backends must say the profile is not yet confirmed", //$NON-NLS-1$
+            initResult.get("instructions").getAsString().contains("not yet confirmed")); //$NON-NLS-1$ //$NON-NLS-2$
 
         // tools/list: no backend and no cache -> the minimal router_*-only list.
         JsonObject toolsList = client.request("tools/list", new JsonObject()); //$NON-NLS-1$

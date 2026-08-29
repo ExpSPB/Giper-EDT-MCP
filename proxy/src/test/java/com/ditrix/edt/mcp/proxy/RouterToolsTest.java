@@ -188,6 +188,9 @@ public class RouterToolsTest
         assertTrue(structured.get("lastRefreshMs").getAsLong() >= 0); //$NON-NLS-1$
         assertTrue("no project is duplicated in this fixture", //$NON-NLS-1$
             structured.getAsJsonObject("duplicates").entrySet().isEmpty()); //$NON-NLS-1$
+        assertTrue("status lists incompatible backends for the profile group", //$NON-NLS-1$
+            structured.has("incompatibleBackends")); //$NON-NLS-1$
+        assertTrue(structured.has("availableProfiles")); //$NON-NLS-1$
     }
 
     @Test

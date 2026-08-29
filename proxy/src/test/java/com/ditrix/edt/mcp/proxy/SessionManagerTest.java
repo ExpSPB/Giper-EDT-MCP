@@ -228,4 +228,35 @@ public class SessionManagerTest
             sessions.capabilityOf(optedOut));
         assertNull("a null id must be reported as unknown", sessions.capabilityOf(null)); //$NON-NLS-1$
     }
+
+    @Test
+    public void testSessionIsBoundToTheEndpointPath()
+    {
+        SessionManager sessions = new SessionManager();
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = sessions.create(review, "2025-11-25", true); //$NON-NLS-1$
+
+        assertTrue(sessions.isValid(id, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertFalse("replay on another path must be unknown", sessions.isValid(id, "/mcp")); //$NON-NLS-1$
+        assertNotNull(sessions.lookup(id, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertNull(sessions.lookup(id, "/mcp")); //$NON-NLS-1$
+        assertEquals("review", sessions.lookup(id, null).getEndpoint().getRequestedProfileId()); //$NON-NLS-1$
+        assertEquals("2025-11-25", sessions.lookup(id, null).getProtocolVersion()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testDeleteClosesOnlyTheMatchingSession()
+    {
+        SessionManager sessions = new SessionManager();
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String reviewId = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+        String defaultId = sessions.create();
+
+        assertFalse(sessions.closeOnPath(reviewId, "/mcp")); //$NON-NLS-1$
+        assertTrue(sessions.isValid(reviewId));
+        assertTrue(sessions.closeOnPath(reviewId, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertFalse(sessions.isValid(reviewId));
+        assertTrue(sessions.isValid(defaultId));
+        assertEquals(1, sessions.activeCount());
+    }
 }
