@@ -94,6 +94,12 @@ public final class McpRequestContext
             legacyCompatibilityWrapper);
     }
 
+    public McpRequestContext withSessionId(String newSessionId)
+    {
+        return new McpRequestContext(resolution, requestedPath, protocolVersion, clientCapabilities,
+            newSessionId, legacyCompatibilityWrapper);
+    }
+
     public static final class Builder
     {
         private ProfileResolution resolution;

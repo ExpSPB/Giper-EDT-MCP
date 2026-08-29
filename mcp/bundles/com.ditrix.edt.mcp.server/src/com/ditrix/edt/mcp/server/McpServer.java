@@ -26,6 +26,7 @@ import com.ditrix.edt.mcp.server.tools.McpToolRegistry;
 import com.ditrix.edt.mcp.server.transport.HealthHandler;
 import com.ditrix.edt.mcp.server.transport.InterruptibleToolExecutor;
 import com.ditrix.edt.mcp.server.transport.McpHttpHandler;
+import com.ditrix.edt.mcp.server.transport.McpSessionRegistry;
 import com.sun.net.httpserver.HttpServer;
 
 /**
@@ -52,6 +53,9 @@ public class McpServer
 
     /** Currently active tool call that can be interrupted */
     private final AtomicReference<ActiveToolCall> activeToolCall = new AtomicReference<>();
+
+    /** Path-bound MCP sessions for the 2025-11-25 transport. */
+    private final McpSessionRegistry sessionRegistry = new McpSessionRegistry();
 
     /** Main thread pool for POST/OPTIONS/DELETE requests */
     private ThreadPoolExecutor mainExecutor;
@@ -198,6 +202,7 @@ public class McpServer
                 sseExecutor.shutdownNow();
                 sseExecutor = null;
             }
+            sessionRegistry.shutdown();
             Activator.logInfo("MCP Server stopped"); //$NON-NLS-1$
         }
     }
@@ -243,6 +248,16 @@ public class McpServer
     public ThreadPoolExecutor getMainExecutor()
     {
         return mainExecutor;
+    }
+
+    /**
+     * Path-bound MCP sessions for initialize / POST / GET / DELETE.
+     *
+     * @return the live session registry
+     */
+    public McpSessionRegistry getSessionRegistry()
+    {
+        return sessionRegistry;
     }
 
     /**

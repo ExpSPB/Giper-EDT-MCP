@@ -46,7 +46,8 @@ public final class HttpTransport
             }
             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", origin); //$NON-NLS-1$
             exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"); //$NON-NLS-1$ //$NON-NLS-2$
-            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type, Accept"); //$NON-NLS-1$ //$NON-NLS-2$
+            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", //$NON-NLS-1$
+                "Content-Type, Accept, MCP-Session-Id, MCP-Protocol-Version"); //$NON-NLS-1$
         }
         // A missing Origin means a non-browser client (CLI / MCP client) — browsers
         // always send Origin, so the browser-CSRF allow-list does not apply here.

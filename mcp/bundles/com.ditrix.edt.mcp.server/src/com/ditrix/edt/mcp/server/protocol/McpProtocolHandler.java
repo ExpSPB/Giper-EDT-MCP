@@ -444,7 +444,7 @@ public class McpProtocolHandler
                 .getBoolean(PreferenceConstants.PREF_PLAIN_TEXT_MODE);
 
         // Return response based on tool's declared response type
-        return buildToolCallResponse(tool, result, signal, plainTextMode, requestId, params);
+        return buildToolCallResponse(tool, result, signal, plainTextMode, requestId, params, context);
     }
 
     /**
@@ -540,7 +540,7 @@ public class McpProtocolHandler
      * @return the serialized JSON-RPC response
      */
     private String buildToolCallResponse(IMcpTool tool, String result, UserSignal signal,
-        boolean plainTextMode, Object requestId, Map<String, String> params)
+        boolean plainTextMode, Object requestId, Map<String, String> params, McpRequestContext context)
     {
         // Per-call response type: a tool whose caller can choose the output format (e.g.
         // list_projects' format=md|json) decides from the arguments; every other tool falls back to
@@ -548,7 +548,7 @@ public class McpProtocolHandler
         switch (tool.getResponseType(params))
         {
             case JSON:
-                return buildJsonToolResponse(tool, result, signal, plainTextMode, requestId);
+                return buildJsonToolResponse(tool, result, signal, plainTextMode, requestId, context);
             case MARKDOWN:
                 return buildMarkdownToolResponse(tool, result, signal, plainTextMode, requestId,
                     params);
@@ -684,7 +684,7 @@ public class McpProtocolHandler
      * @return the serialized JSON-RPC response
      */
     private String buildJsonToolResponse(IMcpTool tool, String result, UserSignal signal,
-        boolean plainTextMode, Object requestId)
+        boolean plainTextMode, Object requestId, McpRequestContext context)
     {
         // For JSON, add signal as a separate field if present
         if (signal != null)
@@ -699,17 +699,22 @@ public class McpProtocolHandler
         {
             return buildTextOnlyJsonResponse(result, requestId);
         }
-        // Capability gate for structuredContent. By DEFAULT (no capabilities,
-        // or a client that does not explicitly opt out) this is true, so the
-        // structuredContent response below is emitted exactly as before — the
-        // no-regression guarantee. Only a client that EXPLICITLY declared it
-        // cannot accept structuredContent suppresses it; the JSON payload is
-        // then delivered as text so the data is still returned.
-        if (!clientCapabilities.get().allowsStructuredContent())
+        // Capability gate for structuredContent. HTTP sessions use the request
+        // context; the legacy wrapper still reads the last-initialize atomic.
+        if (!capabilitiesOf(context).allowsStructuredContent())
         {
             return buildTextOnlyJsonResponse(result, requestId);
         }
         return buildToolCallJsonResponse(result, requestId, tool.getName());
+    }
+
+    private ClientCapabilities capabilitiesOf(McpRequestContext context)
+    {
+        if (context != null && !context.isLegacyCompatibilityWrapper())
+        {
+            return context.getClientCapabilities();
+        }
+        return clientCapabilities.get();
     }
 
     /**
