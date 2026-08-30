@@ -19,11 +19,11 @@ CI STRATEGY — WHY THIS FILE ASSERTS THE OPT-IN, NOT THE EXECUTION
 ------------------------------------------------------------------
 Two constraints shape this file, and both are deliberate:
 
-1. The tool is DISABLED BY DEFAULT (its own `git` toolset, off until the operator
-   ticks it in the MCP Server preferences). A default server therefore does not
-   advertise it in tools/list at all, and calling it must be refused. That opt-in
-   IS the contract worth pinning here — a regression that silently enabled a tool
-   able to run push/checkout would be the worst possible failure of this feature.
+1. The default profile does not include git (and the git toolset is off until the
+   operator adds it). A default /mcp therefore does not advertise it in tools/list,
+   and calling it must be refused with the profile-deny text. That opt-in IS the
+   contract worth pinning here — a regression that silently published a tool able
+   to run push/checkout would be the worst possible failure of this feature.
 
 2. The CI fixture project (PROJECT, "TestConfiguration") lives INSIDE the EDT-MCP
    plugin's own git working tree — it has no repository of its own, so the tool's
@@ -89,15 +89,14 @@ def test_disabled_by_default_is_not_advertised_and_is_refused():
             "git must be DISABLED by default: it appeared in tools/list. A preset or a "
             "defaults reset that clears the disabled set would do this.")
 
-    # The shared disabled-tool path answers with a TEXT result (not isError) - see
-    # McpProtocolHandler: a tool the user switched off is a configuration state, not a tool
-    # failure. What matters is that nothing ran and the answer says why.
+    # The default profile omits git; /mcp refuses with TEXT (not isError): a tool
+    # the profile does not include is a configuration state, not a tool failure.
     r = call("git", {"projectName": PROJECT, "command": "status --short"})
-    expected = "Tool 'git' is disabled by the user"
+    expected = "Tool 'git' is not allowed by profile 'default'"
     if expected not in (r.text or ""):
         raise AssertionError(
-            "a disabled tool must answer with the shared disabled-path message %r, got: %r"
-            % (expected, (r.text or "")[:300]))
+            "a default-profile refusal must name the profile, got: %r"
+            % ((r.text or "")[:300],))
     if r.structured:
         raise AssertionError(
             "the disabled path carries no structured payload - anything here means the tool RAN: %r"

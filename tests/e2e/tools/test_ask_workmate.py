@@ -4,7 +4,7 @@ ask_workmate ships DISABLED: it hands the question to an external plugin that
 reaches a cloud service and can change the configuration with its own tools. So the
 default-off contract is what runs everywhere, including CI, and everything that
 actually calls the tool is opt-in - on a default server those calls answer with the
-shared "disabled by the user" text instead of the behaviour under test.
+shared profile-deny text instead of the behaviour under test.
 """
 
 import os
@@ -54,14 +54,14 @@ def test_ask_workmate_is_disabled_by_default_and_refused():
         raise AssertionError(
             "ask_workmate must be DISABLED by default: it appeared in tools/list.")
 
-    # The shared disabled-tool path answers with TEXT (not isError): a tool the user
-    # switched off is a configuration state, not a tool failure.
+    # The default profile omits ask_workmate; /mcp refuses with TEXT (not isError):
+    # a tool the profile does not include is a configuration state, not a tool failure.
     r = call("ask_workmate", {"question": "anything"})
-    expected = "Tool 'ask_workmate' is disabled by the user"
+    expected = "Tool 'ask_workmate' is not allowed by profile 'default'"
     if expected not in (r.text or ""):
         raise AssertionError(
-            "a disabled tool must answer with the shared disabled-path message %r, got: %r"
-            % (expected, (r.text or "")[:300]))
+            "a default-profile refusal must name the profile, got: %r"
+            % ((r.text or "")[:300],))
     if r.structured:
         raise AssertionError(
             "the disabled path carries no structured payload - anything here means the "
