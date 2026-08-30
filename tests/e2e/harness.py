@@ -996,8 +996,14 @@ def wait_for_project_ready(timeout=None, failure_details=None):
             pass
         now = time.time()
         if now - last_log >= 15:
-            print("  [wait_for_project_ready] config still indexing (%ds elapsed, %ds left of %ds)..."
-                  % (int(now - start), int(deadline - now), timeout), flush=True)
+            # Windows + Python 3.13/3.14 can raise OSError 22 (Invalid argument) on
+            # print(..., flush=True) when stdout is a pipe/console in a bad state.
+            # That must not abort a model reset that was otherwise succeeding.
+            try:
+                print("  [wait_for_project_ready] config still indexing (%ds elapsed, %ds left of %ds)..."
+                      % (int(now - start), int(deadline - now), timeout), flush=True)
+            except OSError:
+                pass
             last_log = now
         time.sleep(2)
     if failure_details is not None:
