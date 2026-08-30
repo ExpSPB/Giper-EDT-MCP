@@ -74,6 +74,11 @@ LIVE_LAUNCH_CONFIG = os.environ.get("MCP_LIVE_LAUNCH_CONFIG", "TestConfiguration
 MCP_URL = "http://%s:%s/mcp" % (MCP_HOST, MCP_PORT)
 HEALTH_URL = "http://%s:%s/health" % (MCP_HOST, MCP_PORT)
 
+# Optional edt-mcp-proxy surface. When MCP_PROXY_PORT is set, test_profiles
+# repeats the isolation matrix through the proxy (CI e2e starts it on :8764).
+MCP_PROXY_HOST = os.environ.get("MCP_PROXY_HOST", MCP_HOST)
+MCP_PROXY_PORT = os.environ.get("MCP_PROXY_PORT", "").strip()
+
 # Per-CALL HTTP timeout (seconds). A single MCP call that exceeds this raises a socket
 # timeout instead of blocking forever; run_all's per-TEST timeout is the outer backstop
 # that fails the test and aborts the run. Generous by default — clean_project can
@@ -271,11 +276,13 @@ class McpClient:
     they must not share a session across paths.
     """
 
-    def __init__(self, path="/mcp"):
+    def __init__(self, path="/mcp", host=None, port=None):
         if not path.startswith("/"):
             path = "/" + path
         self.path = path
-        self.url = "http://%s:%s%s" % (MCP_HOST, MCP_PORT, path)
+        self.host = host or MCP_HOST
+        self.port = str(port or MCP_PORT)
+        self.url = "http://%s:%s%s" % (self.host, self.port, path)
         self.session_id = None
         self.request_id = 0
 
@@ -365,13 +372,13 @@ class McpClient:
             raise E2ECallTimeout(_call_timeout_message(e))
 
 
-def http_post_status(path, method="initialize", params=None):
+def http_post_status(path, method="initialize", params=None, host=None, port=None):
     """POST one JSON-RPC method to an arbitrary path and return (status, body).
 
     Used for invalid-URL contract tests (HTTP 400) that must not go through McpClient
     parsing.
     """
-    url = "http://%s:%s%s" % (MCP_HOST, MCP_PORT, path)
+    url = "http://%s:%s%s" % (host or MCP_HOST, str(port or MCP_PORT), path)
     body = json.dumps({
         "jsonrpc": "2.0",
         "id": 1,
@@ -483,24 +490,51 @@ def profile_client(profile_id):
     return McpClient("/mcp/profiles/" + profile_id)
 
 
-def require_enabled_profile(profile_id):
-    """Skip unless get_server_status lists an enabled profile with this id.
+def require_proxy():
+    """Fail unless ``MCP_PROXY_PORT`` is set and the proxy answers ``/health``."""
+    if not MCP_PROXY_PORT:
+        raise E2ESkip("proxy matrix skipped (set MCP_PROXY_PORT, e.g. 8764)")
+    url = "http://%s:%s/health" % (MCP_PROXY_HOST, MCP_PROXY_PORT)
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            if resp.status >= 400:
+                raise AssertionError("proxy health HTTP %s at %s" % (resp.status, url))
+    except E2ESkip:
+        raise
+    except Exception as exc:
+        raise AssertionError("proxy is configured (%s) but /health failed: %s" % (url, exc))
 
-    Seed ``e2e-review``, ``e2e-development`` and ``e2e-disabled`` in the live
-    workspace via Preferences → MCP Server → Tools. There is no production
-    test-only tool that creates them.
+
+def proxy_client(path="/mcp"):
+    """A fresh client against edt-mcp-proxy. Caller must initialize() it."""
+    require_proxy()
+    return McpClient(path, host=MCP_PROXY_HOST, port=MCP_PROXY_PORT)
+
+
+def proxy_profile_client(profile_id):
+    return proxy_client("/mcp/profiles/" + profile_id)
+
+
+def require_enabled_profile(profile_id):
+    """Fail unless get_server_status lists an enabled profile with this id.
+
+    Seed ``e2e-review``, ``e2e-development`` and ``e2e-disabled`` from
+    ``tests/e2e/fixtures/e2e_tool_profiles.json`` into the EDT instance
+    preferences (``fm.giper.edt.mcp.server.prefs`` / ``mcpToolProfiles``)
+    before boot, or Add them from a built-in preset on the Tools tab.
     """
     r = _DEFAULT_CLIENT.call("get_server_status", {"includeProfiles": True})
     if r.is_error:
-        raise E2ESkip("get_server_status failed while looking up profile %s: %s"
-                      % (profile_id, r.error_text()))
+        raise AssertionError("get_server_status failed while looking up profile %s: %s"
+                             % (profile_id, r.error_text()))
     data = r.structured if isinstance(r.structured, dict) else {}
     available = data.get("availableProfiles") or []
     ids = [p.get("id") for p in available if isinstance(p, dict)]
     if profile_id not in ids:
-        raise E2ESkip(
-            "workspace has no enabled profile %r (have %s). Create it in "
-            "Preferences → MCP Server → Tools and retry."
+        raise AssertionError(
+            "workspace has no enabled profile %r (have %s). Seed "
+            "tests/e2e/fixtures/e2e_tool_profiles.json into instance "
+            "preferences or Add the profile from a built-in preset."
             % (profile_id, ids))
     return data
 
