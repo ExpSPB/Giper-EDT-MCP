@@ -37,6 +37,7 @@ from harness import (
     poll_diff_contains,
     tree_snapshot,
     wait_for_project_ready,
+    fixture_form_has_auto_command_bar,
     diff,
     poll_disk_contains,
     read_disk,
@@ -1503,6 +1504,7 @@ def test_move_form_button_into_auto_command_bar():
     # Reparent an EXISTING button into the form's command bar via the 'parent' property - the move
     # half of the #138 reporter's manual XML edits (new buttons can be parented at creation; this
     # covers buttons that already exist at the form root).
+    has_bar = fixture_form_has_auto_command_bar()
     cmd, btn = "MoveCmd", "MoveBtn"
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1516,6 +1518,11 @@ def test_move_form_button_into_auto_command_bar():
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "parent", "value": "AutoCommandBar"}]})
+    if not has_bar:
+        e = assert_error(r, "move into AutoCommandBar when the form has no persisted bar")
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
+                             ctx="8.3.27 without autoCommandBar must refuse the move parent")
+        return
     assert_ok(r, "move the button into the AutoCommandBar")
     assert "parent" in (r.structured.get("applied") or []), (
         "the move must report parent as applied: %r" % (r.structured,))

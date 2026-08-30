@@ -52,6 +52,7 @@ from harness import (
     tree_snapshot,
     wait_for_project_ready,
     e2e_test,
+    fixture_form_has_auto_command_bar,
     PROJECT,
     TESTS_PROJECT,
     _fail,
@@ -1654,6 +1655,9 @@ def test_create_form_button_enabled_and_in_auto_command_bar():
     # Issue #138 bugs 2+3: parent 'AutoCommandBar' must place the button INSIDE the form's command
     # bar (not the form root), and the created button must export <enabled>true</enabled> (the model
     # default is false -> a disabled, half-transparent button in the client).
+    # 8.3.27 fixtures often have no persisted autoCommandBar — then the parent token is a miss,
+    # not a silent root placement.
+    has_bar = fixture_form_has_auto_command_bar()
     cmd, btn = "BarCmd", "BarBtn"
     r1 = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1663,6 +1667,11 @@ def test_create_form_button_enabled_and_in_auto_command_bar():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "command", "value": cmd},
                        {"name": "parent", "value": "AutoCommandBar"}]})
+    if not has_bar:
+        e = assert_error(r2, "button into AutoCommandBar when the form has no persisted bar")
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
+                             ctx="8.3.27 without autoCommandBar must refuse the parent token")
+        return
     assert_ok(r2, "create a Button inside the form's AutoCommandBar")
     poll_diff_contains(btn, ctx="the new button must land in the form's .form on disk")
     poll_diff_contains("<enabled>true</enabled>",
@@ -1683,6 +1692,7 @@ def test_create_form_button_enabled_and_in_auto_command_bar():
 @e2e_test(tool="create_metadata", kind="write-metadata")
 def test_create_form_button_parent_dotted_auto_command_bar_path():
     # The parent shapes reported in issue #138 ('Form.X.AutoCommandBar' / '...ChildItems') resolve too.
+    has_bar = fixture_form_has_auto_command_bar()
     cmd, btn = "BarCmd2", "BarBtn2"
     r1 = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1692,6 +1702,11 @@ def test_create_form_button_parent_dotted_auto_command_bar_path():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "command", "value": cmd},
                        {"name": "parent", "value": "Form.ItemForm.AutoCommandBar.ChildItems"}]})
+    if not has_bar:
+        e = assert_error(r2, "dotted AutoCommandBar path when the form has no persisted bar")
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
+                             ctx="a dotted bar path must not invent a bar 8.3.27 does not persist")
+        return
     assert_ok(r2, "a dotted AutoCommandBar parent path resolves to the form's bar")
     poll_diff_contains(btn, ctx="the button created via the dotted parent path must land on disk")
 
@@ -1716,6 +1731,7 @@ def test_create_form_unknown_parent_suggests_auto_command_bar():
 def test_create_form_popup_group_with_button():
     # A print-style submenu: a Group with an explicit type=Popup in the command bar, holding a
     # button. Inside the popup the platform requires command-bar buttons.
+    has_bar = fixture_form_has_auto_command_bar()
     cmd, grp, btn = "PopCmd", "PopMenu", "PopBtn"
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1725,6 +1741,11 @@ def test_create_form_popup_group_with_button():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Group." + grp,
         "properties": [{"name": "parent", "value": "AutoCommandBar"},
                        {"name": "type", "value": "Popup"}]})
+    if not has_bar:
+        e = assert_error(r, "Popup group into AutoCommandBar when the form has no persisted bar")
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
+                             ctx="8.3.27 without autoCommandBar must refuse parenting a popup there")
+        return
     assert_ok(r, "create a Popup group in the command bar")
     poll_diff_contains("<type>Popup</type>",
                        ctx="the explicit group type must serialize to the .form on disk")
@@ -1753,13 +1774,18 @@ def test_create_form_group_unknown_type_lists_allowed():
 @e2e_test(tool="create_metadata", kind="write-metadata")
 def test_create_form_decoration_in_command_bar_is_rejected():
     # The designer forbids decorations in command bars (FormItemTypeInformationService) - placing
-    # one would build a model the UI could never produce.
+    # one would build a model the UI could never produce. Without a persisted bar (8.3.27) the
+    # parent token fails first — still a refusal, still no disk change.
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Decoration.BarDeco_zz",
         "properties": [{"name": "parent", "value": "AutoCommandBar"}]})
     e = assert_error(r, "decoration into the command bar")
-    assert_error_quality(e, names=["AutoCommandBar"], suggests=["cannot hold decorations"],
-                         ctx="the placement error must name the parent and the rule")
+    if fixture_form_has_auto_command_bar():
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["cannot hold decorations"],
+                             ctx="the placement error must name the parent and the rule")
+    else:
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
+                             ctx="without a persisted bar the parent token must miss, not place at root")
     assert_no_diff("a rejected placement must not change the form on disk")
 
 

@@ -587,6 +587,21 @@ def call(tool, arguments):
     return _DEFAULT_CLIENT.call(tool, arguments)
 
 
+def fixture_form_has_auto_command_bar():
+    """True when Catalog.Catalog.Form.ItemForm has a persisted autoCommandBar.
+
+    8.5.1+ forms keep that containment (name FormCommandBar / token AutoCommandBar).
+    Compatibility 8.3.27 fixtures often omit it, so parent=AutoCommandBar is a
+    not-found — CI on 8.5.1 still takes the happy path.
+    """
+    r = call("get_metadata_details", {
+        "projectName": PROJECT,
+        "objectFqns": ["Catalog.Catalog.Form.ItemForm.Group.FormCommandBar"],
+        "assignable": True,
+    })
+    return (not r.is_error) and "Assignable properties" in (r.text or "")
+
+
 # ── Model-reset shortcut: don't pay for a reset when nothing was changed ──────────────
 #
 # The write-metadata cleanup (reset_fixture + reset_model) dominates the whole suite: 331

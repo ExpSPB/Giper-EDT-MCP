@@ -44,6 +44,7 @@ from harness import (
     tree_snapshot,
     settle_or_fail,
     wait_for_project_ready,
+    fixture_form_has_auto_command_bar,
     e2e_test,
     PROJECT,
 )
@@ -560,12 +561,19 @@ def test_delete_preview_reaches_a_designer_child_by_its_inherited_kind_only():
     # token of their own, but a token addresses its EClass AND its subclasses - an AutoCommandBar IS
     # a Group. So the form-root command bar keeps exactly ONE supported address ('Group'), and a
     # foreign token must NOT reach it either ("no token denotes it" is not "every token fits").
+    # 8.3.27 fixtures often omit the persisted bar — then every address is a miss, including Group.
+    has_bar = fixture_form_has_auto_command_bar()
     pv = call("delete_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Group.FormCommandBar"})
-    assert_ok(pv, "preview the auto command bar via its inherited kind 'Group'")
-    names = [it.get("name") for it in (pv.structured.get("items") or [])]
-    assert "FormCommandBar" in names, \
-        "the auto command bar must stay addressable via 'Group': %r" % (pv.structured,)
+    if has_bar:
+        assert_ok(pv, "preview the auto command bar via its inherited kind 'Group'")
+        names = [it.get("name") for it in (pv.structured.get("items") or [])]
+        assert "FormCommandBar" in names, \
+            "the auto command bar must stay addressable via 'Group': %r" % (pv.structured,)
+    else:
+        e = assert_error(pv, "preview FormCommandBar when the form has no persisted bar")
+        assert_error_quality(e, names=["FormCommandBar"], suggests=["not found"],
+                             ctx="8.3.27 without autoCommandBar must not invent a Group.FormCommandBar")
 
     for kind in ("Field", "Button", "Decoration", "Table", "Grroup"):
         r = call("delete_metadata", {
