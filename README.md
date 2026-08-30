@@ -19,6 +19,9 @@ MCP (Model Context Protocol) server plugin for 1C:EDT, enabling AI assistants (C
 
 > **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. It keeps the AGPL-3.0 license and full upstream attribution; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
+> [!NOTE]
+> **Added in this fork — tool-set profiles for simpler agent-access management.** One EDT-MCP instance publishes several named tool allowlists ("profiles") on separate URLs, so each AI agent connects to exactly the tool surface it should have — read-only review on one endpoint, full development on another — without restarting the server. See [Tool profiles](#tool-profiles) and [Tool Management](#tool-management).
+
 > [!TIP]
 > **Contributing / making changes?** Read [CLAUDE.md](CLAUDE.md) first — it's the code-conduct "minefield map": hard don'ts and the stop-and-think-twice zones for this codebase (BM transactions, the bilingual ru/en model, cascading rename, etc.). Detailed how-to lives in the skills under `.claude/skills/`.
 
