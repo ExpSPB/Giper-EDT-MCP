@@ -13,6 +13,7 @@ import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.layout.GridDataFactory;
 import org.eclipse.jface.layout.GridLayoutFactory;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Label;
@@ -42,10 +43,12 @@ public class ToolProfileDialog extends Dialog
     private Text idText;
     private Text nameText;
     private Text descriptionText;
+    private Combo presetCombo;
 
     private String profileId;
     private String displayName;
     private String description;
+    private ToolPreset preset;
 
     public ToolProfileDialog(Shell parentShell, Mode mode, String initialId,
         String initialDisplayName, String initialDescription)
@@ -92,6 +95,22 @@ public class ToolProfileDialog extends Dialog
             Label hint = new Label(container, SWT.WRAP);
             hint.setText(Messages.ToolProfileDialog_IdHint);
             GridDataFactory.fillDefaults().span(2, 1).hint(360, SWT.DEFAULT).applyTo(hint);
+
+            if (mode == Mode.ADD)
+            {
+                Label presetLabel = new Label(container, SWT.NONE);
+                presetLabel.setText(Messages.ToolProfileDialog_Preset);
+                presetCombo = new Combo(container, SWT.DROP_DOWN | SWT.READ_ONLY);
+                for (ToolPreset value : ToolPreset.values())
+                {
+                    if (value != ToolPreset.CUSTOM)
+                    {
+                        presetCombo.add(value.getDisplayName());
+                    }
+                }
+                presetCombo.select(-1);
+                GridDataFactory.fillDefaults().grab(true, false).applyTo(presetCombo);
+            }
         }
 
         Label nameLabel = new Label(container, SWT.NONE);
@@ -132,6 +151,16 @@ public class ToolProfileDialog extends Dialog
                 return;
             }
             description = descriptionText == null ? "" : descriptionText.getText(); //$NON-NLS-1$
+            if (mode == Mode.ADD)
+            {
+                preset = selectedPreset();
+                if (preset == null)
+                {
+                    MessageDialog.openError(getShell(), getShell().getText(),
+                        Messages.ToolProfileDialog_PresetRequired);
+                    return;
+                }
+            }
         }
         else
         {
@@ -154,6 +183,38 @@ public class ToolProfileDialog extends Dialog
     public String getDescription()
     {
         return description;
+    }
+
+    public ToolPreset getPreset()
+    {
+        return preset;
+    }
+
+    private ToolPreset selectedPreset()
+    {
+        if (presetCombo == null)
+        {
+            return null;
+        }
+        int index = presetCombo.getSelectionIndex();
+        if (index < 0)
+        {
+            return null;
+        }
+        int cursor = 0;
+        for (ToolPreset value : ToolPreset.values())
+        {
+            if (value == ToolPreset.CUSTOM)
+            {
+                continue;
+            }
+            if (cursor == index)
+            {
+                return value;
+            }
+            cursor++;
+        }
+        return null;
     }
 
     @Override
