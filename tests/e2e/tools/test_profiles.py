@@ -200,10 +200,12 @@ def test_enable_toolset_does_not_change_explicit_profile_list():
         raise AssertionError(
             "enable_toolset must not change an explicit profile tools/list: %r -> %r"
             % (before, after))
-    # The call itself may be denied (tool not in allowlist) or succeed as a no-op.
+    # Explicit endpoints reject enable_toolset as unsupported (PD stays on /mcp).
+    # A missing-allowlist deny or a no-op success is also fine; the list must not change.
     if r.is_error:
         err = r.error_text().lower()
-        if "not allowed" not in err and "disabled" not in err and "unknown" not in err:
+        if ("not allowed" not in err and "disabled" not in err and "unknown" not in err
+                and "not supported" not in err):
             raise AssertionError("unexpected enable_toolset error on review: %r" % r.error_text())
     assert_no_diff()
 

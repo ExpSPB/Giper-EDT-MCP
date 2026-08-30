@@ -1112,6 +1112,8 @@ source/dist/MCP-EDT.v<VERSION>.zip
 
 This is a valid p2 update site — install via EDT → *Help → Install New Software → Add → Archive…*.
 
+p2 **Check for Updates** sees `major.minor.micro` only. A qualifier-only rebuild of the same SNAPSHOT (`1.0.2.qualifier`) is not an update — bump the micro (`1.0.2` → `1.0.3-SNAPSHOT`) before building whenever the installed plugin must update. See skill `edt-mcp-build-test`.
+
 ### Script options
 
 `source/compile.sh` accepts every path as a flag (with matching environment-variable fallback) so it can be driven from CI or run against an out-of-tree checkout:

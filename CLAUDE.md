@@ -25,6 +25,7 @@ The `edt-mcp-*` skills carry the "how to do it right"; each one's description sa
 7. **Cyrillic in regexes goes through `\uXXXX`**, not raw UTF-8 literals (risk of corruption under a non-UTF-8 Tycho build). Reference: `BslSyntaxChecker`. Elsewhere, justified Cyrillic — real 1C type tokens / BSL keywords / 1C terms the code matches or documents — is fine, including in comments and string literals (`MetadataTypeUtils` type tokens, `JUnitMarkdownFormatter` YAXUnit frame tokens). Do NOT transliterate it and do NOT strip it; remove only redundant Russian glosses (where the English already says it) and the `1С`→`1C` homoglyph (Cyrillic Es).
 8. **Errors go through `ToolResult.error(...).toJson()`** — not a bare `"Error: …"` string, not an exception escaping the tool. Make them actionable (name the bad value + the fix / sibling tool).
 9. **Escape markdown table cells** (`MarkdownUtils` / the shared table builder). An unescaped `|` / newline breaks the table.
+10. **Bump the plugin micro version whenever EDT must install an update.** p2 Check for Updates compares `major.minor.micro`, not the OSGi qualifier. A rebuild that only changes `1.0.2.qualifier` (Maven `1.0.2-SNAPSHOT`) is invisible — the user has to uninstall/reinstall. Use `mvn -f mcp/pom.xml org.eclipse.tycho:tycho-versions-plugin:set-version -DnewVersion=X.Y.Z-SNAPSHOT`, then fix `mcp/bom/pom.xml` and the `bom` parent version in `mcp/pom.xml` if the plugin left them behind. (`edt-mcp-build-test`.)
 
 ---
 
