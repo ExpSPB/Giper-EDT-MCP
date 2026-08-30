@@ -9,8 +9,6 @@ package fm.giper.edt.mcp.server;
 
 import java.util.Dictionary;
 import java.util.Hashtable;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
@@ -149,11 +147,8 @@ public class Activator extends AbstractUIPlugin
     /**
      * Publishes the stable in-process bridge.
      * <p>
-     * Registered under three names: the interface's STRING name (for consumers that resolve it
-     * reflectively) plus the JDK function types, so a consumer that cannot see the bridge
-     * package - an AI assistant running a JShell snippet, for instance - still gets a typed
-     * handle. The service property tells those JDK-typed lookups apart from any other
-     * BiFunction/Supplier service in the runtime.
+     * Registered under the interface's STRING name so consumers resolve it
+     * reflectively. The service property marks this contract revision.
      *
      * @param context the bundle context to register in
      */
@@ -162,9 +157,7 @@ public class Activator extends AbstractUIPlugin
         Dictionary<String, Object> bridgeProperties = new Hashtable<>();
         bridgeProperties.put(IEdtMcpBridge.SERVICE_PROPERTY, IEdtMcpBridge.SERVICE_PROPERTY_VALUE);
         bridgeRegistration = context.registerService(
-            new String[] { IEdtMcpBridge.class.getName(), BiFunction.class.getName(),
-                Supplier.class.getName() },
-            new EdtMcpBridge(), bridgeProperties);
+            IEdtMcpBridge.class.getName(), new EdtMcpBridge(), bridgeProperties);
     }
 
     @Override

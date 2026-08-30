@@ -365,8 +365,8 @@ public class AskWorkmateTool implements IMcpTool
     }
 
     /**
-     * Profile-bound preamble: an explicit profile must not be told to use the
-     * global {@code BiFunction} alias, which is the synthetic {@code default} surface.
+     * Profile-bound preamble: always look up {@code IEdtMcpBridge} and pass
+     * {@code profileId}. There is no {@code BiFunction} OSGi alias.
      */
     static String mcpBridgePreamble(String projectName, McpRequestContext context)
     {
@@ -378,46 +378,20 @@ public class AskWorkmateTool implements IMcpTool
         //
         // The name lands inside a JSON string inside a Java string literal, so a quote or
         // a backslash in it would otherwise produce a snippet that does not compile.
-        boolean profileBound = context != null && context.getResolution() != null
-            && context.getResolution().isExplicitEndpoint();
         String profileId = context == null ? "default" : context.effectiveProfileId(); //$NON-NLS-1$
-        String example;
-        String lookup;
-        if (profileBound)
-        {
-            String args = projectName == null
-                ? "\"{}\"" //$NON-NLS-1$
-                : "\"{\\\"projectName\\\":\\\"" //$NON-NLS-1$
-                    + projectName.replace("\\", "\\\\\\\\").replace("\"", "\\\\\\\"") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-                    + "\\\",\\\"metadataType\\\":\\\"Catalog\\\"}\""; //$NON-NLS-1$
-            String tool = projectName == null ? "list_projects" : "get_metadata_objects"; //$NON-NLS-1$ //$NON-NLS-2$
-            example = "mcp.getClass().getMethod(\"callTool\", String.class, String.class, String.class)" //$NON-NLS-1$
-                + ".invoke(mcp, \"" + tool + "\", " + args + ", \"" + profileId + "\")"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-            lookup = "The EDT-MCP plugin runs in this same EDT. Look up the OSGi service whose " //$NON-NLS-1$
-                + "class name is fm.giper.edt.mcp.server.bridge.IEdtMcpBridge (or any service " //$NON-NLS-1$
-                + "with property edt.mcp.bridge=v1). Do NOT call the BiFunction apply(tool, args) " //$NON-NLS-1$
-                + "alias: that is the synthetic default profile and can reach tools this " //$NON-NLS-1$
-                + "profile forbids. Always pass profile '" + profileId + "' as the third " //$NON-NLS-1$ //$NON-NLS-2$
-                + "argument of callTool, and list tools with listTools(\"" + profileId //$NON-NLS-1$
-                + "\"). Policy is re-checked on every call.\n\n"; //$NON-NLS-1$
-        }
-        else
-        {
-            example = projectName == null
-                ? "mcp.apply(\"list_projects\", \"{}\")" //$NON-NLS-1$
-                : "mcp.apply(\"get_metadata_objects\", " //$NON-NLS-1$
-                    + "\"{\\\"projectName\\\":\\\"" //$NON-NLS-1$
-                    + projectName.replace("\\", "\\\\\\\\").replace("\"", "\\\\\\\"") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-                    + "\\\",\\\"metadataType\\\":\\\"Catalog\\\"}\")"; //$NON-NLS-1$
-            lookup = "The EDT-MCP plugin runs in this same EDT and publishes its entry point as an " //$NON-NLS-1$
-                + "ordinary OSGi service under the JDK type " //$NON-NLS-1$
-                + "java.util.function.BiFunction<String,String,String> with the service property " //$NON-NLS-1$
-                + "edt.mcp.bridge=v1. apply(toolName, argumentsJson) returns the MCP tools/call " //$NON-NLS-1$
-                + "response; the Supplier<String> alias with the same property lists every tool. " //$NON-NLS-1$
-                + "Its tools read and change this configuration - metadata, BSL modules, forms, " //$NON-NLS-1$
-                + "markers, Git, tests - so prefer them over guessing whenever the question is " //$NON-NLS-1$
-                + "about what is actually in the project.\n\n"; //$NON-NLS-1$
-        }
+        String args = projectName == null
+            ? "\"{}\"" //$NON-NLS-1$
+            : "\"{\\\"projectName\\\":\\\"" //$NON-NLS-1$
+                + projectName.replace("\\", "\\\\\\\\").replace("\"", "\\\\\\\"") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+                + "\\\",\\\"metadataType\\\":\\\"Catalog\\\"}\""; //$NON-NLS-1$
+        String tool = projectName == null ? "list_projects" : "get_metadata_objects"; //$NON-NLS-1$ //$NON-NLS-2$
+        String example = "mcp.getClass().getMethod(\"callTool\", String.class, String.class, String.class)" //$NON-NLS-1$
+            + ".invoke(mcp, \"" + tool + "\", " + args + ", \"" + profileId + "\")"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        String lookup = "The EDT-MCP plugin runs in this same EDT. Look up the OSGi service whose " //$NON-NLS-1$
+            + "class name is fm.giper.edt.mcp.server.bridge.IEdtMcpBridge (or any service " //$NON-NLS-1$
+            + "with property edt.mcp.bridge=v1). Always pass profile '" + profileId //$NON-NLS-1$
+            + "' as the third argument of callTool, and list tools with listTools(\"" //$NON-NLS-1$
+            + profileId + "\"). Policy is re-checked on every call.\n\n"; //$NON-NLS-1$
         return lookup
             + "Every type below is JDK or standard OSGi API, so no unproven Java API is " //$NON-NLS-1$
             + "involved. Call it with JShellManual (manual_id jshell_edt_canonical_imports), " //$NON-NLS-1$
@@ -425,8 +399,8 @@ public class AskWorkmateTool implements IMcpTool
             + "{\n" //$NON-NLS-1$
             + "var ctx = org.osgi.framework.FrameworkUtil\n" //$NON-NLS-1$
             + "    .getBundle(org.eclipse.core.runtime.Platform.class).getBundleContext();\n" //$NON-NLS-1$
-            + "var refs = ctx.getServiceReferences(java.util.function.BiFunction.class, " //$NON-NLS-1$
-            + "\"(edt.mcp.bridge=v1)\");\n" //$NON-NLS-1$
+            + "var refs = ctx.getServiceReferences(\n" //$NON-NLS-1$
+            + "    \"fm.giper.edt.mcp.server.bridge.IEdtMcpBridge\", \"(edt.mcp.bridge=v1)\");\n" //$NON-NLS-1$
             + "var mcp = ctx.getService(refs.iterator().next());\n" //$NON-NLS-1$
             + "System.out.println(" + example + ");\n" //$NON-NLS-1$
             + "}\n\n" //$NON-NLS-1$
@@ -453,36 +427,19 @@ public class AskWorkmateTool implements IMcpTool
     {
         McpToolRegistry registry = McpToolRegistry.getInstance();
         String names;
-        if (context != null && context.getResolution() != null
-            && context.getResolution().isExplicitEndpoint())
-        {
-            ProfileToolPolicy policy = new ProfileToolPolicy(context.getResolution(),
-                registry.getAllTools());
-            names = policy.publishedTools(false).stream()
-                .map(IMcpTool::getName)
-                .collect(Collectors.joining(", ")); //$NON-NLS-1$
-        }
-        else
-        {
-            names = registry.getAllTools().stream()
-                .map(IMcpTool::getName)
-                // Only what a bridge call would actually be allowed to run: naming a tool the
-                // user disabled would send Workmate off to call it and get refused.
-                .filter(registry::isToolEnabled)
-                .sorted()
-                .collect(Collectors.joining(", ")); //$NON-NLS-1$
-        }
+        ProfileToolPolicy policy = new ProfileToolPolicy(
+            context != null ? context.getResolution() : null, registry.getAllTools());
+        names = policy.publishedTools(false).stream()
+            .map(IMcpTool::getName)
+            .collect(Collectors.joining(", ")); //$NON-NLS-1$
         if (names.isEmpty())
         {
             return ""; //$NON-NLS-1$
         }
-        boolean profileBound = context != null && context.getResolution() != null
-            && context.getResolution().isExplicitEndpoint();
-        String guideCall = profileBound
-            ? "mcp.getClass().getMethod(\"callTool\", String.class, String.class, String.class)" //$NON-NLS-1$
-                + ".invoke(mcp, \"get_tool_guide\", \"{\\\"toolName\\\":\\\"find_references\\\"}\", \"" //$NON-NLS-1$
-                + context.effectiveProfileId() + "\")" //$NON-NLS-1$
-            : "mcp.apply(\"get_tool_guide\", \"{\\\"toolName\\\":\\\"find_references\\\"}\")"; //$NON-NLS-1$
+        String profileId = context == null ? "default" : context.effectiveProfileId(); //$NON-NLS-1$
+        String guideCall = "mcp.getClass().getMethod(\"callTool\", String.class, String.class, String.class)" //$NON-NLS-1$
+            + ".invoke(mcp, \"get_tool_guide\", \"{\\\"toolName\\\":\\\"find_references\\\"}\", \"" //$NON-NLS-1$
+            + profileId + "\")"; //$NON-NLS-1$
         return "Tools reachable through the bridge right now, by name only: " + names //$NON-NLS-1$
             + ".\n\nThe full description of any one of them - what it does, every parameter " //$NON-NLS-1$
             + "and examples - is returned by a tool of its own, get_tool_guide. Call it " //$NON-NLS-1$

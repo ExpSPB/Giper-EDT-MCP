@@ -10,13 +10,13 @@ package fm.giper.edt.mcp.server.protocol;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.UserSignal;
 import fm.giper.edt.mcp.server.history.McpCallHistory;
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
+import fm.giper.edt.mcp.server.profiles.ProfileResolution;
 import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.InitializeResult;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
@@ -86,37 +86,11 @@ public class McpProtocolHandler
     private final McpToolRegistry toolRegistry;
 
     /**
-     * Capabilities the connected client declared in its last {@code initialize}
-     * request. Server-scoped (NOT per session) because this EDT MCP server is
-     * effectively single-client over localhost: one EDT workbench serves one
-     * connected MCP client at a time, so the last initialize wins. {@code volatile}
-     * because initialize and tools/call can be processed on different transport
-     * threads. Defaults to {@link ClientCapabilities#ABSENT} so the behaviour
-     * before any initialize (and for a client that sends no capabilities) is the
-     * permissive default — in particular structuredContent stays emitted.
-     */
-    private final AtomicReference<ClientCapabilities> clientCapabilities =
-        new AtomicReference<>(ClientCapabilities.ABSENT);
-
-    /**
      * Creates a new protocol handler.
      */
     public McpProtocolHandler()
     {
         this.toolRegistry = McpToolRegistry.getInstance();
-    }
-
-    /**
-     * The capabilities declared by the connected client in its last
-     * {@code initialize}, never {@code null} (defaults to
-     * {@link ClientCapabilities#ABSENT}). Exposed so current and future protocol
-     * features can gate on what the client said it supports.
-     *
-     * @return the stored client capabilities
-     */
-    public ClientCapabilities getClientCapabilities()
-    {
-        return clientCapabilities.get();
     }
     
     /**
@@ -152,13 +126,16 @@ public class McpProtocolHandler
         // returns null, and dispatch() treats a null request as an invalid request —
         // exactly as before, when the parse happened inside dispatch.
         JsonRpcRequest request = parse(requestBody);
+        McpRequestContext bound = context == null ? McpRequestContext.legacyDefault() : context;
+        McpCallHistory.bindRequestMeta(bound);
         String response = null;
         try
         {
-            response = dispatch(request, context == null ? McpRequestContext.legacyDefault() : context);
+            response = dispatch(request, bound);
         }
         finally
         {
+            McpCallHistory.clearRequestMeta();
             // Record this exchange into the in-memory history at the choke point.
             // Best-effort and strictly non-intrusive: a recorder failure, a
             // null/unparseable request, a notification's null response, or a missing
@@ -284,16 +261,10 @@ public class McpProtocolHandler
                 // Per spec: echo back the client's requested protocol version if it is a
                 // known/supported version; otherwise, fall back to our latest version.
                 String clientVersion = request.getStringParam("protocolVersion"); //$NON-NLS-1$
-                // Mirror the version handling for the client's declared capabilities:
-                // read the optional "capabilities" object from the same params and
-                // store it server-scoped so later tools/call (and future protocol
-                // features) can gate on it. Absent / malformed capabilities resolve
-                // to ClientCapabilities.ABSENT, which keeps every default permissive.
+                // Capabilities stay on this request's context (never a process-wide
+                // last-seen snapshot). Absent / malformed values resolve to ABSENT.
                 ClientCapabilities parsed = parseClientCapabilities(request);
-                if (context.isLegacyCompatibilityWrapper())
-                {
-                    clientCapabilities.set(parsed);
-                }
+                logFallbackIfNeeded(context);
                 return buildInitializeResponse(requestId, clientVersion, context.withClientCapabilities(parsed));
             }
             
@@ -405,7 +376,7 @@ public class McpProtocolHandler
 
         if (!isCallable(toolName, context))
         {
-            return buildToolCallTextResponse(deniedMessage(toolName, context), requestId);
+            return buildDeniedToolCallResponse(deniedMessage(toolName, context), requestId);
         }
         
         Activator.logInfo("Processing tools/call: " + tool.getName()); //$NON-NLS-1$
@@ -417,6 +388,11 @@ public class McpProtocolHandler
         McpServer server = Activator.getDefault() != null ? Activator.getDefault().getMcpServer() : null;
         if (server != null)
         {
+            ProfileResolution resolution = context == null ? null : context.getResolution();
+            server.setStatusContext(tool.getName(),
+                resolution == null ? null : resolution.getRequestedProfileId(),
+                context == null ? null : context.effectiveProfileId(),
+                resolution != null && resolution.isFallbackApplied());
             server.setCurrentToolName(tool.getName());
         }
         
@@ -698,8 +674,6 @@ public class McpProtocolHandler
         {
             return buildTextOnlyJsonResponse(result, requestId);
         }
-        // Capability gate for structuredContent. HTTP sessions use the request
-        // context; the legacy wrapper still reads the last-initialize atomic.
         if (!capabilitiesOf(context).allowsStructuredContent())
         {
             return buildTextOnlyJsonResponse(result, requestId);
@@ -709,11 +683,7 @@ public class McpProtocolHandler
 
     private ClientCapabilities capabilitiesOf(McpRequestContext context)
     {
-        if (context != null && !context.isLegacyCompatibilityWrapper())
-        {
-            return context.getClientCapabilities();
-        }
-        return clientCapabilities.get();
+        return context == null ? ClientCapabilities.ABSENT : context.getClientCapabilities();
     }
 
     /**
@@ -1105,7 +1075,7 @@ public class McpProtocolHandler
 
         String toolName = uri.substring(McpConstants.GUIDE_URI_SCHEME.length());
         IMcpTool tool = toolRegistry.getTool(toolName);
-        if (tool == null || (usesProfilePolicy(context) && !isCallable(toolName, context)))
+        if (tool == null || !isCallable(toolName, context))
         {
             return buildErrorResponse(McpConstants.ERROR_INVALID_PARAMS,
                 "Unknown guide resource: " + uri //$NON-NLS-1$
@@ -1125,41 +1095,37 @@ public class McpProtocolHandler
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, result));
     }
 
-    private boolean usesProfilePolicy(McpRequestContext context)
+    private void logFallbackIfNeeded(McpRequestContext context)
     {
-        return context != null && !context.isLegacyCompatibilityWrapper();
+        if (context == null || context.getResolution() == null
+            || !context.getResolution().isFallbackApplied())
+        {
+            return;
+        }
+        Activator.logWarning("Profile fallback on " + context.getRequestedPath() + ": requested '" //$NON-NLS-1$ //$NON-NLS-2$
+            + context.getResolution().getRequestedProfileId() + "' is unavailable (" //$NON-NLS-1$
+            + context.getResolution().getFallbackReason() + ")"); //$NON-NLS-1$
+    }
+
+    private ProfileToolPolicy policyOf(McpRequestContext context)
+    {
+        ProfileResolution resolution = context != null ? context.getResolution() : null;
+        return new ProfileToolPolicy(resolution, toolRegistry.getAllTools());
     }
 
     private java.util.Collection<IMcpTool> listedTools(McpRequestContext context)
     {
-        if (usesProfilePolicy(context))
-        {
-            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
-                .publishedTools(Toolsets.isProgressiveDisclosureEnabled());
-        }
-        return toolRegistry.getVisibleTools();
+        return policyOf(context).publishedTools(Toolsets.isProgressiveDisclosureEnabled());
     }
 
     private boolean isCallable(String toolName, McpRequestContext context)
     {
-        if (usesProfilePolicy(context))
-        {
-            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
-                .isCallable(toolName);
-        }
-        return toolRegistry.isToolEnabled(toolName);
+        return policyOf(context).isCallable(toolName);
     }
 
     private String deniedMessage(String toolName, McpRequestContext context)
     {
-        if (usesProfilePolicy(context))
-        {
-            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
-                .deniedMessage(toolName);
-        }
-        return "Tool '" + toolName + "' is disabled by the user. " //$NON-NLS-1$ //$NON-NLS-2$
-            + "If this functionality is needed, ask the user to enable it: " //$NON-NLS-1$
-            + "EDT Preferences \u2192 MCP Server \u2192 Tools tab \u2192 check '" + toolName + "'."; //$NON-NLS-1$ //$NON-NLS-2$
+        return policyOf(context).deniedMessage(toolName);
     }
 
     /**
@@ -1175,6 +1141,12 @@ public class McpProtocolHandler
      * structuredContent; nor to the JSON-RPC envelope itself (capping that would
      * corrupt the wire frame).
      */
+    private String buildDeniedToolCallResponse(String message, Object requestId)
+    {
+        ToolCallResult toolResult = ToolCallResult.errorText(OutputSizeGuard.cap(message));
+        return GsonProvider.toJson(JsonRpcResponse.success(requestId, toolResult));
+    }
+
     private String buildToolCallTextResponse(String result, Object requestId)
     {
         ToolCallResult toolResult = ToolCallResult.text(OutputSizeGuard.cap(result));

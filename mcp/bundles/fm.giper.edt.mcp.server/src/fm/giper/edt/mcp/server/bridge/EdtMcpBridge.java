@@ -9,7 +9,6 @@ package fm.giper.edt.mcp.server.bridge;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -44,11 +43,10 @@ import com.google.gson.JsonSyntaxException;
  * path as HTTP {@code tools/call}, without copying transport, SSE or interruption
  * responsibilities into this service.
  * <p>
- * The class also implements {@link BiFunction} and {@link Supplier} so the same
- * instance can be published under those JDK types, giving callers that cannot
- * see {@link IEdtMcpBridge} a typed handle instead of a reflective one.
+ * In-process Workmate has no HTTP session: the next {@link #callTool} sees the
+ * current repository snapshot immediately.
  */
-public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, String>, Supplier<String>
+public class EdtMcpBridge implements IEdtMcpBridge
 {
     private static final long BRIDGE_REQUEST_ID = 1L;
 
@@ -230,26 +228,6 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
             DefaultToolProfileFactory.createDefault(registry.getAllTools().stream()
                 .map(IMcpTool::getName)
                 .collect(Collectors.toSet()))));
-    }
-
-    /**
-     * {@link Supplier} face of {@link #listTools()} for callers that hold this
-     * service under its JDK-type alias.
-     */
-    @Override
-    public String get()
-    {
-        return listTools();
-    }
-
-    /**
-     * {@link BiFunction} face of {@link #callTool(String, String)} for callers
-     * that hold this service under its JDK-type alias.
-     */
-    @Override
-    public String apply(String toolName, String argsJson)
-    {
-        return callTool(toolName, argsJson);
     }
 
     private static String jsonKind(JsonElement element)

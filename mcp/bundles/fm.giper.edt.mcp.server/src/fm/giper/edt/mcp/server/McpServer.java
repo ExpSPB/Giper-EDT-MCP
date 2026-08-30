@@ -52,6 +52,12 @@ public class McpServer
     /** Path-bound MCP sessions for the 2025-11-25 transport. */
     private final McpSessionRegistry sessionRegistry = new McpSessionRegistry();
 
+    /**
+     * After the {@code default} profile surface changes, sessionless {@code /mcp}
+     * must initialize again instead of silently seeing a new allowlist.
+     */
+    private volatile boolean legacySessionRequired;
+
     public McpServer()
     {
         sessionRegistry.setSessionClosedListener(
@@ -262,6 +268,22 @@ public class McpServer
     }
 
     /**
+     * Whether legacy {@code /mcp} now requires a session (set when {@code default} changes).
+     */
+    public boolean isLegacySessionRequired()
+    {
+        return legacySessionRequired;
+    }
+
+    /**
+     * Marks sessionless {@code /mcp} as stale after the default profile surface changes.
+     */
+    public void setLegacySessionRequired(boolean required)
+    {
+        this.legacySessionRequired = required;
+    }
+
+    /**
      * Concurrent in-flight tool calls, keyed by internal call id.
      *
      * @return the live registry
@@ -323,10 +345,43 @@ public class McpServer
      * 
      * @return tool name or null if no tool is executing
      */
+    private volatile String statusDisplay;
+
     public String getCurrentToolName()
     {
         ActiveToolCall call = displayCall();
-        return call == null ? null : call.getToolName();
+        return call == null ? statusDisplay : formatStatus(call.getToolName(), lastRequestedProfile,
+            lastEffectiveProfile, lastFallback);
+    }
+
+    private volatile String lastRequestedProfile;
+    private volatile String lastEffectiveProfile;
+    private volatile boolean lastFallback;
+
+    public void setStatusContext(String toolName, String requestedProfileId, String effectiveProfileId,
+        boolean fallbackApplied)
+    {
+        lastRequestedProfile = requestedProfileId;
+        lastEffectiveProfile = effectiveProfileId;
+        lastFallback = fallbackApplied;
+        statusDisplay = formatStatus(toolName, requestedProfileId, effectiveProfileId, fallbackApplied);
+    }
+
+    static String formatStatus(String toolName, String requested, String effective, boolean fallback)
+    {
+        if (toolName == null)
+        {
+            return null;
+        }
+        if (requested == null || requested.isBlank())
+        {
+            return toolName;
+        }
+        if (fallback && effective != null && !requested.equals(effective))
+        {
+            return "[" + requested + " -> " + effective + "]: " + toolName; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        }
+        return "[" + (effective == null ? requested : effective) + "]: " + toolName; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     /**

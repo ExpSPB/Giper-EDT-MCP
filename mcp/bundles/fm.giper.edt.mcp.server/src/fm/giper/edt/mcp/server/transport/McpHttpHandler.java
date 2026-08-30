@@ -450,7 +450,8 @@ public class McpHttpHandler implements HttpHandler
             java.io.OutputStream os = exchange.getResponseBody();
             SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance()
                 .register(os, context != null ? context.getSessionId() : null,
-                    context != null ? context.getRequestedPath() : McpEndpoint.LEGACY_PATH);
+                    context != null ? context.getRequestedPath() : McpEndpoint.LEGACY_PATH,
+                    context != null ? context.getProtocolVersion() : null);
             try
             {
                 while (!Thread.currentThread().isInterrupted()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability
@@ -520,12 +521,15 @@ public class McpHttpHandler implements HttpHandler
      */
     private McpRequestContext bindSession(HttpExchange exchange, McpRequestContext context)
     {
-        boolean required = !isLegacyDefaultPath(context.getRequestedPath());
+        boolean legacyPath = isLegacyDefaultPath(context.getRequestedPath());
+        boolean required = !legacyPath || server.isLegacySessionRequired();
         String sessionId = exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID);
         Lookup lookup = server.getSessionRegistry().lookup(sessionId, context.getRequestedPath(), required);
         if (lookup.getStatus() == LookupStatus.MISSING)
         {
-            sendSessionError(exchange, 400, "Missing MCP-Session-Id"); //$NON-NLS-1$
+            sendSessionError(exchange, 400, server.isLegacySessionRequired() && legacyPath
+                ? "Session required after the default profile changed; call initialize again." //$NON-NLS-1$
+                : "Missing MCP-Session-Id"); //$NON-NLS-1$
             return null;
         }
         if (lookup.getStatus() == LookupStatus.UNKNOWN || lookup.getStatus() == LookupStatus.PATH_MISMATCH)
@@ -540,6 +544,7 @@ public class McpHttpHandler implements HttpHandler
         }
         return context
             .withClientCapabilities(session.getCapabilities())
+            .withProtocolVersion(session.getProtocolVersion())
             .withSessionId(session.getId());
     }
 

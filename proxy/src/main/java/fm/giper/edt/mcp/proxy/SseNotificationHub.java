@@ -29,6 +29,11 @@ public final class SseNotificationHub
         void invalidateRequestedProfile(String requestedProfileId);
     }
 
+    public interface SessionCloser
+    {
+        void closeByCanonicalPath(String canonicalPath);
+    }
+
     private static final String LIST_CHANGED =
         "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}"; //$NON-NLS-1$
 
@@ -36,10 +41,16 @@ public final class SseNotificationHub
     private final AtomicLong eventId = new AtomicLong(0);
     private final AtomicInteger delivered = new AtomicInteger(0);
     private volatile ProfileInvalidator invalidator;
+    private volatile SessionCloser sessionCloser;
 
     public void setInvalidator(ProfileInvalidator invalidator)
     {
         this.invalidator = invalidator;
+    }
+
+    public void setSessionCloser(SessionCloser sessionCloser)
+    {
+        this.sessionCloser = sessionCloser;
     }
 
     public void registerClient(String canonicalPath, OutputStream out)
@@ -72,7 +83,48 @@ public final class SseNotificationHub
         {
             current.invalidateRequestedProfile(requestedProfileId);
         }
-        publishListChanged(canonicalPath);
+        SessionCloser closer = sessionCloser;
+        if (closer != null && canonicalPath != null)
+        {
+            closer.closeByCanonicalPath(canonicalPath);
+            if (ProfileEndpoint.DEFAULT_PROFILE_ID.equals(requestedProfileId)
+                || ProfileEndpoint.LEGACY_PATH.equals(canonicalPath))
+            {
+                closer.closeByCanonicalPath(ProfileEndpoint.LEGACY_PATH);
+            }
+        }
+        closeClientsOnPath(canonicalPath);
+        if (ProfileEndpoint.DEFAULT_PROFILE_ID.equals(requestedProfileId))
+        {
+            closeClientsOnPath(ProfileEndpoint.LEGACY_PATH);
+        }
+    }
+
+    /**
+     * Closes client GET/SSE streams on {@code canonicalPath} so their heartbeat loop exits.
+     */
+    public void closeClientsOnPath(String canonicalPath)
+    {
+        if (canonicalPath == null)
+        {
+            return;
+        }
+        List<ClientStream> streams = clientsByPath.remove(canonicalPath);
+        if (streams == null)
+        {
+            return;
+        }
+        for (ClientStream stream : streams)
+        {
+            try
+            {
+                stream.out.close();
+            }
+            catch (IOException ignored)
+            {
+                // heartbeat loop exits
+            }
+        }
     }
 
     public void publishListChanged(String canonicalPath)

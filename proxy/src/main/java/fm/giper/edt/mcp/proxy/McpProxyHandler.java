@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -27,9 +28,10 @@ import com.sun.net.httpserver.HttpHandler;
 /**
  * The proxy's MCP Streamable HTTP transport: the single {@code /mcp} request handler.
  * <p>
- * Mirrors the plugin's {@code McpHttpHandler} wire behaviour 1:1 (session issuance on
- * {@code initialize}, the SSE-vs-plain-JSON framing decided by the client's {@code Accept}
- * header, {@code 202} for notifications) but terminates the client-facing MCP session layer
+ * Mirrors the plugin's {@code McpHttpHandler} wire behaviour 1:1 (Origin admission /
+ * DNS-rebinding protection, session issuance on {@code initialize}, the SSE-vs-plain-JSON
+ * framing decided by the client's {@code Accept} header, {@code 202} for notifications)
+ * but terminates the client-facing MCP session layer
  * itself (via {@link SessionManager}) and answers {@code initialize} / {@code ping} /
  * {@code router_status} / {@code router_refresh} locally instead of forwarding them.
  * <p>
@@ -69,6 +71,13 @@ public final class McpProxyHandler implements HttpHandler
     private static final String HEADER_CACHE_CONTROL = "Cache-Control"; //$NON-NLS-1$
     private static final String HEADER_CONNECTION = "Connection"; //$NON-NLS-1$
     private static final String HEADER_CONTENT_LENGTH = "Content-Length"; //$NON-NLS-1$
+    private static final String HEADER_ORIGIN = "Origin"; //$NON-NLS-1$
+    private static final String HEADER_ACCESS_CONTROL_ALLOW_ORIGIN = "Access-Control-Allow-Origin"; //$NON-NLS-1$
+    private static final String HEADER_ACCESS_CONTROL_ALLOW_METHODS = "Access-Control-Allow-Methods"; //$NON-NLS-1$
+    private static final String HEADER_ACCESS_CONTROL_ALLOW_HEADERS = "Access-Control-Allow-Headers"; //$NON-NLS-1$
+    private static final String CORS_ALLOWED_METHODS = "GET, POST, DELETE, OPTIONS"; //$NON-NLS-1$
+    private static final String CORS_ALLOWED_HEADERS =
+        "Content-Type, Accept, MCP-Session-Id, MCP-Protocol-Version"; //$NON-NLS-1$
 
     private static final String VALUE_NO_CACHE = "no-cache"; //$NON-NLS-1$
     private static final String VALUE_KEEP_ALIVE = "keep-alive"; //$NON-NLS-1$
@@ -136,6 +145,7 @@ public final class McpProxyHandler implements HttpHandler
         this.sessions = sessions;
         this.router = new ProjectRouter(registry);
         RouterTools.configure(cfg);
+        registry.sseHub().setSessionCloser(sessions::closeByCanonicalPath);
     }
 
     /**
@@ -159,6 +169,17 @@ public final class McpProxyHandler implements HttpHandler
             catch (InvalidProfileEndpointException e)
             {
                 sendPlain(exchange, 400, buildSimpleError(e.getMessage()));
+                return;
+            }
+
+            // Same Origin admission as the plugin: a present non-loopback Origin is 403
+            // (DNS-rebinding protection). A missing Origin is a non-browser client and is allowed.
+            if (!admitOrigin(exchange))
+            {
+                String origin = exchange.getRequestHeaders().getFirst(HEADER_ORIGIN);
+                LOG.info("Invalid Origin header rejected: " + origin); //$NON-NLS-1$
+                sendPlain(exchange, 403, buildJsonRpcError(
+                    ERROR_INVALID_REQUEST, "Invalid Origin", null)); //$NON-NLS-1$
                 return;
             }
 
@@ -328,7 +349,7 @@ public final class McpProxyHandler implements HttpHandler
         capabilities.add(KEY_TOOLS, new JsonObject());
 
         JsonObject serverInfo = new JsonObject();
-        serverInfo.addProperty(KEY_NAME, SERVER_NAME);
+        serverInfo.addProperty(KEY_NAME, proxyServerName(endpoint, registry.groupFor(endpoint)));
         serverInfo.addProperty(KEY_VERSION, proxyVersion());
 
         JsonObject result = new JsonObject();
@@ -441,7 +462,7 @@ public final class McpProxyHandler implements HttpHandler
         String toolName = Json.str(Json.obj(requestJson, KEY_PARAMS), KEY_NAME);
         if (isToolCall && "get_server_status".equals(toolName)) //$NON-NLS-1$
         {
-            handleGetServerStatus(exchange, requestId, allowStructuredContent, endpoint);
+            handleGetServerStatus(exchange, requestJson, requestId, allowStructuredContent, endpoint);
             return;
         }
         ProjectRouter.RouteResult route = router.route(jsonRpcMethod, requestJson, endpoint);
@@ -603,9 +624,24 @@ public final class McpProxyHandler implements HttpHandler
             FanOut.mergeListProjects(responses, requestId, jsonFormat, allowStructuredContent), null);
     }
 
-    private void handleGetServerStatus(HttpExchange exchange, Object requestId, boolean allowStructuredContent,
-        ProfileEndpoint endpoint) throws IOException
+    private void handleGetServerStatus(HttpExchange exchange, JsonObject requestJson, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint) throws IOException
     {
+        JsonObject arguments = Json.obj(Json.obj(requestJson, KEY_PARAMS), KEY_ARGUMENTS);
+        if (arguments == null)
+        {
+            arguments = new JsonObject();
+        }
+        boolean includeProfiles = booleanArg(arguments, "includeProfiles"); //$NON-NLS-1$
+        boolean includeProfileTools = booleanArg(arguments, "includeProfileTools"); //$NON-NLS-1$
+        if (includeProfileTools && !includeProfiles)
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(
+                "includeProfileTools=true requires includeProfiles=true. Call again with both set, "
+                    + "or omit includeProfileTools for compact discovery.", //$NON-NLS-1$
+                requestId, allowStructuredContent), null);
+            return;
+        }
         ProfileGroupSnapshot group = registry.groupFor(endpoint);
         Backend donor = group.getDonor();
         if (donor == null)
@@ -617,17 +653,13 @@ public final class McpProxyHandler implements HttpHandler
         }
         try
         {
-            JsonObject arguments = new JsonObject();
-            arguments.addProperty("includeProfiles", true); //$NON-NLS-1$
             String raw = donor.channel(endpoint).callToolBlocking("get_server_status", arguments); //$NON-NLS-1$
             JsonObject envelope = Json.parseObject(raw);
             JsonObject result = envelope == null ? null : Json.obj(envelope, KEY_RESULT);
             JsonObject structured = result == null ? null : Json.obj(result, KEY_STRUCTURED_CONTENT);
             if (structured != null)
             {
-                ProxyConfig cfg = registry.getConfig();
-                structured.add("availableProfiles", //$NON-NLS-1$
-                    registry.availableProfilesForProxy(cfg != null ? cfg.port : 0));
+                rewriteStatusEndpoints(structured, includeProfiles, exchange.getLocalAddress().getPort());
             }
             if (envelope != null)
             {
@@ -691,14 +723,23 @@ public final class McpProxyHandler implements HttpHandler
         hub.registerClient(endpoint.canonicalPath(), out);
         try
         {
-            synchronized (out)
+            while (!Thread.currentThread().isInterrupted())
             {
-                out.wait(30_000);
+                synchronized (out)
+                {
+                    out.write(": keep-alive\n\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+                    out.flush();
+                }
+                Thread.sleep(5000);
             }
         }
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
+        }
+        catch (IOException ignored)
+        {
+            // client disconnected or profile kick closed the stream
         }
         finally
         {
@@ -924,6 +965,31 @@ public final class McpProxyHandler implements HttpHandler
         }
     }
 
+    /**
+     * Mirrors the plugin's {@code HttpTransport.addCorsHeaders}: a present Origin must be on
+     * {@link OriginValidator}'s allow-list (then CORS headers are added); a missing Origin is
+     * treated as a non-browser client and admitted.
+     *
+     * @param exchange the HTTP exchange
+     * @return {@code true} if the request is admitted
+     */
+    private static boolean admitOrigin(HttpExchange exchange)
+    {
+        String origin = exchange.getRequestHeaders().getFirst(HEADER_ORIGIN);
+        if (origin == null)
+        {
+            return true;
+        }
+        if (!OriginValidator.isValidOrigin(origin))
+        {
+            return false;
+        }
+        exchange.getResponseHeaders().add(HEADER_ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        exchange.getResponseHeaders().add(HEADER_ACCESS_CONTROL_ALLOW_METHODS, CORS_ALLOWED_METHODS);
+        exchange.getResponseHeaders().add(HEADER_ACCESS_CONTROL_ALLOW_HEADERS, CORS_ALLOWED_HEADERS);
+        return true;
+    }
+
     /** Sends a transport-level (non-MCP-framed) plain JSON response, no SSE consideration. */
     private static void sendPlain(HttpExchange exchange, int status, String body) throws IOException
     {
@@ -1052,6 +1118,102 @@ public final class McpProxyHandler implements HttpHandler
     private static String proxyVersion()
     {
         return ProxyVersion.current();
+    }
+
+    private static String proxyServerName(ProfileEndpoint endpoint, ProfileGroupSnapshot group)
+    {
+        if (endpoint == null || endpoint.isLegacy())
+        {
+            return SERVER_NAME;
+        }
+        String effective = group != null && group.getEffectiveProfileId() != null
+            && !group.getEffectiveProfileId().isBlank()
+            ? group.getEffectiveProfileId()
+            : ProfileEndpoint.DEFAULT_PROFILE_ID;
+        return SERVER_NAME + "/" + effective; //$NON-NLS-1$
+    }
+
+    private static boolean booleanArg(JsonObject arguments, String key)
+    {
+        if (arguments == null || key == null || !arguments.has(key))
+        {
+            return false;
+        }
+        JsonElement element = arguments.get(key);
+        if (element == null || !element.isJsonPrimitive())
+        {
+            return false;
+        }
+        JsonPrimitive primitive = element.getAsJsonPrimitive();
+        if (primitive.isBoolean())
+        {
+            return primitive.getAsBoolean();
+        }
+        return "true".equalsIgnoreCase(primitive.getAsString()); //$NON-NLS-1$
+    }
+
+    private void rewriteStatusEndpoints(JsonObject structured, boolean includeProfiles, int proxyPort)
+    {
+        int port = proxyPort > 0 ? proxyPort
+            : (registry.getConfig() != null ? registry.getConfig().port : 0);
+        rewriteEndpointField(Json.obj(structured, "activeProfile"), port, null); //$NON-NLS-1$
+        if (!includeProfiles)
+        {
+            structured.remove("availableProfiles"); //$NON-NLS-1$
+            return;
+        }
+        JsonElement listed = structured.get("availableProfiles"); //$NON-NLS-1$
+        if (listed == null || !listed.isJsonArray())
+        {
+            return;
+        }
+        JsonArray rewritten = new JsonArray();
+        for (JsonElement element : listed.getAsJsonArray())
+        {
+            if (!element.isJsonObject())
+            {
+                continue;
+            }
+            JsonObject item = element.getAsJsonObject().deepCopy();
+            String id = Json.str(item, "id"); //$NON-NLS-1$
+            if (id == null || id.isBlank())
+            {
+                continue;
+            }
+            ProfileEndpoint path = ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id)
+                ? ProfileEndpoint.legacyDefault()
+                : new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
+            ProfileGroupSnapshot group = registry.groupFor(path);
+            if (group.getDonor() == null || !group.getIncompatible().isEmpty())
+            {
+                continue;
+            }
+            rewriteEndpointField(item, port, path);
+            rewritten.add(item);
+        }
+        structured.add("availableProfiles", rewritten); //$NON-NLS-1$
+    }
+
+    private static void rewriteEndpointField(JsonObject item, int proxyPort, ProfileEndpoint path)
+    {
+        if (item == null)
+        {
+            return;
+        }
+        ProfileEndpoint resolved = path;
+        if (resolved == null)
+        {
+            String id = Json.str(item, "id"); //$NON-NLS-1$
+            if (id == null || id.isBlank() || ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id))
+            {
+                resolved = ProfileEndpoint.legacyDefault();
+            }
+            else
+            {
+                resolved = new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
+            }
+        }
+        item.addProperty("endpoint", "http://127.0.0.1:" + proxyPort + resolved.canonicalPath()); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     private static String buildSimpleError(String message)

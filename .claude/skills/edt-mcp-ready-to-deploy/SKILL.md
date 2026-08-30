@@ -20,7 +20,7 @@ Run this when a piece of work is finished — it is the gate that proves the who
    - New/changed tool → an `XxxToolTest` (unit) **and** `tests/e2e/tools/test_<tool>.py` (e2e).
    - Changed metadata/code resolution → a bilingual case (English `Name`, Russian `Name`, synonym). (`edt-mcp-bilingual`.)
 
-3. **Build + unit (Tier 1)** — `bash source/compile.sh` → **BUILD SUCCESS** + every ratchet green (`BuiltInToolTestCoverageTest`, `ToolContractConsistencyTest`, e2e coverage ratchet). Toolchain isn't on PATH — pass `--java-home`/`--maven-home`.
+3. **Build + unit (Tier 1)** — `bash source/compile.sh` → **BUILD SUCCESS** + every ratchet green (`BuiltInToolTestCoverageTest`, `ToolContractConsistencyTest`, e2e coverage ratchet). Toolchain isn't on PATH — pass `--java-home`/`--maven-home`. If this change must land in a running EDT via Update (not uninstall/reinstall), **bump the micro version first** — qualifier-only SNAPSHOT rebuilds are invisible to p2 (`edt-mcp-build-test`).
 
 4. **README updated** — bump the tool count (both places), add/adjust the group table, the flat tool table, and the detailed section; parameters must match the schema.
 
@@ -42,6 +42,7 @@ Run this when a piece of work is finished — it is the gate that proves the who
 - [ ] No stray Cyrillic / English surface / lowerCamelCase / `ToolResult.error` / tx boundary
 - [ ] Unit `XxxToolTest` + e2e `test_<tool>.py` (+ bilingual case if resolution changed)
 - [ ] `compile.sh` BUILD SUCCESS + ratchets green
+- [ ] Micro version bumped if EDT must Update (not qualifier-only)
 - [ ] README count + tables + detail updated
 - [ ] Redeployed live; deployed jar verified (anti-stale); projects `ready`
 - [ ] Golden regenerated + committed (if `tools/list` changed)

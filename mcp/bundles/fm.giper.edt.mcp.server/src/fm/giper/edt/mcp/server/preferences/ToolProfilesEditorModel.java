@@ -160,6 +160,18 @@ public final class ToolProfilesEditorModel
 
     public OperationResult add(String id, String displayName, String description)
     {
+        return add(id, displayName, description, ToolPreset.ALL_TOOLS);
+    }
+
+    /**
+     * Creates a profile from a built-in preset. {@link ToolPreset#CUSTOM} is rejected.
+     */
+    public OperationResult add(String id, String displayName, String description, ToolPreset preset)
+    {
+        if (preset == null || preset == ToolPreset.CUSTOM)
+        {
+            return OperationResult.failed("Choose a built-in preset (All Tools, Analysis Only, Code Review or Development)"); //$NON-NLS-1$
+        }
         String normalizedId = id == null ? "" : id.trim(); //$NON-NLS-1$
         if (drafts.containsKey(normalizedId))
         {
@@ -170,7 +182,7 @@ public final class ToolProfilesEditorModel
             .displayName(displayName)
             .description(description)
             .enabled(true)
-            .allowedTools(Set.of())
+            .allowedTools(preset.toAllowlist(catalog))
             .build();
         ToolProfileValidator.ValidationResult validation = ToolProfileValidator.validate(created);
         if (!validation.isValid())

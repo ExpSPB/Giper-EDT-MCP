@@ -176,11 +176,8 @@ public class GetServerStatusTool implements IMcpTool
 
             Activator activator = Activator.getDefault();
 
-            // Tool counts come from the singleton registry; getEnabledTools()
-            // applies the per-tool enablement preference, getToolCount() is the total.
             McpToolRegistry registry = McpToolRegistry.getInstance();
             int totalTools = registry.getToolCount();
-            int enabledTools = registry.getEnabledTools().size();
 
             ToolResult result = ToolResult.success();
 
@@ -207,7 +204,6 @@ public class GetServerStatusTool implements IMcpTool
             result.put("pluginVersion", McpConstants.PLUGIN_VERSION); //$NON-NLS-1$
             result.put("edtVersion", GetEdtVersionTool.getEdtVersion()); //$NON-NLS-1$
 
-            result.put("enabledTools", enabledTools); //$NON-NLS-1$
             result.put("totalTools", totalTools); //$NON-NLS-1$
 
             // Preference-backed flags. Degrade to defaults/false when the
@@ -249,6 +245,7 @@ public class GetServerStatusTool implements IMcpTool
             ToolProfileSnapshot snapshot = resolveSnapshot(activator, requestContext);
             ProfileResolution resolution = requestContext.getResolution();
             ProfileToolPolicy activePolicy = new ProfileToolPolicy(resolution, catalog);
+            result.put("enabledTools", activePolicy.effectiveToolNames().size()); //$NON-NLS-1$
 
             result.put("activeProfile", buildActiveProfile(resolution, activePolicy, advertisedPort)); //$NON-NLS-1$
 

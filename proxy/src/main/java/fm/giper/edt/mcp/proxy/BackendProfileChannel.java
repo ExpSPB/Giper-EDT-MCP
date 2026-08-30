@@ -7,8 +7,10 @@
 
 package fm.giper.edt.mcp.proxy;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -52,6 +54,8 @@ public final class BackendProfileChannel
     private boolean handshakeDone;
     private String sessionId;
     private volatile ChannelResolution resolution;
+    private volatile Thread notificationThread;
+    private volatile boolean stopNotifications;
 
     BackendProfileChannel(Backend backend, ProfileEndpoint endpoint, HttpClient client, int timeoutSeconds)
     {
@@ -126,6 +130,96 @@ public final class BackendProfileChannel
         handshakeDone = false;
         sessionId = null;
         resolution = null;
+    }
+
+    /**
+     * Opens a long-lived GET/SSE against this backend path and forwards
+     * {@code notifications/tools/list_changed} to {@code hub}.
+     */
+    public void ensureNotificationListener(SseNotificationHub hub)
+    {
+        if (hub == null || notificationThread != null)
+        {
+            return;
+        }
+        stopNotifications = false;
+        Thread thread = new Thread(() -> listenForNotifications(hub),
+            "edt-mcp-proxy-sse-" + backend.getPort() + endpoint.canonicalPath()); //$NON-NLS-1$
+        thread.setDaemon(true);
+        notificationThread = thread;
+        thread.start();
+    }
+
+    public void stopNotificationListener()
+    {
+        stopNotifications = true;
+        Thread thread = notificationThread;
+        if (thread != null)
+        {
+            thread.interrupt();
+        }
+    }
+
+    private void listenForNotifications(SseNotificationHub hub)
+    {
+        while (!stopNotifications && !Thread.currentThread().isInterrupted())
+        {
+            try
+            {
+                String session = ensureSession();
+                HttpRequest.Builder builder = HttpRequest.newBuilder(mcpUri)
+                    .timeout(Duration.ofHours(6))
+                    .header("Accept", "text/event-stream") //$NON-NLS-1$ //$NON-NLS-2$
+                    .header(HEADER_PROTOCOL_VERSION, PROTOCOL_VERSION)
+                    .GET();
+                if (session != null)
+                {
+                    builder.header(HEADER_SESSION_ID, session);
+                }
+                HttpResponse<InputStream> response = client.send(builder.build(),
+                    HttpResponse.BodyHandlers.ofInputStream());
+                if (response.statusCode() != 200)
+                {
+                    closeQuietly(response.body());
+                    sleepQuietly(2000);
+                    continue;
+                }
+                try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(response.body(), StandardCharsets.UTF_8)))
+                {
+                    String line;
+                    while (!stopNotifications && (line = reader.readLine()) != null)
+                    {
+                        if (line.startsWith("data:") && line.contains("list_changed")) //$NON-NLS-1$ //$NON-NLS-2$
+                        {
+                            hub.onBackendListChanged(endpoint.getRequestedProfileId(),
+                                endpoint.canonicalPath());
+                        }
+                    }
+                }
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            catch (IOException ignored)
+            {
+                sleepQuietly(2000);
+            }
+        }
+    }
+
+    private static void sleepQuietly(long millis)
+    {
+        try
+        {
+            Thread.sleep(millis);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private synchronized void invalidateSessionIfCurrent(String staleSession)
@@ -225,29 +319,31 @@ public final class BackendProfileChannel
         JsonArray available = new JsonArray();
         if (status != null)
         {
-            String req = Json.str(status, "requestedProfileId"); //$NON-NLS-1$
-            if (req != null && !req.isBlank())
+            JsonObject active = Json.obj(status, "activeProfile"); //$NON-NLS-1$
+            String req = firstNonBlank(Json.str(active, "requestedProfileId"), //$NON-NLS-1$
+                Json.str(status, "requestedProfileId")); //$NON-NLS-1$
+            if (req != null)
             {
                 requested = req;
             }
-            JsonObject active = Json.obj(status, "activeProfile"); //$NON-NLS-1$
-            String activeId = active == null ? Json.str(status, "effectiveProfileId") : Json.str(active, "id"); //$NON-NLS-1$ //$NON-NLS-2$
-            if (activeId != null && !activeId.isBlank())
+            String activeId = firstNonBlank(Json.str(active, "id"), Json.str(status, "effectiveProfileId")); //$NON-NLS-1$ //$NON-NLS-2$
+            if (activeId != null)
             {
                 effective = activeId;
             }
-            JsonElement applied = status.get("fallbackApplied"); //$NON-NLS-1$
-            if (applied != null && applied.isJsonPrimitive() && applied.getAsBoolean())
+            Boolean applied = boolOrNull(active, "fallbackApplied"); //$NON-NLS-1$
+            if (applied == null)
             {
-                fallback = Json.str(status, "fallbackReason"); //$NON-NLS-1$
-                if (fallback == null || fallback.isBlank())
-                {
-                    fallback = "UNKNOWN_PROFILE"; //$NON-NLS-1$
-                }
+                applied = boolOrNull(status, "fallbackApplied"); //$NON-NLS-1$
             }
-            else
+            fallback = firstNonBlank(Json.str(active, "fallbackReason"), Json.str(status, "fallbackReason")); //$NON-NLS-1$ //$NON-NLS-2$
+            if (Boolean.TRUE.equals(applied) && (fallback == null || fallback.isBlank()))
             {
-                fallback = Json.str(status, "fallbackReason"); //$NON-NLS-1$
+                fallback = "UNKNOWN_PROFILE"; //$NON-NLS-1$
+            }
+            if (Boolean.FALSE.equals(applied))
+            {
+                fallback = null;
             }
             JsonElement profiles = status.get("availableProfiles"); //$NON-NLS-1$
             if (profiles != null && profiles.isJsonArray())
@@ -297,6 +393,33 @@ public final class BackendProfileChannel
         {
             return Integer.toHexString(Json.compact(canonical).hashCode());
         }
+    }
+
+    private static String firstNonBlank(String first, String second)
+    {
+        if (first != null && !first.isBlank())
+        {
+            return first;
+        }
+        if (second != null && !second.isBlank())
+        {
+            return second;
+        }
+        return null;
+    }
+
+    private static Boolean boolOrNull(JsonObject object, String key)
+    {
+        if (object == null || key == null)
+        {
+            return null;
+        }
+        JsonElement element = object.get(key);
+        if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isBoolean())
+        {
+            return null;
+        }
+        return Boolean.valueOf(element.getAsBoolean());
     }
 
     private static JsonObject includeProfilesArgs()

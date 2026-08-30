@@ -300,7 +300,8 @@ public class ToolsTab
             ToolProfileDialog.Mode.ADD, "", "", ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         if (dialog.open() == ToolProfileDialog.OK)
         {
-            showIfFailed(model.add(dialog.getProfileId(), dialog.getDisplayName(), dialog.getDescription()));
+            showIfFailed(model.add(dialog.getProfileId(), dialog.getDisplayName(),
+                dialog.getDescription(), dialog.getPreset()));
             refreshProfileUi();
         }
     }
@@ -405,6 +406,10 @@ public class ToolsTab
     private void refreshProfileUi()
     {
         refreshProfileFields();
+        if (treeViewer != null)
+        {
+            treeViewer.refresh();
+        }
         refreshCheckStates();
         selectMatchingPreset();
         updateCountLabel();
@@ -605,7 +610,19 @@ public class ToolsTab
         treeViewer.getTree().setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
         treeViewer.setContentProvider(new ToolTreeContentProvider());
-        treeViewer.setLabelProvider(new ToolTreeLabelProvider());
+        treeViewer.setLabelProvider(new ToolTreeLabelProvider()
+        {
+            @Override
+            public String getText(Object element)
+            {
+                String text = super.getText(element);
+                if (element instanceof String toolName && model.unknownAllowedTools().contains(toolName))
+                {
+                    return toolName + Messages.ToolsTab_UnavailableTool;
+                }
+                return text;
+            }
+        });
         treeViewer.setInput(ToolGroup.values());
 
         refreshCheckStates();
@@ -685,6 +702,10 @@ public class ToolsTab
         }
         else if (element instanceof String toolName)
         {
+            if (model.unknownAllowedTools().contains(toolName))
+            {
+                return;
+            }
             model.setToolEnabled(toolName, checked);
         }
     }
@@ -918,6 +939,11 @@ public class ToolsTab
                 treeViewer.setChecked(group, allEnabled || anyEnabled);
                 treeViewer.setGrayed(group, anyEnabled && !allEnabled);
             }
+            for (String unknown : model.unknownAllowedTools())
+            {
+                treeViewer.setChecked(unknown, true);
+                treeViewer.setGrayed(unknown, true);
+            }
         }
         finally
         {
@@ -1113,16 +1139,24 @@ public class ToolsTab
 
     // === Tree content provider ===
 
-    private static class ToolTreeContentProvider implements ITreeContentProvider
+    private class ToolTreeContentProvider implements ITreeContentProvider
     {
         @Override
         public Object[] getElements(Object inputElement)
         {
+            java.util.List<Object> roots = new java.util.ArrayList<>();
             if (inputElement instanceof ToolGroup[])
             {
-                return (ToolGroup[]) inputElement;
+                for (ToolGroup group : (ToolGroup[]) inputElement)
+                {
+                    roots.add(group);
+                }
             }
-            return new Object[0];
+            if (model != null)
+            {
+                roots.addAll(model.unknownAllowedTools());
+            }
+            return roots.toArray();
         }
 
         @Override

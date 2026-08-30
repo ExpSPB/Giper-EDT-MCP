@@ -168,35 +168,21 @@ public class EdtMcpBridgeTest
     }
 
     @Test
-    public void testJdkFunctionTypesDelegateToTheContractMethods() throws Exception
+    public void testBridgeIsNotPublishedAsJdkFunctionTypes() throws Exception
     {
         Object service = newReflectiveService();
-
-        // A consumer that cannot see this package (a JShell snippet, another
-        // plugin) holds the bridge through these JDK types instead of reflection.
-        assertTrue(service instanceof BiFunction);
-        assertTrue(service instanceof Supplier);
-
-        @SuppressWarnings("unchecked")
-        BiFunction<String, String, String> callTool = (BiFunction<String, String, String>)service;
-        @SuppressWarnings("unchecked")
-        Supplier<String> listTools = (Supplier<String>)service;
-
-        Method callToolMethod = service.getClass().getMethod("callTool", //$NON-NLS-1$
-            String.class, String.class);
-        Method listToolsMethod = service.getClass().getMethod("listTools"); //$NON-NLS-1$
-
-        assertEquals(listToolsMethod.invoke(service), listTools.get());
-        assertEquals(callToolMethod.invoke(service, PROBE_TOOL_NAME, "{\"value\":\"typed\"}"), //$NON-NLS-1$
-            callTool.apply(PROBE_TOOL_NAME, "{\"value\":\"typed\"}")); //$NON-NLS-1$
+        assertFalse(service instanceof BiFunction);
+        assertFalse(service instanceof Supplier);
+        Method callTool = service.getClass().getMethod("callTool", //$NON-NLS-1$
+            String.class, String.class, String.class);
+        String json = (String) callTool.invoke(service, PROBE_TOOL_NAME,
+            "{\"value\":\"typed\"}", "default"); //$NON-NLS-1$ //$NON-NLS-2$
         assertEquals("typed", receivedValue.get()); //$NON-NLS-1$
+        assertTrue(json.contains("echo:typed")); //$NON-NLS-1$
     }
 
     @Test
-    // BiFunction.class is Class<BiFunction>, so an OSGi lookup by that type is raw
-    // by construction - exactly as it is in a consumer's snippet.
-    @SuppressWarnings({ "rawtypes", "unchecked" })
-    public void testOsgiRegistrationIsFilterableUnderTheJdkTypeAlias() throws Exception
+    public void testOsgiRegistrationIsFilterableUnderTheInterfaceName() throws Exception
     {
         Bundle bundle = FrameworkUtil.getBundle(EdtMcpBridgeTest.class);
         assumeNotNull(bundle);
@@ -205,22 +191,32 @@ public class EdtMcpBridgeTest
 
         String filter = '(' + IEdtMcpBridge.SERVICE_PROPERTY + '='
             + IEdtMcpBridge.SERVICE_PROPERTY_VALUE + ')';
-        Collection<ServiceReference<BiFunction>> references =
-            context.getServiceReferences(BiFunction.class, filter);
-        assertEquals("the bridge must be findable by BiFunction + service property", //$NON-NLS-1$
-            1, references.size());
-
-        // The service found this way must be the live bridge, not a lookalike:
-        // it dispatches into the same registry the probe tool was registered in.
-        BiFunction<String, String, String> mcp =
-            (BiFunction<String, String, String>)context.getService(references.iterator().next());
-        String json = mcp.apply(PROBE_TOOL_NAME, "{\"value\":\"osgi\"}"); //$NON-NLS-1$
+        Collection<ServiceReference<IEdtMcpBridge>> references =
+            context.getServiceReferences(IEdtMcpBridge.class, filter);
+        if (references.isEmpty())
+        {
+            ServiceReference<?>[] byName =
+                context.getServiceReferences(IEdtMcpBridge.class.getName(), filter);
+            assertNotNull("the bridge must be findable by IEdtMcpBridge + service property", byName); //$NON-NLS-1$
+            assertEquals("the bridge must be findable by IEdtMcpBridge + service property", //$NON-NLS-1$
+                1, byName.length);
+            Object mcp = context.getService(byName[0]);
+            assertFalse(mcp instanceof BiFunction);
+            Method callTool = mcp.getClass().getMethod("callTool", //$NON-NLS-1$
+                String.class, String.class, String.class);
+            String json = (String) callTool.invoke(mcp, PROBE_TOOL_NAME,
+                "{\"value\":\"osgi\"}", "default"); //$NON-NLS-1$ //$NON-NLS-2$
+            assertNotNull(json);
+            return;
+        }
+        assertEquals(1, references.size());
+        IEdtMcpBridge mcp = context.getService(references.iterator().next());
+        String json = mcp.callTool(PROBE_TOOL_NAME, "{\"value\":\"osgi\"}", "default"); //$NON-NLS-1$ //$NON-NLS-2$
         assertNotNull(json);
         JsonObject envelope = JsonParser.parseString(json).getAsJsonObject();
         assertEquals("2.0", envelope.get("jsonrpc").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue(envelope.has("result") || envelope.has("error")); //$NON-NLS-1$ //$NON-NLS-2$
-
-        assertEquals(1, context.getServiceReferences(Supplier.class, filter).size());
+        assertEquals(0, context.getServiceReferences(BiFunction.class, filter).size());
     }
 
     private static boolean containsName(JsonArray tools, String name)

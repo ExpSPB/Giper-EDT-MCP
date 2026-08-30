@@ -232,6 +232,8 @@ runs:
         LOG="$RUNNER_TEMP/edt.log"
         mkdir -p "$WS"
         echo "edt_log=$LOG" >> "$GITHUB_ENV"
+        python3 "$GITHUB_WORKSPACE/tests/e2e/fixtures/seed_tool_profiles.py" "$WS"
+        echo "[setup-edt] seeded e2e tool profiles into $WS"
         # The plugin's headless bootstrap (McpServerStartup): force the MCP server on
         # (the auto-start preference is off on a fresh workspace) and, when given, import
         # the project dirs by reference so the empty workspace comes up with them open.

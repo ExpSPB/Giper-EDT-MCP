@@ -41,11 +41,13 @@ public class ToolProfilesEditorModelTest
     {
         ToolProfilesEditorModel model = loadDefault();
 
-        assertTrue(model.add("review", "Review", "Read-only").isOk()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertTrue(model.add("review", "Review", "Read-only", ToolPreset.CODE_REVIEW).isOk()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         assertEquals("review", model.getSelectedId()); //$NON-NLS-1$
         assertEquals("review", model.getSelected().getId()); //$NON-NLS-1$
+        assertFalse(model.getSelected().getAllowedTools().isEmpty());
         assertTrue(model.isDirty());
-        assertFalse(model.add("review", "Other", "").isOk()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertFalse(model.add("review", "Other", "", ToolPreset.ALL_TOOLS).isOk()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertFalse(model.add("empty", "Empty", "", ToolPreset.CUSTOM).isOk()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     }
 
     @Test

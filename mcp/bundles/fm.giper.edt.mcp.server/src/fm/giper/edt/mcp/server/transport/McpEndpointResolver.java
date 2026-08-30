@@ -37,7 +37,7 @@ public final class McpEndpointResolver
         {
             throw new InvalidMcpEndpointException("MCP path must not contain traversal or dot segments"); //$NON-NLS-1$
         }
-        if (McpEndpoint.LEGACY_PATH.equals(path) || (McpEndpoint.LEGACY_PATH + "/").equals(path)) //$NON-NLS-1$
+        if (McpEndpoint.LEGACY_PATH.equals(path))
         {
             return McpEndpoint.legacyDefault();
         }
