@@ -28,9 +28,10 @@ import com.sun.net.httpserver.HttpHandler;
 /**
  * The proxy's MCP Streamable HTTP transport: the single {@code /mcp} request handler.
  * <p>
- * Mirrors the plugin's {@code McpHttpHandler} wire behaviour 1:1 (session issuance on
- * {@code initialize}, the SSE-vs-plain-JSON framing decided by the client's {@code Accept}
- * header, {@code 202} for notifications) but terminates the client-facing MCP session layer
+ * Mirrors the plugin's {@code McpHttpHandler} wire behaviour 1:1 (Origin admission /
+ * DNS-rebinding protection, session issuance on {@code initialize}, the SSE-vs-plain-JSON
+ * framing decided by the client's {@code Accept} header, {@code 202} for notifications)
+ * but terminates the client-facing MCP session layer
  * itself (via {@link SessionManager}) and answers {@code initialize} / {@code ping} /
  * {@code router_status} / {@code router_refresh} locally instead of forwarding them.
  * <p>
@@ -70,6 +71,13 @@ public final class McpProxyHandler implements HttpHandler
     private static final String HEADER_CACHE_CONTROL = "Cache-Control"; //$NON-NLS-1$
     private static final String HEADER_CONNECTION = "Connection"; //$NON-NLS-1$
     private static final String HEADER_CONTENT_LENGTH = "Content-Length"; //$NON-NLS-1$
+    private static final String HEADER_ORIGIN = "Origin"; //$NON-NLS-1$
+    private static final String HEADER_ACCESS_CONTROL_ALLOW_ORIGIN = "Access-Control-Allow-Origin"; //$NON-NLS-1$
+    private static final String HEADER_ACCESS_CONTROL_ALLOW_METHODS = "Access-Control-Allow-Methods"; //$NON-NLS-1$
+    private static final String HEADER_ACCESS_CONTROL_ALLOW_HEADERS = "Access-Control-Allow-Headers"; //$NON-NLS-1$
+    private static final String CORS_ALLOWED_METHODS = "GET, POST, DELETE, OPTIONS"; //$NON-NLS-1$
+    private static final String CORS_ALLOWED_HEADERS =
+        "Content-Type, Accept, MCP-Session-Id, MCP-Protocol-Version"; //$NON-NLS-1$
 
     private static final String VALUE_NO_CACHE = "no-cache"; //$NON-NLS-1$
     private static final String VALUE_KEEP_ALIVE = "keep-alive"; //$NON-NLS-1$
@@ -161,6 +169,17 @@ public final class McpProxyHandler implements HttpHandler
             catch (InvalidProfileEndpointException e)
             {
                 sendPlain(exchange, 400, buildSimpleError(e.getMessage()));
+                return;
+            }
+
+            // Same Origin admission as the plugin: a present non-loopback Origin is 403
+            // (DNS-rebinding protection). A missing Origin is a non-browser client and is allowed.
+            if (!admitOrigin(exchange))
+            {
+                String origin = exchange.getRequestHeaders().getFirst(HEADER_ORIGIN);
+                LOG.info("Invalid Origin header rejected: " + origin); //$NON-NLS-1$
+                sendPlain(exchange, 403, buildJsonRpcError(
+                    ERROR_INVALID_REQUEST, "Invalid Origin", null)); //$NON-NLS-1$
                 return;
             }
 
@@ -944,6 +963,31 @@ public final class McpProxyHandler implements HttpHandler
             exchange.getResponseHeaders().add(HEADER_CONTENT_TYPE, VALUE_APPLICATION_JSON);
             writeBytes(exchange, status, body.getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    /**
+     * Mirrors the plugin's {@code HttpTransport.addCorsHeaders}: a present Origin must be on
+     * {@link OriginValidator}'s allow-list (then CORS headers are added); a missing Origin is
+     * treated as a non-browser client and admitted.
+     *
+     * @param exchange the HTTP exchange
+     * @return {@code true} if the request is admitted
+     */
+    private static boolean admitOrigin(HttpExchange exchange)
+    {
+        String origin = exchange.getRequestHeaders().getFirst(HEADER_ORIGIN);
+        if (origin == null)
+        {
+            return true;
+        }
+        if (!OriginValidator.isValidOrigin(origin))
+        {
+            return false;
+        }
+        exchange.getResponseHeaders().add(HEADER_ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        exchange.getResponseHeaders().add(HEADER_ACCESS_CONTROL_ALLOW_METHODS, CORS_ALLOWED_METHODS);
+        exchange.getResponseHeaders().add(HEADER_ACCESS_CONTROL_ALLOW_HEADERS, CORS_ALLOWED_HEADERS);
+        return true;
     }
 
     /** Sends a transport-level (non-MCP-framed) plain JSON response, no SSE consideration. */
