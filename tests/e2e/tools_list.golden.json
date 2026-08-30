@@ -2631,17 +2631,30 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Diagnose the EDT MCP server and its feature configuration. Parameters and examples: get_tool_guide('get_server_status').",
+    "description": "Diagnose the EDT MCP server, its feature flags, and the active tool profile. includeProfileTools=true requires includeProfiles=true. Parameters and examples: get_tool_guide('get_server_status').",
     "inputSchema": {
-      "properties": {},
+      "properties": {
+        "includeProfileTools": {
+          "type": "boolean"
+        },
+        "includeProfiles": {
+          "type": "boolean"
+        }
+      },
       "required": [],
       "type": "object"
     },
     "name": "get_server_status",
     "outputSchema": {
       "properties": {
+        "activeProfile": {
+          "type": "object"
+        },
         "authEnabled": {
           "type": "boolean"
+        },
+        "availableProfiles": {
+          "type": "object"
         },
         "checksFolderConfigured": {
           "type": "boolean"
