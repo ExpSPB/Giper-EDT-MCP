@@ -1,5 +1,5 @@
 {
-  "name": "EDT-MCP",
+  "name": "Giper-EDT-MCP",
   "user": "ubuntu",
   "build": {
     "dockerfile": "Dockerfile",

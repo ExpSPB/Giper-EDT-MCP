@@ -137,7 +137,7 @@ If the task is live-verifiable (a tool behaviour, a form/metadata effect, a runt
 - Redeploy the fresh build to the **throwaway** stand and run the real scenarios (the e2e
   matrix or targeted MCP calls) — delegate to `edt-mcp-e2e-testing` / `edt-mcp-ready-to-deploy`.
 - **Scan the workspace log after exercising the feature.** Grep `<workspace>/.metadata/.log`
-  for stack traces / errors from our code (`com.ditrix.edt.mcp.server`) logged since the redeploy.
+  for stack traces / errors from our code (`fm.giper.edt.mcp.server`) logged since the redeploy.
   Runtime failures often log there WITHOUT surfacing through the MCP wire — an exception in a UI
   `Job`, a caught `Activator.logError`, or a per-item failure swallowed into a degraded result
   (a real case: a single-image `CommonPicture` whose decode threw but showed only as "No variants"

@@ -1,4 +1,4 @@
-# Cloud Agent base image for the EDT-MCP repository.
+# Cloud Agent base image for the Giper-EDT-MCP repository.
 #
 # Reproduces the CI toolchain (.github/workflows/build.yml): JDK 17 + Maven for
 # the Tycho/Eclipse plugin build (mcp/) and the standalone Java proxy (proxy/).

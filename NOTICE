@@ -1,0 +1,38 @@
+Giper-EDT-MCP
+=============
+
+Giper-EDT-MCP is a fork of the EDT-MCP project by DitriX
+(https://github.com/DitriXNew/EDT-MCP), rebranded and maintained by ExpSPB
+(https://github.com/ExpSPB).
+
+The project is licensed under the GNU Affero General Public License, version 3
+or later (AGPL-3.0-or-later). The full license text is in the LICENSE file.
+
+Modifications
+-------------
+
+Modified by ExpSPB in 2026: rebranding of the plugin/feature/bundle identifiers
+(Java package com.ditrix.* -> fm.giper.*, symbolic names, provider/display
+names), independent version numbering starting at 1.0.0, and an independent
+update source. In accordance with AGPL-3.0 section 5(a), modified source files
+carry a "Modified by ExpSPB in 2026" notice; the original copyright and license
+notices are preserved.
+
+Upstream copyright holders (preserved)
+--------------------------------------
+
+Copyright (C) 2025-2026 DitriX      (https://github.com/DitriXNew)
+Copyright (C) 2026      Diversus23  (https://github.com/Diversus23)
+
+Additional authors credited by the upstream project: Jimmo910.
+
+Third-party components
+----------------------
+
+mcp/targets/default/default.target
+    Copyright (c) 2020,2021 1C-Soft LLC.
+    Licensed under the Eclipse Public License 2.0 (EPL-2.0),
+    https://www.eclipse.org/legal/epl-2.0/
+    SPDX-License-Identifier: EPL-2.0
+    This file is used unmodified to define the 1C:EDT target platform and is
+    NOT covered by the AGPL-3.0 license of this project.

@@ -18,13 +18,13 @@ SERVER_SOURCE = (
     ROOT
     / "mcp"
     / "bundles"
-    / "com.ditrix.edt.mcp.server"
+    / "fm.giper.edt.mcp.server"
     / "src"
 )
 REGISTRAR = (
     SERVER_SOURCE
-    / "com"
-    / "ditrix"
+    / "fm"
+    / "giper"
     / "edt"
     / "mcp"
     / "server"
