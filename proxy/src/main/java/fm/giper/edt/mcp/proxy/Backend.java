@@ -117,6 +117,46 @@ public final class Backend
         discoveryChannel().invalidateSession();
     }
 
+    /**
+     * Starts GET/SSE listeners on the discovery channel and each advertised profile.
+     */
+    public void ensureNotificationListeners(SseNotificationHub hub)
+    {
+        try
+        {
+            discoveryChannel().refreshResolution();
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        catch (IOException ignored)
+        {
+            // still attach the discovery stream; profile paths wait for the next refresh
+        }
+        discoveryChannel().ensureNotificationListener(hub);
+        ChannelResolution resolution = discoveryChannel().getResolution();
+        if (resolution == null || resolution.getAvailableProfiles() == null)
+        {
+            return;
+        }
+        for (com.google.gson.JsonElement element : resolution.getAvailableProfiles())
+        {
+            if (!element.isJsonObject())
+            {
+                continue;
+            }
+            String id = Json.str(element.getAsJsonObject(), "id"); //$NON-NLS-1$
+            if (id == null || id.isBlank() || ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id))
+            {
+                continue;
+            }
+            channel(new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false))
+                .ensureNotificationListener(hub);
+        }
+    }
+
     public HttpResponse<InputStream> forward(String rawBody) throws IOException, InterruptedException
     {
         return discoveryChannel().forward(rawBody);

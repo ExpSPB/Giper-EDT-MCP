@@ -260,4 +260,18 @@ public class SessionManagerTest
         assertTrue(sessions.isValid(defaultId));
         assertEquals(1, sessions.activeCount());
     }
+
+    @Test
+    public void testCloseByCanonicalPathLeavesOtherProfiles()
+    {
+        SessionManager sessions = new SessionManager();
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String reviewId = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+        String defaultId = sessions.create();
+
+        assertEquals(1, sessions.closeByCanonicalPath("/mcp/profiles/review")); //$NON-NLS-1$
+        assertFalse(sessions.isValid(reviewId));
+        assertTrue(sessions.isValid(defaultId));
+        assertEquals(0, sessions.closeByCanonicalPath("/mcp/profiles/review")); //$NON-NLS-1$
+    }
 }

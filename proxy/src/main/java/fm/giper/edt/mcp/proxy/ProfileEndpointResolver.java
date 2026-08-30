@@ -41,7 +41,7 @@ public final class ProfileEndpointResolver
         {
             throw new InvalidProfileEndpointException("MCP path must not contain traversal or dot segments"); //$NON-NLS-1$
         }
-        if (ProfileEndpoint.LEGACY_PATH.equals(path) || (ProfileEndpoint.LEGACY_PATH + "/").equals(path)) //$NON-NLS-1$
+        if (ProfileEndpoint.LEGACY_PATH.equals(path))
         {
             return ProfileEndpoint.legacyDefault();
         }

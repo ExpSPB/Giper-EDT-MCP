@@ -12,39 +12,47 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import fm.giper.edt.mcp.server.SseStreamRegistry;
+import fm.giper.edt.mcp.server.protocol.ClientCapabilities;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.transport.McpSessionRegistry;
 
 /**
- * Addressable list-changed notifications: only paths whose effective surface changed.
+ * Apply kicks only the sessions/streams whose effective surface changed.
  */
 public class ProfileNotificationServiceTest
 {
     private SseStreamRegistry streams;
+    private McpSessionRegistry sessions;
     private ProfileNotificationService service;
     private SseStreamRegistry.SseStream mcpStream;
     private SseStreamRegistry.SseStream reviewStream;
     private ByteArrayOutputStream mcpSink;
     private ByteArrayOutputStream reviewSink;
+    private final AtomicBoolean legacyRequired = new AtomicBoolean(false);
 
     @Before
     public void setUp()
     {
         streams = SseStreamRegistry.getInstance();
-        service = new ProfileNotificationService(ProfileNotificationServiceTest::catalog, streams);
+        sessions = new McpSessionRegistry();
+        service = new ProfileNotificationService(ProfileNotificationServiceTest::catalog, streams,
+            () -> sessions, legacyRequired::set);
         mcpSink = new ByteArrayOutputStream();
         reviewSink = new ByteArrayOutputStream();
         mcpStream = streams.register(mcpSink, "mcp-session", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
         reviewStream = streams.register(reviewSink, "review-session", "/mcp/profiles/review"); //$NON-NLS-1$ //$NON-NLS-2$
+        sessions.create("/mcp", "2025-11-25", ClientCapabilities.ABSENT); //$NON-NLS-1$ //$NON-NLS-2$
+        sessions.create("/mcp/profiles/review", "2025-11-25", ClientCapabilities.ABSENT); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     @After
@@ -52,20 +60,24 @@ public class ProfileNotificationServiceTest
     {
         streams.unregister(mcpStream);
         streams.unregister(reviewStream);
+        sessions.shutdown();
+        legacyRequired.set(false);
     }
 
     @Test
-    public void emptyChangeSetDoesNotNotify()
+    public void emptyChangeSetDoesNotKick()
     {
         ToolProfileSnapshot snapshot = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(true, Set.of("write_module_source"))); //$NON-NLS-1$
         service.onProfilesChanged(snapshot, snapshot, ToolProfileChangeSet.empty());
-        assertEquals("", mcpSink.toString(StandardCharsets.UTF_8)); //$NON-NLS-1$
-        assertEquals("", reviewSink.toString(StandardCharsets.UTF_8)); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
+        assertEquals(2, sessions.size());
+        assertFalse(legacyRequired.get());
     }
 
     @Test
-    public void displayNameOnlyChangeDoesNotNotify()
+    public void displayNameOnlyChangeDoesNotKick()
     {
         ToolProfileSnapshot previous = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(true, Set.of("write_module_source"))); //$NON-NLS-1$
@@ -73,24 +85,29 @@ public class ProfileNotificationServiceTest
             ToolProfile.builder().id("review").displayName("Review 2") //$NON-NLS-1$ //$NON-NLS-2$
                 .allowedTools(Set.of("write_module_source")).build()); //$NON-NLS-1$
         service.onProfilesChanged(previous, next, ToolProfileChangeSet.between(previous, next));
-        assertEquals("", mcpSink.toString(StandardCharsets.UTF_8)); //$NON-NLS-1$
-        assertEquals("", reviewSink.toString(StandardCharsets.UTF_8)); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
+        assertEquals(2, sessions.size());
+        assertFalse(legacyRequired.get());
     }
 
     @Test
-    public void reviewAllowlistChangeNotifiesOnlyThatPath()
+    public void reviewAllowlistChangeKicksOnlyThatPath()
     {
         ToolProfileSnapshot previous = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(true, Set.of("write_module_source"))); //$NON-NLS-1$
         ToolProfileSnapshot next = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(true, Set.of("write_module_source", "list_projects"))); //$NON-NLS-1$ //$NON-NLS-2$
         service.onProfilesChanged(previous, next, ToolProfileChangeSet.between(previous, next));
-        assertEquals("", mcpSink.toString(StandardCharsets.UTF_8)); //$NON-NLS-1$
-        assertTrue(reviewSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertFalse(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
+        assertEquals(1, sessions.size());
+        assertTrue(sessions.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertFalse(legacyRequired.get());
     }
 
     @Test
-    public void defaultChangeNotifiesLegacyAndFallbackPaths()
+    public void defaultChangeKicksLegacyAndFallbackPaths()
     {
         ToolProfileSnapshot previous = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(true, Set.of("write_module_source"))); //$NON-NLS-1$
@@ -99,12 +116,16 @@ public class ProfileNotificationServiceTest
         ByteArrayOutputStream missingSink = new ByteArrayOutputStream();
         SseStreamRegistry.SseStream missing = streams.register(missingSink, "missing-session", //$NON-NLS-1$
             "/mcp/profiles/zz-missing"); //$NON-NLS-1$
+        sessions.create("/mcp/profiles/zz-missing", "2025-11-25", ClientCapabilities.ABSENT); //$NON-NLS-1$ //$NON-NLS-2$
         try
         {
             service.onProfilesChanged(previous, next, ToolProfileChangeSet.between(previous, next));
-            assertTrue(mcpSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
-            assertTrue(missingSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
-            assertEquals("", reviewSink.toString(StandardCharsets.UTF_8)); //$NON-NLS-1$
+            assertFalse(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+            assertFalse(streams.activeRequestedPaths().contains("/mcp/profiles/zz-missing")); //$NON-NLS-1$
+            assertTrue(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
+            assertTrue(legacyRequired.get());
+            assertEquals(1, sessions.size());
+            assertTrue(sessions.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
         }
         finally
         {
@@ -113,21 +134,22 @@ public class ProfileNotificationServiceTest
     }
 
     @Test
-    public void disableAndEnableReviewNotifyThatPath()
+    public void disableAndEnableReviewKickThatPath()
     {
         ToolProfileSnapshot enabled = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(true, Set.of("write_module_source"))); //$NON-NLS-1$
         ToolProfileSnapshot disabled = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$
             reviewProfile(false, Set.of("write_module_source"))); //$NON-NLS-1$
         service.onProfilesChanged(enabled, disabled, ToolProfileChangeSet.between(enabled, disabled));
-        assertTrue(reviewSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
-        assertFalse(mcpSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
+        assertFalse(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertFalse(legacyRequired.get());
 
-        reviewSink.reset();
-        mcpSink.reset();
+        reviewStream = streams.register(reviewSink, "review-session-2", "/mcp/profiles/review"); //$NON-NLS-1$ //$NON-NLS-2$
+        sessions.create("/mcp/profiles/review", "2025-11-25", ClientCapabilities.ABSENT); //$NON-NLS-1$ //$NON-NLS-2$
         service.onProfilesChanged(disabled, enabled, ToolProfileChangeSet.between(disabled, enabled));
-        assertTrue(reviewSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
-        assertFalse(mcpSink.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
+        assertFalse(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
+        assertTrue(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
     }
 
     private static ToolProfileSnapshot snapshot(ToolProfile... profiles)

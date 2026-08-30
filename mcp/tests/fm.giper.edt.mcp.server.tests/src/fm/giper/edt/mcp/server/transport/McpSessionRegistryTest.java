@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.Test;
@@ -88,6 +89,19 @@ public class McpSessionRegistryTest
         registry.shutdown();
         assertEquals(0, registry.size());
         assertEquals(LookupStatus.UNKNOWN, registry.lookup(second.getId(), "/mcp/profiles/review", true).getStatus()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void closeByRequestedPathLeavesOtherProfiles()
+    {
+        McpSessionRegistry registry = new McpSessionRegistry();
+        McpTransportSession review = registry.create("/mcp/profiles/review", "2025-11-25", //$NON-NLS-1$ //$NON-NLS-2$
+            ClientCapabilities.ABSENT);
+        McpTransportSession legacy = registry.create("/mcp", "2025-11-25", ClientCapabilities.ABSENT); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(1, registry.closeByRequestedPath("/mcp/profiles/review")); //$NON-NLS-1$
+        assertEquals(LookupStatus.UNKNOWN, registry.lookup(review.getId(), "/mcp/profiles/review", true).getStatus()); //$NON-NLS-1$
+        assertEquals(LookupStatus.OK, registry.lookup(legacy.getId(), "/mcp", true).getStatus()); //$NON-NLS-1$
+        assertEquals(Set.of("/mcp"), registry.activeRequestedPaths()); //$NON-NLS-1$
     }
 
     @Test

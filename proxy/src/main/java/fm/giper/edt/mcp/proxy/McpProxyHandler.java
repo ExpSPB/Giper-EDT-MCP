@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -136,6 +137,7 @@ public final class McpProxyHandler implements HttpHandler
         this.sessions = sessions;
         this.router = new ProjectRouter(registry);
         RouterTools.configure(cfg);
+        registry.sseHub().setSessionCloser(sessions::closeByCanonicalPath);
     }
 
     /**
@@ -328,7 +330,7 @@ public final class McpProxyHandler implements HttpHandler
         capabilities.add(KEY_TOOLS, new JsonObject());
 
         JsonObject serverInfo = new JsonObject();
-        serverInfo.addProperty(KEY_NAME, SERVER_NAME);
+        serverInfo.addProperty(KEY_NAME, proxyServerName(endpoint, registry.groupFor(endpoint)));
         serverInfo.addProperty(KEY_VERSION, proxyVersion());
 
         JsonObject result = new JsonObject();
@@ -441,7 +443,7 @@ public final class McpProxyHandler implements HttpHandler
         String toolName = Json.str(Json.obj(requestJson, KEY_PARAMS), KEY_NAME);
         if (isToolCall && "get_server_status".equals(toolName)) //$NON-NLS-1$
         {
-            handleGetServerStatus(exchange, requestId, allowStructuredContent, endpoint);
+            handleGetServerStatus(exchange, requestJson, requestId, allowStructuredContent, endpoint);
             return;
         }
         ProjectRouter.RouteResult route = router.route(jsonRpcMethod, requestJson, endpoint);
@@ -603,9 +605,24 @@ public final class McpProxyHandler implements HttpHandler
             FanOut.mergeListProjects(responses, requestId, jsonFormat, allowStructuredContent), null);
     }
 
-    private void handleGetServerStatus(HttpExchange exchange, Object requestId, boolean allowStructuredContent,
-        ProfileEndpoint endpoint) throws IOException
+    private void handleGetServerStatus(HttpExchange exchange, JsonObject requestJson, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint) throws IOException
     {
+        JsonObject arguments = Json.obj(Json.obj(requestJson, KEY_PARAMS), KEY_ARGUMENTS);
+        if (arguments == null)
+        {
+            arguments = new JsonObject();
+        }
+        boolean includeProfiles = booleanArg(arguments, "includeProfiles"); //$NON-NLS-1$
+        boolean includeProfileTools = booleanArg(arguments, "includeProfileTools"); //$NON-NLS-1$
+        if (includeProfileTools && !includeProfiles)
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(
+                "includeProfileTools=true requires includeProfiles=true. Call again with both set, "
+                    + "or omit includeProfileTools for compact discovery.", //$NON-NLS-1$
+                requestId, allowStructuredContent), null);
+            return;
+        }
         ProfileGroupSnapshot group = registry.groupFor(endpoint);
         Backend donor = group.getDonor();
         if (donor == null)
@@ -617,17 +634,13 @@ public final class McpProxyHandler implements HttpHandler
         }
         try
         {
-            JsonObject arguments = new JsonObject();
-            arguments.addProperty("includeProfiles", true); //$NON-NLS-1$
             String raw = donor.channel(endpoint).callToolBlocking("get_server_status", arguments); //$NON-NLS-1$
             JsonObject envelope = Json.parseObject(raw);
             JsonObject result = envelope == null ? null : Json.obj(envelope, KEY_RESULT);
             JsonObject structured = result == null ? null : Json.obj(result, KEY_STRUCTURED_CONTENT);
             if (structured != null)
             {
-                ProxyConfig cfg = registry.getConfig();
-                structured.add("availableProfiles", //$NON-NLS-1$
-                    registry.availableProfilesForProxy(cfg != null ? cfg.port : 0));
+                rewriteStatusEndpoints(structured, includeProfiles, exchange.getLocalAddress().getPort());
             }
             if (envelope != null)
             {
@@ -691,14 +704,23 @@ public final class McpProxyHandler implements HttpHandler
         hub.registerClient(endpoint.canonicalPath(), out);
         try
         {
-            synchronized (out)
+            while (!Thread.currentThread().isInterrupted())
             {
-                out.wait(30_000);
+                synchronized (out)
+                {
+                    out.write(": keep-alive\n\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+                    out.flush();
+                }
+                Thread.sleep(5000);
             }
         }
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
+        }
+        catch (IOException ignored)
+        {
+            // client disconnected or profile kick closed the stream
         }
         finally
         {
@@ -1052,6 +1074,102 @@ public final class McpProxyHandler implements HttpHandler
     private static String proxyVersion()
     {
         return ProxyVersion.current();
+    }
+
+    private static String proxyServerName(ProfileEndpoint endpoint, ProfileGroupSnapshot group)
+    {
+        if (endpoint == null || endpoint.isLegacy())
+        {
+            return SERVER_NAME;
+        }
+        String effective = group != null && group.getEffectiveProfileId() != null
+            && !group.getEffectiveProfileId().isBlank()
+            ? group.getEffectiveProfileId()
+            : ProfileEndpoint.DEFAULT_PROFILE_ID;
+        return SERVER_NAME + "/" + effective; //$NON-NLS-1$
+    }
+
+    private static boolean booleanArg(JsonObject arguments, String key)
+    {
+        if (arguments == null || key == null || !arguments.has(key))
+        {
+            return false;
+        }
+        JsonElement element = arguments.get(key);
+        if (element == null || !element.isJsonPrimitive())
+        {
+            return false;
+        }
+        JsonPrimitive primitive = element.getAsJsonPrimitive();
+        if (primitive.isBoolean())
+        {
+            return primitive.getAsBoolean();
+        }
+        return "true".equalsIgnoreCase(primitive.getAsString()); //$NON-NLS-1$
+    }
+
+    private void rewriteStatusEndpoints(JsonObject structured, boolean includeProfiles, int proxyPort)
+    {
+        int port = proxyPort > 0 ? proxyPort
+            : (registry.getConfig() != null ? registry.getConfig().port : 0);
+        rewriteEndpointField(Json.obj(structured, "activeProfile"), port, null); //$NON-NLS-1$
+        if (!includeProfiles)
+        {
+            structured.remove("availableProfiles"); //$NON-NLS-1$
+            return;
+        }
+        JsonElement listed = structured.get("availableProfiles"); //$NON-NLS-1$
+        if (listed == null || !listed.isJsonArray())
+        {
+            return;
+        }
+        JsonArray rewritten = new JsonArray();
+        for (JsonElement element : listed.getAsJsonArray())
+        {
+            if (!element.isJsonObject())
+            {
+                continue;
+            }
+            JsonObject item = element.getAsJsonObject().deepCopy();
+            String id = Json.str(item, "id"); //$NON-NLS-1$
+            if (id == null || id.isBlank())
+            {
+                continue;
+            }
+            ProfileEndpoint path = ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id)
+                ? ProfileEndpoint.legacyDefault()
+                : new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
+            ProfileGroupSnapshot group = registry.groupFor(path);
+            if (group.getDonor() == null || !group.getIncompatible().isEmpty())
+            {
+                continue;
+            }
+            rewriteEndpointField(item, port, path);
+            rewritten.add(item);
+        }
+        structured.add("availableProfiles", rewritten); //$NON-NLS-1$
+    }
+
+    private static void rewriteEndpointField(JsonObject item, int proxyPort, ProfileEndpoint path)
+    {
+        if (item == null)
+        {
+            return;
+        }
+        ProfileEndpoint resolved = path;
+        if (resolved == null)
+        {
+            String id = Json.str(item, "id"); //$NON-NLS-1$
+            if (id == null || id.isBlank() || ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id))
+            {
+                resolved = ProfileEndpoint.legacyDefault();
+            }
+            else
+            {
+                resolved = new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
+            }
+        }
+        item.addProperty("endpoint", "http://127.0.0.1:" + proxyPort + resolved.canonicalPath()); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     private static String buildSimpleError(String message)

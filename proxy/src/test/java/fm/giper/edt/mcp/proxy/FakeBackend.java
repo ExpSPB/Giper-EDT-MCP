@@ -484,22 +484,29 @@ public final class FakeBackend
         Resolved resolved = resolve(endpoint);
         JsonObject structured = new JsonObject();
         structured.addProperty("success", true);
-        structured.addProperty("requestedProfileId", endpoint.getRequestedProfileId());
-        structured.addProperty("fallbackApplied", resolved.fallbackReason != null);
+        JsonObject active = new JsonObject();
+        active.addProperty("requestedProfileId", endpoint.getRequestedProfileId());
+        active.addProperty("id", resolved.effectiveId);
+        active.addProperty("displayName", resolved.effectiveId);
+        active.addProperty("description", "");
+        active.addProperty("revision", 1L);
+        active.addProperty("endpoint",
+            "http://127.0.0.1:" + getPort() + endpoint.canonicalPath());
+        active.addProperty("allowedToolCount", resolved.toolNames.size());
+        active.addProperty("fallbackApplied", resolved.fallbackReason != null);
         if (resolved.fallbackReason != null)
         {
-            structured.addProperty("fallbackReason", resolved.fallbackReason);
+            active.addProperty("fallbackReason", resolved.fallbackReason);
         }
-        JsonObject active = new JsonObject();
-        active.addProperty("id", resolved.effectiveId);
         structured.add("activeProfile", active);
         JsonArray available = new JsonArray();
-        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, "/mcp"));
+        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, "/mcp",
+            toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID).size()));
         for (ProfileSpec spec : profiles.values())
         {
             if (spec.enabled && !ProfileEndpoint.DEFAULT_PROFILE_ID.equals(spec.id))
             {
-                available.add(profileItem(spec.id, "/mcp/profiles/" + spec.id));
+                available.add(profileItem(spec.id, "/mcp/profiles/" + spec.id, spec.toolNames.size()));
             }
         }
         structured.add("availableProfiles", available);
@@ -508,11 +515,15 @@ public final class FakeBackend
         return result;
     }
 
-    private static JsonObject profileItem(String id, String endpoint)
+    private JsonObject profileItem(String id, String path, int allowedToolCount)
     {
         JsonObject item = new JsonObject();
         item.addProperty("id", id);
-        item.addProperty("endpoint", endpoint);
+        item.addProperty("displayName", id);
+        item.addProperty("description", "");
+        item.addProperty("revision", 1L);
+        item.addProperty("endpoint", "http://127.0.0.1:" + getPort() + path);
+        item.addProperty("allowedToolCount", allowedToolCount);
         return item;
     }
 

@@ -246,6 +246,10 @@ public final class BackendRegistry
         groupsByPath.clear();
         lastRefreshMillis = System.currentTimeMillis();
         logChange(previous, snapshot);
+        for (Backend backend : live)
+        {
+            backend.ensureNotificationListeners(sseHub);
+        }
     }
 
     /**

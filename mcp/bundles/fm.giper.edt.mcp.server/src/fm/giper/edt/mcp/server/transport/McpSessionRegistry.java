@@ -8,8 +8,10 @@
 package fm.giper.edt.mcp.server.transport;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -125,6 +127,52 @@ public final class McpSessionRegistry
             fireClosed(sessionId);
         }
         return removed;
+    }
+
+    /**
+     * Closes every session bound to {@code requestedPath}. Used when that profile's
+     * published surface changes: the client must initialize again.
+     *
+     * @param requestedPath canonical MCP path
+     * @return how many sessions were closed
+     */
+    public int closeByRequestedPath(String requestedPath)
+    {
+        if (requestedPath == null || requestedPath.isBlank())
+        {
+            return 0;
+        }
+        List<String> ids = new ArrayList<>();
+        for (Map.Entry<String, McpTransportSession> entry : sessions.entrySet())
+        {
+            if (requestedPath.equals(entry.getValue().getRequestedPath()))
+            {
+                ids.add(entry.getKey());
+            }
+        }
+        int closed = 0;
+        for (String id : ids)
+        {
+            if (close(id))
+            {
+                closed++;
+            }
+        }
+        return closed;
+    }
+
+    /**
+     * Distinct requested paths that currently have at least one open session.
+     */
+    public Set<String> activeRequestedPaths()
+    {
+        evictExpired();
+        Set<String> paths = new LinkedHashSet<>();
+        for (McpTransportSession session : sessions.values())
+        {
+            paths.add(session.getRequestedPath());
+        }
+        return Set.copyOf(paths);
     }
 
     public void shutdown()
