@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * The {@link Toolsets#CORE} toolset is ALWAYS visible and is not stored here; this
  * set holds only the non-core toolsets the client has revealed. When progressive
  * disclosure is off the whole mechanism is bypassed (see
- * {@code McpToolRegistry.getVisibleTools}), so this state is irrelevant then.
+ * {@code ProfileToolPolicy#publishedTools}), so this state is irrelevant then.
  */
 public final class ToolsetState // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {

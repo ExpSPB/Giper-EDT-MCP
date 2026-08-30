@@ -7,10 +7,16 @@
 
 package fm.giper.edt.mcp.server.protocol;
 
+import java.util.Set;
+import java.util.TreeSet;
+
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
 import fm.giper.edt.mcp.server.profiles.ProfileResolution;
 import fm.giper.edt.mcp.server.profiles.ProfileResolver;
 import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
+import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 
 /**
  * Immutable per-request MCP context. Profile choice comes from the URL, never from
@@ -38,15 +44,33 @@ public final class McpRequestContext
 
     /**
      * Synthetic {@code default} context for the old {@code processRequest(String)} wrapper
-     * and in-process callers that do not yet pass an HTTP endpoint.
+     * and in-process callers that do not pass an HTTP endpoint.
+     * <p>
+     * Uses an allow-all snapshot of the current catalogue so in-process callers
+     * and headless tests see every registered tool. HTTP requests never use this
+     * wrapper: they bind {@link ProfileResolver} from the URL and repository.
+     * Policy still comes from {@link fm.giper.edt.mcp.server.profiles.ProfileToolPolicy}.
      */
     public static McpRequestContext legacyDefault()
     {
         return builder()
-            .resolution(ProfileResolver.resolveDefault(DefaultToolProfileFactory.createSafeSnapshot()))
+            .resolution(ProfileResolver.resolveDefault(catalogAllowAll()))
             .requestedPath("/mcp") //$NON-NLS-1$
             .legacyCompatibilityWrapper(true)
             .build();
+    }
+
+    private static ToolProfileSnapshot catalogAllowAll()
+    {
+        Set<String> names = new TreeSet<>();
+        for (IMcpTool tool : McpToolRegistry.getInstance().getAllTools())
+        {
+            if (tool != null && tool.getName() != null)
+            {
+                names.add(tool.getName());
+            }
+        }
+        return ToolProfileSnapshot.of(0L, Set.of(DefaultToolProfileFactory.createDefault(names)));
     }
 
     public static Builder builder()
@@ -99,6 +123,12 @@ public final class McpRequestContext
     {
         return new McpRequestContext(resolution, requestedPath, protocolVersion, clientCapabilities,
             newSessionId, legacyCompatibilityWrapper);
+    }
+
+    public McpRequestContext withProtocolVersion(String newProtocolVersion)
+    {
+        return new McpRequestContext(resolution, requestedPath, newProtocolVersion, clientCapabilities,
+            sessionId, legacyCompatibilityWrapper);
     }
 
     public static final class Builder

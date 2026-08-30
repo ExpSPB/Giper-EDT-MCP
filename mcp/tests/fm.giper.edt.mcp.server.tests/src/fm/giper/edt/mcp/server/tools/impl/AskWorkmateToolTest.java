@@ -445,7 +445,8 @@ public class AskWorkmateToolTest
 
         String withPreamble = sent.get();
         assertTrue(withPreamble.contains("edt.mcp.bridge=v1")); //$NON-NLS-1$
-        assertTrue(withPreamble.contains("java.util.function.BiFunction")); //$NON-NLS-1$
+        assertTrue(withPreamble.contains("IEdtMcpBridge")); //$NON-NLS-1$
+        assertFalse(withPreamble.contains("java.util.function.BiFunction")); //$NON-NLS-1$
         assertTrue(withPreamble.contains("jshell_edt_canonical_imports")); //$NON-NLS-1$
         // The question itself must survive verbatim and come last.
         assertTrue(withPreamble.endsWith("Question:\nWhich catalogs exist?")); //$NON-NLS-1$
@@ -497,7 +498,9 @@ public class AskWorkmateToolTest
         String preamble = sent.get();
         assertFalse("a placeholder would be executed verbatim: " + preamble, //$NON-NLS-1$
             preamble.contains("<project>")); //$NON-NLS-1$
-        assertTrue(preamble.contains("mcp.apply(\"list_projects\", \"{}\")")); //$NON-NLS-1$
+        assertTrue(preamble.contains("callTool")); //$NON-NLS-1$
+        assertTrue(preamble.contains("list_projects")); //$NON-NLS-1$
+        assertFalse(preamble.contains("mcp.apply(")); //$NON-NLS-1$
         assertFalse("no projectName argument can be honest here", //$NON-NLS-1$
             preamble.contains("projectName")); //$NON-NLS-1$
     }
@@ -526,7 +529,7 @@ public class AskWorkmateToolTest
             tool(questionCapturingGateway(sent)).execute(params("question", "q"), review); //$NON-NLS-1$ //$NON-NLS-2$
 
             String preamble = sent.get();
-            assertTrue(preamble.contains("Do NOT call the BiFunction apply")); //$NON-NLS-1$
+            assertTrue(preamble.contains("IEdtMcpBridge")); //$NON-NLS-1$
             assertTrue(preamble.contains("callTool")); //$NON-NLS-1$
             assertTrue(preamble.contains("review")); //$NON-NLS-1$
             assertTrue(preamble.contains("list_projects")); //$NON-NLS-1$

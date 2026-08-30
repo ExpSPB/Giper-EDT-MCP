@@ -121,6 +121,21 @@ public class McpHttpProfileIntegrationTest
     }
 
     @Test
+    public void defaultProfileChangeRequiresInitializeOnSessionlessMcp() throws Exception
+    {
+        assertEquals(200, post("/mcp", PING, null, false).status); //$NON-NLS-1$
+        mcp.setLegacySessionRequired(true);
+        Exchange refused = post("/mcp", PING, null, false); //$NON-NLS-1$
+        assertEquals(400, refused.status);
+        assertTrue(refused.body.contains("initialize")); //$NON-NLS-1$
+
+        Exchange init = post("/mcp", INIT, null, false); //$NON-NLS-1$
+        assertEquals(200, init.status);
+        assertFalse(init.sessionId.isBlank());
+        assertEquals(200, post("/mcp", PING, init.sessionId, false).status); //$NON-NLS-1$
+    }
+
+    @Test
     public void failedInitializeDoesNotMintASession() throws Exception
     {
         Exchange failed = post("/mcp/profiles/zz-it-missing-profile", //$NON-NLS-1$
