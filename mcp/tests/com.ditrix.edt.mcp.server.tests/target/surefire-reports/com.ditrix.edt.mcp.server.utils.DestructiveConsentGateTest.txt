@@ -1,0 +1,27 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest
+-------------------------------------------------------------------------------
+Tests run: 23, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.gatedToolsAreTheFrozenSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.uiThreadTimerWinMapsToTimeoutDespiteTheDefaultOkReturnCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.uiThreadHumanRejectFirstBeatsTheLateTimer -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.sessionAllowSetIsTracked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.consentDeniedMessageForTimeoutNamesToolSecondsAndAllThreeRemedies -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.sessionAllowShortCircuitsToAllow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.dialogAnswerInTimeWinsTheArbiterAndTheLateTimeoutIsIgnored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.perToolLevelAllowsWhenListed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.envAllowForcesAllow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.everyUnconditionallyGatedToolIsClassifiedDestructive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.recordDialogAnswerMapsRejectAndDoesNotTouchSessionAllow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.askAlwaysLevelPrompts -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.consentDeniedMessageKeepsTheOriginalRejectText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.deleteLaunchConfigIsDestructiveButNotGated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.perToolLevelPromptsWhenNotListed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.lateAllowForSessionIsRecordedEvenAfterTheTimeoutWonTheRace -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.arbiterAwaitTimesOutWhenNobodyHasDecidedYet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.headlessAllowsWithoutPrompt -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.arbiterFirstDecisionWinsWhenTheRealAnswerComesFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.arbiterFirstDecisionWinsWhenTheTimeoutComesFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.envAskDoesNotForceAllow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.allowAllLevelAllows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DestructiveConsentGateTest.perToolAllowFlagIsIgnoredAtOtherLevels -- Time elapsed: 0 s

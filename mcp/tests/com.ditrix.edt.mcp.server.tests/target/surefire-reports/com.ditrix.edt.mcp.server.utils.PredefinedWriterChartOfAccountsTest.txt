@@ -1,0 +1,27 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest
+-------------------------------------------------------------------------------
+Tests run: 23, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testChildItemsCycleTerminatesWalk -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testCodeRejectsJsonNumber -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountingFlagsRejectedForNonChartOfAccountsOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testOffBalanceRejectedForNonChartOfAccountsOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testDisplayExtDimensionTypesDanglingCharacteristicTypeRendersMarkerNotNpe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testExtDimensionCharacteristicTypeRejectsAFolder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountTypePassiveResolvesExactly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountTypeRejectedForNonChartOfAccountsOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testListAllRecursesChildItemsAndIsFolderIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountingFlagReferenceResolvesYoVariantName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testOrderAtLengthLimitStoredVerbatim -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testCodeAtLengthLimitStoredVerbatim -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountTypeExactTokenActivePassiveNotConfusedWithActive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testOffBalanceFlagStored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountTypeActiveResolvesExactly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testOrderOverLengthRejectedNeverTruncated -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testExtDimensionTypesCamelCaseKeysParse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testExtDimensionTypesRejectedForNonChartOfAccountsOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testAccountTypeUnknownTokenRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testCodeOverLengthRejectedNeverTruncated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testDisplayAccountingFlagsDanglingFlagRendersMarkerNotNpe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testExtDimensionTypesKeysAreCaseInsensitiveArbitraryCasing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfAccountsTest.testOrderRejectedForNonChartOfAccountsOwner -- Time elapsed: 0 s

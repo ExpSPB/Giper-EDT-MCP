@@ -1,27 +1,32 @@
-[![GitHub all releases](https://img.shields.io/github/downloads/DitriXNew/EDT-MCP/total)](https://github.com/DitriXNew/EDT-MCP/releases)
+[![GitHub all releases](https://img.shields.io/github/downloads/ExpSPB/Giper-EDT-MCP/total)](https://github.com/ExpSPB/Giper-EDT-MCP/releases)
 
-[![Build & Unit Tests](https://github.com/DitriXNew/EDT-MCP/actions/workflows/build.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/build.yml)
-[![Proxy](https://github.com/DitriXNew/EDT-MCP/actions/workflows/proxy.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/proxy.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=bugs)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=coverage)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
+[![Build & Unit Tests](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/build.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/build.yml)
+[![Proxy](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/proxy.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/proxy.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=bugs)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
 
-[![E2E 2026.2](https://github.com/DitriXNew/EDT-MCP/actions/workflows/e2e-2026.2.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/e2e-2026.2.yml)
+[![E2E 2026.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2026.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2026.2.yml)
 
-[![Conformance 2026.2](https://github.com/DitriXNew/EDT-MCP/actions/workflows/conformance-2026.2.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/conformance-2026.2.yml)
+[![Conformance 2026.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2026.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2026.2.yml)
 
 > **Build & Unit Tests**, **E2E**, and **MCP Conformance** all run on stock GitHub-hosted runners (cloud CI) — no docker image, no self-hosted runner. E2E and Conformance run against **EDT 2026.2** (build 2026.2, Eclipse 4.38 / Java 25): the setup step installs a headless EDT of that version on the runner via `p2 director`. E2E additionally imports the test fixtures into an empty workspace via the plugin's headless bootstrap (`EDT_MCP_IMPORT_PROJECTS`) and skips the live-infobase tools, so no 1C platform is needed. Each badge reflects its latest run.
 
-# EDT MCP Server
+# EDT MCP Server (for Giper.fm)
 
 MCP (Model Context Protocol) server plugin for 1C:EDT, enabling AI assistants (Claude, GitHub Copilot, Cursor, etc.) to interact with EDT workspace.
+
+> **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. It keeps the AGPL-3.0 license and full upstream attribution; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+> [!NOTE]
+> **Added in this fork — tool-set profiles for simpler agent-access management.** One EDT-MCP instance publishes several named tool allowlists ("profiles") on separate URLs, so each AI agent connects to exactly the tool surface it should have — read-only review on one endpoint, full development on another — without restarting the server. See [Tool profiles](#tool-profiles) and [Tool Management](#tool-management).
 
 > [!TIP]
 > **Contributing / making changes?** Read [CLAUDE.md](CLAUDE.md) first — it's the code-conduct "minefield map": hard don'ts and the stop-and-think-twice zones for this codebase (BM transactions, the bilingual ru/en model, cascading rename, etc.). Detailed how-to lives in the skills under `.claude/skills/`.
 
 > [!TIP]
-> **Using EDT-MCP on a 1C business project?** The client-neutral
+> **Using Giper-EDT-MCP on a 1C business project?** The client-neutral
 > [business-project skills pack](agent/README.md) routes common project tasks to
 > compact workflows. The [rules pack](rules/README.md) provides standing,
 > detailed project policy; the two business-project layers are complementary.
@@ -59,7 +64,7 @@ MCP (Model Context Protocol) server plugin for 1C:EDT, enabling AI assistants (C
 ### From Update Site
 
 1. In EDT: **Help → Install New Software...**
-2. Add update site URL: `https://ditrixnew.github.io/EDT-MCP/`
+2. Add update site URL: `https://expspb.github.io/Giper-EDT-MCP/`
 3. Select **EDT MCP Server Feature**
 4. Restart EDT
 
@@ -73,8 +78,8 @@ set VER_EDT=2025.2.3+30
 
 "\your\path\to\EDT\components\1c-edt-%VER_EDT%-x86_64\1cedt.exe" -nosplash ^
     -application org.eclipse.equinox.p2.director ^
-    -repository https://ditrixnew.github.io/EDT-MCP/ ^
-	-installIU com.ditrix.edt.mcp.server.feature.feature.group ^
+    -repository https://expspb.github.io/Giper-EDT-MCP/ ^
+	-installIU fm.giper.edt.mcp.server.feature.feature.group ^
 	-profileProperties org.eclipse.update.reconcile=true
 ```
 
@@ -143,7 +148,7 @@ Go to **Window → Preferences → MCP Server**. The settings page has two tabs:
 
 #### Tools Tab
 
-Manage **tool profiles** — named allowlists that the same EDT-MCP instance publishes on different URLs. Changing a profile does not restart the server. See [Tool profiles](#tool-profiles) for URL layout, fallback, and how several agents share one EDT.
+Manage **tool profiles** — named allowlists that the same Giper-EDT-MCP instance publishes on different URLs. Changing a profile does not restart the server. See [Tool profiles](#tool-profiles) for URL layout, fallback, and how several agents share one EDT.
 
 ![MCP Server Settings](img/Settings.png)
 
@@ -240,7 +245,7 @@ Select a preset from the dropdown in the Tools tab while editing a profile. The 
 
 ### Tool profiles
 
-One EDT-MCP process can expose several surfaces at once:
+One Giper-EDT-MCP process can expose several surfaces at once:
 
 | URL | Surface |
 |-----|---------|
@@ -412,8 +417,8 @@ works in both directions:
   the question to an external cloud service and Workmate may change the
   configuration with its own tools — so enable it under
   *Preferences → EDT MCP Server → Tools* first.
-- The OSGi service `com.ditrix.edt.mcp.server.bridge.IEdtMcpBridge` lets
-  Workmate/JShell list and call EDT-MCP tools without importing EDT-MCP packages.
+- The OSGi service `fm.giper.edt.mcp.server.bridge.IEdtMcpBridge` lets
+  Workmate/JShell list and call Giper-EDT-MCP tools without importing Giper-EDT-MCP packages.
   `callTool` goes through the same dispatcher as MCP `tools/call` and returns its
   JSON-RPC response.
 
@@ -438,8 +443,8 @@ bridge package, which matters for callers whose rules forbid unproven Java API -
 as Workmate's JShell tool.
 
 ```java
-// Take the context from an ALWAYS-ACTIVE bundle, not from EDT-MCP's own: this bundle
-// uses lazy activation, so `Platform.getBundle("com.ditrix.edt.mcp.server")
+// Take the context from an ALWAYS-ACTIVE bundle, not from Giper-EDT-MCP's own: this bundle
+// uses lazy activation, so `Platform.getBundle("fm.giper.edt.mcp.server")
 // .getBundleContext()` can hand back null and the next line then fails with
 // "because ctx is null". OSGi services are global, so any live context finds this one.
 var bundleContext = org.osgi.framework.FrameworkUtil
@@ -447,7 +452,7 @@ var bundleContext = org.osgi.framework.FrameworkUtil
 var references = bundleContext.getServiceReferences(
     java.util.function.BiFunction.class, "(edt.mcp.bridge=v1)");
 if (references.isEmpty()) {
-    throw new IllegalStateException("EDT-MCP bridge service is not registered");
+    throw new IllegalStateException("Giper-EDT-MCP bridge service is not registered");
 }
 var mcp = bundleContext.getService(references.iterator().next());
 System.out.println(mcp.apply("get_edt_version", "{}"));
@@ -458,7 +463,7 @@ invoke it reflectively:
 
 ```java
 var serviceReference = bundleContext.getServiceReference(
-    "com.ditrix.edt.mcp.server.bridge.IEdtMcpBridge");
+    "fm.giper.edt.mcp.server.bridge.IEdtMcpBridge");
 var bridgeService = bundleContext.getService(serviceReference);
 try {
     var callTool = bridgeService.getClass().getMethod(
@@ -476,7 +481,7 @@ Workmate's agentic chat holds its `JShell` tool but **not** `JShellSession`, and
 `JShell` rejects every call whose `repl_session_id` it cannot resolve. The chat can
 therefore execute code but cannot obtain the one value executing code requires.
 
-EDT-MCP breaks that deadlock: shortly after startup it registers a JShell session
+Giper-EDT-MCP breaks that deadlock: shortly after startup it registers a JShell session
 under the constant id **`edt-mcp`** (retried in the background while Workmate comes
 up, and again if Workmate ever evicts it). Together with `jshell_edt_canonical_imports`
 — a fixed entry in Workmate's own scenario catalogue — both values JShell demands are
@@ -496,7 +501,7 @@ Workmate's restricted-types list — so the in-process bridge is its only route.
 
 ## Multi-EDT Proxy
 
-Running more than one EDT instance at once? [`edt-mcp-proxy`](proxy/) is a standalone router that exposes a single, stable MCP endpoint on `:8764` and forwards each call to the right EDT-MCP instance by `projectName`, discovering live instances in the background. The same `/mcp` and `/mcp/profiles/<id>` paths work on the proxy. A profile is advertised only when every live backend agrees on the effective id, fallback state, and published-tool fingerprint — a mixed “some fell back, some did not” group is not a shared surface. It ships as `edt-mcp-proxy-<version>.jar` alongside the plugin archive in every [release](https://github.com/DitriXNew/EDT-MCP/releases). See [proxy/README.md](proxy/README.md) for setup, CLI options and configuration.
+Running more than one EDT instance at once? [`edt-mcp-proxy`](proxy/) is a standalone router that exposes a single, stable MCP endpoint on `:8764` and forwards each call to the right Giper-EDT-MCP instance by `projectName`, discovering live instances in the background. The same `/mcp` and `/mcp/profiles/<id>` paths work on the proxy. A profile is advertised only when every live backend agrees on the effective id, fallback state, and published-tool fingerprint — a mixed “some fell back, some did not” group is not a shared surface. It ships as `edt-mcp-proxy-<version>.jar` alongside the plugin archive in every [release](https://github.com/ExpSPB/Giper-EDT-MCP/releases). See [proxy/README.md](proxy/README.md) for setup, CLI options and configuration.
 
 ## Available Tools
 
@@ -1131,7 +1136,7 @@ This is a valid p2 update site — install via EDT → *Help → Install New Sof
 | `--archive-prefix PREFIX` | — | `MCP-EDT.v` | Archive name prefix (final name: `<prefix><version>.zip`) |
 | `--project-root PATH` | `EDT_MCP_PROJECT_ROOT` | parent of script dir | Repo root containing `mcp/` |
 | `--mcp-dir PATH` | — | `<project-root>/mcp` | Maven project directory |
-| `--repo-dir PATH` | — | `<project-root>/mcp/repositories/com.ditrix.edt.mcp.server.repository/target/repository` | Tycho p2 output to repackage |
+| `--repo-dir PATH` | — | `<project-root>/mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository` | Tycho p2 output to repackage |
 | `--output-dir PATH` | `EDT_MCP_OUTPUT_DIR` | `<script-dir>/dist` | Where the final zip lands |
 | `--java-home PATH` | `JAVA_HOME` | — | JDK 17 home; if set, prepended to `PATH` for Maven |
 | `--maven-home PATH` | `MAVEN_HOME` / `M2_HOME` | — | Maven home (uses `<maven-home>/bin/mvn`); otherwise falls back to `mvn` on `PATH` |
@@ -1196,5 +1201,11 @@ Use it for substantial whole-task work — a feature, a non-trivial bug, or a ne
 - Java 17+ (EDT 2026.2 itself runs on Java 25 — it ships its own JRE)
 
 ## License
-# Copyright (C) 2026 DitriX
-# Licensed under GNU AGPL v3.0
+
+**Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX.
+
+- Copyright (C) 2025–2026 DitriX (https://github.com/DitriXNew)
+- Copyright (C) 2026 Diversus23 (https://github.com/Diversus23)
+- Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
+
+Licensed under the GNU Affero General Public License v3.0 (`AGPL-3.0-or-later`). The full license text is in [LICENSE](LICENSE); the list of upstream authors and third-party notices is in [NOTICE](NOTICE).

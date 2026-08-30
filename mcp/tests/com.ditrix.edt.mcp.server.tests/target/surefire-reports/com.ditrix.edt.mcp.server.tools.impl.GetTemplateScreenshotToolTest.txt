@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testResultFileNameFromTemplatePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testDescriptionNotEmptyAndPointsAtGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testMissingTemplatePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testResponseTypeImage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testResultFileNameDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTemplateScreenshotToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

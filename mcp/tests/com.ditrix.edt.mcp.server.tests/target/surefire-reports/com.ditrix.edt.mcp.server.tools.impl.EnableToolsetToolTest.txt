@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testCoreIsIgnoredNotApplied -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testMissingToolsetsErrorsActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testDisableFlagHidesToolset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testSchemaDeclaresToolsetsRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testAllInvalidErrorsAndNamesValuesAndDiscoveryTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EnableToolsetToolTest.testEnableValidToolsetRecordsAndUpdatesState -- Time elapsed: 0 s

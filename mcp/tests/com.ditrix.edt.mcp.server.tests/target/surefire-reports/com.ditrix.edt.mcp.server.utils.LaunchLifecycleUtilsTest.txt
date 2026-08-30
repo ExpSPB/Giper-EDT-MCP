@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testCanonicalUpdateScopeCollapsesEveryWayOfSayingAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testFailedResultSummaryIncludesError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testCanonicalUpdateScopeKeepsUnusableScopesApart -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testLockForReturnsSameInstanceForSameKey -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testOkMultipleTerminatedPluralPhrasing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testPreLaunchResultFieldAccessors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testRegisterOwnedLaunchNullIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testTerminateAndWaitNullLaunchIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testLockForDistinguishesProjectsWithSpaces -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testOkZeroTerminatedIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testOkOneTerminatedSingularPhrasing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testCanonicalUpdateScopeKeepsDifferentRequestsApart -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testCanonicalUpdateScopeIsASetOfNamesNotASpelling -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsTest.testTerminateTimeoutPreferenceFallback -- Time elapsed: 0 s

@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testJsonRpcErrorNullIdNotFabricated -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testInitializeResultServerInfo -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testJsonRpcErrorInResponse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testInitializeResultFields -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testJsonRpcSuccessRealIdPreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testJsonRpcErrorSerialization -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testInitializeResultSerialization -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testInitializeResultCapabilities -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testInitializeResultWrappedInResponse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testJsonRpcErrorCodes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.InitializeResultAndErrorTest.testJsonRpcErrorConstructor -- Time elapsed: 0 s

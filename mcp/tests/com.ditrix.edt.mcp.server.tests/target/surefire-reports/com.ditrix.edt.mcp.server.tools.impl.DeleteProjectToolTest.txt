@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testInputSchemaDeclaresParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testOutputSchemaDeclaresConfirmPreviewFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testDescriptionNotEmptyAndMentionsConfirmPreview -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testRequiredParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteProjectToolTest.testGuideDocumentsTwoPhaseAndDeleteContent -- Time elapsed: 0 s

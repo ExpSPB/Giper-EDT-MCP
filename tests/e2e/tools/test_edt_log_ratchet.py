@@ -17,7 +17,7 @@ only place that failure was visible was the EDT log.
 
 WHAT IT CHECKS
 --------------
-Only entries whose plugin is `com.ditrix.edt.mcp.server` at severity 4 (ERROR), and only
+Only entries whose plugin is `fm.giper.edt.mcp.server` at severity 4 (ERROR), and only
 those stamped at or after this run started. Platform noise is deliberately out of scope: EDT
 logs plenty of its own errors (its Moxel editor touching a stopped namespace, its Xtext
 builder opening a nested transaction, legacy BSL checks throwing) and we neither cause nor
@@ -38,7 +38,7 @@ import re
 
 from harness import RUN_STARTED_AT, HARNESS_DIR, E2ESkip, call, e2e_test, _fail
 
-OUR_PLUGIN = "com.ditrix.edt.mcp.server"
+OUR_PLUGIN = "fm.giper.edt.mcp.server"
 SEVERITY_ERROR = "4"
 BASELINE_FILE = os.path.join(HARNESS_DIR, "edt_log_baseline.txt")
 

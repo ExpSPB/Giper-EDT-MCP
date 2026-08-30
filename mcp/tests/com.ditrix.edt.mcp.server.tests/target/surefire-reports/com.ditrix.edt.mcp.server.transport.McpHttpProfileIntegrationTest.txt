@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.055 s -- in com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest
+com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest.sseInitializeKeepsProfileAndSessionHeader -- Time elapsed: 0.034 s
+com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest.explicitProfileRequiresSessionAfterInitialize -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest.sessionReplayOnAnotherPathIs404 -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest.failedInitializeDoesNotMintASession -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest.legacyMcpStaysSessionlessAndInvalidPathHasNoFallback -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.transport.McpHttpProfileIntegrationTest.deleteReleasesSessionAndUnknownIdIs404 -- Time elapsed: 0.004 s

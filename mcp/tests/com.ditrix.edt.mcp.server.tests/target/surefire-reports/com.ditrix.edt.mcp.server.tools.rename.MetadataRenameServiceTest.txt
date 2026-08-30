@@ -1,0 +1,29 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testMdClassRenameRefusesNullDependentModelBeforeCallingEdtRefactoring -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testBareColumnAddressIsRefusedWithTheOwnerShape -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testRussianBareColumnAddressIsRefusedToo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testDesignerOwnedChildIsRefusedThroughARussianAddressToo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testAFreeNameIsNotRefused -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testAnEligibleFormAddressIsNotRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testMdClassRenameContainsNullModelRaceFromEdtRefactoring -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testACommandIsCheckedAgainstCommandsNotItems -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testItemLevelHandlerIsRefusedWithTheRebindPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testCommonFormHandlerIsRefusedWithTheRebindPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testTheTwoNamespacesDoNotBlockEachOther -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testCommandActionHandlerIsRefusedWithTheRebindPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testANewNameWithADotIsRefused -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testACaseOnlyRenameOfTheElementItselfIsNotADuplicate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testDesignerOwnedChildrenAreRefusedByEClass -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testLegalNewNamesAreNotRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testADuplicateItemNameIsRefusedEvenWhenNestedInAGroup -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testADuplicateAttributeNameIsRefusedThroughARussianTokenToo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testADuplicateDifferingOnlyInCaseIsRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testADuplicateAttributeNameIsRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testTheOtherIllegalNewNamesAreRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testFormLevelHandlerIsRefusedWithTheRebindPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testRussianHandlerTokenIsRefusedToo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testAnOrdinaryFormElementIsNotADesignerChild -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameServiceTest.testADuplicateItemNameIsRefusedThroughARussianTokenToo -- Time elapsed: 0 s

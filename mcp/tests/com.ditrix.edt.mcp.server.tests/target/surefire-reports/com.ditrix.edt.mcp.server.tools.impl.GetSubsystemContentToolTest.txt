@@ -1,0 +1,25 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest
+-------------------------------------------------------------------------------
+Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testMissingSubsystemFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testRequiredArrayHasProjectNameAndSubsystemFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testGuideDocumentsParametersAndSections -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testResultFileNameDefaultWhenFqnEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testValidationErrorIsStructuredJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testResultFileNameLowerCasesAndKeepsExtension -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testMissingSubsystemFqnCarriesExampleHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testResultFileNameDerivedFromFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testSchemaDeclaresOptionalParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testDescriptionSteersToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testBlankProjectNameIsTreatedAsMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testResultFileNameDefaultWhenFqnAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSubsystemContentToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

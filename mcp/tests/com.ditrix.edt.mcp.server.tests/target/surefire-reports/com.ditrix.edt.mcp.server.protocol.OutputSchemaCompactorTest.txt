@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testApplicatorArraysAreWalked -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testTopLevelDescriptionIsRemoved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testInputIsNotMutated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testPropertyNamedLikeAKeywordSurvives -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testBooleanAdditionalPropertiesIsLeftAlone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testNestedPropertyDescriptionsAreRemoved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testShapeIsPreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.OutputSchemaCompactorTest.testNullIsPassedThrough -- Time elapsed: 0 s

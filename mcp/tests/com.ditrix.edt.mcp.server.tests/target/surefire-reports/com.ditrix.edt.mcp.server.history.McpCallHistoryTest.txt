@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.history.McpCallHistoryTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in com.ditrix.edt.mcp.server.history.McpCallHistoryTest
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testListenerIsFiredAndAFaultyListenerCannotBreakRecording -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testRingEvictsOldestAtCapacity -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testBindRequestMetaIsPickedUpByLegacyRecordOverload -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testShortPayloadIsStoredVerbatim -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testSnapshotIsADefensiveCopy -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testShrinkingBufferSizeTrimsImmediately -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testRecordStoresProfileAndSessionFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testLegacyRecordOverloadLeavesProfileFieldsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testApplyPreferencesTracksTheStore -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testDisabledRecordingIsANoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testRecordNeverThrowsOnNullArguments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testOversizedPayloadIsTruncatedWithMarker -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryTest.testConcurrentRecordHasNoLossAndNoConcurrentModification -- Time elapsed: 0.013 s

@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.MessagesParityTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in com.ditrix.edt.mcp.server.preferences.MessagesParityTest
+com.ditrix.edt.mcp.server.preferences.MessagesParityTest.testHistoryViewMessagesKeyParity -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.preferences.MessagesParityTest.testTagsUiMessagesKeyParity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.MessagesParityTest.testPluginPropertiesKeyParity -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.MessagesParityTest.testRussianFilesAreAsciiEscapedAndBomFree -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.MessagesParityTest.testMessagesFieldsResolve -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.preferences.MessagesParityTest.testPreferencesMessagesKeyParity -- Time elapsed: 0.001 s

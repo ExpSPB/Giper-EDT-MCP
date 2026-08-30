@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSumDisplayedSeveritiesIsAdditiveOverDisplayedColumns -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSumDisplayedSeveritiesEachColumnContributesIndependently -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testProjectNameIsOptionalNotRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSumDisplayedSeveritiesExcludesNone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testDescriptionNamesSeveritiesAndSteersToDetailTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSumDisplayedSeveritiesSumsSixColumns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSumDisplayedSeveritiesIgnoresOnlyNoneEntry -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSumDisplayedSeveritiesMissingKeysAndNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProblemSummaryToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

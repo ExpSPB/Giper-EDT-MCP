@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testOutputSchemaDeclaresConfirmPreviewFields -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testDescriptionNotEmptyAndMentionsConfirmPreview -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testGuideDocumentsConfirmPreviewAndDeletion -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testDescriptionAndGuideCoverStandaloneServer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testMissingBothApplicationIdAndInfobaseNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testOutputApplicationKindNamesBothKinds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testInputSchemaDeclaresAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testConnectsToInfobaseIsTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testApplicationKindIsOutputOnlyNotAnInputParam -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteInfobaseToolTest.testRequiredParametersInSchema -- Time elapsed: 0 s

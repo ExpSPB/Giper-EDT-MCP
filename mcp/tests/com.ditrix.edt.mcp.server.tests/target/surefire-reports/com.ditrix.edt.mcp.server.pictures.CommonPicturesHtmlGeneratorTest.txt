@@ -1,0 +1,32 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest
+-------------------------------------------------------------------------------
+Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.toleratesNullPage -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.escapesNameContainingAngleBrackets -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.escapesQueryInCardNameAndFilterHeaderTogether -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.singlePageDisablesBothPrevAndNext -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.outputIsDeterministic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersNoVariantsNoteForNullList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersConfigNameInTitleAndHeading -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.toleratesNullConfigNameAndNullEntries -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersSearchBoxWithPlaceholderAndButton -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.reflectsActiveQueryInSearchInputValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.lastPageEnablesPrevAndDisablesNext -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersPerVariantErrorUnderItsLabel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersImageAsBase64DataUri -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.middlePageEnablesBothPrevAndNext -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.escapesQueryContainingMarkupInFilterHeaderAndSearchInput -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.headerReflectsActiveQueryFilter -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.oneBrokenPictureDoesNotAbortTheRestOfThePage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersBestThumbnailInline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.escapesErrorContainingMarkup -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.escapesLabelAndSynonymMarkup -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersNoVariantsNoteForEmptyList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.headerStatesFilteredTotalAndPage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersSynonymWhenPresent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersErrorCardForNonNullError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.firstPageDisablesPrevAndEnablesNext -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.omitsBestBlockWhenNoBestThumbnail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.rendersEveryVariantLabel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.pictures.CommonPicturesHtmlGeneratorTest.headerOmitsFilterClauseWhenNoQuery -- Time elapsed: 0 s

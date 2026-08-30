@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+    id="fm.giper.edt.mcp.server.feature"
+    label="%featureName"
+    version="1.0.2.qualifier"
+    provider-name="%providerName">
+
+    <description url="https://github.com/ExpSPB/Giper-EDT-MCP">
+        %description
+    </description>
+
+    <copyright>
+        %copyright
+    </copyright>
+
+    <license url="%licenseURL">
+        %license
+    </license>
+
+    <url>
+        <update label="Giper EDT MCP Server Update Site" url="https://expspb.github.io/Giper-EDT-MCP/"/>
+        <discovery label="Giper EDT MCP Server Update Site" url="https://expspb.github.io/Giper-EDT-MCP/"/>
+    </url>
+
+    <plugin
+        id="fm.giper.edt.mcp.server"
+        download-size="0"
+        install-size="0"
+        version="0.0.0"
+        unpack="false"/>
+
+</feature>

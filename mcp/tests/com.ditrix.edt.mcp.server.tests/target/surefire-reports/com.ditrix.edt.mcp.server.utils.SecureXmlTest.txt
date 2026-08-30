@@ -1,0 +1,7 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.SecureXmlTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.utils.SecureXmlTest
+com.ditrix.edt.mcp.server.utils.SecureXmlTest.testEachCallGetsItsOwnFactory -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SecureXmlTest.testDoctypeDeclarationIsRejected -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.SecureXmlTest.testParsesOrdinaryXmlWithNamespaces -- Time elapsed: 0.001 s

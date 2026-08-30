@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.069 s -- in com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.warningHeaderLineIsSingleLineJsonMentioningRawPreRedactionData -- Time elapsed: 0.048 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.disabledSinkWritesNothingToDisk -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.createIfEnabledReturnsSinkWhenEnabledWithPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.nullAndClosedEnqueuesAreNoOps -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.diskFailureIsSwallowedAndNeverPropagates -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.createIfEnabledReturnsNullForNullOrBlankPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.createIfEnabledReturnsNullWhenDisabled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.toJsonLineIsCompactSingleLineEvenWhenAValueContainsNewlinesAndQuotes -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.createIfEnabledTreatsThePathAsAFolderAndWritesAJsonlFileInsideIt -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.toJsonLineReturnsNullForNullRecord -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.writesWarningHeaderThenOneJsonLinePerRecord -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.toJsonLineIncludesProfileAndSessionFields -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.McpCallHistoryFileLogTest.doesNotDuplicateHeaderWhenAppendingToAnExistingNonEmptyFile -- Time elapsed: 0.003 s

@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testMalformedRulesFallBackToDefault -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testBundledDefaultsArePresent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testStoreRoundTripParsesCustomRules -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testHeadlessCurrentRuleSetIsBundledDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testCacheInvalidatedWhenSourceChanges -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testSaltRoundTripAndBlankVersusSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testHeadlessCurrentSaltIsBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testBlankAndDefaultResolveToBundledDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRuleSettingsTest.testParsedRuleSetIsCached -- Time elapsed: 0 s

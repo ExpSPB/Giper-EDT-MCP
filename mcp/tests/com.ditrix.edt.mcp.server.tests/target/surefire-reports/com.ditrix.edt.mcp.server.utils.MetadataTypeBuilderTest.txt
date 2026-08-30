@@ -1,0 +1,54 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest
+-------------------------------------------------------------------------------
+Tests run: 50, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testNumberItemRejectsXmlSpellingsNestedShapeAndBogusMember -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeUuidAllCandidatesFailingIsActionableError -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeValueTreeResolves -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testATypeTheVersionDoesNotKnowStaysUnknown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testNullAndNonObjectRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testDynamicListKindRefusedEvenOnAFormAttribute -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testDateItemRejectsNumberMember -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testStoredMetadataRefusesAFormOnlyPlatformType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testNumberQualifierValuesRangesAndCombinationsAreValidated -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testDefinedTypeKindRequiresANonEmptyReferenceTarget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testInlineDefinedTypeKindRoundTripsRenderedTypeNameInBothLanguages -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testKindMustBeANonEmptyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testMissingOrEmptyTypesRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testPlatformCollectionTypeCandidates -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testValidShapeAccepted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testCuratedKindsKeepTheirOwnGateAheadOfTheProbe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeValueStorageResolvesSingleCandidate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testFormAttributeAcceptsTheRussianSpellingOfAPlatformType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeRefToDefinedTypeSharesTheSameProducedTypeSetInBothLanguages -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeDefinedTypeKindSharesProducedTypeSetForEveryTarget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testExtensionAdoptHintOnlyForExtensionProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testUnknownDefinedTypeNameReturnsActionableReferenceError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testDefinedTypeWithoutProducedTypeSetReportsUnavailableChain -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testFormAttributeAcceptsAnyPlatformTypeTheVersionKnows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testPlatformSimpleTypeCandidates -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testStringQualifierValuesAndCombinationsAreValidated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testReferenceItemRejectsPrimitiveMember -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testParseFractions -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testUnknownKindErrorListsValueStorageAndUuid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testIsDynamicListKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeUuidCandidateLoopFallsBackWhenFirstNameThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testDateFractionsValueIsValidatedForTypeAndEnumMembership -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testUnknownKindErrorListsCollectionKinds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeUnresolvedRefKeepsSentinelAndAppendsHintOnlyForExtension -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testMalformedItemRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testDcsParameterRefusesAFormOnlyPlatformTypeInItsOwnWords -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testValueStorageItemRefusesStrayQualifierFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testIsRefKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testReferenceTargetMustBeANonEmptyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeRussianDefinedTypeKindResolvesThroughSharedTypeCatalog -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeCollectionRefusedOnStoredMetadata -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testNumberItemRejectsStringMember -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testHasObjectFormMainAttribute -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeUuidCandidateLoopFirstWins -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testBooleanItemRejectsQualifierAtItsCompositeIndex -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testStringItemRejectsNumberMember -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testIsCollectionKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testAddTypeValueTableResolves -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testNormalizePrimitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataTypeBuilderTest.testObjectTypeGracefulWithoutModelOwner -- Time elapsed: 0 s

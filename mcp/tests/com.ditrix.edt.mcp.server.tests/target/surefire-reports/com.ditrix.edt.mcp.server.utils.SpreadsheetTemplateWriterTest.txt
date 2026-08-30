@@ -1,0 +1,31 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest
+-------------------------------------------------------------------------------
+Tests run: 27, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testParseWrapFalseLeavesPlacementUnset -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testParseRejectsNonObjectArray -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testTextCellUsesNeutralKeyWhenNoLanguage -- Time elapsed: 0.019 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testColumnWidthAndRowHeightLandOnFormat -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testParseResolvesEnumsCaseInsensitively -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testTextCellLandsAtSparseIndexWithText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testGridExtentCoversMergeAndAreaFarCorner -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testAuthoredRowHeightGrowsRowExtent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testMissingRowIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testGridExtentNeverShrinksAnExistingExtent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testParseRejectsBadEnumWithoutModel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testTextAndParameterTogetherIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testNullDocumentIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testBadHorizontalAlignmentEnumIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testNamedAreaRegisteredByName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testParameterCellSetsParameterAndParameterFill -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testBadWrapTokenIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testPlainTextCellGetsNoFormat -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testEmptyCellIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testFormattingBuildsFontAndFormatWithCorrectValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testMergeAddedWithDeltaRect -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testIdenticalFormatsAreDedupedToOnePoolEntry -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testEmptyPayloadIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testSingleCellMergeIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testStyledFormatNeverLandsAtIndexZero -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testGridExtentGrowsToCoverAuthoredCells -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.SpreadsheetTemplateWriterTest.testOverwriteParameterCellWithTextClearsParameterFillAndText -- Time elapsed: 0 s

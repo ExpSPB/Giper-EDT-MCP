@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testWireValuesAreTheLowercaseTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testUnknownTokenIsRejectedRatherThanDefaulted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testAcceptedValuesListsEveryToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testParsesBothTokensCaseInsensitivelyAndTrimmed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testDefaultIsCancel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testBlankAndNullResolveToTheDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerPortConflictPolicyTest.testParameterDescriptionNamesBothTokensAndTheConsequence -- Time elapsed: 0 s

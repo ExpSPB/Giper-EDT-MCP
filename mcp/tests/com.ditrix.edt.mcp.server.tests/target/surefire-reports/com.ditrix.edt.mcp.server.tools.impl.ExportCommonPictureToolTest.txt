@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testEmptyFqnIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testFqnTypeTokenResolvesBilingually -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testOutputSchemaIsPermissive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testDescriptionNotEmptyAndPointsAtGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testMissingFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testMissingProjectNameCheckedBeforeFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testRequiredParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testEmptyProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ExportCommonPictureToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

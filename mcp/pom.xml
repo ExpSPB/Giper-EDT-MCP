@@ -12,7 +12,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.ditrix.edt.mcp</groupId>
+    <groupId>fm.giper.edt.mcp</groupId>
     <artifactId>bom</artifactId>
     <version>1.0.2-SNAPSHOT</version>
     <relativePath>./bom/pom.xml</relativePath>
@@ -24,13 +24,13 @@
   <name>EDT MCP Server Plugin</name>
 
   <properties>
-    <sonar.projectKey>DitriXNew_EDT-MCP</sonar.projectKey>
-    <sonar.organization>ditrixnew</sonar.organization>
+    <sonar.projectKey>ExpSPB_Giper-EDT-MCP</sonar.projectKey>
+    <sonar.organization>expspb</sonar.organization>
     <sonar.host.url>https://sonarcloud.io</sonar.host.url>
   </properties>
 
   <scm>
-    <connection>scm:git:git@github.com:DitriXNew/EDT-MCP.git</connection>
+    <connection>scm:git:git@github.com:ExpSPB/Giper-EDT-MCP.git</connection>
   </scm>
 
   <build>

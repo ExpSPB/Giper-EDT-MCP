@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.VariableSerializerTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.utils.VariableSerializerTest
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testLongValueIsTruncated -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testNullValueIsUndefined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testHasChildrenAddsExpandHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testNormalVariable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testSerializeFrameNullVariablesYieldsEmptyList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testNullNameBecomesEmptyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testGetValueThrowsIsReportedAsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.VariableSerializerTest.testSerializeFrameDoesNotProbeLazyHasVariables -- Time elapsed: 0 s

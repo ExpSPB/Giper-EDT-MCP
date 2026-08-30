@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testSchemaDeclaresAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testResultFileNameFallsBackWhenProjectMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testNoOutputSchemaForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testResultFileNameFallsBackWhenProjectBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testProjectNameIsRequiredInSchema -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testResultFileNameUsesLowercasedProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testBlankProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListSubsystemsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

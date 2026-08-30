@@ -1,0 +1,36 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest
+-------------------------------------------------------------------------------
+Tests run: 32, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.544 s -- in com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.busyParticipantIsRefusedByName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.expiredDeadlineChecksIdleParticipantsWithoutWaitingOrRefusing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.baseThatStartsBuildingDuringModelPollingIsNotReleasedByAStaleProbe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.continuouslyBuildingBaseIsRefusedOnlyAfterTheShortDeadline -- Time elapsed: 0.200 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.missingRefactoringModelTimesOutWithActionableError -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.busyExternalObjectsProjectIsNotACascadeParticipant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.dependencySnapshotRejectsTargetExtensionOutsideSourceScope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.openNonEdtProjectSkipsBmModelPolling -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.settledParticipantThatRestartsStaysBlockedThroughTheLastPass -- Time elapsed: 0.200 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.settleBeforeCascadeShortCircuitsWithoutWaitingWhenNothingIsBuilding -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.lastDiscoveryChecksEveryNewParticipantBeforeProceeding -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.participantThatReappearsDuringModelRegistrationIsDrainedAndChecked -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.extensionNatureWithoutRuntimeExtensionClassificationIsUndetermined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.dependentDeclaringABaseItCannotResolveIsUndetermined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.dependentWithUnreadableManifestIsUndetermined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.blinkingBaseMaySettleAfterMoreThanThreePassesBeforeTheDeadline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.expiredDeadlineRefusesRediscoveredBuildingParticipantByName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.sharedDeadlineLeavesNothingForTheNextParticipantAfterTheFirstConsumesItAll -- Time elapsed: 0.134 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.settledParticipantReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.busyUnrelatedProjectIsNeverWaitedOnAndNeverCausesRefusal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.failureAwareDependencyLookupDistinguishesNoDependenciesFromDiscoveryFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.buildingErrorOrNullIsNullForEmptyName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.unlinkedDependentClaimingRuntimeExtensionKindIsUndetermined -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.searchDependenciesDeriveExtensionTargetsAsSubsetOfSourceProjects -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.extensionWithUnavailableBaseResolutionIsUndetermined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.settledParticipantThatRestartsIsDrainedAgainAndMayRecover -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.settledFollowUpAfterStaleBuildingProbeStillChecksModels -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.formRenameSettleRefusesWhenADependentModelIsMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.endlesslyNewParticipantsAreBoundedByDiscoveryPasses -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.unlinkedExternalObjectsProjectIsUnrelatedRatherThanUndetermined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.buildingErrorOrNullIsNullForNullName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectStateCheckerTest.transientMissingRefactoringModelIsWaitedOut -- Time elapsed: 0 s

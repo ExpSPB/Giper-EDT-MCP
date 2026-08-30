@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testMapAutoRecordOmittedIsNull -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testContentOpDefaultsToAdd -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testExchangePlanContentMemberAcceptsDataBearingKinds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testMapAutoRecordMapsEachLiteral -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testAutoRecordNotOmittedForAValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testContentOpNormalizesCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testExchangePlanContentMemberRejectsNonDataBearingKinds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testMapAutoRecordRejectsUnknown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testMapAutoRecordIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testAutoRecordOmittedForNullOrBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testRussianObjectTypeNormalizesToEnglishSingular -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExchangePlanContentWriterTest.testExchangePlanContentMemberRejectsNull -- Time elapsed: 0 s

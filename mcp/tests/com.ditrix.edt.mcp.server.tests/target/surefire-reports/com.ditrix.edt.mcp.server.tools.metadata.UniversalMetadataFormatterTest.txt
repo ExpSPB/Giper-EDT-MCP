@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testFormatEmptyCatalogRendersTypedMainHeaderAndBasicProperties -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testFormatNullReturnsErrorString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testFormsCollectionRendersNameSynonymFormType -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testFullModeEmitsAllPropertiesDumpSection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testTabularSectionRendersSubHeaderPropertiesAndNestedAttributes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testCompactAttributesTableHasThreeColumnRowsWithTypeName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testStyleItemColorValueRendersRgbThroughFormat -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testFormatTypeCompositeJoinsNamesAndEmptyIsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testStyleItemWithNoValueRendersDashValueRow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testCommandsCollectionRendersNameSynonymGroupDashWhenUnset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testExtendedAttributesTableHasTenColumnHeaderAndIndexing -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.UniversalMetadataFormatterTest.testEmptyCollectionsProduceNoSectionHeaders -- Time elapsed: 0 s

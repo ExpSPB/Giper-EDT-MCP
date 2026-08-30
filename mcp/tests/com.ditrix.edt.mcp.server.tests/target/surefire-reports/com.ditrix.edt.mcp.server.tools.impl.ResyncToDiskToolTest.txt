@@ -1,0 +1,50 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest
+-------------------------------------------------------------------------------
+Tests run: 46, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.528 s -- in com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testThrowingRemovalTaskReportsNoRemovals -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSelectExportFqnsFullExportTakesEveryTopObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testOutputSchemaDescribesTheSuccessEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSelectExportFqnsFullExportEvenWhenNothingMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testBoundedWaitReturnsImmediatelyWhenAlreadyPresent -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testWithoutTheFlagNothingIsRevalidatedAndNoExtraWaitAppears -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFullExportGuardDoesNotGateTheDefaultResync -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testBoundedWaitStillReportsPermanentlyAbsentFile -- Time elapsed: 0.310 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testANoOpResyncStillRevalidatesBecauseItQueuedNothingToWaitFor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSuccessfulRemovalTaskClaimsRemovalOnlyAfterReturn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFullExportGuardRejectsUnconfirmedFullExport -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFindMissingMdoFilesEmptyInputIsEmpty -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFindMissingMdoFilesDetectsAbsentFile -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFullExportGuardAllowsConfirmedFullExport -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSelectExportFqnsDefaultReturnsTheMissingListItself -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSuccessCarryingAnErrorFieldIsNotTreatedAsFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSelectExportFqnsDefaultsToTheMissingSubset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testATruncatedDiskReportIsLabelledAndItsWholeProjectCountsAreLeftAlone -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testBoundedWaitCountsFileThatLandsDuringTheWait -- Time elapsed: 0.205 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testRevalidationStepReportsWhatTheDelegateReturned -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testRevalidationStepIsSkippedWhenNotRequestedOrExportFailed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testReportOnlyTaskClaimsNoRemoval -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFindMissingMdoFilesPartitionsPresentFromAbsent -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testGuideIsPackagedAndNonEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testReportedRevalidationFailureBecomesAWarningInsteadOfBeingDiscarded -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testReportOnlyOutputFieldsAreNotInputParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testResultFileNameDefaultsToToolNameMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testRemovedCountEqualsFoundOnlyWhenCommitted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testInputSchemaDeclaresTheOverwriteDiskEditsConfirmGuard -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFindMissingMdoFilesIgnoresPresentFile -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testInputSchemaDeclaresAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testDescriptionIsHonestAboutTheDestructiveCleanup -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFindMissingMdoFilesSkipsFqnWithNoTypeDirectoryLayout -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testFreshDanglingResultIsAnEmptyCleanReport -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSelectExportFqnsExportsNothingWhenInSync -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testRevalidationIsSkippedAndSaidSoWhenTheExportCouldNotBeObserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testRevalidationStartsOnlyAfterTheExportDrainNotBeforeIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testRemovedCountIsZeroWhenFoundButNotCommitted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testSuccessfulRevalidationProducesNoWarning -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testGuideDocumentsTheDestructiveDanglingOptIn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testUnreadableRevalidationEnvelopeDoesNotInventAWarning -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testBoundedWaitEmptyInputReturnsImmediatelyEmpty -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ResyncToDiskToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s

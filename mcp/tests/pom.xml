@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.ditrix.edt.mcp</groupId>
+    <groupId>fm.giper.edt.mcp</groupId>
     <artifactId>parent</artifactId>
     <version>1.0.2-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
@@ -17,7 +17,7 @@
   <name>Tests</name>
 
   <modules>
-    <module>com.ditrix.edt.mcp.server.tests</module>
+    <module>fm.giper.edt.mcp.server.tests</module>
   </modules>
 
 </project>

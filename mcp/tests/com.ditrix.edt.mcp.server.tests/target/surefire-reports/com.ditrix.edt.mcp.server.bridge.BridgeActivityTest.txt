@@ -1,0 +1,7 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.bridge.BridgeActivityTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.115 s -- in com.ditrix.edt.mcp.server.bridge.BridgeActivityTest
+com.ditrix.edt.mcp.server.bridge.BridgeActivityTest.testACallIsVisibleWhileItRunsAndNotAfterwards -- Time elapsed: 0.098 s
+com.ditrix.edt.mcp.server.bridge.BridgeActivityTest.testTicksOnlyEverGrow -- Time elapsed: 0.010 s
+com.ditrix.edt.mcp.server.bridge.BridgeActivityTest.testARejectedCallIsStillActivityAndStillReleased -- Time elapsed: 0.005 s

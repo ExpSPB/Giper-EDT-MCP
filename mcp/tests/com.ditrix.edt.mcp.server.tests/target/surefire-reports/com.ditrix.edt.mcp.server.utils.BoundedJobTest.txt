@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.BoundedJobTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 8.015 s -- in com.ditrix.edt.mcp.server.utils.BoundedJobTest
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testWedgedWorkThatDidStartStaysAnOrdinaryTimeout -- Time elapsed: 2.001 s
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testTimeoutCancelsTheMonitorHandedToTheWork -- Time elapsed: 2.013 s
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testDeadlineOnAStillQueuedJobIsNotReportedAsWorkStillRunning -- Time elapsed: 2.001 s
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testWorkFailureIsCapturedNotPropagated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testWorkThatDoesNotReturnTimesOutInsteadOfWaitingForIt -- Time elapsed: 2.000 s
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testWorkThatReturnsIsReportedAsSuccess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BoundedJobTest.testTheDidItRunGuardLeavesTheNormalCompletedPathReachable -- Time elapsed: 0 s

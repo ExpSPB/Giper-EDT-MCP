@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.UserSignalTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.UserSignalTest
+com.ditrix.edt.mcp.server.UserSignalTest.testGetDefaultMessageBackground -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testAllSignalTypes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testToJsonRetryType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testGetDefaultMessageRetry -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.UserSignalTest.testToJsonExpertType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testGetDefaultMessageCancel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testGetDefaultMessageCustom -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testGetDefaultMessageExpert -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testTimestampIsCurrentTime -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testToJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.UserSignalTest.testConstructor -- Time elapsed: 0 s

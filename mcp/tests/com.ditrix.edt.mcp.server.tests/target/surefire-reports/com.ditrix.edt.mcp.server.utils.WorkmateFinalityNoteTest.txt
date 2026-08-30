@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest
+com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest.testAPlanLeftBehindBySilenceIsNotCalledAnAnswer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest.testAnAcceptedAnswerIsNotCalledAPlan -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest.testAnUndeclaredAnswerIsMarkedAsUnconfirmed -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest.testAQuietConversationSaysThatItWentQuiet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateFinalityNoteTest.testADeclaredAnswerCarriesNoWarning -- Time elapsed: 0 s

@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.rejectsInvalidId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.snapshotMustContainDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.rejectsEmptyDisplayName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.unknownToolsDoNotFailValidation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.defaultCannotBeDisabled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.acceptsReservedDefaultId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ToolProfileValidatorTest.validDefaultSnapshotPasses -- Time elapsed: 0 s

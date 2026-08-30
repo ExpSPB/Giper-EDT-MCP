@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest
+com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugStatusToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

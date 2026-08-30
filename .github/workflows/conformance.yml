@@ -89,7 +89,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mcp-plugin-p2
-          path: mcp/repositories/com.ditrix.edt.mcp.server.repository/target/repository
+          path: mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository
           if-no-files-found: error
 
   conformance:

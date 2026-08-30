@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testDoctypeIsRejected -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testFailureCapturedWithMessageAndTrace -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testStandaloneTestcasesCounted -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testAllPassed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testErrorCaptured -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testSkippedCaptured -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testMultipleTestSuitesAggregated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitXmlParserTest.testTestcaseWithoutClassname -- Time elapsed: 0.001 s

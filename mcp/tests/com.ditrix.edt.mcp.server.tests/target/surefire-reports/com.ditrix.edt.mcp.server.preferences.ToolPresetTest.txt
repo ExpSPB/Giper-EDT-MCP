@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ToolPresetTest
+-------------------------------------------------------------------------------
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.preferences.ToolPresetTest
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testMatchPresetIgnoresStaleToolNames -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testMatchPresetEmptySet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testDevelopmentDisablesOnlyDebug -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testMatchPresetAllTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.matchAllowlistUsesCatalogComplementAndKeepsCustomComputed -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testCodeReviewDisablesWriteButNotRead -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testAllToolsPresetDisablesNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testMatchPresetDevelopment -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testMatchPresetAnalysisOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testAllPresetsHaveDisplayName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testFivePresets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testCustomPresetHasNullDisabledTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.toAllowlistRemovesPresetDisabledToolsFromCatalog -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testAllDisabledToolsBelongToGroups -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testAnalysisOnlyDisablesWriteTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testAllPresetsHaveDescription -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testOnlyAllToolsPresetEnablesTheDefaultOffTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testDisabledToolsAreUnmodifiable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testAnalysisOnlyAndCodeReviewDisableApplyQuickFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolPresetTest.testMatchPresetCustomForUnknown -- Time elapsed: 0 s

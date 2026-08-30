@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testHeadlessExecutionExtensionReturnsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testInvalidProjectKindErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testBlankNameErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testInvalidScriptVariantConfigurationErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testBaseProjectNameRejectedForConfiguration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testMissingBaseProjectNameForExtensionErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testOutputSchemaDeclaresExpectedFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testHeadlessExecutionExternalObjectsReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testMissingProjectKindErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testDescriptionMentionsCodestyleOptionality -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testVersionRejectedForExtension -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testRequiredArrayMarksOnlyMandatoryParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testHeadlessExecutionConfigurationReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testScriptVariantRejectedForExtension -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testGuideNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testInputSchemaProjectKindEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testInvalidScriptVariantExternalObjectsErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testGuideDocumentsKeyParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testInvalidIdentifierNameErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testMissingNameErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateProjectToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s

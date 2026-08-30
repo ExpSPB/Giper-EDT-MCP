@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testEmptyEntriesAreNotCountedAsUnparsed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testRequiredItemStillConsumesItsIndicesSoLaterOnesStayAligned -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testIneffectiveIndicesRenderSortedAsAYamlSequence -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testMandatoryNoteDoesNotClaimSuccessWhenTheRefactoringFailed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testAnOptionalPlainItemIsReportedAsUnsupportedNotMandatory -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testEmptyRequestRendersNoSkipSectionsAtAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testActualSkipsAreCountedAndIneffectiveOnesListedSeparately -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testRequiredNativeItemKeepsItsLeavesEnabled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testRequestThatDisablesEveryLeafStillUnchecksTheItem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testANonOptionalPlainItemIsStillReportedAsMandatory -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testUnrelatedIndexDoesNotUncheckAnAlreadyDisabledOptionalItem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testOptionalNativeItemDisablesTheRequestedLeaf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testRequiredIndexIsReportedAsAppliedNotSkipped -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testUnknownIndexIsNotCountedAsASkip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testARequestOfOnlyUnparsableEntriesIsRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testWhitespaceOnlyEntriesStayFormattingNotEntries -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameDisableIndicesTest.testNamingAnAlreadyDisabledLeafStillCountsAsASkip -- Time elapsed: 0 s

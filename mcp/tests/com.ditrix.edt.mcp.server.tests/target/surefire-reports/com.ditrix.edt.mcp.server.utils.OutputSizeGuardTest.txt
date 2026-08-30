@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testOneCharBelowBudgetIsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testNullPassesThroughUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testBudgetSmallerThanNoticeKeepsTheFullNotice -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testTruncatedResultEndsWithTheNotice -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testEmptyStringIsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testDefaultBudgetConstantIsTheDocumentedSize -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testDefaultBudgetTruncatesAVeryLargeDump -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testTruncationNoticeIsSizeKeyedAndActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testBelowBudgetReturnsSameInstanceByteIdentical -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testAboveBudgetIsTruncated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testExactlyAtBudgetIsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testSubBudgetJsonPayloadRoundTripsIntact -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.OutputSizeGuardTest.testNonPositiveBudgetIsTreatedAsOne -- Time elapsed: 0 s

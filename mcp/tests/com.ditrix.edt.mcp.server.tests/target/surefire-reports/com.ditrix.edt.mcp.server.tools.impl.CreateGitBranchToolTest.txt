@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testEmptyParamsRejectsOnProjectNameFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testInputSchemaDeclaresParametersLowerCamelCaseAndRequired -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testNonexistentProjectIsRejectedActionably -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testOutputSchemaDeclaresTheResultEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testMissingBranchIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testMissingProjectNameIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateGitBranchToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s

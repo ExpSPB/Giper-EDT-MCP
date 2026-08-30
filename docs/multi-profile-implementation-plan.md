@@ -94,7 +94,7 @@ proxy -> только публичный wire-контракт backend
 
 ### Новые классы
 
-Пакет `com.ditrix.edt.mcp.server.profiles`:
+Пакет `fm.giper.edt.mcp.server.profiles`:
 
 - `ToolProfile` — immutable value object: `id`, `displayName`, `description`, `enabled`,
   `allowedTools`, `revision`;

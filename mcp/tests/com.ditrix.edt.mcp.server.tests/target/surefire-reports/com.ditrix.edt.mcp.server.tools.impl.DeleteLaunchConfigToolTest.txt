@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testInputSchemaDeclaresParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testOutputSchemaDeclaresConfirmPreviewFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testInputSchemaRequiredContainsNameOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testDescriptionMentionsConfirmPreview -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testMissingNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testResponseTypeIsJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testGuideDocumentsTwoPhaseAndRunningGuard -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DeleteLaunchConfigToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s

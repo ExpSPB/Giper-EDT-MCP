@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest
+com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest.testBothParamsRequired -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.TranslateConfigurationToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0 s

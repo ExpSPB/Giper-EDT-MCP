@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.SseStreamRegistryTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.SseStreamRegistryTest
+com.ditrix.edt.mcp.server.SseStreamRegistryTest.listChangedIsDeliveredOncePerSessionAndIsolatedByPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.SseStreamRegistryTest.notifyWritesToolsListChangedAsAnSseEventFrame -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.SseStreamRegistryTest.broadcastWithNoStreamsOrNullMessageDeliversNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.SseStreamRegistryTest.deadStreamIsDroppedOnBroadcastFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.SseStreamRegistryTest.unregisterBySessionDropsOnlyThatSession -- Time elapsed: 0 s

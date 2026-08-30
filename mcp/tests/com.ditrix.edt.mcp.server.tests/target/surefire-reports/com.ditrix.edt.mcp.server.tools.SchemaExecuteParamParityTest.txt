@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.SchemaExecuteParamParityTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.410 s -- in com.ditrix.edt.mcp.server.tools.SchemaExecuteParamParityTest
+com.ditrix.edt.mcp.server.tools.SchemaExecuteParamParityTest.everyKeyReadInExecuteIsDeclaredInTheSchema -- Time elapsed: 0.725 s
+com.ditrix.edt.mcp.server.tools.SchemaExecuteParamParityTest.everyDeclaredPropertyIsReadInExecute -- Time elapsed: 0.685 s

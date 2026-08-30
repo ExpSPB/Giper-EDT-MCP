@@ -1,0 +1,49 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.FrontMatterTest
+-------------------------------------------------------------------------------
+Tests run: 45, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.FrontMatterTest
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithBackslash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNotNumeric -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEmptyBuild -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutNullKeyLong -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testCreateReturnsNonNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutNullKeyInt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNumericNegative -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithBraces -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithHash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNotReserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedNullCapitalized -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testWrapContentEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithQuotes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutLong -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithBrackets -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testMixedTypes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedNo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutNullKeyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testFluentChainingReturnsSameInstance -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutBooleanTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueSimplePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutNullKeyBoolean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNumericScientific -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValuePlainString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueLeadingWhitespace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testWrapContent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testInsertionOrderPreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutNullStringValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueTrailingWhitespace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNumericDecimal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedTrueUpperCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueNumericInteger -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithNewline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutBooleanFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutInt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutIntZero -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueReservedYes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testEscapeYamlValueWithColon -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FrontMatterTest.testPutMultipleStrings -- Time elapsed: 0 s

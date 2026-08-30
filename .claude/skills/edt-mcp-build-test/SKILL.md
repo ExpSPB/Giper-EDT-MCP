@@ -8,12 +8,12 @@ description: How to build the EDT-MCP Eclipse plugin (Tycho/Maven) and run its u
 ## Layout
 
 - Maven/Tycho reactor: `mcp/` (bom, bundles, features, repositories, targets, tests).
-- Unit tests: `mcp/tests/com.ditrix.edt.mcp.server.tests/src` (JUnit4, a plug-in fragment).
+- Unit tests: `mcp/tests/fm.giper.edt.mcp.server.tests/src` (JUnit4, a plug-in fragment).
 - E2E: `tests/e2e/run_all.py` + `tools/test_<tool>.py` (Python; runs the MCP server against `TestConfiguration/`).
 
 ## Build
 
-A Tycho build from `mcp/` (Maven, JDK 17). The artifact is a p2 update-site in `repositories/com.ditrix.edt.mcp.server.repository/target`.
+A Tycho build from `mcp/` (Maven, JDK 17). The artifact is a p2 update-site in `repositories/fm.giper.edt.mcp.server.repository/target`.
 
 **A local build is available — use it to validate Java edits** (don't claim "verified by review/grep only"). The canonical script is `source/compile.sh` (it reproduces the CI flow `mvn clean verify -T 1C` from `.github/workflows/build.yml`):
 

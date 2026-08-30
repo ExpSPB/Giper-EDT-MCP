@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -uxo pipefail
-          UNIT=mcp/tests/com.ditrix.edt.mcp.server.tests/target/jacoco.exec
+          UNIT=mcp/tests/fm.giper.edt.mcp.server.tests/target/jacoco.exec
           curl -fSL "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.15/org.jacoco.cli-0.8.15-nodeps.jar" \
             -o "$RUNNER_TEMP/jacococli.jar"
           EXECS=$(ls coverage-execs/*.exec 2>/dev/null || true)
@@ -97,7 +97,7 @@ jobs:
 
       - name: JaCoCo coverage report (merged)
         working-directory: mcp
-        run: mvn --batch-mode --no-transfer-progress -pl bundles/com.ditrix.edt.mcp.server jacoco:report
+        run: mvn --batch-mode --no-transfer-progress -pl bundles/fm.giper.edt.mcp.server jacoco:report
 
       - name: Compute Sonar PR/branch args
         id: sonarargs

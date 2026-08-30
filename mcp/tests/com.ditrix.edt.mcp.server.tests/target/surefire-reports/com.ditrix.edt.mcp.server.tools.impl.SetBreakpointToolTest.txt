@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testMissingLineNumber -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testModuleRelativePathRequiresProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testMissingModule -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testModulePathPrimaryIsRead -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBreakpointToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

@@ -1,0 +1,8 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.groups.ui.NavigatorEnhancementManagerTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.792 s -- in com.ditrix.edt.mcp.server.groups.ui.NavigatorEnhancementManagerTest
+com.ditrix.edt.mcp.server.groups.ui.NavigatorEnhancementManagerTest.testFalseRemovesStaleViewerFilterWithoutUpdatingService -- Time elapsed: 1.780 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorEnhancementManagerTest.testMissingGroupedDescriptorRetriesWithoutStrandingFilterState -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorEnhancementManagerTest.testFalseDeactivatesGroupsContentAndFilterPreservingOthers -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorEnhancementManagerTest.testDefaultActivatesGroupsContentAndFilter -- Time elapsed: 0.004 s

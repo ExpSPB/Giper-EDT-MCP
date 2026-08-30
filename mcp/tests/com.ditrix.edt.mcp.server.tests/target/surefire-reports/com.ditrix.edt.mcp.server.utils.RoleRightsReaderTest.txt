@@ -1,0 +1,35 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest
+-------------------------------------------------------------------------------
+Tests run: 31, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightValueLabelSetIsAllowed -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testMatrixWindowNoticeOverPageOffset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderMatrixNoNonDefaultRightsNote -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderTemplatesEmptyNote -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testMatrixWindowNoticeMiddlePageReportsWindow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightNameOfFallsBackWhenPreferredBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderMatrixDefaultShowsOnlyNonDefaultRows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testMatrixWindowNoticeEmptyWhenAllShown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testHasRightsMatrixNullIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderNullMatrixRendersNoteNotThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testIsNonDefaultSetIsAuthored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightNameOfEnglishByCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testHasAuthoredCellNullIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderRlsWholeObjectAndEscapedCondition -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightValueLabelProvidedIsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testIsNonDefaultUnsetIsAuthored -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testIsNonDefaultNullIsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightValueLabelNullIsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testMatrixWindowNoticeFirstPageAdvisesNextOffset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightNameOfNullRightIsUnnamed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRightValueLabelUnsetIsDenied -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testHasAuthoredCellDetectsAnyAuthoredCell -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testMatrixWindowNoticeLastPageHasNoNextOffset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testHasRightsMatrixConcreteIsTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testIsNonDefaultProvidedNoRlsIsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testMatrixWindowNoticeFullModeNamesCap -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderMatrixFullShowsEveryCell -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderRlsEmptyNote -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderProperties -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testIsNonDefaultProvidedWithRlsIsAuthored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsReaderTest.testRenderTemplatesEscapesCondition -- Time elapsed: 0 s

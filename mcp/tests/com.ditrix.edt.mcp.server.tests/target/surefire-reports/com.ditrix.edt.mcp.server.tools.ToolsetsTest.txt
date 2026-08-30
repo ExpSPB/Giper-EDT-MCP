@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.ToolsetsTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.ditrix.edt.mcp.server.tools.ToolsetsTest
+com.ditrix.edt.mcp.server.tools.ToolsetsTest.progressiveDisclosureDefaultsOffHeadless -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetsTest.unmappedToolNameDefaultsToCoreButIsNotReportedAsMapped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetsTest.everyRegisteredToolIsExplicitlyMapped -- Time elapsed: 0.013 s
+com.ditrix.edt.mcp.server.tools.ToolsetsTest.unknownToolsetIdDoesNotExist -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetsTest.coreToolsetExistsAndCarriesTheMetaTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetsTest.everyMappedToolIsRegistered -- Time elapsed: 0.013 s

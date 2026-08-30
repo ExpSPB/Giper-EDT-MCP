@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdConsistentAcrossBothViews -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdNullSafety -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testResolveUnknownConcreteIdReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testResolveNullReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdUsesRealApplicationIdWhenPresent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdFallsBackToMintedIdForNonEdtLaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdFallsBackToMintedIdWithoutLaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testResolveEmptyReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testServerTargetForTargetNullIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdPrefersOwningLaunchIdOverMintedId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugTargetResolverTest.testCanonicalIdUsesAttachIdForAttachConfig -- Time elapsed: 0 s

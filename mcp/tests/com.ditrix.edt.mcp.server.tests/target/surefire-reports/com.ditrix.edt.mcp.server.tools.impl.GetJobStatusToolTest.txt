@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest.testMissingAndBlankJobIdAreActionable -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest.testContract -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest.testUnknownJobIdIsActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest.testDoneSnapshotIncludesOwnerProgressAndResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetJobStatusToolTest.testWaitUsesAskWorkmateTransportBound -- Time elapsed: 0 s

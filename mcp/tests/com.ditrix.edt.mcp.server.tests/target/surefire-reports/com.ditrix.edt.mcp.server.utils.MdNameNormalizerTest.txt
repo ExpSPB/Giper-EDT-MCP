@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testLatinENotAffected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testReportNullValueHandled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testNullReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testReportOrderPreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testReportEnabledRecordsChangedFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testContainsYo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testNoYoReturnsSameInstance -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testReportDisabledLeavesTextAndRecordsNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testRealWorldSynonym -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testUppercaseYoReplaced -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testMixedYoReplaced -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testOtherCharactersPreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testLowercaseYoReplaced -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testEmptyReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MdNameNormalizerTest.testReportNoChangeWhenNoYo -- Time elapsed: 0 s

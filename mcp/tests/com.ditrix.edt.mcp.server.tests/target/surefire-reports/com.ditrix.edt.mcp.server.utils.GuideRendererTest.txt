@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.GuideRendererTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.GuideRendererTest
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testMalformedSchemaIsSkippedGracefully -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testNoPropertiesEmitsNoParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testGuideWithoutSelfH1IsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testRendersTitleDescriptionParamsAndGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testRedundantSelfH1InGuideIsNotDuplicated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testEmptyGuideOmitsGuideSection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideRendererTest.testTableCellWithPipeIsEscaped -- Time elapsed: 0 s

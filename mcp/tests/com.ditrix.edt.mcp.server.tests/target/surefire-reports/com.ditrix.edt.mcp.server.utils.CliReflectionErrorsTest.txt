@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest
+com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest.unexpectedExceptionReturnsRawMessage -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest.invocationTargetWithTextlessCauseNamesTheCause -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest.illegalAccessIsAnApiMismatchUnderApiLabel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest.invocationTargetUnwrapsCauseUnderActionLabel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest.noSuchMethodIsAnApiMismatchUnderApiLabel -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CliReflectionErrorsTest.invocationTargetWithoutCauseDoesNotCrash -- Time elapsed: 0 s

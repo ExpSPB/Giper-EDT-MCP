@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testClassifiesFormAttributeDynamicList -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testDcsRootsRequireOwnerAndContentExports -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testDynamicListRequiresFormAndSeparateSettingsExports -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testClassifiesManagedFormForConditionalAppearance -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testClassifiesExternalReportMainDcs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testRootKindDispatchIsBilingual -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testClassifiesOwnedTemplate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testClassifiesReportMainDcs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testClassifiesCommonTemplate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testNonDcsTemplateErrorNamesFqnActualTypeAndFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testNotDynamicListErrorNamesFqnActualTypeAndFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testUnsupportedRootFailureNamesValueAndAllFixShapes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsTargetResolverTest.testExternalDataProcessorMainRootRemainsUnsupportedAndNamesOwnedTemplateAlternative -- Time elapsed: 0 s

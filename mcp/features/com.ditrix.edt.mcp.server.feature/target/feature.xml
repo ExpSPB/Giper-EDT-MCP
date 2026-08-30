@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+    id="com.ditrix.edt.mcp.server.feature"
+    label="%featureName"
+    version="1.0.2.202608292009"
+    provider-name="%providerName">
+
+    <description url="https://github.com/DitriXNew/EDT-MCP">
+        %description
+    </description>
+
+    <copyright>
+        %copyright
+    </copyright>
+
+    <license url="%licenseURL">
+        %license
+    </license>
+
+    <url>
+        <update label="EDT MCP Server Update Site" url="https://ditrixnew.github.io/EDT-MCP/"/>
+        <discovery label="EDT MCP Server Update Site" url="https://ditrixnew.github.io/EDT-MCP/"/>
+    </url>
+
+    <plugin
+        id="com.ditrix.edt.mcp.server"
+        download-size="3754"
+        install-size="7544"
+        version="1.0.2.202608292009"
+        unpack="false"/>
+
+</feature>

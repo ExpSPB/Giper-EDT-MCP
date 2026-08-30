@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest
+com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest.sseListChangedUsesEventMessageFraming -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest.initializeAdvertisesSingleServerNameAndToolsListChanged -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest.sessionHeaderNameIsTheMcpSessionIdConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest.bridgeListToolsOnLiveDefaultOmitsToolsOutsideTheAllowlist -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest.toolsCallUsesTheSameRegistryEnablementAsList -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.protocol.LegacyMcpSurfaceCharacterizationTest.toolsListAndResourcesListShareTheVisibleCatalogue -- Time elapsed: 0.006 s

@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.GsonProviderTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.protocol.GsonProviderTest
+com.ditrix.edt.mcp.server.protocol.GsonProviderTest.testToJsonPrimitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.GsonProviderTest.testToJsonDoesNotHtmlEscape -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.GsonProviderTest.testToJsonObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.GsonProviderTest.testGetReturnsSameInstance -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.GsonProviderTest.testToJsonSerializeNullsDoesNotHtmlEscape -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.GsonProviderTest.testFromJsonObject -- Time elapsed: 0 s

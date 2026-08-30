@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest
+com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest.testCounterKeepsItsShareOfTheWidth -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest.testCounterIsPulledLeftInsteadOfFallingOffTheEdge -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest.testNoRoomYieldsNoStatusRatherThanAFragmentOverTheCounter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest.testLongerTextIsCutToTheRoomItWasGiven -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.StatusTextLayoutTest.testTextThatFitsIsLeftAlone -- Time elapsed: 0 s

@@ -1,0 +1,8 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.profiles.ProfileResolverTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.profiles.ProfileResolverTest
+com.ditrix.edt.mcp.server.profiles.ProfileResolverTest.unknownProfileFallsBackToDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileResolverTest.disabledProfileFallsBackToDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileResolverTest.defaultAndLegacyEndpointHaveNoFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileResolverTest.enabledExplicitProfileIsUsedAsIs -- Time elapsed: 0 s

@@ -1,0 +1,29 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithJsonNumberMinFrequencyReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithNoParamsReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testOutputSchemaDeclaresResultFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testGuideDocumentsResponseFormat -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithModuleFilterReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testOutputSchemaCountNotesLatestSessionOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testProfilingActiveFalseWhenNoSessionActiveAndNoApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testProfilingActiveTracksPerApplicationIdState -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithUnknownResponseFormatCoercesToConciseWithoutThrowing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithResponseFormatConciseReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithGarbageMinFrequencyFallsBackAndDoesNotThrow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithAllOptionsTogetherReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testDescriptionMentionsActiveState -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testProfilingActiveTrueWhenAnySessionActiveAndNoApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testSchemaDeclaresResponseFormatEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithResponseFormatDetailedReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testExecuteWithValidMinFrequencyReturnsParseableJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testNoResultsSentinelCarriesGuidanceMessage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetProfilingResultsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

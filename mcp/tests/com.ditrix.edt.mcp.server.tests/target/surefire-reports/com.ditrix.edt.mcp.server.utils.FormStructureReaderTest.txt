@@ -1,0 +1,31 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.FormStructureReaderTest
+-------------------------------------------------------------------------------
+Tests run: 27, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.021 s -- in com.ditrix.edt.mcp.server.utils.FormStructureReaderTest
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedVisibleTrueOmitted -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testTitleOfByLanguageCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testResolveMdFormRejectsWrongFormsKeyword -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedNoHandlers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderEmptyFormSections -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testResolveMdFormRejectsThreeParts -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderEscapesPipeInTableCell -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testNameOfReturnsProgrammaticName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedBeyondMaxNodesTruncated -- Time elapsed: 0.011 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testResolveMdFormRejectsFiveParts -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderAutoCommandBarSubtree -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedEnrichments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderAttributesAndCommandsTables -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedExactlyMaxNodesNotTruncated -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedEventNameByLanguageRu -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testGetReferenceListNullObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedEnumReadsLiteralNotName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testGetReferenceListEmptyForAbsentFeature -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderDetailedElementHandlerOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testNameOfUnnamedFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testResolveMdFormValidShapesTolerateNullConfig -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testResolveMdFormRejectsNonCommonFormTwoParts -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderCommandActionHandlerColumn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderTableBarNestedAndEmptyBarSkipped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testTitleOfMissingFeatureIsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testRenderNestedTree -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.FormStructureReaderTest.testResolveMdFormRejectsTooFewParts -- Time elapsed: 0 s
