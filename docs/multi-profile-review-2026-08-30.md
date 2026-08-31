@@ -1,6 +1,7 @@
 # Ревью реализации multi-profile tool surfaces
 
-**Дата:** 30 августа 2026
+**Дата:** 30 августа 2026  
+**Дополнение:** 31 августа 2026 — тесты на швы, коммит `2da4380` на локальной `test`  
 **Проверенный срез:** `origin/test` = `29d8bf2` (merge PR #3 `cursor/multi-profile-review-fixes-96c9`)
 **Критерии:** [`multi-profile-implementation-plan.md`](multi-profile-implementation-plan.md), [`multi-profile-tool-surfaces.md`](multi-profile-tool-surfaces.md)
 
@@ -268,16 +269,15 @@ actionable: называют конкретное нарушение, профи
 
 1. **`InterruptibleToolExecutor` не покрыт ни одним тестом**, хотя план §8 прямо требует «context
    доходит в interruptible worker».
-2. **Нет теста на проводку метаданных через choke point** — именно поэтому B2 прошёл незамеченным.
-   Все три теста истории конструируют запись руками.
+2. **~~Нет теста на проводку метаданных через choke point~~** — закрыто `processRequestRecordsProfileAndSessionFromContext` (см. §11). До этого все три теста истории конструировали запись руками.
 3. **Нет ни одного HTTP-теста с реально настроенным профилем**: в `McpHttpProfileIntegrationTest` нет
    `Activator`, поэтому все кейсы — это fallback `UNKNOWN_PROFILE`. По проводу не проверены разные
    `tools/list` у двух профилей, `DISABLED_PROFILE` и `/mcp/profiles/default` против `/mcp`.
 4. **Вся ветка progressive disclosure не покрыта**: `publishedTools(true)` не вызывается ни разу.
-5. **`FakeBackend` не воспроизводит production-JSON**: нет `warning`, нет `allowedTools`, нет корневых
-   диагностических полей, `availableProfiles` возвращается всегда (а не только при `includeProfiles`),
-   и главное — нельзя смоделировать `plainTextMode`. Именно это скрывает B5. Критерий «direct и proxy
-   contracts отличаются только router tools» не проверяется вообще.
+5. **`FakeBackend` не воспроизводит production-JSON целиком**: нет `warning`, нет `allowedTools`, нет
+   корневых диагностических полей, `availableProfiles` возвращается всегда (а не только при
+   `includeProfiles`). Режим `plainTextMode` добавлен (`setPlainTextMode`) — B5 больше не невидим.
+   Критерий «direct и proxy contracts отличаются только router tools» по-прежнему не проверяется.
 6. **Круговая зависимость теста от проверяемого кода**: `FakeBackend` парсит путь тем же
    `ProfileEndpointResolver` и тем же `getPath()`, поэтому расхождение M5 принципиально не ловится.
 7. **`ProfileRoutingIT.testListChangedInvalidatesOnlyThatProfileAndDedupes` не проверяет то, что
@@ -287,7 +287,8 @@ actionable: называют конкретное нарушение, профи
    что при `AtomicReference` не может провалиться; писатель всего один, поэтому lost update не ловится.
 9. **Legacy-миграции v1–v4 не выполняются** ни в одном тесте миграции — все три заранее выставляют
    версию миграции в текущую. Требование плана §6 не проверено.
-10. **Нет `ToolProfileChangeSetTest`**; в proxy не покрыты `donor == null`, `DISABLED_PROFILE`,
+10. **Нет `ToolProfileChangeSetTest`**; в proxy закрыт `donor == null` (два теста в
+    `ProjectRouterTest`, шов `putGroupForTest`). По-прежнему не покрыты `DISABLED_PROFILE`,
     hotplug на профильном endpoint'е, TTL сессий; UI (`ToolsTab`, `ToolProfileDialog`) не покрыт вовсе.
 11. **Скрытая зависимость от порядка тестов**: `ToolContractConsistencyTest` и `GuideCoverageTest`
     вызывают `new McpServer().registerTools()`, который теперь запускает реальную миграцию против
@@ -315,15 +316,20 @@ actionable: называют конкретное нарушение, профи
 
 **До возврата к стенду** (всё локально, каждая правка мелкая):
 
-1. **B2** — перенести `clearRequestMeta()` после блока записи. Одна строка, немедленно возвращает всю
-   наблюдаемость профиля. Плюс тест через `processRequest`.
+1. **B2** — перенести `clearRequestMeta()` после блока записи (или писать из `McpRequestContext`).
+   Красный тест уже есть: `processRequestRecordsProfileAndSessionFromContext`.
 2. **B1** — либо не считать первичную миграцию изменением поверхности, либо сбрасывать
-   `legacySessionRequired` в `McpServer.start()` (при старте живых сессий заведомо нет).
-3. **B6** — ловить `RuntimeException` в `reloadFromStore` и переводить в MALFORMED.
-4. **B4** — при `donor == null` и непустом `live` отказывать, а не брать `live.get(0)`.
-5. **B5** — считать резолюцию без `activeProfile` неуспешной (`IncompatibleBackend`); прогонять
-   `get_server_status` через перезапись endpoint'ов и в текстовом канале. Параллельно научить
-   `FakeBackend` режиму `plainTextMode`.
+   `legacySessionRequired` в `McpServer.start()`. На локальной `test` (`3221855`) защёлка уже
+   снята; стопорные тесты зелёные (см. §11).
+3. **B6** — ловить `RuntimeException` в `reloadFromStore` / не выпускать `ArithmeticException` из
+   `decode`. Красные тесты: `schemaVersionOutsideIntRangeIsMalformedNotUnchecked` и
+   `schemaVersionOutsideIntRangeIsMalformedAndDoesNotAbortLoad`.
+4. **B4** — при `donor == null` и непустом `live` отказывать, а не брать `live.get(0)`. Красные
+   тесты: `testUnscopedCallFailsClosedWhenLiveBackendsHaveNoDonor`,
+   `testScopedCallFailsClosedWhenOwnerIsOutsideUnresolvedGroup`.
+5. **B5** — считать резолюцию без `activeProfile` неуспешной; переписывать endpoint'ы и в
+   текстовом канале. Красные тесты: `parseResolutionDoesNotConfirmRequestedIdWhenStatusHasNoActiveProfile`,
+   `testPlainTextStatusDoesNotConfirmMissingProfileOrLeakBackendUrls`; `FakeBackend.setPlainTextMode` есть.
 6. **M4** — исправить `objectProperty` → `objectArrayProperty` и **перегенерировать golden** (сейчас в
    нём зафиксирована ошибка).
 7. **M5** — передавать `getRawPath()` в proxy; завести общий набор тест-векторов для обоих резолверов.
@@ -361,3 +367,38 @@ compatibility-обёртки и мёртвый код, а также неско�
 зелёные (5938 + 199), и именно поэтому они ничего из этого не показали. Пока не пройден живой контур,
 зелёная сборка **не является** свидетельством работоспособности фичи, а один из блокеров (B1)
 срабатывает у каждого пользователя при первом же обновлении.
+
+## 11. Дополнение: тесты на швы (31 августа 2026)
+
+После ревью на локальной `test` добавлен коммит `2da4380` — тесты **до правок**, чтобы фикс
+нельзя было закрыть зелёной компонентной сборкой. B3 и M3 не покрывались: это решения продукта,
+а не один правильный assert.
+
+На этой ветке картина кода уже разошлась с срезом ревью `29d8bf2`: защёлка
+`legacySessionRequired` (B1) снята, `clearRequestMeta()` из `processRequest` убран, но история
+всё ещё читает `ThreadLocal`, который HTTP-путь не биндит. Поэтому часть тестов — **красные
+контракты**, часть — **зелёные стопоры** против возврата B1.
+
+| Шов | Класс / метод | Контракт | Ожидание на `2da4380` |
+|---|---|---|---|
+| **B2** | `McpProtocolHandlerTest.processRequestRecordsProfileAndSessionFromContext` | `processRequest(body, context)` без предварительного `bindRequestMeta` пишет в singleton-историю `requested=review`, `effective=review`, `sessionId=sess-review` | **красный** — `recordToHistory` берёт пустой ThreadLocal |
+| **B4** | `ProjectRouterTest.testUnscopedCallFailsClosedWhenLiveBackendsHaveNoDonor` | live backend есть, `donor == null` → `RouteResult.ERROR`, не `live.get(0)` | **красный** |
+| **B4** | `ProjectRouterTest.testScopedCallFailsClosedWhenOwnerIsOutsideUnresolvedGroup` | проект на live backend вне нерешённой группы → `ERROR`, не маршрут к owner | **красный** |
+| **B5** | `BackendProfileChannelTest.parseResolutionDoesNotConfirmRequestedIdWhenStatusHasNoActiveProfile` | text-only `result` без `activeProfile` не выглядит как точное попадание в запрошенный id | **красный** |
+| **B5** | `BackendProfileChannelTest.parseResolutionReadsFallbackFromActiveProfile` | `fallbackApplied` / `fallbackReason` читаются из `activeProfile`, не только с корня | **красный** на этой ветке (на `origin/test` уже зелёный) |
+| **B5** | `BackendProfileChannelTest.parseResolutionIgnoresRootFallbackWhenActiveProfileSaysNone` | корневой `fallbackApplied=true` не перебивает `activeProfile.fallbackApplied=false` | **красный** на этой ветке |
+| **B5** | `BackendProfileChannelTest.parseResolutionFallsBackToRootForOldBackends` | старый корневой формат без вложенного флага всё ещё читается | зелёный (корневой путь и так работает) |
+| **B5** | `ProfileRoutingIT.testPlainTextStatusDoesNotConfirmMissingProfileOrLeakBackendUrls` | unknown-профиль + `plainTextMode`: в `initialize` есть `UNKNOWN_PROFILE`; в `get_server_status` нет `http://127.0.0.1:<backendPort>` | **красный** (пустые `instructions`, URL не переписываются) |
+| **B6** | `ToolProfileCodecTest.schemaVersionOutsideIntRangeIsMalformedNotUnchecked` | `schemaVersion = Long.MAX_VALUE` → `MalformedToolProfileDocumentException`, не `ArithmeticException` | **красный** |
+| **B6** | `PreferenceToolProfileRepositoryTest.schemaVersionOutsideIntRangeIsMalformedAndDoesNotAbortLoad` | тот же JSON в store: конструктор жив, `MALFORMED`, документ не затёрт | **красный** (сейчас исключение срывает конструктор) |
+| **B1** (стопор) | `McpHttpProfileIntegrationTest.legacyMcpStaysSessionless…` — повторный sessionless ping | `/mcp` без `MCP-Session-Id` остаётся 200 после «первого persist» default | **зелёный** на этой ветке |
+| **B1** (стопор) | `ProfileNotificationServiceTest.firstDefaultPersistDoesNotDropLegacyStream` | `ABSENT/safe → мигрированный default` не снимает SSE на `/mcp` | **зелёный** на этой ветке |
+
+Что пришлось добавить, чтобы красные тесты вообще могли существовать (не фикс блокеров):
+
+- `BackendRegistry.putGroupForTest` — иначе `installStateForTest` сам ставит `donor = live.get(0)` и B4 не воспроизводится;
+- `FakeBackend.setPlainTextMode` и полные `http://127.0.0.1:<port>…` в `availableProfiles[].endpoint` — иначе B5 не отличить от happy path.
+
+Прокси прогнан после добавления: 6 падений, 0 ошибок компиляции (`BackendProfileChannelTest` 3, `ProjectRouterTest` 2, `ProfileRoutingIT` 1). Плагинный Tycho на этих новых методах в том же прогоне не поднимался (нет target platform в урезанном reactor).
+
+Не писались сознательно: B3 (`list_changed` vs kick), M3 (граница Workmate), M5 (`getRawPath` — круговая зависимость фейка от резолвера).
