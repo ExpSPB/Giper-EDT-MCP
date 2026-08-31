@@ -741,6 +741,17 @@ public final class BackendRegistry
     }
 
     /**
+     * Test seam: publishes a pre-built compatibility group so fail-closed routing can be
+     * asserted when live backends exist but no donor could be resolved.
+     *
+     * @param group the group to cache (donor may be {@code null})
+     */
+    void putGroupForTest(ProfileGroupSnapshot group)
+    {
+        groupsByPath.put(group.getEndpoint().canonicalPath(), group);
+    }
+
+    /**
      * Fetches a backend's project names via {@code list_projects}, defensively: any
      * transport or shape failure yields an empty list and the backend stays live. Bounded by
      * the SHORT {@link #DISCOVERY_TIMEOUT_SECONDS} rather than the backend's own end-user

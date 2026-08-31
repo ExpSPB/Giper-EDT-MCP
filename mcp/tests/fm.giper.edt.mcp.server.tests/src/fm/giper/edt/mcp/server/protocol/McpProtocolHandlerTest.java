@@ -19,6 +19,12 @@ import org.junit.Test;
 
 import fm.giper.edt.mcp.server.UserSignal;
 import fm.giper.edt.mcp.server.UserSignal.SignalType;
+import fm.giper.edt.mcp.server.history.McpCallHistory;
+import fm.giper.edt.mcp.server.history.McpCallRecord;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.utils.OutputSizeGuard;
@@ -1265,6 +1271,51 @@ public class McpProtocolHandlerTest
 
         // The throwing recorder was actually exercised for each call (guard swallowed it).
         assertEquals("the recorder must have been invoked for each call", 2, spy.recordCount());
+    }
+
+    /**
+     * The context passed to {@link McpProtocolHandler#processRequest(String, McpRequestContext)}
+     * is the only profile/session source on the HTTP non-{@code tools/call} path (no prior
+     * {@code bindRequestMeta}). History must pick it up at this choke point — not from a
+     * ThreadLocal that was never bound, and not after a {@code clearRequestMeta} that ran
+     * first.
+     */
+    @Test
+    public void processRequestRecordsProfileAndSessionFromContext()
+    {
+        McpCallHistory history = McpCallHistory.getInstance();
+        history.setRecordingEnabled(true);
+        history.clear();
+        McpCallHistory.clearRequestMeta();
+        try
+        {
+            ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(
+                DefaultToolProfileFactory.createDefault(Set.of("get_server_status")), //$NON-NLS-1$
+                ToolProfile.builder()
+                    .id("review") //$NON-NLS-1$
+                    .displayName("Review") //$NON-NLS-1$
+                    .allowedTools(Set.of("get_server_status")) //$NON-NLS-1$
+                    .build()));
+            McpRequestContext context = McpRequestContext.builder()
+                .resolution(ProfileResolver.resolve("review", false, snapshot)) //$NON-NLS-1$
+                .requestedPath("/mcp/profiles/review") //$NON-NLS-1$
+                .sessionId("sess-review") //$NON-NLS-1$
+                .build();
+
+            String response = handler.processRequest(buildJsonRpcRequest(1, "ping", null), context);
+            assertNotNull(response);
+            assertEquals(1, history.size());
+            McpCallRecord record = history.snapshot().get(0);
+            assertEquals("ping", record.getMethod()); //$NON-NLS-1$
+            assertEquals("review", record.getRequestedProfileId()); //$NON-NLS-1$
+            assertEquals("review", record.getEffectiveProfileId()); //$NON-NLS-1$
+            assertEquals("sess-review", record.getSessionId()); //$NON-NLS-1$
+        }
+        finally
+        {
+            McpCallHistory.clearRequestMeta();
+            history.clear();
+        }
     }
 
     // === Helpers ===

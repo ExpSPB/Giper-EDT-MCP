@@ -220,6 +220,44 @@ public class ProjectRouterTest
     }
 
     @Test
+    public void testUnscopedCallFailsClosedWhenLiveBackendsHaveNoDonor() throws Exception
+    {
+        BackendRegistry registry = newRegistry(20000, 20010);
+        Backend live = backend(20002);
+        registry.installStateForTest(List.of(live), Map.of());
+        ProfileEndpoint review = ProfileEndpointResolver.resolve("/mcp/profiles/review"); //$NON-NLS-1$
+        registry.putGroupForTest(new ProfileGroupSnapshot(review, review.getRequestedProfileId(), null, "", //$NON-NLS-1$
+            null, List.of(), List.of(new ProfileGroupSnapshot.IncompatibleBackend(20002, "resolution failed")))); //$NON-NLS-1$
+        ProjectRouter router = new ProjectRouter(registry);
+
+        RouteResult result = router.route(METHOD_TOOLS_CALL,
+            toolCallRequest("echo_port", new JsonObject()), review); //$NON-NLS-1$
+
+        assertEquals(RouteResult.Kind.ERROR, result.kind);
+        assertTrue(result.errorMessage, result.errorMessage.contains("review") //$NON-NLS-1$
+            || result.errorMessage.contains("incompatible") //$NON-NLS-1$
+            || result.errorMessage.contains("not")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testScopedCallFailsClosedWhenOwnerIsOutsideUnresolvedGroup() throws Exception
+    {
+        BackendRegistry registry = newRegistry(20000, 20010);
+        Backend owner = backend(20002);
+        registry.installStateForTest(List.of(owner), Map.of("Alpha", List.of(owner))); //$NON-NLS-1$
+        ProfileEndpoint review = ProfileEndpointResolver.resolve("/mcp/profiles/review"); //$NON-NLS-1$
+        registry.putGroupForTest(new ProfileGroupSnapshot(review, review.getRequestedProfileId(), null, "", //$NON-NLS-1$
+            null, List.of(), List.of(new ProfileGroupSnapshot.IncompatibleBackend(20002, "resolution failed")))); //$NON-NLS-1$
+        ProjectRouter router = new ProjectRouter(registry);
+
+        RouteResult result = router.route(METHOD_TOOLS_CALL,
+            toolCallRequest("echo_port", projectArgs("projectName", "Alpha")), review); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+        assertEquals(RouteResult.Kind.ERROR, result.kind);
+        assertTrue(result.errorMessage, result.errorMessage.contains("Alpha")); //$NON-NLS-1$
+    }
+
+    @Test
     public void testNonToolsCallMethodIgnoresProjectArgAndRoutesUnscoped()
     {
         BackendRegistry registry = newRegistry(20000, 20010);

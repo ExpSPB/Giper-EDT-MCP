@@ -134,6 +134,22 @@ public class PreferenceToolProfileRepositoryTest
     }
 
     @Test
+    public void schemaVersionOutsideIntRangeIsMalformedAndDoesNotAbortLoad()
+    {
+        PreferenceStore store = new PreferenceStore();
+        String json = "{\"schemaVersion\":9223372036854775807,\"documentRevision\":1,\"profiles\":[" //$NON-NLS-1$
+            + "{\"id\":\"default\",\"displayName\":\"Default\",\"description\":\"\"," //$NON-NLS-1$
+            + "\"enabled\":true,\"allowedTools\":[\"get_server_status\"],\"revision\":1}]}"; //$NON-NLS-1$
+        store.setValue(PreferenceConstants.PREF_TOOL_PROFILES_JSON, json);
+
+        PreferenceToolProfileRepository repo = new PreferenceToolProfileRepository(store);
+
+        assertEquals(ProfileDocumentState.MALFORMED, repo.getDocumentState());
+        assertEquals(json, store.getString(PreferenceConstants.PREF_TOOL_PROFILES_JSON));
+        assertEquals(ToolProfile.DEFAULT_ID, repo.getSnapshot().getDefault().getId());
+    }
+
+    @Test
     public void unsupportedSchemaIsDiagnosedSeparatelyAndNotBackedUpAsMalformed()
     {
         PreferenceStore store = new PreferenceStore();

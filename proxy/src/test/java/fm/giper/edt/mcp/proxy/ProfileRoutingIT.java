@@ -198,4 +198,27 @@ public class ProfileRoutingIT
         assertEquals(2, delivered.get());
         assertNotNull(TOOL_ROUTER_REFRESH);
     }
+
+    @Test
+    public void testPlainTextStatusDoesNotConfirmMissingProfileOrLeakBackendUrls() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("default", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.setPlainTextMode(true);
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        McpTestClient missing = new McpTestClient(proxy.port(), "/mcp/profiles/missing"); //$NON-NLS-1$
+        JsonObject init = missing.handshake();
+        String instructions = init.getAsJsonObject("result").has("instructions") //$NON-NLS-1$ //$NON-NLS-2$
+            ? init.getAsJsonObject("result").get("instructions").getAsString() : ""; //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("plainTextMode must not hide UNKNOWN_PROFILE fallback: " + instructions, //$NON-NLS-1$
+            instructions.contains("UNKNOWN_PROFILE")); //$NON-NLS-1$
+
+        JsonObject status = missing.callTool("get_server_status", new JsonObject()); //$NON-NLS-1$
+        assertFalse("backend URL must be rewritten off the wire: " + status, //$NON-NLS-1$
+            status.toString().contains("http://127.0.0.1:" + ports[0])); //$NON-NLS-1$
+    }
 }

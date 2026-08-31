@@ -113,6 +113,16 @@ public class ProfileNotificationServiceTest
     }
 
     @Test
+    public void firstDefaultPersistDoesNotDropLegacyStream()
+    {
+        ToolProfileSnapshot absent = DefaultToolProfileFactory.createSafeSnapshot();
+        ToolProfileSnapshot migrated = snapshot(defaultProfile(Set.of("list_projects", "get_server_status"))); //$NON-NLS-1$ //$NON-NLS-2$
+        service.onProfilesChanged(absent, migrated, ToolProfileChangeSet.between(absent, migrated));
+        assertTrue(streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertEquals(2, streams.activeStreamCount());
+    }
+
+    @Test
     public void disableAndEnableReviewNotifyThatPath()
     {
         ToolProfileSnapshot enabled = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$

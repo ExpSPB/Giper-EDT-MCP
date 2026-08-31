@@ -79,6 +79,7 @@ public final class FakeBackend
     private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
     private final Map<String, List<OutputStream>> sseByPath = new ConcurrentHashMap<>();
     private volatile List<String> defaultToolNames = List.of("fake_tool_one", "echo_port");
+    private volatile boolean plainTextMode;
 
     /**
      * Creates a fake backend on an OS-chosen free port (port 0).
@@ -242,6 +243,17 @@ public final class FakeBackend
         ProfileSpec previous = profiles.get(id);
         List<String> tools = previous == null ? defaultToolNames : previous.toolNames;
         profiles.put(id, new ProfileSpec(id, false, tools));
+    }
+
+    /**
+     * Omits {@code structuredContent} on {@code get_server_status} and puts the JSON in
+     * {@code content[0].text}, matching a backend with {@code plainTextMode} enabled.
+     *
+     * @param enabled whether to answer without structured content
+     */
+    public void setPlainTextMode(boolean enabled)
+    {
+        this.plainTextMode = enabled;
     }
 
     /**
@@ -494,7 +506,7 @@ public final class FakeBackend
         active.addProperty("id", resolved.effectiveId);
         structured.add("activeProfile", active);
         JsonArray available = new JsonArray();
-        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, "/mcp"));
+        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, ProfileEndpoint.LEGACY_PATH));
         for (ProfileSpec spec : profiles.values())
         {
             if (spec.enabled && !ProfileEndpoint.DEFAULT_PROFILE_ID.equals(spec.id))
@@ -503,16 +515,20 @@ public final class FakeBackend
             }
         }
         structured.add("availableProfiles", available);
+        if (plainTextMode)
+        {
+            return textResult(structured.toString());
+        }
         JsonObject result = textResult("status");
         result.add("structuredContent", structured);
         return result;
     }
 
-    private static JsonObject profileItem(String id, String endpoint)
+    private JsonObject profileItem(String id, String path)
     {
         JsonObject item = new JsonObject();
         item.addProperty("id", id);
-        item.addProperty("endpoint", endpoint);
+        item.addProperty("endpoint", "http://127.0.0.1:" + getPort() + path);
         return item;
     }
 
