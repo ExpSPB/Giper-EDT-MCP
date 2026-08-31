@@ -104,7 +104,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mcp-plugin-p2
-          path: mcp/repositories/com.ditrix.edt.mcp.server.repository/target/repository
+          path: mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository
           if-no-files-found: error
 
   e2e:
@@ -321,7 +321,7 @@ jobs:
             if "$ECLIPSE/eclipse" -nosplash -consoleLog \
                 -application org.eclipse.equinox.p2.director \
                 -repository "$LOCAL_REPO,$EDT_P2,$ECLIPSE_P2,$ORBIT_P2,$ORBIT_SIMREL_P2" \
-                -installIU "com.ditrix.edt.mcp.server.feature.feature.group" \
+                -installIU "fm.giper.edt.mcp.server.feature.feature.group" \
                 -destination "$ECLIPSE" \
                 -profileProperties org.eclipse.update.install.features=true \
                 -p2.os linux -p2.ws gtk -p2.arch x86_64 -tag mcp-plugin \
@@ -361,7 +361,7 @@ jobs:
             "$ECLIPSE/eclipse" -data "$WS" -clean -nosplash -consoleLog \
             --launcher.suppressErrors \
             -vmargs \
-            "-javaagent:$JACOCO_AGENT=output=tcpserver,address=127.0.0.1,port=6300,includes=com.ditrix.edt.mcp.*" \
+            "-javaagent:$JACOCO_AGENT=output=tcpserver,address=127.0.0.1,port=6300,includes=fm.giper.edt.mcp.*" \
             -Xmx4g \
             "-Dosgi.requiredJavaVersion=$EDT_JAVA" \
             -Dorg.osgi.framework.bundle.parent=ext \

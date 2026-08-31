@@ -61,7 +61,7 @@ jobs:
 
       - name: Package archive
         run: |
-          cd mcp/repositories/com.ditrix.edt.mcp.server.repository/target/repository
+          cd mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository
           zip -r "$GITHUB_WORKSPACE/MCP-EDT.v${{ steps.version.outputs.version }}.zip" .
 
       - name: Create GitHub Release

@@ -9,7 +9,7 @@ A 1C:EDT plugin with an MCP server (~62 tools). This skill maps **how it should 
 
 ## Package layout
 
-Root: `mcp/bundles/com.ditrix.edt.mcp.server/src/com/ditrix/edt/mcp/server`
+Root: `mcp/bundles/fm.giper.edt.mcp.server/src/fm/giper/edt/mcp/server`
 
 | Package | Holds | Rule |
 |---|---|---|

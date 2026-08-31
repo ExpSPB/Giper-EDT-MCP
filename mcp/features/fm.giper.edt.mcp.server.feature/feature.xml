@@ -2,10 +2,10 @@
 <feature
     id="fm.giper.edt.mcp.server.feature"
     label="%featureName"
-    version="1.0.0.qualifier"
+    version="1.0.2.qualifier"
     provider-name="%providerName">
 
-    <description url="https://github.com/DitriXNew/EDT-MCP">
+    <description url="https://github.com/ExpSPB/Giper-EDT-MCP">
         %description
     </description>
 
@@ -18,8 +18,8 @@
     </license>
 
     <url>
-        <update label="EDT MCP Server Update Site" url="https://ditrixnew.github.io/EDT-MCP/"/>
-        <discovery label="EDT MCP Server Update Site" url="https://ditrixnew.github.io/EDT-MCP/"/>
+        <update label="Giper EDT MCP Server Update Site" url="https://expspb.github.io/Giper-EDT-MCP/"/>
+        <discovery label="Giper EDT MCP Server Update Site" url="https://expspb.github.io/Giper-EDT-MCP/"/>
     </url>
 
     <plugin
