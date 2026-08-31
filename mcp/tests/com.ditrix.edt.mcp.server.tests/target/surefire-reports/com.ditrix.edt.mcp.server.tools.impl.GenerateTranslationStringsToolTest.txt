@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testExecuteEmptyTargetLanguagesArrayIsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testExecuteMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testValidationErrorPayloadIsJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testExecuteMissingTargetLanguagesIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testRequiredArrayMarksOnlyMandatoryParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GenerateTranslationStringsToolTest.testExecuteFromProviderWithoutProviderIdIsError -- Time elapsed: 0 s

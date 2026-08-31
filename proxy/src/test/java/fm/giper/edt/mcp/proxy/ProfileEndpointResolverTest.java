@@ -39,6 +39,7 @@ public class ProfileEndpointResolverTest
     @Test
     public void rejectsEmptyIdExtraSegmentTraversalAndBrokenEncoding()
     {
+        assertInvalid("/mcp/"); //$NON-NLS-1$
         assertInvalid("/mcp/profiles/"); //$NON-NLS-1$
         assertInvalid("/mcp/profiles/review/extra"); //$NON-NLS-1$
         assertInvalid("/mcp/profiles/Review"); //$NON-NLS-1$

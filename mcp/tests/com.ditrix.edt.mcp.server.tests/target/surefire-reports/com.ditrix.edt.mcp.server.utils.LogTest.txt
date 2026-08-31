@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LogTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.LogTest
+com.ditrix.edt.mcp.server.utils.LogTest.testDebugEmittedWhenGateOn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LogTest.testDebugSuppressedWhenGateOff -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LogTest.testLogMethodsDoNotThrow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LogTest.testNullRestoresProductionDefault -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LogTest.testGateTogglesIsDebugEnabled -- Time elapsed: 0 s

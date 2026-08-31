@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testErrorTextKeepsIsErrorWithoutStructuredContent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testToolsListEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testResourceResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testErrorTextIsCapped -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testResourceBlobResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonSuccessOmitsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonSuccessDigestIsBounded -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonErrorWithoutMessageFallsBackToError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testTextResultSerialization -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonSuccessDigestSummarizesObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testToolsListAddTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonErrorContentCarriesRealMessage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testTextResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testJsonErrorResultSetsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.ToolCallResultTest.testToolsListSerialization -- Time elapsed: 0.001 s

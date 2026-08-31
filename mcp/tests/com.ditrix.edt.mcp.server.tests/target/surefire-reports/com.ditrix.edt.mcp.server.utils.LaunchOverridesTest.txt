@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchOverridesTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.LaunchOverridesTest
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAnUnavailableDumpServiceRefusesRatherThanLaunchingBlind -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testHalfAnExternalObjectAddressNamesTheMissingHalf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAFailingDumpValidationIsReportedWithItsReason -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAResolvedObjectStampsAllThreeAttributesWithTheTypeEdtCompares -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAccessorsRoundTripTheValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testEmptyOverridesLaunchTheSavedConfigurationUntouched -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAQualifiedRequestStampsTheResolvedBareName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAWellFormedRequestWithNoExternalObjectPreparesCleanly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testDumpGenerationSwitchedOffIsARefusalNotALaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAbsentOverridesAreEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testBlankOverridesAreEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAnyOverrideIsNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testTheAttachRefusalIsAskableBeforeAnythingIsLaunched -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testStartupOptionStampsAWorkingCopyAndNeverSavesIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAttachConfigurationIsRefusedRatherThanSilentlyIgnored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchOverridesTest.testAHealthyProjectPassesTheDumpGate -- Time elapsed: 0 s

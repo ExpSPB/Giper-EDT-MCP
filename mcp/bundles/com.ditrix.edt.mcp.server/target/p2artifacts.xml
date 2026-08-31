@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<?artifactRepository version='1.1.0'?>
+<artifacts size='1'>
+  <artifact classifier='osgi.bundle' id='com.ditrix.edt.mcp.server' version='1.0.2.202608292009'>
+    <properties size='9'>
+      <property name='artifact.size' value='3844261'/>
+      <property name='download.size' value='3844261'/>
+      <property name='download.checksum.sha-512' value='7c358186201ffcea159b4c58720b515cf7fd86444955dd1e871d50a023ae8cd056f1e7b7b983e9c4216c856b70d388dfc6a7b37049c5adf40cfe76fef0e3ff9b'/>
+      <property name='download.checksum.sha-1' value='80e0ea554f4165b56a13d6bb23437cdd4fecadb3'/>
+      <property name='download.checksum.sha-256' value='9a5a948ec4b3a8be3ceb86b2f52678040e4d6a97283c4f49e9d5ed10cbac5f46'/>
+      <property name='maven-groupId' value='com.ditrix.edt.mcp'/>
+      <property name='maven-artifactId' value='com.ditrix.edt.mcp.server'/>
+      <property name='maven-version' value='1.0.2-SNAPSHOT'/>
+      <property name='maven-type' value='eclipse-plugin'/>
+    </properties>
+  </artifact>
+</artifacts>

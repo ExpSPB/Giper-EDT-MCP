@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testGuideIsNonEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testOutputSchemaDeclaresResultFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testProcessFactoryConstants -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testComponentTypeConstants -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testAttrClientAutoSelectConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testDescriptionMentionsRunAndDebug -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testAttrClientTypeConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testInvalidClientTypeIsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testInputSchemaDeclaresAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testResponseTypeIsJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testInputSchemaClientTypeEnumValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testInputSchemaRequiredContainsProjectNameOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateLaunchConfigToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s

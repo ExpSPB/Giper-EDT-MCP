@@ -9,7 +9,10 @@ package fm.giper.edt.mcp.server.bridge;
 
 import java.util.Comparator;
 import java.util.List;
+<<<<<<< HEAD
 import java.util.function.BiFunction;
+=======
+>>>>>>> test_cloud_unverified
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -44,11 +47,18 @@ import com.google.gson.JsonSyntaxException;
  * path as HTTP {@code tools/call}, without copying transport, SSE or interruption
  * responsibilities into this service.
  * <p>
+<<<<<<< HEAD
  * The class also implements {@link BiFunction} and {@link Supplier} so the same
  * instance can be published under those JDK types, giving callers that cannot
  * see {@link IEdtMcpBridge} a typed handle instead of a reflective one.
  */
 public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, String>, Supplier<String>
+=======
+ * In-process Workmate has no HTTP session: the next {@link #callTool} sees the
+ * current repository snapshot immediately.
+ */
+public class EdtMcpBridge implements IEdtMcpBridge
+>>>>>>> test_cloud_unverified
 {
     private static final long BRIDGE_REQUEST_ID = 1L;
 
@@ -232,6 +242,7 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
                 .collect(Collectors.toSet()))));
     }
 
+<<<<<<< HEAD
     /**
      * {@link Supplier} face of {@link #listTools()} for callers that hold this
      * service under its JDK-type alias.
@@ -252,6 +263,8 @@ public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, S
         return callTool(toolName, argsJson);
     }
 
+=======
+>>>>>>> test_cloud_unverified
     private static String jsonKind(JsonElement element)
     {
         if (element == null || element.isJsonNull())

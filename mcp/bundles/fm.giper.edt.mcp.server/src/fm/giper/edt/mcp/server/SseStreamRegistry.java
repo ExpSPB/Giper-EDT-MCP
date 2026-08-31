@@ -65,8 +65,18 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
      */
     public SseStream register(OutputStream out, String sessionId, String requestedPath)
     {
+        return register(out, sessionId, requestedPath, null);
+    }
+
+    /**
+     * Registers an open SSE stream and remembers the negotiated protocol version
+     * so later notifications use that session's wire format.
+     */
+    public SseStream register(OutputStream out, String sessionId, String requestedPath, String protocolVersion)
+    {
         SseStream stream = new SseStream(out, sessionId,
-            requestedPath == null || requestedPath.isBlank() ? McpEndpoint.LEGACY_PATH : requestedPath);
+            requestedPath == null || requestedPath.isBlank() ? McpEndpoint.LEGACY_PATH : requestedPath,
+            protocolVersion);
         streams.add(stream);
         return stream;
     }
@@ -119,6 +129,32 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
             paths.add(stream.getRequestedPath());
         }
         return Set.copyOf(paths);
+    }
+
+    /**
+     * Drops every stream bound to {@code requestedPath} and closes their sockets
+     * so the heartbeat loop exits. Used when that profile's surface changes.
+     *
+     * @param requestedPath canonical endpoint path
+     * @return how many streams were closed
+     */
+    public int closeByRequestedPath(String requestedPath)
+    {
+        if (requestedPath == null || requestedPath.isBlank())
+        {
+            return 0;
+        }
+        int closed = 0;
+        for (SseStream stream : streams)
+        {
+            if (requestedPath.equals(stream.getRequestedPath()))
+            {
+                streams.remove(stream);
+                stream.closeQuietly();
+                closed++;
+            }
+        }
+        return closed;
     }
 
     /**
@@ -203,18 +239,25 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
         private final OutputStream out;
         private final String sessionId;
         private final String requestedPath;
+        private final String protocolVersion;
         private final Object lock = new Object();
 
         SseStream(OutputStream out)
         {
-            this(out, null, McpEndpoint.LEGACY_PATH);
+            this(out, null, McpEndpoint.LEGACY_PATH, null);
         }
 
         SseStream(OutputStream out, String sessionId, String requestedPath)
         {
+            this(out, sessionId, requestedPath, null);
+        }
+
+        SseStream(OutputStream out, String sessionId, String requestedPath, String protocolVersion)
+        {
             this.out = out;
             this.sessionId = sessionId;
             this.requestedPath = requestedPath;
+            this.protocolVersion = protocolVersion;
         }
 
         public String getSessionId()
@@ -225,6 +268,23 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
         public String getRequestedPath()
         {
             return requestedPath;
+        }
+
+        public String getProtocolVersion()
+        {
+            return protocolVersion;
+        }
+
+        void closeQuietly()
+        {
+            try
+            {
+                out.close();
+            }
+            catch (IOException ignored)
+            {
+                // heartbeat loop exits on the next write
+            }
         }
 
         String sessionKey()

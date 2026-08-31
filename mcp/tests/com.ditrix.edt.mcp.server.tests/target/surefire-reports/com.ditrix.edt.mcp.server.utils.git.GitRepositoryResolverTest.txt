@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.065 s -- in com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testCloseIfOwnedClosesAnOwnedRepository -- Time elapsed: 0.008 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testAMalformedConfigurationIsLoggedWithoutTheExceptionText -- Time elapsed: 0.011 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testALocationOutsideAnyGitTreeIsNotReportedAsAnUnreadableConfiguration -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testAProjectOutsideAnyGitTreeStillEarnsTheNoRepositoryError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testRepositoryAccessorRoundTrips -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testCloseIfOwnedIsANoOpWhenRepositoryIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testDiscoverFromDirectoryFindsGitDirWalkingUpFromANestedSubdirectory -- Time elapsed: 0.012 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testSuccessfulResolutionAccessors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testFailedResolutionAccessors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testADiscoveredRepositoryResolvesAsOwned -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testASuccessfulDiscoveryIsCarriedThroughTheOutcome -- Time elapsed: 0.010 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testDiscoverFromDirectoryReturnsNullWhenNoGitDirExistsAnywhereUpTheTree -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testCloseIfOwnedOnAnErrorResolutionIsANoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testAnUnreadableConfigurationEarnsItsOwnErrorNotTheNoRepositoryOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitRepositoryResolverTest.testCloseIfOwnedLeavesABorrowedRepositoryOpen -- Time elapsed: 0.007 s

@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.200 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testOwnedAttachIsProtected -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testRuntimeLaunchWithMatchingAppIdStillTerminated -- Time elapsed: 0.034 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testEachStageIsPublishedOnEntryNotAfterItFinished -- Time elapsed: 0.024 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testServerApplicationSkipsProgrammaticUpdate -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testSettleWindowAlwaysKeptAfterRecompute -- Time elapsed: 0.022 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testStaleAttachOnSameProjectIsSwept -- Time elapsed: 0.022 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testServerApplicationStillSweepsStaleLaunches -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testRuntimePlusAttachSweepCountedTogether -- Time elapsed: 0.025 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testUnchangedScopeNeverPublishesRecompute -- Time elapsed: 0.023 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testPhaseSinkIsOptionalForCallersThatDoNotReportProgress -- Time elapsed: 0.022 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testUnknownUpdateScopeFailsFastBeforeTerminating -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsPrepareTest.testChangeGateRunsUnderItsOwnPhaseNotUnderRecompute -- Time elapsed: 0.021 s

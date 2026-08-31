@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest
+com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest.testSessionIsRepublishedAfterWorkmateEvictsIt -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest.testStartIsIdempotentAndStopIsSafeWithoutStart -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest.testNothingIsPublishedAfterStopAndWhatWasPublishedIsDiscarded -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest.testConstantsAreTheOnesTheProjectRulesName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateChatSessionPublisherTest.testMissingWorkmateIsRetriedRatherThanThrown -- Time elapsed: 0.001 s

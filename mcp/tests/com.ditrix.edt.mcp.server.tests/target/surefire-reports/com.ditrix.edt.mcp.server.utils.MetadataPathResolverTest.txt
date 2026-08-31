@@ -1,0 +1,34 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest
+-------------------------------------------------------------------------------
+Tests run: 30, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testThreePartsReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testEnglishCatalogForm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testRussianTypeTokenWithEnglishNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderEnglishCatalog -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTopObjectMdoLeadingOrTrailingDotReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testEmptyReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testRussianFormTokensResolveSamePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderNullAndUnresolvableReturnNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testResolveMetadataDirEnglish -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTopObjectMdoEnglishCatalog -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTopObjectMdoUnknownTypeReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testNullReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderDocumentType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTopObjectMdoNullEmptyAndDotlessReturnNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testOnePartReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTopObjectMdoMultiWordTypeDirectory -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testSingularFormTokenResolvesSamePathAsPlural -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderResolvesForSingularFormToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderIsFilePathWithoutFormDotForm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderInformationRegisterType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testCommonForm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testNonFormsKeywordReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormFolderCommonForm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTopObjectMdoRussianTypeToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFullyRussianForm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testResolveMetadataDirUnknownReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testFormsKeywordIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testResolveMetadataDirRussian -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testUnknownTypeReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPathResolverTest.testTwoPartNonCommonFormReturnsNull -- Time elapsed: 0 s

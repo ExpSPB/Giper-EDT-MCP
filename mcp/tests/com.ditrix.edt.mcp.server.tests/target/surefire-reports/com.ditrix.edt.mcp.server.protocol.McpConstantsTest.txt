@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.McpConstantsTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.protocol.McpConstantsTest
+com.ditrix.edt.mcp.server.protocol.McpConstantsTest.testHeaders -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.protocol.McpConstantsTest.testErrorCodes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpConstantsTest.testMcpMethods -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpConstantsTest.testProtocolVersion -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpConstantsTest.testServerName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpConstantsTest.testJsonRpcVersion -- Time elapsed: 0 s

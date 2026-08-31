@@ -246,6 +246,10 @@ public final class BackendRegistry
         groupsByPath.clear();
         lastRefreshMillis = System.currentTimeMillis();
         logChange(previous, snapshot);
+        for (Backend backend : live)
+        {
+            backend.ensureNotificationListeners(sseHub);
+        }
     }
 
     /**
@@ -738,17 +742,6 @@ public final class BackendRegistry
         snapshot = Snapshot.build(liveBackends, projectHolders, unsupportedPorts);
         syntheticSnapshot = true;
         groupsByPath.clear();
-    }
-
-    /**
-     * Test seam: publishes a pre-built compatibility group so fail-closed routing can be
-     * asserted when live backends exist but no donor could be resolved.
-     *
-     * @param group the group to cache (donor may be {@code null})
-     */
-    void putGroupForTest(ProfileGroupSnapshot group)
-    {
-        groupsByPath.put(group.getEndpoint().canonicalPath(), group);
     }
 
     /**

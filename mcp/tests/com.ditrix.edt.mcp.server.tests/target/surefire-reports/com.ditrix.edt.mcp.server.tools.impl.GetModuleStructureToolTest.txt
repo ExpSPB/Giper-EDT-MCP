@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest
+-------------------------------------------------------------------------------
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testResultFileNameReplacesBackslashesAndLowercases -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testResultFileNameDefaultWhenModulePathMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testComputeRegionEndLineIgnoresPlainCodeLines -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testComputeRegionEndLineDegenerate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testSchemaDeclaresOptionalBooleanFlags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testResultFileNameDefaultWhenModulePathEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testRegionMarkersRejectPlainAndEmptyLines -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testSchemaDeclaresResponseFormatEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testComputeRegionEndLineSiblingRegions -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testComputeRegionEndLineRussianMarkers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testIsRegionStartAndEnd -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testComputeRegionEndLineNested -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testMissingModulePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testResultFileNameWithModulePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetModuleStructureToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

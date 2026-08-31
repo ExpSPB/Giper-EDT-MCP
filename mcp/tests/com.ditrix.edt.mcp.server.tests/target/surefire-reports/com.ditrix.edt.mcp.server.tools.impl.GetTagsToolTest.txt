@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testSchemaRequiresProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testUnknownProjectIsNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTagsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

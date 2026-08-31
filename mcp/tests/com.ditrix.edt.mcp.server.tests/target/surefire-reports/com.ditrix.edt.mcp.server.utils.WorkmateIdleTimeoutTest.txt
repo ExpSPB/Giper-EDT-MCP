@@ -1,0 +1,7 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.WorkmateIdleTimeoutTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.612 s -- in com.ditrix.edt.mcp.server.utils.WorkmateIdleTimeoutTest
+com.ditrix.edt.mcp.server.utils.WorkmateIdleTimeoutTest.testASilentTurnIsEndedWhenItIsTheOnlyOne -- Time elapsed: 0.214 s
+com.ditrix.edt.mcp.server.utils.WorkmateIdleTimeoutTest.testTheIdleRuleStandsDownWhileASecondTurnIsAwaited -- Time elapsed: 0.601 s
+com.ditrix.edt.mcp.server.utils.WorkmateIdleTimeoutTest.testTheIdleClockRestartsWhenTheSecondTurnEnds -- Time elapsed: 0.797 s

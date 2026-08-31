@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testBlankModulePathIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testValidationChecksProjectNameFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testBlankProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testResultFileNameWithMethodName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testMissingMethodNameErrorCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testDescriptionSteersToReadModuleSource -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testValidationChecksModulePathBeforeMethodName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testMissingModulePathErrorCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testResultFileNameWithNullParamsIsSafe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testResultFileNameLowercasesMixedCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testBlankMethodNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testValidationErrorIsStructuredFailureJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testSchemaMarksAllThreeParametersRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testResultFileNameWithoutMethodName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testResultFileNameWithBlankMethodName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testMissingProjectNameErrorCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testGuideIsServedAndDocumentsContentHashRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testMissingModulePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ReadMethodSourceToolTest.testMissingMethodName -- Time elapsed: 0 s

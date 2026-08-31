@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testLookAlikeHostRejected -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testEmptyStringRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testLocalhostHttpAllowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testLoopbackIpAllowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testVscodeWebviewAllowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testLocalhostHttpsAllowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testNullLiteralAllowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testFileOriginAllowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testUnrelatedSchemeRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpOriginValidatorTest.testRemoteHttpRejected -- Time elapsed: 0 s

@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.BackgroundJobsRemainingBudgetTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.061 s -- in com.ditrix.edt.mcp.server.utils.BackgroundJobsRemainingBudgetTest
+com.ditrix.edt.mcp.server.utils.BackgroundJobsRemainingBudgetTest.testRemainingBudgetIsBelowTheTotalAndCountsFromSubmission -- Time elapsed: 0.061 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsRemainingBudgetTest.testTheDefaultReporterIsUnbounded -- Time elapsed: 0 s

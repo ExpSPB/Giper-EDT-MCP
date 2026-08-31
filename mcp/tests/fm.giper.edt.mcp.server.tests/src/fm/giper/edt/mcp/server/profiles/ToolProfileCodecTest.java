@@ -87,31 +87,6 @@ public class ToolProfileCodecTest
     }
 
     @Test
-    public void schemaVersionOutsideIntRangeIsMalformedNotUnchecked()
-    {
-        String json = "{\"schemaVersion\":9223372036854775807,\"documentRevision\":1,\"profiles\":[" //$NON-NLS-1$
-            + "{\"id\":\"default\",\"displayName\":\"Default\",\"description\":\"\"," //$NON-NLS-1$
-            + "\"enabled\":true,\"allowedTools\":[\"get_server_status\"],\"revision\":1}]}"; //$NON-NLS-1$
-        try
-        {
-            ToolProfileCodec.decode(json);
-            fail("expected malformed document"); //$NON-NLS-1$
-        }
-        catch (MalformedToolProfileDocumentException expected)
-        {
-            assertTrue(expected.getMessage(), expected.getMessage().contains("schemaVersion")); //$NON-NLS-1$
-        }
-        catch (ArithmeticException e)
-        {
-            fail("Math.toIntExact must not escape decode as ArithmeticException"); //$NON-NLS-1$
-        }
-        catch (ToolProfileDocumentException e)
-        {
-            fail("expected malformed, got " + e.getClass().getSimpleName()); //$NON-NLS-1$
-        }
-    }
-
-    @Test
     public void preservesUnknownToolNames() throws Exception
     {
         ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(

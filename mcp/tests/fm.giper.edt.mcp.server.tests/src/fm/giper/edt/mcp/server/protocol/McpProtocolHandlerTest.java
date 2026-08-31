@@ -12,6 +12,12 @@ import static org.junit.Assert.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 
 import org.junit.After;
 import org.junit.Before;
@@ -19,12 +25,6 @@ import org.junit.Test;
 
 import fm.giper.edt.mcp.server.UserSignal;
 import fm.giper.edt.mcp.server.UserSignal.SignalType;
-import fm.giper.edt.mcp.server.history.McpCallHistory;
-import fm.giper.edt.mcp.server.history.McpCallRecord;
-import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
-import fm.giper.edt.mcp.server.profiles.ProfileResolver;
-import fm.giper.edt.mcp.server.profiles.ToolProfile;
-import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.utils.OutputSizeGuard;
@@ -283,14 +283,13 @@ public class McpProtocolHandlerTest
     @Test
     public void testInitializeParsesAndStoresClientCapabilities()
     {
-        // (a) Capabilities sent in an initialize request are parsed and retrievable.
         String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
             + "\"params\":{\"protocolVersion\":\"2025-06-18\","
             + "\"capabilities\":{\"roots\":{\"listChanged\":true},\"sampling\":{}},"
             + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
         handler.processRequest(request);
 
-        ClientCapabilities caps = handler.getClientCapabilities();
+        ClientCapabilities caps = capsFromInitialize(request);
         assertNotNull("capabilities holder must never be null", caps);
         assertTrue("a supplied capabilities object must be present", caps.isPresent());
         assertTrue("declared roots capability must be retrievable", caps.has("roots"));
@@ -301,9 +300,7 @@ public class McpProtocolHandlerTest
     @Test
     public void testGetClientCapabilitiesDefaultsToAbsentBeforeInitialize()
     {
-        // (c) The stored capabilities are exposed for gating and have a safe,
-        // permissive default before any initialize has been processed.
-        ClientCapabilities caps = handler.getClientCapabilities();
+        ClientCapabilities caps = McpRequestContext.legacyDefault().getClientCapabilities();
         assertNotNull("default capabilities must never be null", caps);
         assertFalse("no initialize yet => not present", caps.isPresent());
         assertTrue("default must allow structuredContent", caps.allowsStructuredContent());
@@ -312,14 +309,12 @@ public class McpProtocolHandlerTest
     @Test
     public void testInitializeWithoutCapabilitiesKeepsPermissiveDefault()
     {
-        // An initialize that omits capabilities entirely leaves the permissive
-        // default in place (structuredContent allowed).
         String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
             + "\"params\":{\"protocolVersion\":\"2025-06-18\","
             + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
         handler.processRequest(request);
 
-        ClientCapabilities caps = handler.getClientCapabilities();
+        ClientCapabilities caps = capsFromInitialize(request);
         assertFalse("an absent capabilities object must read not-present", caps.isPresent());
         assertTrue("absent capabilities must still allow structuredContent",
             caps.allowsStructuredContent());
@@ -388,11 +383,12 @@ public class McpProtocolHandlerTest
             + "\"params\":{\"protocolVersion\":\"2025-06-18\","
             + "\"capabilities\":{\"experimental\":{\"structuredContent\":false}},"
             + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
-        handler.processRequest(initialize);
+        ClientCapabilities optOut = capsFromInitialize(initialize);
         assertFalse("an explicit opt-out must disable structuredContent",
-            handler.getClientCapabilities().allowsStructuredContent());
+            optOut.allowsStructuredContent());
 
-        String response = handler.processRequest(buildToolCallRequest(2, "ok_tool", null));
+        String response = handler.processRequest(buildToolCallRequest(2, "ok_tool", null),
+            McpRequestContext.legacyDefault().withClientCapabilities(optOut));
         JsonObject result = parseResponse(response).getAsJsonObject("result");
         assertNull("structuredContent must be suppressed for an opted-out client",
             result.get("structuredContent"));
@@ -412,7 +408,7 @@ public class McpProtocolHandlerTest
             + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
         handler.processRequest(request);
         assertTrue("explicit true must allow structuredContent",
-            handler.getClientCapabilities().allowsStructuredContent());
+            capsFromInitialize(request).allowsStructuredContent());
     }
 
     @Test
@@ -430,7 +426,7 @@ public class McpProtocolHandlerTest
         JsonObject json = parseResponse(response);
         assertNotNull("initialize must still return a result", json.get("result"));
 
-        ClientCapabilities caps = handler.getClientCapabilities();
+        ClientCapabilities caps = capsFromInitialize(request);
         assertFalse("a non-object capabilities value must read not-present", caps.isPresent());
         assertTrue("malformed capabilities must keep the permissive default",
             caps.allowsStructuredContent());
@@ -612,6 +608,34 @@ public class McpProtocolHandlerTest
             capabilities.getAsJsonObject("resources").get("listChanged").getAsBoolean());
         // The pre-existing tools capability must remain advertised.
         assertNotNull("tools capability must still be advertised", capabilities.get("tools"));
+    }
+
+    @Test
+    public void testDeniedToolCallSetsIsErrorOnSuccessEnvelope()
+    {
+        registry.register(new StubJsonTool("write_module_source", "{\"ok\":true}")); //$NON-NLS-1$ //$NON-NLS-2$
+        ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(
+            DefaultToolProfileFactory.createSafeDefault(),
+            ToolProfile.builder()
+                .id("review") //$NON-NLS-1$
+                .displayName("Review") //$NON-NLS-1$
+                .allowedTools(Set.of("get_server_status")) //$NON-NLS-1$
+                .build()));
+        McpRequestContext context = McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve("review", false, snapshot)) //$NON-NLS-1$
+            .requestedPath("/mcp/profiles/review") //$NON-NLS-1$
+            .build();
+
+        String response = handler.processRequest(
+            buildToolCallRequest(1, "write_module_source", null), context); //$NON-NLS-1$
+        JsonObject json = parseResponse(response);
+        assertFalse("denied tools/call must stay a JSON-RPC success", json.has("error")); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject result = json.getAsJsonObject("result"); //$NON-NLS-1$
+        assertTrue("denied tools/call must set isError:true", result.get("isError").getAsBoolean()); //$NON-NLS-1$ //$NON-NLS-2$
+        String text = result.getAsJsonArray("content").get(0) //$NON-NLS-1$
+            .getAsJsonObject().get("text").getAsString(); //$NON-NLS-1$
+        assertTrue(text, text.contains("review")); //$NON-NLS-1$
+        assertTrue(text, text.contains("not allowed") || text.contains("Preferences")); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     @Test
@@ -1358,6 +1382,17 @@ public class McpProtocolHandlerTest
     private JsonObject parseResponse(String response)
     {
         return JsonParser.parseString(response).getAsJsonObject();
+    }
+
+    private static ClientCapabilities capsFromInitialize(String request)
+    {
+        JsonObject json = JsonParser.parseString(request).getAsJsonObject();
+        if (!json.has("params") || !json.get("params").isJsonObject()) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            return ClientCapabilities.ABSENT;
+        }
+        JsonObject params = json.getAsJsonObject("params"); //$NON-NLS-1$
+        return ClientCapabilities.from(params.get("capabilities")); //$NON-NLS-1$
     }
 
     /**

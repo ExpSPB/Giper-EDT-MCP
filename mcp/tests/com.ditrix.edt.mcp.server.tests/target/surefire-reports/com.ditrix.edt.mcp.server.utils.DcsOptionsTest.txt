@@ -1,0 +1,8 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsOptionsTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.081 s -- in com.ditrix.edt.mcp.server.utils.DcsOptionsTest
+com.ditrix.edt.mcp.server.utils.DcsOptionsTest.testPlatformCatalogueDeclaresAutoIndentAsNumber -- Time elapsed: 0.036 s
+com.ditrix.edt.mcp.server.utils.DcsOptionsTest.testAppearanceAndBodyEnumOptionsUseTheWriterSourcesAndPaginate -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.DcsOptionsTest.testOutputOptionsExposeStoredKeyDeclaredTypeAndAcceptedEnumLiterals -- Time elapsed: 0.024 s
+com.ditrix.edt.mcp.server.utils.DcsOptionsTest.testRealAppearanceCatalogueReportsAndWritesTheSameConcreteValueTypes -- Time elapsed: 0.016 s

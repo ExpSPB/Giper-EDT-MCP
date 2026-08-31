@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testUnknownTypeWithWeirdCasingRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testInvalidTypeRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testSchemaTypeEnumListsAllValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testInvalidTypeErrorNamesValidSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testOutputSchemaDeclaresEnvelopeFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testResultFileNameIsJsonDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListConfigurationsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

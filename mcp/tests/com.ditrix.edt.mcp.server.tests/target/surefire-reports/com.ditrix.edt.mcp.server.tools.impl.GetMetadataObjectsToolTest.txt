@@ -1,0 +1,31 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest
+-------------------------------------------------------------------------------
+Tests run: 27, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeAcceptsXdtoPackageTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testResultFileNameUsesLowercasedProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeAcceptsEveryPreviouslyUncollectedProbe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeAcceptsRussianPreviouslyUncollectedProbes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeRejectsUnrecognizedValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeExternalMetadataTypeAcceptsItsOwnVocabulary -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testSchemaDeclaresLimitAndLanguageParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeExternalMetadataTypeRejectsConfigurationCategories -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeAcceptsLegacyCategoryTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testDescriptionSteersToGuideAndSiblingTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeAcceptsRussianTypeNameToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeRejectsStandaloneTypeOnConfigurationPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testEmptyProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testProjectNameIsRequiredInSchema -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testNormalizeMetadataTypeAcceptsEnglishTypeNameToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testResultFileNameFallbackWhenProjectNameMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testResultFileNameFallbackWhenProjectNameEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testMissingProjectNameIgnoresOtherArgs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataObjectsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testStaleByNameSkipsLiveLaunch -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testNullAndConfiglessEntriesAreSkipped -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testStaleByNameIsSelected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testAllModeWithProjectFilterNarrowsStaleSelection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testStaleByNameIgnoresNonEdtConfig -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testNullLaunchArrayYieldsEmptySelection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testAllModeSelectsEveryStaleEdtLaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testAlreadySelectedLaunchIsNotDuplicated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testStaleByProjectAndAppIdIsSelected -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolStaleSelectionTest.testStaleAttachByNameIsSelected -- Time elapsed: 0 s

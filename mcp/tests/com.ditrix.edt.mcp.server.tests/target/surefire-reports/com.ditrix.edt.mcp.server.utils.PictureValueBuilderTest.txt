@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.635 s -- in com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testMalformedValueShowsBothAcceptedForms -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testEnglishCommonPictureResolvesThroughSharedMetadataResolver -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testStandardPictureRendersBackToSymbolicName -- Time elapsed: 0.294 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testResolvedPictureUsesRealNameAndResourceUri -- Time elapsed: 0.340 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testExtendedPictureUsesFullExtendedKeyAndRendersThatPrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testRussianStandardPictureNameUsesFullBilingualProviderKeyAndRendersCanonicalName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testRussianCommonPictureTypeTokenUsesSameResolver -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testUnknownStandardPictureReturnsActionableErrorWithoutThrowing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testCommonPictureRendersBackToSymbolicName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PictureValueBuilderTest.testStandardPictureUsesProviderFullSymbolicNameAndReturnsProxy -- Time elapsed: 0 s

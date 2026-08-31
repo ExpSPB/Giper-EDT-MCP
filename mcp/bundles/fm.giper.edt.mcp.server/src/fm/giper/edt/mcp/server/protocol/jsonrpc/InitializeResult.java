@@ -55,8 +55,7 @@ public class InitializeResult
      * {@code resources} capabilities; it does not yet advertise prompts or other
      * optional features, so those fields are intentionally absent (the shared Gson
      * omits null fields). The CLIENT's capabilities are a separate concern: they
-     * arrive in the initialize REQUEST and are parsed/stored by the protocol
-     * handler (see {@code McpProtocolHandler#getClientCapabilities()}), not
+     * arrive in the initialize REQUEST and live on {@code McpRequestContext}, not
      * modelled here.
      */
     public static class Capabilities

@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testParseIsCaseInsensitiveAndTrimmed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testWireValuesAreLowercaseTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testMissingValueYieldsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testParsesEveryWireValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testAcceptedValuesNamesEveryPolicy -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testUnknownValueIsRejectedRatherThanSilentlyDefaulted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalInfobaseChangesPolicyTest.testDefaultIsOverride -- Time elapsed: 0 s

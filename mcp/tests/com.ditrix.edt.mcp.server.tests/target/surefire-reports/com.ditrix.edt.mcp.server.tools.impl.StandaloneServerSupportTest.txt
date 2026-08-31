@@ -1,0 +1,47 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest
+-------------------------------------------------------------------------------
+Tests run: 43, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRegistryCleanupValueOfNotPresent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesToleratesValuesWithoutGetId -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testServerOfApplicationReturnsNullOnFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesFullMissReturnsZero -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testFindServerByModuleNameReturnsMatchingServer -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfReadsUuidViaGetInfobaseId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesIdentityDoesNotTouchOtherEntries -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfReturnsNullWhenMethodAbsent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsNullWhenGetPathIsNotAString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfFallbackIsNullSafeWhenInfobaseIsNull -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDeleteServerReturnsStatusFromInvokedMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReadsGetPathOn2026Shape -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsNullWhenConfigurationIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testModuleOfApplicationReturnsNullOnFailure -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfFallbackIsNullSafeWhenConfigurationIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesByGetIdEquality -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testFindServerByModuleNameReturnsNullWhenNoModuleMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testFindServerByModuleNameReturnsNullWhenGetServersAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesKeyFallbackWithNullModule -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsConfigDirectoryForFileDatabase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testFindServerByModuleNameReturnsNullForEmptyServerList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsNullWhenDatabaseIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testAcquireServiceDegradesGracefullyWhenFeatureAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveFromInfobaseRegistryWithModuleOnlyDegradesGracefully -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testFindServerByModuleNameReturnsNullWhenGetServersReturnsNonList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRegistryCleanupValueOfRemoved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesByRawIdKeyFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testFindServerByModuleNameSkipsNullServersInList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveFromInfobaseRegistryNullModuleAndIdReturnsFailed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDeleteServerPropagatesInvocationException -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsNullWhenModuleHasNoConfigurationMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfReturnsNullWhenIdIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfReadsValueAsString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsNullWhenConfigDirectoryIsNotAString -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDatabaseDirOfReturnsNullForRdbmsDatabaseWithoutConfigDirectory -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfFallsBackToConfigurationChainWhenGetInfobaseIdAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRegistryCleanupValueOfFailed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDeleteServerReturnsErrorStatusWhenMethodAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRegistryCleanupHasThreeValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testInfobaseIdOfUsesToStringOfNonStringId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testDeleteServerReturnsNullWhenInvokedMethodReturnsNonStatus -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveFromInfobaseRegistryWithIdDegradesGracefully -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StandaloneServerSupportTest.testRemoveModuleEntriesByValueIdentity -- Time elapsed: 0 s

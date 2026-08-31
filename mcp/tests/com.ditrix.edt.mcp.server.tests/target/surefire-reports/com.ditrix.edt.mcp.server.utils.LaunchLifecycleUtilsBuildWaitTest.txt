@@ -1,0 +1,26 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest
+-------------------------------------------------------------------------------
+Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeMultipleExtensionsIncludesConfigFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testCollectIncludesLaunchProjectFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeExtensionAlwaysIncludesConfigFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testRecomputeThatDidNotRunLeavesTheProjectDirty -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeEmptyIsAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeConfigurationIsLaunchProjectOnly -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testWaitForLaunchBuildSettledNullProjectIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testRecomputeAndSettleOpenProjectDoesNotThrow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testValidateUpdateScopeStandardValuesAreValid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeNullIsAllAndConfigFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testUnknownExtensionNamesErrorListsUnknownAndAvailable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeConfigurationCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testRecomputeAndSettleNullCollectionIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeAllKeywordCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeUnknownNameStillRecomputesConfig -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testWaitForLaunchBuildSettledClosedProjectIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testCollectWithoutActivatorDegradesToLaunchProjectOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testParseRequestedExtensionNamesGrammar -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testWaitForLaunchBuildSettledOpenProjectDoesNotThrow -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testValidateUpdateScopeUnknownNameIsHardError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testResolveUpdateScopeNullProjectIsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsBuildWaitTest.testValidateUpdateScopeUnparseableScopeIsHardError -- Time elapsed: 0 s

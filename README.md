@@ -241,7 +241,7 @@ Quickly switch between common tool configurations using presets:
 | **Code Review** | Analysis + BSL code reading (excludes `write_module_source`) |
 | **Development** | Full development without debugging tools |
 
-Select a preset from the dropdown in the Tools tab while editing a profile. The preset auto-detects based on that profile's allowlist and shows "Custom" when it does not match a built-in preset.
+**Add** a profile only from a built-in preset (All / Analysis / Code Review / Development). The dialog will not close OK until a preset is chosen. The preset auto-detects based on that profile's allowlist and shows "Custom" when it no longer matches. Saved names that are missing from the catalogue stay on the allowlist and are marked unavailable.
 
 ### Tool profiles
 
@@ -251,11 +251,12 @@ One Giper-EDT-MCP process can expose several surfaces at once:
 |-----|---------|
 | `http://127.0.0.1:8765/mcp` | **default** profile (legacy path; keep this in existing client configs) |
 | `http://127.0.0.1:8765/mcp/profiles/<id>` | Named enabled profile (`review`, `writer`, …) |
+| `http://127.0.0.1:8765/mcp/` (trailing slash) | HTTP **400** — not an alias of `/mcp` |
 | any other `/mcp/...` path | HTTP **400** — no fallback |
 
-Create, duplicate, rename, enable/disable profiles on the **Tools** tab. Copy the shown endpoint into the agent's MCP config. Two agents against one EDT: point one at `/mcp` and the other at `/mcp/profiles/review`.
+Create, duplicate, rename, enable/disable profiles on the **Tools** tab. Copy the shown endpoint into the agent's MCP config. Two agents against one EDT: point one at `/mcp` and the other at `/mcp/profiles/review`. **Apply** resets only the sessions and SSE streams of the affected URL: editing `review` does not drop `/mcp`. Changing **default** also drops fallback clients and sessionless `/mcp` (the next request must `initialize` again). The in-process bridge sees the new snapshot on the next `callTool`.
 
-**Fallback.** An unknown or disabled profile ID still accepts the connection on that URL, but the effective surface is **default**. `initialize` and `get_server_status` (`includeProfiles: true`) say so (`fallbackApplied`, `fallbackReason`). Do not treat the path segment as proof of the allowlist — read `activeProfile.id`.
+**Fallback.** An unknown or disabled profile ID still accepts the connection on that URL, but the effective surface is **default**. `initialize` and `get_server_status` (`includeProfiles: true`) say so (`activeProfile.fallbackApplied`, `fallbackReason`). Do not treat the path segment as proof of the allowlist — read `activeProfile.id`. Each fallback at initialize is also written to the EDT log.
 
 **Discovery.** `get_server_status` with `includeProfiles: true` lists enabled profiles and canonical endpoints. Add `includeProfileTools: true` only when you need each allowlist (it is refused unless `includeProfiles` is also true). This never switches the caller's profile or enlarges rights.
 
@@ -417,8 +418,10 @@ works in both directions:
   the question to an external cloud service and Workmate may change the
   configuration with its own tools — so enable it under
   *Preferences → EDT MCP Server → Tools* first.
-- The OSGi service `fm.giper.edt.mcp.server.bridge.IEdtMcpBridge` lets
-  Workmate/JShell list and call Giper-EDT-MCP tools without importing Giper-EDT-MCP packages.
+- The OSGi service `fm.giper.edt.mcp.server.bridge.IEdtMcpBridge` is the only
+  published alias (look it up by the interface name). Workmate/JShell list and
+  call Giper-EDT-MCP tools without importing Giper-EDT-MCP packages. Pass
+  `profileId` to stay inside that allowlist; the no-arg methods use `default`.
   `callTool` goes through the same dispatcher as MCP `tools/call` and returns its
   JSON-RPC response.
 
@@ -436,11 +439,8 @@ Two details decide whether this actually works, both measured against Workmate
   descriptions stay behind `get_tool_guide`, which it calls when it needs one).
   Pass `shareMcpTools=false` to send the question verbatim instead.
 
-The same instance is published under the JDK types `BiFunction<String,String,String>`
-(`callTool`) and `Supplier<String>` (`listTools`), both carrying the service property
-`edt.mcp.bridge=v1`. Prefer that alias: it needs no reflection and no access to the
-bridge package, which matters for callers whose rules forbid unproven Java API - such
-as Workmate's JShell tool.
+Look the service up by the interface name and pass a profile id when the caller
+must stay on a narrower surface:
 
 ```java
 // Take the context from an ALWAYS-ACTIVE bundle, not from Giper-EDT-MCP's own: this bundle
@@ -449,27 +449,14 @@ as Workmate's JShell tool.
 // "because ctx is null". OSGi services are global, so any live context finds this one.
 var bundleContext = org.osgi.framework.FrameworkUtil
     .getBundle(org.eclipse.core.runtime.Platform.class).getBundleContext();
-var references = bundleContext.getServiceReferences(
-    java.util.function.BiFunction.class, "(edt.mcp.bridge=v1)");
-if (references.isEmpty()) {
-    throw new IllegalStateException("Giper-EDT-MCP bridge service is not registered");
-}
-var mcp = bundleContext.getService(references.iterator().next());
-System.out.println(mcp.apply("get_edt_version", "{}"));
-```
-
-A consumer that prefers the named contract can still resolve it by string name and
-invoke it reflectively:
-
-```java
 var serviceReference = bundleContext.getServiceReference(
     "fm.giper.edt.mcp.server.bridge.IEdtMcpBridge");
 var bridgeService = bundleContext.getService(serviceReference);
 try {
     var callTool = bridgeService.getClass().getMethod(
-        "callTool", String.class, String.class);
+        "callTool", String.class, String.class, String.class);
     System.out.println((String) callTool.invoke(
-        bridgeService, "get_edt_version", "{}"));
+        bridgeService, "get_edt_version", "{}", "default"));
 } finally {
     bundleContext.ungetService(serviceReference);
 }
@@ -501,7 +488,7 @@ Workmate's restricted-types list — so the in-process bridge is its only route.
 
 ## Multi-EDT Proxy
 
-Running more than one EDT instance at once? [`edt-mcp-proxy`](proxy/) is a standalone router that exposes a single, stable MCP endpoint on `:8764` and forwards each call to the right Giper-EDT-MCP instance by `projectName`, discovering live instances in the background. The same `/mcp` and `/mcp/profiles/<id>` paths work on the proxy. A profile is advertised only when every live backend agrees on the effective id, fallback state, and published-tool fingerprint — a mixed “some fell back, some did not” group is not a shared surface. It ships as `edt-mcp-proxy-<version>.jar` alongside the plugin archive in every [release](https://github.com/ExpSPB/Giper-EDT-MCP/releases). See [proxy/README.md](proxy/README.md) for setup, CLI options and configuration.
+Running more than one EDT instance at once? [`edt-mcp-proxy`](proxy/) is a standalone router that exposes a single, stable MCP endpoint on `:8764` and forwards each call to the right Giper-EDT-MCP instance by `projectName`, discovering live instances in the background. The same `/mcp` and `/mcp/profiles/<id>` paths work on the proxy (`/mcp/` with a trailing slash is HTTP 400). `get_server_status` keeps the backend contract (`displayName`, `revision`, `allowedToolCount`, optional `allowedTools`); the proxy only rewrites `endpoint` to its own URL and drops profiles the fleet does not agree on. Explicit initialize uses `edt-mcp-proxy/<effectiveProfileId>`. It ships as `edt-mcp-proxy-<version>.jar` alongside the plugin archive in every [release](https://github.com/ExpSPB/Giper-EDT-MCP/releases). See [proxy/README.md](proxy/README.md) for setup, CLI options and configuration.
 
 ## Available Tools
 
@@ -1124,6 +1111,8 @@ source/dist/MCP-EDT.v<VERSION>.zip
 ```
 
 This is a valid p2 update site — install via EDT → *Help → Install New Software → Add → Archive…*.
+
+p2 **Check for Updates** sees `major.minor.micro` only. A qualifier-only rebuild of the same SNAPSHOT (`1.0.3.qualifier`) is not an update — bump the micro (`1.0.2` → `1.0.3-SNAPSHOT`) before building whenever the installed plugin must update. See skill `edt-mcp-build-test`.
 
 ### Script options
 

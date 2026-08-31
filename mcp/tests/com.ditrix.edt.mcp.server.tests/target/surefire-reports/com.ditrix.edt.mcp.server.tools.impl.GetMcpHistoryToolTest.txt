@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest
+-------------------------------------------------------------------------------
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testIncludeStatsAppendsAggregatedBlock -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testMinDurationFilter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testFilterKeyedByMethodForNonToolCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testToolSubstringFilter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testHappyPathReturnsMetadataOnlyByDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testOutputSchemaDeclaresTheResultEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testIncludeBodiesAttachesRawPayloads -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testInvalidStatusIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testLimitCapsPageNewestFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testEmptyHistoryReturnsEmptyPage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testNoParameterIsRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testStatusIsAClosedEnumInSchema -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testStatusFilterUsesTheSharedClassifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testTimeWindowIsHalfOpen -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testInputSchemaDeclaresAllParametersLowerCamelCase -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMcpHistoryToolTest.testGuideDocumentsBodiesStatsAndPii -- Time elapsed: 0 s

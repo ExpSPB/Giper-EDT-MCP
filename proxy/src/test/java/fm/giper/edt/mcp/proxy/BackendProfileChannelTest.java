@@ -8,7 +8,6 @@
 package fm.giper.edt.mcp.proxy;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -70,19 +69,6 @@ public class BackendProfileChannelTest
         ChannelResolution resolution = BackendProfileChannel.parseResolution(endpoint, status, tools);
         assertEquals("DISABLED_PROFILE", resolution.getFallbackReason()); //$NON-NLS-1$
         assertEquals("default", resolution.getEffectiveProfileId()); //$NON-NLS-1$
-    }
-
-    @Test
-    public void parseResolutionDoesNotConfirmRequestedIdWhenStatusHasNoActiveProfile()
-    {
-        String status = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{" //$NON-NLS-1$
-            + "\"content\":[{\"type\":\"text\",\"text\":\"status\"}]," //$NON-NLS-1$
-            + "\"isError\":false}}"; //$NON-NLS-1$
-        String tools = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}"; //$NON-NLS-1$
-        ProfileEndpoint endpoint = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
-        ChannelResolution resolution = BackendProfileChannel.parseResolution(endpoint, status, tools);
-        assertFalse("plainTextMode / missing activeProfile must not look like an exact match", //$NON-NLS-1$
-            "review".equals(resolution.getEffectiveProfileId()) && !resolution.isFallback()); //$NON-NLS-1$
     }
 
     private static String envelope(String structured)

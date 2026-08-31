@@ -1,0 +1,36 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 32, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableRowEscapesPipe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownBacktick -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableHeaderEscapesLabels -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownAngleBrackets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableHeaderSingleColumn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownPlainText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableCarriageReturn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableHeaderMultipleColumns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testKeyValueTableEmptyMapIsHeaderOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableMultiplePipes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTablePipeCharacter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableRowEmptyThrows -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableHeaderEmptyThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableNewline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableCombined -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableHeaderNullThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableRowNullCellRendersEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownUnderscore -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownAsterisk -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableRowBasic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableCRLF -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownAllSpecialChars -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownBrackets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTableEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testKeyValueTableNullMapIsHeaderOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeForTablePlainText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testKeyValueTablePreservesOrderAndEscapes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testTableRowEscapesNewline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownBackslash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MarkdownUtilsTest.testEscapeMarkdownEmpty -- Time elapsed: 0 s

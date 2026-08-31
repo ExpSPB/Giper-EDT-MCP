@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.078 s -- in com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testMalformedXmlReturnsActionableError -- Time elapsed: 0.048 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testMaximumXmlPageFitsGuardAfterWorstCaseUserSignalAugmentation -- Time elapsed: 0.013 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testPageEnvelopeNeverSplitsUtf16SurrogatePairs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testEmptyDocumentEnvelopeHasNoNextOffset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testImportedDanglingLinkIsRefusedBeforeAttachedRootReplacement -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testPageEnvelopeUsesExactChunkBoundariesAndNextOffsetArithmetic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testReplaceContentKeepsRootAndCopiesAllPopulatedSections -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsXmlCodecTest.testPageEnvelopeMeasuresJsonEscapingAndShrinksUntilGuardIsNoOp -- Time elapsed: 0.016 s

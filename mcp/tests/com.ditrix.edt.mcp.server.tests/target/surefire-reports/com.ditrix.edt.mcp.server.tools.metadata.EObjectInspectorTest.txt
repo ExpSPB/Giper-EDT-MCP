@@ -1,0 +1,33 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest
+-------------------------------------------------------------------------------
+Tests run: 29, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.495 s -- in com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetPrimaryValueFallsBackToNameFeature -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testIsSimpleValueHolderNullEObjectIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testFormatReferenceUnwrapsReferenceValue -- Time elapsed: 0.385 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testCountMeaningfulAttributesNullIsZero -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testHasNonEmptyContainmentTrueWhenChildAdded -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetCleanClassNameStripsImplSuffix -- Time elapsed: 0.108 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testFormatReferenceMdObjectShowsTypeDotName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetPrimaryValueClassNameFallbackWhenNothingSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetCleanClassNameOnRealEObjectReturnsModelName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetFormatStyleExpandWhenContainmentPresent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetPrimaryValueReturnsEnumAttributeFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testFormatReferenceReferenceValueWithNullInnerReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetPrimaryValueNullReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetFormatStyleSimpleValueForFewAttributes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetCleanClassNameWithoutSuffixUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetPrimaryValueAsStringRendersEnumLiteral -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetPrimaryValueAsStringNullReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testCountMeaningfulAttributesCountsSetAttribute -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetFormatStyleMdObjectReturnsReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetFormatStyleNullReturnsSimpleValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testIsMdObjectReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testGetCleanClassNameNullReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testIsSimpleValueHolderTrueForCommandGroup -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testFormatReferenceNullReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testHasNonEmptyContainmentFalseForEmptyObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testIsSimpleValueHolderFalseForObjectWithContainment -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testFormatReferenceSimpleHolderShowsPrimaryValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testHasNonEmptyContainmentNullIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.EObjectInspectorTest.testIsSimpleValueHolderNullEClassIsFalse -- Time elapsed: 0 s

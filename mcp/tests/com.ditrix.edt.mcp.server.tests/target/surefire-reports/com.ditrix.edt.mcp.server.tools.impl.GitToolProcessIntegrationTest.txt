@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.849 s -- in com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest
+com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest.testStoredRemoteWhoseCredentialCarriesAnAsciiSpaceIsRefused -- Time elapsed: 0.342 s
+com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest.testCredentialInTheRepositoryConfigIsRedactedFromRealGitOutput -- Time elapsed: 0.323 s
+com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest.testFailingCommandIsReportedAsAnErrorWithGitsOwnMessage -- Time elapsed: 0.288 s
+com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest.testSucceedingCommandReportsExitCodeAndOutput -- Time elapsed: 0.289 s
+com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest.testCommandOutputCarriesRealGitData -- Time elapsed: 0.291 s
+com.ditrix.edt.mcp.server.tools.impl.GitToolProcessIntegrationTest.testRunsInTheGivenWorkTreeNotTheProcessDirectory -- Time elapsed: 0.279 s

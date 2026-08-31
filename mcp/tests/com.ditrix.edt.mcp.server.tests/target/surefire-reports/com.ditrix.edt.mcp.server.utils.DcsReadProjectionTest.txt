@@ -1,0 +1,40 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest
+-------------------------------------------------------------------------------
+Tests run: 36, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.095 s -- in com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testCaseVariantsAddressAdvertisedByParentResolvesAgainstCaseOwner -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testVariantPresentationAppearsInExactNodeAndCollectionReads -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testDataSetQueryScalarUsesTheSharedSurrogateSafePager -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testDataSetLinkParameterIsReportedAsAParameterReference -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testExtendedSchemaMembersWrittenAtAParentAreRenderedBelowThatSameAddress -- Time elapsed: 0.014 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testBareCollectionUsesSharedPaginationAndCanonicalAddresses -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testSettingsCollectionAddressesUseTheirOwnerPublicType -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testCollectionPageStopsAtFirstUnrenderedItemWhenBudgetBinds -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testUserFieldReferenceScanReadsDetailAndTotalExpressionsButNotPresentations -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testSchemaSummaryPrintsCountsAndAddressesButOmitsQuery -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testProductionPageFitsAfterHashAndWorstCaseMarkdownSignal -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testFailedPointerBoundsLargeExistingKeyList -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testQueryTextsReportOnlyAmpersandParameterReferences -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testFieldTitleFallsBackToFirstLocalizedValue -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testExactNodeEnvelopeOwnsAddressAndValueKeepsEClassName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testFormConditionalAppearanceReadPrintsWritableRootRelativeAddresses -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testExpressionSuffixAndLinkConditionAttributesReportTheirOwningLinks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testRootFieldPageRecursesIntoUnionAndPrintsResolvableAddressOnce -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testBareUserSettingsReadPagesTheWholeSettingsTarget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testExactCompositePagesByCharactersAndReassemblesWithoutLoss -- Time elapsed: 0.008 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testCutSummarySectionCarriesLocalContinuationMarkers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testDynamicListSummaryAdvertisesPagedByteExactQueryText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testItemPagesKeepCollectionDefaultAndMaximum -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testVariantStructureCollectionRefusalExplainsReadWriteAsymmetry -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testPointerDataSetAdvertisesPagedQueryAndCompleteFieldAddress -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testRootSummariesKeepCountsAndPageEveryAggregateRowExactlyOnce -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testSchemaSummaryAndSchemaReadsExposeDataSetLinks -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testGenericParameterItemsUseOwningHolderTypeForReadAndWrite -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testTypedReadsRenderEveryDeliberatelyEmptyRequiredString -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testStructuredReferencesMatchIdentitiesCaseInsensitively -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testBadPointerNamesFailedSegmentAndExistingKeys -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testReportAndDynamicListSettingsUseSameAddressAwareOutline -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testKnownButUnsetSettingsFeatureDoesNotContradictItsNavigationKeys -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testNullSchemaCollectionsUseMaterializedCanonicalAddresses -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testDynamicListScalarPagesNeverSplitSurrogatePairs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsReadProjectionTest.testEveryCharacterPagedPathUsesTheCharacterDefaultAndMeasuredClamp -- Time elapsed: 0.021 s

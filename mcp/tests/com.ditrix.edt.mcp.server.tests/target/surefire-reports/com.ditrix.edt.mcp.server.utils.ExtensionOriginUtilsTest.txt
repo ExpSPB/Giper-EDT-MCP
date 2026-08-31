@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.manifestThatDiffersBetweenReadsIsUnreadable -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.testExtensionNativeObjectIsExtensionOwn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.missingManifestIsUnreadable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.testExternalObjectsProjectIsNeitherCoreNorExtension -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.declaredBaseProjectReadsTheManifest -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.manifestWrittenDuringTheReadIsUnreadable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.testBaseProjectIsAlwaysCore -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.testExtensionAdoptedObjectIsCoreAdopted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.incompleteManifestIsUnreadableRatherThanUnlinked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExtensionOriginUtilsTest.testNullBelongingTreatedAsNative -- Time elapsed: 0 s

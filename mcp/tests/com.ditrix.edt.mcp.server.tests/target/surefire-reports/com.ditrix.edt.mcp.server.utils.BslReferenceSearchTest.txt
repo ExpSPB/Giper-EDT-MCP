@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.037 s -- in com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.newlyOpenedDependentDuringEnumerationForcesCompleteWorkspaceFallback -- Time elapsed: 0.023 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.readyProjectWithNoIndexedModulesUsesScopedEmptySearch -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.knownNonWorkspaceResourcesAreSkippedWithoutDisablingScopedSearch -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.dependentAppearingDuringTheSearchMakesTheScanIncomplete -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.failedEnumerationFallsBackInsteadOfSearchingAccumulatedPartialScope -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.unregisteredOpenExternalObjectsProjectForcesCompleteWorkspaceFallback -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.scopedResourceSetChangeBetweenPassesForcesCompleteWorkspaceFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.callerSnapshotSuppliesBothAdoptedExtensionsAndSourceScope -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.scopedSearchIncludesBaseExtensionsAndExternalObjectsButExcludesUnrelatedProjects -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.readyDependentWithNoIndexedModulesStillUsesScopedSearch -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.buildingExternalObjectsProjectForcesCompleteWorkspaceFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.readinessChangeDuringEnumerationForcesCompleteWorkspaceFallback -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BslReferenceSearchTest.unclassifiableUriSchemeFallsBackInsteadOfUsingAccumulatedPartialScope -- Time elapsed: 0 s

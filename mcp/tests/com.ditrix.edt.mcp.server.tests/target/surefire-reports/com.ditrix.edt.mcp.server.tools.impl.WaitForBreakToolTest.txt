@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testClampTimeoutAboveMaxIsCapped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testOutputSchemaDeclaresSnapshotFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testExecuteBlankApplicationIdWithNoActiveSessionIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testExecuteReturnsExistingSnapshotImmediatelyAsHit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testClampTimeoutNormalValuePassesThrough -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testHitResponseOmitsServerTargetForLaunchThread -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testClampTimeoutBelowOneIsRaisedToOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testHitResponseCarriesServerTargetWhenResolvedViaServerPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testHitResponseCarriesAutoResolvedAndTopFrameRefWithFrames -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testClampTimeoutAtMaxIsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.WaitForBreakToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

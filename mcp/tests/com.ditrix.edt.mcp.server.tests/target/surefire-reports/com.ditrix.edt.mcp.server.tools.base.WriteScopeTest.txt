@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.base.WriteScopeTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.base.WriteScopeTest
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testSayingNothingIsNotADeclarationAndFallsBackToTheDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testAnUndeterminableScopeWaitsItsFallbackWithoutPublishingAnything -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testARecordOverridesAnUndeterminableStatement -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testUnusableNamesAreIgnoredRatherThanRecordedAsProjects -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testAnActualWriteBeatsAStatementThatNothingWasQueuedWhicheverCameFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testThePublishedListIsSortedAndDeduplicated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testACallThatSaysBothThingsIsReadAsTheOneThatWaitsMoreAndClaimsLess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testANestedCallRecordsIntoItsOwnScopeAndGivesTheOuterOneBack -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testACascadeParticipantIsDeclaredButNeverPublishedAsWritten -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testARecordedWriteMarksAnyPlainErrorAtTheReturnPoint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testAProjectBothWrittenAndCascadedIntoKeepsOnlyTheStrongerGrade -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testTheStaticFacesRecordIntoTheBoundScopeAndNowhereElse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testTheBindingIsGivenBackEvenWhenTheCallThrowsAnError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testStatingThatNothingWasQueuedIsADeclarationOfTheEmptySet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.WriteScopeTest.testAnOpaqueWriterMarksUnknownWithoutClaimingACommit -- Time elapsed: 0 s

@@ -1,0 +1,55 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest
+-------------------------------------------------------------------------------
+Tests run: 51, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testMaxDynamicRowsIsBounded -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatStyleItemRendersAutoColorNotRgb -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueStringFallsBackToToString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatFeatureNameSingleWordJustCapitalizes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatStyleItemRendersFontValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatEnumReturnsToString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testGetSynonymMissingCodeFallsBackToFirstNonEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueNullReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddPropertyRowNullStringValueRendersDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testEscapeTableCellStripsCarriageReturn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testEscapeTableCellNullReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAppendTruncatedRowIsActionableAndTableSafe -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueTypeDescription -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatTypeNullDescriptionReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueEMapPicksByLanguageCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatAllDynamicPropertiesEmitsTitledTable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatBasicPropertiesRendersNameAndCodeKeyedSynonym -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testStartTableEmitsHeaderAndSeparator -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatStandardAttributesEmitsTableForPopulatedList -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddTableRowEscapesEachCell -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatBoolean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueBoolean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatTypeEmptyDescriptionReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddPropertyRowStringValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatFeatureNameNullAndEmptyArePassedThrough -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatTypeMultipleTypesJoinedByComma -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddSectionHeaderFormatsLevel3 -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testEscapeTableCellReplacesNewlineWithSpace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueSmallCollectionInlinedAsCommaList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatReferenceCollectionMdObjectsRenderFqnTable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicPropertiesSeparatedRendersSetScalarsAsProperties -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatStyleItemRendersExplicitColorValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatEnumNullReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatEObjectReferenceNullReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testEscapeTableCellEscapesPipe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatTypeSingleTypeReturnsItsName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testGetSynonymPicksValueByLanguageCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatReferenceCollectionEMapEntriesRenderLanguageTable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatFeatureNameSplitsCamelCaseAndCapitalizes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddPropertyRowIntValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatStandardAttributesNoSuchMethodIsSilent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatEObjectReferenceMdObjectAsTypeDotName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddMainHeaderFormatsTypeAndName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testGetSynonymNullMapReturnsEmptyNotNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testGetSynonymUsesCodeKeyNotNameKey -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testAddPropertyRowBooleanValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueLargeCollectionShowsCountOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueMdObjectReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatDynamicValueEmptyCollectionReturnsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.metadata.AbstractMetadataFormatterTest.testFormatStandardAttributesEmptyListEmitsNothing -- Time elapsed: 0 s

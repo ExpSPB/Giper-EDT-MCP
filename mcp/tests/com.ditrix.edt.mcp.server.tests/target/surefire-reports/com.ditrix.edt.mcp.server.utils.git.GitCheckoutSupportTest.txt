@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest
+com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest.testJobErrorOutcomeDidNotRunToCompletionAndCarriesTheException -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest.testTimedOutOutcomeDidNotRunToCompletionAndCarriesNoResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest.testRanToCompletionOutcomeExposesResultAndOptionalRefreshWarning -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest.testRanToCompletionOutcomeWithNoRefreshWarningIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitCheckoutSupportTest.testInterruptedOutcomeDidNotRunToCompletion -- Time elapsed: 0 s

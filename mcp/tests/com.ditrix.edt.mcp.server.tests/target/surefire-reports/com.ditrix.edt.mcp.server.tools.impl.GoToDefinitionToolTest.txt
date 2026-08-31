@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest
+-------------------------------------------------------------------------------
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testBlankProjectNameIsMissing -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testRussianSymbolPassesValidation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResultFileNameFallbackWhenSymbolMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testBareMethodWithBlankModulePathIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResultFileNameFallbackWhenSymbolBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResultFileNameWithEmptyParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResultFileNameLowercasesAndReplacesEveryDot -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testGuideNotEmptyAndContainsMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testBareMethodNeedsModulePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResultFileNameForQualifiedSymbol -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testMissingSymbol -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testBlankSymbolIsMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testResultFileNameForBareSymbol -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testInputSchemaContainsParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GoToDefinitionToolTest.testMissingProjectName -- Time elapsed: 0 s

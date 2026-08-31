@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testStaleFrameRefWhenNoLiveSession -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testStaleThreadIdWhenNoLiveSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetVariablesToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

@@ -79,7 +79,6 @@ public final class FakeBackend
     private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
     private final Map<String, List<OutputStream>> sseByPath = new ConcurrentHashMap<>();
     private volatile List<String> defaultToolNames = List.of("fake_tool_one", "echo_port");
-    private volatile boolean plainTextMode;
 
     /**
      * Creates a fake backend on an OS-chosen free port (port 0).
@@ -243,17 +242,6 @@ public final class FakeBackend
         ProfileSpec previous = profiles.get(id);
         List<String> tools = previous == null ? defaultToolNames : previous.toolNames;
         profiles.put(id, new ProfileSpec(id, false, tools));
-    }
-
-    /**
-     * Omits {@code structuredContent} on {@code get_server_status} and puts the JSON in
-     * {@code content[0].text}, matching a backend with {@code plainTextMode} enabled.
-     *
-     * @param enabled whether to answer without structured content
-     */
-    public void setPlainTextMode(boolean enabled)
-    {
-        this.plainTextMode = enabled;
     }
 
     /**
@@ -496,39 +484,46 @@ public final class FakeBackend
         Resolved resolved = resolve(endpoint);
         JsonObject structured = new JsonObject();
         structured.addProperty("success", true);
-        structured.addProperty("requestedProfileId", endpoint.getRequestedProfileId());
-        structured.addProperty("fallbackApplied", resolved.fallbackReason != null);
+        JsonObject active = new JsonObject();
+        active.addProperty("requestedProfileId", endpoint.getRequestedProfileId());
+        active.addProperty("id", resolved.effectiveId);
+        active.addProperty("displayName", resolved.effectiveId);
+        active.addProperty("description", "");
+        active.addProperty("revision", 1L);
+        active.addProperty("endpoint",
+            "http://127.0.0.1:" + getPort() + endpoint.canonicalPath());
+        active.addProperty("allowedToolCount", resolved.toolNames.size());
+        active.addProperty("fallbackApplied", resolved.fallbackReason != null);
         if (resolved.fallbackReason != null)
         {
-            structured.addProperty("fallbackReason", resolved.fallbackReason);
+            active.addProperty("fallbackReason", resolved.fallbackReason);
         }
-        JsonObject active = new JsonObject();
-        active.addProperty("id", resolved.effectiveId);
         structured.add("activeProfile", active);
         JsonArray available = new JsonArray();
-        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, ProfileEndpoint.LEGACY_PATH));
+        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, "/mcp",
+            toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID).size()));
         for (ProfileSpec spec : profiles.values())
         {
             if (spec.enabled && !ProfileEndpoint.DEFAULT_PROFILE_ID.equals(spec.id))
             {
-                available.add(profileItem(spec.id, "/mcp/profiles/" + spec.id));
+                available.add(profileItem(spec.id, "/mcp/profiles/" + spec.id, spec.toolNames.size()));
             }
         }
         structured.add("availableProfiles", available);
-        if (plainTextMode)
-        {
-            return textResult(structured.toString());
-        }
         JsonObject result = textResult("status");
         result.add("structuredContent", structured);
         return result;
     }
 
-    private JsonObject profileItem(String id, String path)
+    private JsonObject profileItem(String id, String path, int allowedToolCount)
     {
         JsonObject item = new JsonObject();
         item.addProperty("id", id);
+        item.addProperty("displayName", id);
+        item.addProperty("description", "");
+        item.addProperty("revision", 1L);
         item.addProperty("endpoint", "http://127.0.0.1:" + getPort() + path);
+        item.addProperty("allowedToolCount", allowedToolCount);
         return item;
     }
 

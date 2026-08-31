@@ -3,11 +3,12 @@ e2e tests for multi-profile MCP surfaces (kind: read / action).
 
 These are protocol-and-policy tests, not a new tool. They use extra McpClient
 instances so /mcp and /mcp/profiles/<id> stay isolated. Named profiles
-e2e-review / e2e-development / e2e-disabled must be seeded in the live
-workspace (Preferences → MCP Server → Tools); tests skip when they are absent.
+e2e-review / e2e-development / e2e-disabled must be seeded from
+tests/e2e/fixtures/e2e_tool_profiles.json (or added from a built-in preset).
+Missing fixtures fail the test; they do not skip.
 
-Hot allowlist updates without restart are covered by Java unit/integration
-tests. Live Preferences UI acceptance stays manual.
+Apply / hot allowlist updates kick only the affected profile's sessions
+(covered by ProfileNotificationServiceTest). Live Preferences UI stays manual.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,6 +17,8 @@ from harness import (
     E2E_DEV_PROFILE,
     E2E_DISABLED_PROFILE,
     E2E_REVIEW_PROFILE,
+    MCP_PROXY_HOST,
+    MCP_PROXY_PORT,
     McpClient,
     PROJECT,
     assert_no_diff,
@@ -24,7 +27,10 @@ from harness import (
     e2e_test,
     http_post_status,
     profile_client,
+    proxy_client,
+    proxy_profile_client,
     require_enabled_profile,
+    require_proxy,
 )
 
 
@@ -48,6 +54,11 @@ def test_invalid_profile_path_is_http_400_without_fallback():
         raise AssertionError(
             "expected HTTP 400 for a syntactically invalid path, got %s body=%r"
             % (status, body[:300]))
+    slash = http_post_status("/mcp/")
+    if slash[0] != 400:
+        raise AssertionError(
+            "expected HTTP 400 for /mcp/ trailing slash, got %s body=%r"
+            % (slash[0], slash[1][:300]))
     assert_no_diff()
 
 
@@ -150,7 +161,10 @@ def test_review_denies_write_before_argument_validation():
         raise AssertionError("e2e-review must not publish write_module_source: %r" % names)
     r = review.call("write_module_source", {})
     err = r.error_text()
-    if not r.is_error and "not allowed" not in err.lower() and "disabled" not in err.lower():
+    if not r.is_error:
+        raise AssertionError(
+            "review deny must set isError:true, got %r" % err)
+    if "not allowed" not in err.lower() and "profile" not in err.lower():
         raise AssertionError(
             "review must refuse write_module_source before validating args, got %r" % err)
     assert_no_diff()
@@ -186,10 +200,12 @@ def test_enable_toolset_does_not_change_explicit_profile_list():
         raise AssertionError(
             "enable_toolset must not change an explicit profile tools/list: %r -> %r"
             % (before, after))
-    # The call itself may be denied (tool not in allowlist) or succeed as a no-op.
+    # Explicit endpoints reject enable_toolset as unsupported (PD stays on /mcp).
+    # A missing-allowlist deny or a no-op success is also fine; the list must not change.
     if r.is_error:
         err = r.error_text().lower()
-        if "not allowed" not in err and "disabled" not in err and "unknown" not in err:
+        if ("not allowed" not in err and "disabled" not in err and "unknown" not in err
+                and "not supported" not in err):
             raise AssertionError("unexpected enable_toolset error on review: %r" % r.error_text())
     assert_no_diff()
 
@@ -214,4 +230,99 @@ def test_disabled_profile_falls_back_and_is_omitted():
             raise AssertionError(
                 "expected fallback for %s, instructions=%r active=%r"
                 % (E2E_DISABLED_PROFILE, instructions, active))
+    assert_no_diff()
+
+
+@e2e_test(tool="get_server_status", kind="read")
+def test_path_bound_session_is_rejected_on_another_profile():
+    require_enabled_profile(E2E_REVIEW_PROFILE)
+    review = profile_client(E2E_REVIEW_PROFILE)
+    _init(review)
+    if not review.session_id:
+        raise AssertionError("review initialize must mint a session")
+    other = McpClient("/mcp")
+    other.session_id = review.session_id
+    raw = other.tools_list()
+    if isinstance(raw, dict) and "result" in raw:
+        raise AssertionError(
+            "replaying a review session on /mcp must not list tools, got %r" % raw)
+    assert_no_diff()
+
+
+@e2e_test(tool="get_server_status", kind="read")
+def test_two_profiles_stay_alive_without_server_restart():
+    """Ordinary traffic on one profile must not kick the other (Apply-only kick)."""
+    require_enabled_profile(E2E_REVIEW_PROFILE)
+    review = profile_client(E2E_REVIEW_PROFILE)
+    _init(review)
+    default = default_client()
+    status_default = default.call("get_server_status", {})
+    assert_ok(status_default, "default still answers after review initialize")
+    status_review = review.call("get_server_status", {})
+    assert_ok(status_review, "review still answers after default status")
+    if (status_review.structured or {}).get("activeProfile", {}).get("id") != E2E_REVIEW_PROFILE:
+        raise AssertionError("review surface changed without Apply: %r" % status_review.structured)
+    assert_no_diff()
+
+
+@e2e_test(tool="get_server_status", kind="read")
+def test_proxy_slash_and_unknown_path_are_http_400():
+    require_proxy()
+    slash = http_post_status("/mcp/", host=MCP_PROXY_HOST, port=MCP_PROXY_PORT)
+    if slash[0] != 400:
+        raise AssertionError(
+            "proxy /mcp/ must be HTTP 400, got %s body=%r" % (slash[0], slash[1][:300]))
+    unknown = http_post_status("/mcp/not-a-profile", host=MCP_PROXY_HOST, port=MCP_PROXY_PORT)
+    if unknown[0] != 400:
+        raise AssertionError(
+            "proxy invalid path must be HTTP 400, got %s body=%r" % (unknown[0], unknown[1][:300]))
+    assert_no_diff()
+
+
+@e2e_test(tool="get_server_status", kind="read")
+def test_proxy_repeats_review_isolation_and_status_contract():
+    require_proxy()
+    require_enabled_profile(E2E_REVIEW_PROFILE)
+    default = proxy_client("/mcp")
+    _init(default)
+    review = proxy_profile_client(E2E_REVIEW_PROFILE)
+    result = _init(review)
+    name = ((result.get("serverInfo") or {}).get("name") or "")
+    if E2E_REVIEW_PROFILE not in name:
+        raise AssertionError(
+            "proxy explicit initialize must name the profile, got serverInfo.name=%r" % name)
+    default_names = set(_tool_names(default.tools_list()))
+    review_names = set(_tool_names(review.tools_list()))
+    if default_names == review_names:
+        raise AssertionError("proxy review tools/list must differ from /mcp")
+    denied = review.call("write_module_source", {})
+    if not denied.is_error:
+        raise AssertionError("proxy review deny must set isError:true")
+    status = review.call("get_server_status", {"includeProfiles": True})
+    assert_ok(status, "proxy review status")
+    profiles = status.structured.get("availableProfiles") or []
+    if not profiles:
+        raise AssertionError("proxy must pass through availableProfiles")
+    first = profiles[0]
+    for key in ("id", "endpoint"):
+        if key not in first:
+            raise AssertionError("proxy profile entry missing %s: %r" % (key, first))
+    if "displayName" not in first and "revision" not in first and "allowedToolCount" not in first:
+        raise AssertionError(
+            "proxy must not strip diagnostic profile fields: %r" % first)
+    active = status.structured.get("activeProfile") or {}
+    if active.get("id") != E2E_REVIEW_PROFILE:
+        raise AssertionError("proxy review activeProfile.id=%r" % active.get("id"))
+    assert_no_diff()
+
+
+@e2e_test(tool="get_server_status", kind="read")
+def test_proxy_include_profile_tools_requires_include_profiles():
+    require_proxy()
+    client = proxy_client("/mcp")
+    _init(client)
+    denied = client.call("get_server_status", {"includeProfileTools": True})
+    if not denied.is_error:
+        raise AssertionError(
+            "proxy includeProfileTools without includeProfiles must fail")
     assert_no_diff()

@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testUnknownApplicationIdIsActionableError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testServerInfobaseAsksForLogDir -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testResolveWithoutProjectOrOverrideIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testFileInfobaseWithNoLogDirNamesResolvedPath -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testLogDirOverrideMissingDirNamesPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testFileInfobaseResolvesLogDir -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testLogDirOverrideShortCircuitsResolutionInResolve -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testNullConnectionStringIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testResolveWithBlankOverrideFallsBackToProjectRequirement -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testFileInfobaseWithBlankPathIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testNoInfobaseApplicationsIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testLogDirOverrideResolves -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testMultipleInfobasesWithoutApplicationIdIsAmbiguityError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testSelectSingleInfobaseNeedsNoApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogLocatorTest.testSelectByApplicationIdPicksTheMatch -- Time elapsed: 0 s

@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LifecycleWaiterCleanupTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.LifecycleWaiterCleanupTest
+com.ditrix.edt.mcp.server.utils.LifecycleWaiterCleanupTest.testAFailedRemovalCanStillBeRetried -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.LifecycleWaiterCleanupTest.testCleanupUnregistersTheListenerExactlyOnceHoweverOftenItIsCalled -- Time elapsed: 0 s

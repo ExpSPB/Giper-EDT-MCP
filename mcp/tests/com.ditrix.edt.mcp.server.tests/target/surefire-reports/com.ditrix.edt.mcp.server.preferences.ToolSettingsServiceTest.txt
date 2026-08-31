@@ -1,0 +1,41 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest
+-------------------------------------------------------------------------------
+Tests run: 37, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testRoundtripMultiple -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testRoundtripEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4RestoresCurrentDevelopmentPreset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testFirstReleaseAnalysisOnlyDisablesDangerousToolsAcrossEveryMigration -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testSerializeMultipleToolsSorted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testMigrationDoesNotTouchAStoreAlreadyAtCurrentVersion -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseSkipsEmptyEntries -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testSerializeNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion2LeavesASelectionMissingOneRecognitionToolAlone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4RecognizesCodeReviewWithDefaultDisabledGitEnabled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testFirstReleaseCodeReviewDisablesDangerousToolsAcrossEveryMigration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testFirstReleaseDevelopmentDisablesDangerousToolsAcrossEveryMigration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion2RecognizesAnalysisOnlyTheUserTightenedFurther -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion2RecognizesCodeReviewTheUserTightenedFurther -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testMigrationAddsTheDefaultOffToolToAnExistingStoredList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testRoundtripPresetDisabledTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseSingleTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testAskWorkmateIsOffByDefaultAndOnUpgrade -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4LeavesOverlappingSelectionWithoutAnyFrozenShapeUntouched -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseMultipleTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion2MigrationLeavesAnOverlappingCustomSelectionWithoutQuickFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion2RecognizesFirstReleaseAnalysisOnlyAtVersion1 -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4RecognizesCodeReviewStoreFromBeforeSetVariable -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testMigrationToVersion2DoesNotReAddGitRemovedAfterVersion1 -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion2RecognizesFirstReleaseCodeReviewAtVersion1 -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testMigrationRecognitionIgnoresStaleStoredNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testSerializeSingleTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testParseTrimsWhitespace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testFrozenRecognitionShapesRemainSubsetsOfCurrentPresets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4RestoresCurrentAnalysisOnlyPreset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4RestoresCurrentCodeReviewPreset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testSerializeEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4RecognizesCodeReviewWhenUserReEnabledApplyQuickFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolSettingsServiceTest.testVersion4ChecksAnalysisOnlyBeforeCodeReview -- Time elapsed: 0 s

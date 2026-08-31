@@ -1,0 +1,28 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.337 s -- in com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAFileOverwrittenByACopy -- Time elapsed: 0.023 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteThroughAnUnlistedVerbOnAWriterHelper -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesASecondCallbackRidingOnTheFirstOnesAuthorization -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesACallbackStoredBeforeItReachesTheGate -- Time elapsed: 0.016 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteInTheCallbacksStaticInitializer -- Time elapsed: 0.015 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAFileDeletedWithPlainJava -- Time elapsed: 0.016 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theExportSubmissionSeamIsUnreachableWithoutTheGate -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesASecondCallbackMadeWithAConstructor -- Time elapsed: 0.016 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.everyGateEntryPointReallyReachesTheGate -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theXdtoBranchResolvesItsTargetBeforeItAsks -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.aMethodHandleCountsAsReachingItsTarget -- Time elapsed: 0.018 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteReachedThroughAStaticField -- Time elapsed: 0.016 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteReachedThroughAConstructorReference -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.noBranchCanReachAWriteWithoutPassingThroughTheGate -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theGateSingletonIsConsultedInExactlyOnePlace -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theWriteCallbackIsInvokedOnlyByTheGateAndOnlyAfterAsking -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteCallbackHandedToSomethingOtherThanTheGate -- Time elapsed: 0.019 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteRunThroughAMethodReferenceToTheCallback -- Time elapsed: 0.019 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisReportsNothingAgainstAGatedFixture -- Time elapsed: 0.020 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAFileTruncatedByOpeningAStream -- Time elapsed: 0.020 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteHiddenInAnAnonymousClass -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteThroughAnUnlistedMutationApi -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteThroughASetterOnAConcreteType -- Time elapsed: 0.016 s
+com.ditrix.edt.mcp.server.tools.DeleteMetadataConsentSinglePointRatchetTest.theAnalysisCatchesAWriteCallbackThatIsNeverHandedToTheGate -- Time elapsed: 0.017 s

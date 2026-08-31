@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testObjectDataSetRendersObjectNameAndKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderFilterConditionAndNestedGroup -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderOrderEmptyIsEmptyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testDataSetFieldFolderRendersAsAFolderRow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderOrderListsFieldDirectionAndUse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderFilterConditionWithoutARightHandValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testObjectDataSetRendersDataSourceWhenPresent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderOrderRendersTheAutoOrderMarker -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testParameterTitleFallsBackToFirstLocalizedValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testParameterRendersTitleValueTypeAndUse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testParameterValueTypeFallsBackToEClassNameForANonTypeTypeItem -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderNullSchemaRendersMinimalNote -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testTotalFieldRendersDataPathExpressionAndGroups -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testParameterDefaultValuesCoverEveryDescribeValueKind -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testUnionDataSetRendersUnionOfNestedNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testCalculatedFieldRendersDataPathTitleAndExpression -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderSelectionEmptyIsEmptyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderSelectionRendersTheAutoFieldsMarker -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testDataSetFieldOfUnrecognizedKindFallsBackToEClassName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderEmptySchemaSkipsEverySection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderOrderFlagsADisabledItem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderSelectionRendersAGroupWithNestedChildren -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderFilterEmptyIsEmptyString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderSelectionFlagsADisabledField -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testRenderSelectionListsFieldTitleAndUse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsStructureReaderTest.testQueryDataSetRendersFullQueryInFencedBlock -- Time elapsed: 0.005 s

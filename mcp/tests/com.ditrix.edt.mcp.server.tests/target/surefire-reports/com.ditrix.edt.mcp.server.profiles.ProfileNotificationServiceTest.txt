@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest
+com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest.emptyChangeSetDoesNotNotify -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest.reviewAllowlistChangeNotifiesOnlyThatPath -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest.defaultChangeNotifiesLegacyAndFallbackPaths -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest.displayNameOnlyChangeDoesNotNotify -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileNotificationServiceTest.disableAndEnableReviewNotifyThatPath -- Time elapsed: 0.002 s

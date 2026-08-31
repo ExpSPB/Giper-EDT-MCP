@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testForgetApplicationNullIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testActiveDebugLaunchIsFalseForNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testForgetApplicationDropsSnapshot -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testActiveDebugLaunchIsTrueForRunningDebugLaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testGetThreadApplicationIdUnknownIdIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testTerminateEventPurgesMintedKeySnapshotByDebugTarget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testActiveDebugLaunchIsFalseForTerminatedDebugLaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testEvaluationResumeDoesNotPurgeMintedKeySnapshot -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testActiveDebugLaunchIsFalseForRunMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testForgetApplicationOnlyTargetsGivenApp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testLateResumeEventKeepsFreshSnapshotOfReSuspendedThread -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testResumeEventPurgesMintedKeySnapshotByThreadReverseLookup -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testGetThreadApplicationIdReturnsRegistrationKey -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugSessionRegistryTest.testResumeEventPurgeLeavesOtherApplicationsUntouched -- Time elapsed: 0 s

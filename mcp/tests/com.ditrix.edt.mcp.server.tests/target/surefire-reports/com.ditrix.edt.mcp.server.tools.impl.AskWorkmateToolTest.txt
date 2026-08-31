@@ -1,0 +1,40 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest
+-------------------------------------------------------------------------------
+Tests run: 36, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.034 s -- in com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testChatModeFailureIsReportedAsAFailedJob -- Time elapsed: 0.008 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testWorkmateToolFailureIsReportedAsAFailedJob -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testFastSuccessReturnsDoneMarkdownWithOptionalReasoning -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testAFailureAfterDispatchNeverAsksForARetry -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testMissingAndBlankStartArgumentsAreActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testNarrowProfilePreambleDoesNotHandOutTheDefaultBiFunction -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testSharedStatusToolReturnsCompletedAnswerReasoningProgressAndCount -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testProjectNameIsEscapedForTheNestedJavaAndJsonLiteral -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testMissingWorkmateBundleErrorIsActionable -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testGatewayTimeoutErrorNamesActualTotalBoundAndFix -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testWaitSecondsBoundsOnlyOneCall -- Time elapsed: 1.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testSchemaDeclaresStartModesAndWaitBudgets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testDisabledWorkmateErrorNamesPreferenceFix -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testIncompatibleWorkmateErrorNamesMissingMemberAndFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testChatModeLeavesOutTheBridgePreambleUnlessItIsAskedFor -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testARejectedToolNameIsReportedAsItStands -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testIntegerValidationIsActionable -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testWorkmateToolModeNeedsNoArgumentsAndNoQuestion -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testMissingWorkmateAccessKeyNamesPreferenceFix -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testCommittedChatHandoffOutlivingItsBudgetIsNotReportedAsFailed -- Time elapsed: 2.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testStartReturnsRunningWithoutWaitingForSlowGateway -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testAVerbatimDetailIsStillMadeWholeBeforeItIsReported -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testStaticContract -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testConcurrentJobsAreBoundedWithAnActionableRefusal -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testUnsupportedModeIsActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testTimeoutAfterDispatchWarnsInsteadOfInvitingAPlainRetry -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testChatModeHandsOffAndSaysTheAnswerStaysInTheChatPanel -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testEmptyAnswerMovesJobToFailed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testPreambleListsRegisteredToolNamesAndPointsAtTheGuideTool -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testInstalledButNotInitializedErrorIsActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testWorkmateToolModePassesNameAndArgumentsThroughUntouched -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testBlankWorkmateToolIsActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testWorkmateReturnedFailureIsActionable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testTotalBudgetMovesSlowJobToFailed -- Time elapsed: 1.002 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testQuestionCarriesTheBridgePreambleUnlessTheCallerOptsOut -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.AskWorkmateToolTest.testPreambleWithoutAProjectShowsAnExampleThatRunsAsWritten -- Time elapsed: 0.001 s

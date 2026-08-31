@@ -10,14 +10,10 @@ package fm.giper.edt.mcp.server.tools;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 import fm.giper.edt.mcp.server.Activator;
-import fm.giper.edt.mcp.server.preferences.ToolSettingsService;
-import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 
 /**
  * Registry for MCP tools.
@@ -135,68 +131,9 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
         return Collections.unmodifiableCollection(tools.values());
     }
 
-    /**
-     * Returns only enabled tools (filtered by ToolSettingsService).
-     *
-     * @deprecated use {@link ProfileToolPolicy#publishedTools(boolean)} with an explicit resolution
-     */
-    @Deprecated
-    public Collection<IMcpTool> getEnabledTools()
+    public long getCatalogRevision()
     {
-        Set<String> disabled = ToolSettingsService.getInstance().getDisabledTools();
-        if (disabled.isEmpty())
-        {
-            return Collections.unmodifiableCollection(tools.values());
-        }
-        return tools.values().stream()
-            .filter(tool -> !disabled.contains(tool.getName()))
-            .collect(Collectors.toUnmodifiableList());
-    }
-
-    /**
-     * Returns the tools VISIBLE in {@code tools/list} (and {@code resources/list}).
-     * <p>
-     * When progressive tool disclosure is off (the default) this is exactly
-     * {@link #getEnabledTools()} — no behavior change. When it is on, the result is
-     * further narrowed to tools whose {@link Toolsets toolset} is currently visible
-     * ({@link Toolsets#CORE} plus the toolsets revealed via {@code enable_toolset},
-     * see {@link ToolsetState}), shrinking the always-loaded surface. Visibility
-     * never affects callability: a hidden tool is still registered and can be called
-     * by name (the protocol handler gates calls on {@link #isToolEnabled} only).
-     *
-     * @return the visible tools
-     * @deprecated use {@link ProfileToolPolicy#publishedTools(boolean)}
-     */
-    @Deprecated
-    public Collection<IMcpTool> getVisibleTools()
-    {
-        Collection<IMcpTool> enabled = getEnabledTools();
-        if (!Toolsets.isProgressiveDisclosureEnabled())
-        {
-            return enabled;
-        }
-        ToolsetState state = ToolsetState.getInstance();
-        return enabled.stream()
-            .filter(tool -> state.isVisible(Toolsets.toolsetOf(tool.getName())))
-            .collect(Collectors.toUnmodifiableList());
-    }
-
-    /**
-     * Checks whether a registered tool is currently enabled.
-     *
-     * @param name the tool name
-     * @return true if the tool is registered and enabled
-     * @deprecated use {@link ProfileToolPolicy#isCallable(String)}
-     */
-    @Deprecated
-    public boolean isToolEnabled(String name)
-    {
-        if (name == null)
-        {
-            return false;
-        }
-        return tools.containsKey(name)
-            && ToolSettingsService.getInstance().isToolEnabled(name);
+        return catalogRevision.get();
     }
 
     public long getCatalogRevision()

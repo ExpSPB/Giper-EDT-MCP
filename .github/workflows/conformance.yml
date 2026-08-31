@@ -85,11 +85,21 @@ jobs:
           MAVEN_OPTS: -Xmx2g -XX:+UseParallelGC
         run: bash "$GITHUB_WORKSPACE/.github/scripts/mvn-retry.sh" clean verify --batch-mode --no-transfer-progress -T 1C -DskipTests
 
+      - name: Build the MCP proxy
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/mvn-retry.sh" -f proxy/pom.xml clean package --batch-mode --no-transfer-progress -DskipTests
+
       - name: Upload plugin p2 repository
         uses: actions/upload-artifact@v7
         with:
           name: mcp-plugin-p2
           path: mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository
+          if-no-files-found: error
+
+      - name: Upload proxy jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-proxy-jar
+          path: proxy/target/edt-mcp-proxy-*.jar
           if-no-files-found: error
 
   conformance:
@@ -113,6 +123,12 @@ jobs:
           name: mcp-plugin-p2
           path: plugin-p2
 
+      - name: Download proxy jar
+        uses: actions/download-artifact@v8
+        with:
+          name: mcp-proxy-jar
+          path: proxy-jar
+
       - name: Set up headless EDT ${{ inputs.edt }} + MCP server
         uses: ./.github/actions/setup-edt
         with:
@@ -134,10 +150,30 @@ jobs:
         env:
           SPEC_VERSION: ${{ inputs.spec_version }}
         run: |
-          npx --yes @modelcontextprotocol/conformance@latest server \
-            --url "http://127.0.0.1:8765/mcp" \
-            --spec-version "$SPEC_VERSION" \
-            --expected-failures tests/conformance/baseline.yml
+          set -euo pipefail
+          PROXY_JAR="$(ls proxy-jar/edt-mcp-proxy-*.jar | head -n 1)"
+          java -jar "$PROXY_JAR" serve --port 8764 --scan 8765-8765 >/tmp/edt-mcp-proxy.log 2>&1 &
+          echo "proxy_pid=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            if curl -sf "http://127.0.0.1:8764/health" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          urls=(
+            "http://127.0.0.1:8765/mcp"
+            "http://127.0.0.1:8765/mcp/profiles/default"
+            "http://127.0.0.1:8765/mcp/profiles/e2e-review"
+            "http://127.0.0.1:8764/mcp"
+            "http://127.0.0.1:8764/mcp/profiles/default"
+          )
+          for url in "${urls[@]}"; do
+            echo "[conformance] $url"
+            npx --yes @modelcontextprotocol/conformance@latest server \
+              --url "$url" \
+              --spec-version "$SPEC_VERSION" \
+              --expected-failures tests/conformance/baseline.yml
+          done
 
       - name: Upload EDT log
         if: ${{ always() && env.edt_log != '' }}
@@ -149,4 +185,6 @@ jobs:
 
       - name: Stop EDT
         if: always()
-        run: kill "${edt_pid:-0}" 2>/dev/null || true
+        run: |
+          kill "${proxy_pid:-0}" 2>/dev/null || true
+          kill "${edt_pid:-0}" 2>/dev/null || true

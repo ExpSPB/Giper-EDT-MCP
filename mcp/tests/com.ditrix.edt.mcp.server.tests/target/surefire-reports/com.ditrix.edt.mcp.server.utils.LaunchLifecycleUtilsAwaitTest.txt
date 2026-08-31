@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.144 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testWaitForInfobaseAppliedIsTheSyncedGate -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testImmediateReturnWhenEntryStateAlreadySatisfies -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testAnEventLandingDuringTheEntryReadIsNotLost -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testIsSameApplicationMatchesByIdAcrossInstances -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testWakesOnEventFromRematerializedApplicationInstance -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testPollSafetyNetCatchesMissedEvent -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testWakesOnUpdateStateChangedEvent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testIsSameApplicationSurvivesThrowingGetId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testIgnoresEventsForOtherApplicationAndOtherTypes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testAnEventLandingDuringASafetyNetPollIsNotLost -- Time elapsed: 0.008 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testTimeoutReturnsLastObservedState -- Time elapsed: 0.121 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testIsSameApplicationIdentityAndNullSafety -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testNullArgumentsReturnUnknown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsAwaitTest.testIsSameApplicationFallsBackToEqualsWhenIdUnavailable -- Time elapsed: 0 s

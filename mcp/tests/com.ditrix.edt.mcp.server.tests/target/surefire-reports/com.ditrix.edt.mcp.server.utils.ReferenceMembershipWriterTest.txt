@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testRegisterRecordsAcceptsRegisterRejectsCatalog -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testSubsystemContentIdempotenceOverLiveList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testSubsystemContentAcceptsAllowListedObjects -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testListAccessorReturnsLiveList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testCatalogOwnersRejectsDocument -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testContentOpDefaultsToAdd -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testCatalogOwnersHintNamesOnlyRealOwnerKinds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testSubsystemContentRejectsOutOfListKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testContainsByIdentityDetectsPresentOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testAcceptsRejectsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testCatalogOwnersAcceptsCatalogRejectsRegister -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testMemberLabels -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testContentOpNormalizesCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReferenceMembershipWriterTest.testSubsystemContentRejectsSubsystem -- Time elapsed: 0 s

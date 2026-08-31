@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.255 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdateThrowsApplicationExceptionReturnsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testNullAppManagerReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testBeingUpdatedThatNeverAppliesAborts -- Time elapsed: 0.200 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdateReturningTerminalRequiredStateFailsFast -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testNullProjectReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdatedWithoutRecomputeReturnsImmediatelyNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdateReturnsBeingUpdatedThenSettles -- Time elapsed: 0.009 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdateCalledWhenStateNeedsUpdate -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testLaggingUpdatedThatFlipsTriggersUpdate -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testBeingUpdatedThenSettlesUpdatedReturnsOk -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testStablyUpdatedIsNoOp -- Time elapsed: 0.041 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testApplicationNotFoundReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdatedNoRecomputeIgnoresLaterFlip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsUpdateTest.testUpdateNeverReachesUpdatedReturnsError -- Time elapsed: 0.001 s

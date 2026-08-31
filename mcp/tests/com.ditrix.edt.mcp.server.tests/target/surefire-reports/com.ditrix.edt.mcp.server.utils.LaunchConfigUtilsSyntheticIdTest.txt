@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testAttachPrefixValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testNullIsNotSynthetic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testSyntheticLaunchId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testLaunchPrefixValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testEmptyIsNotSynthetic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testSyntheticServerApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testSyntheticAttachId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchConfigUtilsSyntheticIdTest.testRealApplicationIdIsNotSynthetic -- Time elapsed: 0 s

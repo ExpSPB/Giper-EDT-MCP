@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.BmTransactionsTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.BmTransactionsTest
+com.ditrix.edt.mcp.server.utils.BmTransactionsTest.testReadRunsInReadonlyTaskAndReturnsResult -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BmTransactionsTest.testWriteRunsInWriteTaskAndReturnsResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BmTransactionsTest.testForceExportToDiskOutsideAWriteCallRecordsNothingAndDoesNotThrow -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BmTransactionsTest.testWriteReturnRecordsCommitBeforeCallerSideWorkCanFail -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BmTransactionsTest.testForceExportToDiskRecordsTheProjectIntoTheCallsWriteScope -- Time elapsed: 0 s

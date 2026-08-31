@@ -1,0 +1,29 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 2, Time elapsed: 0.105 s -- in com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testTrailingWhitespaceIsNotStrippedTheWayTrimWouldStripIt -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAnAbsolutePointerIsUsedAsItStands -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerNamingNothingIsRefused -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerThatIsNotValidUtf8IsRefusedRatherThanGuessedAt -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAZeroBYTEPointerIsStillRefused -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testANonAsciiDriveLetterIsNotADriveAtAll -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerThatIsNothingButALineTerminatorResolvesToTheGitDirectory -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testARelativePointerResolvesAgainstTheGitDirectory -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testANullGitDirectoryIsNotLinked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest skipped
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerOfExactlyTheMaximumSizeIsStillRead -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testEveryFaultsWordsArePinnedLiterally -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerNamingAFileRatherThanADirectoryIsRefused -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerHoldingANulByteIsOursToRefuseAndSaysSo -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testANulBeatsTheRootingAmbiguityWhenAPointerIsBoth -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAPointerRootedWithoutADriveIsRefusedRatherThanResolvedUnderTheGitDir -- Time elapsed: 0.011 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAnEmptyPointerIsRefused -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testTheLineTerminatorComesOffInBothSpellings -- Time elapsed: 0.009 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testARepositoryWithoutACommonDirFileIsNotLinked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testADirectoryNamedCommonDirIsRefusedRatherThanTakenForAbsent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testEveryFaultIsReachableAndEveryReachableFaultIsEnumerated -- Time elapsed: 0.018 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testTheResolvedDirectoryIsCanonicalSoIncludesResolveWhereGitResolvesThem -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest skipped
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testARootedButUNSPELLABLEPointerIsNotARootingAmbiguity -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.git.GitCommonDirectoryTest.testAnOversizePointerIsRefusedRatherThanRead -- Time elapsed: 0.004 s

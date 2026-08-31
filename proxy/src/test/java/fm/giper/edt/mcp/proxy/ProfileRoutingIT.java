@@ -115,6 +115,8 @@ public class ProfileRoutingIT
         JsonObject init = missing.handshake();
         String instructions = init.getAsJsonObject("result").get("instructions").getAsString(); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue(instructions, instructions.contains("UNKNOWN_PROFILE")); //$NON-NLS-1$
+        assertEquals("edt-mcp-proxy/default", //$NON-NLS-1$
+            init.getAsJsonObject("result").getAsJsonObject("serverInfo").get("name").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
         Set<String> fallbackTools = toolNames(missing.request("tools/list", new JsonObject())); //$NON-NLS-1$
         McpTestClient explicitDefault = new McpTestClient(proxy.port(), "/mcp/profiles/default"); //$NON-NLS-1$
@@ -200,25 +202,47 @@ public class ProfileRoutingIT
     }
 
     @Test
-    public void testPlainTextStatusDoesNotConfirmMissingProfileOrLeakBackendUrls() throws Exception
+    public void testExplicitInitializeNamesEffectiveProfile() throws Exception
     {
         int[] ports = reserveFreePorts(1);
         backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
-        backendA.putProfile("default", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
-        backendA.setPlainTextMode(true);
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
         backendA.start();
         proxy = new ProxyFixture(ports[0], ports[0]);
         proxy.start();
 
-        McpTestClient missing = new McpTestClient(proxy.port(), "/mcp/profiles/missing"); //$NON-NLS-1$
-        JsonObject init = missing.handshake();
-        String instructions = init.getAsJsonObject("result").has("instructions") //$NON-NLS-1$ //$NON-NLS-2$
-            ? init.getAsJsonObject("result").get("instructions").getAsString() : ""; //$NON-NLS-1$ //$NON-NLS-2$
-        assertTrue("plainTextMode must not hide UNKNOWN_PROFILE fallback: " + instructions, //$NON-NLS-1$
-            instructions.contains("UNKNOWN_PROFILE")); //$NON-NLS-1$
+        McpTestClient review = new McpTestClient(proxy.port(), "/mcp/profiles/review"); //$NON-NLS-1$
+        JsonObject init = review.handshake();
+        assertEquals("edt-mcp-proxy/review", //$NON-NLS-1$
+            init.getAsJsonObject("result").getAsJsonObject("serverInfo").get("name").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
-        JsonObject status = missing.callTool("get_server_status", new JsonObject()); //$NON-NLS-1$
-        assertFalse("backend URL must be rewritten off the wire: " + status, //$NON-NLS-1$
-            status.toString().contains("http://127.0.0.1:" + ports[0])); //$NON-NLS-1$
+        JsonObject denied = review.callTool("get_server_status", includeProfileToolsOnly()); //$NON-NLS-1$
+        assertTrue(isToolError(denied));
+
+        JsonObject compact = review.callTool("get_server_status", includeProfiles()); //$NON-NLS-1$
+        assertFalse(isToolError(compact));
+        JsonObject structured = structuredContent(compact);
+        JsonObject active = structured.getAsJsonObject("activeProfile"); //$NON-NLS-1$
+        assertEquals("review", active.get("id").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(active.has("displayName")); //$NON-NLS-1$
+        assertTrue(structured.getAsJsonArray("availableProfiles").size() >= 1); //$NON-NLS-1$
+        JsonObject first = structured.getAsJsonArray("availableProfiles").get(0).getAsJsonObject(); //$NON-NLS-1$
+        assertTrue(first.has("displayName")); //$NON-NLS-1$
+        assertTrue(first.get("endpoint").getAsString().contains(":" + proxy.port())); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse("compact discovery must omit allowedTools", first.has("allowedTools")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static JsonObject includeProfiles()
+    {
+        JsonObject arguments = new JsonObject();
+        arguments.addProperty("includeProfiles", true); //$NON-NLS-1$
+        return arguments;
+    }
+
+    private static JsonObject includeProfileToolsOnly()
+    {
+        JsonObject arguments = new JsonObject();
+        arguments.addProperty("includeProfileTools", true); //$NON-NLS-1$
+        return arguments;
     }
 }

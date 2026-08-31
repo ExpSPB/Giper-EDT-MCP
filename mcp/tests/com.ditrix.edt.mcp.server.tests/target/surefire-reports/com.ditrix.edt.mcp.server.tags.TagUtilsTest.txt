@@ -1,0 +1,34 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tags.TagUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 30, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tags.TagUtilsTest
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTopNameFromFqnNullReturnsNull -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeWithNullTypeReturnsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeMatching -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTopNameFromFqnNestedReturnsSecondSegment -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTypeFromFqnTwoSegments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithNullNewNameReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTypeFromFqnLeadingDotReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithLeadingDotReturnsNewNameOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTypeFromFqnNullReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTopNameFromFqnEmptyReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnReplacesLastNameInNestedFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithNoDotReturnsNewNameOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTopNameFromFqnTwoSegments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnReplacesLastNameInTwoSegmentFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeMatchingNestedFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeNotMatchingDifferentType -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithNullOldFqnReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeWithBothNullReturnsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithEmptyNewName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypePrefixWithoutDotIsNotAMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeWithNullFqnReturnsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTypeFromFqnEmptyReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTypeFromFqnNoDotReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTopNameFromFqnSingleSegmentReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeIsCaseSensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTopNameFromFqnTrailingDotYieldsTopName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testIsFqnOfTypeRequiresTrailingDot -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testGetTypeFromFqnNestedReturnsTopType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithTrailingDotKeepsPrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagUtilsTest.testBuildNewFqnWithBothNullReturnsNull -- Time elapsed: 0 s

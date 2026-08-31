@@ -175,6 +175,29 @@ public final class SessionManager
     }
 
     /**
+     * Closes every client session bound to {@code canonicalPath}.
+     *
+     * @param canonicalPath the MCP path whose sessions must reconnect
+     * @return how many sessions were closed
+     */
+    public int closeByCanonicalPath(String canonicalPath)
+    {
+        if (canonicalPath == null)
+        {
+            return 0;
+        }
+        int closed = 0;
+        for (SessionContext context : sessions.values())
+        {
+            if (context.matchesPath(canonicalPath) && sessions.remove(context.getSessionId(), context))
+            {
+                closed++;
+            }
+        }
+        return closed;
+    }
+
+    /**
      * @return the open session count
      */
     public int activeCount()

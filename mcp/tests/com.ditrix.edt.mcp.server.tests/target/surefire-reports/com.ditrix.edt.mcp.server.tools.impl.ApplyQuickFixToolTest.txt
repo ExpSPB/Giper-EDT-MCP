@@ -1,0 +1,42 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest
+-------------------------------------------------------------------------------
+Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentExplicitNegativeIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDeterministicOrderSortsNullModulePathAndLineFirst -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testLocationFallsBackToCheckIdWhenNothingElseResolved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDescribeForListingLeavesADescriptionOnlyVariantUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testLocationFallsBackToObjectPresentationForAnObjectLevelMarker -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentNullParamsMapYieldsNotGivenSentinel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testResolvedObjectTargetsAreNotAnUnresolvableAmbiguity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testUnresolvableAmbiguityWhenTwoObjectLevelTargetsDidNotResolve -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentValidValuePassesThrough -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDescribeForListingSeparatesVariantsSharingOneDescription -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testASuccessfulSourceFixIsNeverRefusedOverSomebodyElsesMetadataExport -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testChooseIndexSelectorOutOfRangeIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testOutputSchemaDeclaresResultKeys -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testSortVariantsDeterministicallyFallsBackToDetailsThenPlaceholder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testChooseIndexValidSelectorInRange -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testChooseIndexSelectorOfOneAgainstSingleCandidateIsAccepted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testChooseIndexStaleSelectorAgainstSingleCandidateIsRejectedNotSilentlyResolved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testSortVariantsDeterministicallyBreaksTiesOnDetailsWhenDescriptionsMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDeterministicOrderSeparatesObjectLevelMarkersByTheirTarget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testSortVariantsDeterministicallyIsStableAcrossEncounterOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testChooseIndexNoSelectorMultipleCandidatesIsAmbiguous -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testTiedBslMarkersAtTheSamePositionAreNotRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testAFixWithNoModulePositionIsWaitedForBecauseThatIsTheConservativeAnswer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentExplicitZeroIsRejectedNotDefaulted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testOneUnresolvedObjectMarkerAmongDistinguishableOnesIsNotRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testLocationPrefersModulePositionWhenAvailable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDeterministicOrderIsSameRegardlessOfEncounterOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testRequiredParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testChooseIndexNoSelectorSingleCandidateAutoSelects -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentBlankYieldsNotGivenSentinel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentOmittedYieldsNotGivenSentinel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testDescribeForListingDoesNotRepeatDetailsUsedAsTheDescriptionFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testExtractSelectorArgumentExplicitZeroRejectedForVariantAndLine -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ApplyQuickFixToolTest.testSingleMatchIsNeverAnUnresolvableAmbiguity -- Time elapsed: 0 s

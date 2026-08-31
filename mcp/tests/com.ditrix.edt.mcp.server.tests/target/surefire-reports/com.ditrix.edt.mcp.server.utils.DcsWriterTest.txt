@@ -1,0 +1,52 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsWriterTest
+-------------------------------------------------------------------------------
+Tests run: 48, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in com.ditrix.edt.mcp.server.utils.DcsWriterTest
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testUnknownDataSetTypeErrorsAndListsEveryAcceptedKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testEmptyRoleIsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testExplicitFieldsLandWithPathTitleAndRole -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testDataSetsNotAnArrayIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testLocalizedTitleKeyedByLanguageCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testUnknownMemberRejectsWholePayloadBeforeMutation -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testObjectDataSetIsAuthoredWithItsObjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testMissingCalculatedFieldExpressionIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testCalculatedFieldReapplyUpdatesExpressionInPlace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testCalculatedFieldAcceptsDeliberatelyEmptyExpression -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testQueryDataSetLandsWithQueryAndAutoSource -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testMissingCalculatedFieldDataPathIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testParameterDefaultsUseDeclaredTypeAndAllScalarMembersValidate -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testDeclaredDataSourceIsUsedAsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testCalculatedFieldsNotAnArrayIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testNonQueryNaturalKeyCollisionIsRefusedWithoutDuplicate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testCalculatedFieldLandsWithExpressionAndTitle -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testDataSetFieldExtendedMembersLandTogether -- Time elapsed: 0.008 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testParseRejectsBadEnumWithoutModel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testStringMembersNeverCoerceOtherJsonPrimitives -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testSharedTypeResolverReportsMissingVersionBeforeBuilding -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testNullSchemaIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testParseResolvesUseCaseInsensitively -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testReapplyIsIdempotentByName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testBadUseEnumIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testParameterWithoutValueTypeNeedsNoResolver -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testValueTypeWithoutResolverIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testDataSetLinkCanonicalConditionAndSetParameterListAllowedLand -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testPresentQueryMustBeAStringAndCannotBecomeANoOpUpdate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testCalculatedFieldExtendedMembersAndInvalidOrderAreExplicit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testBadRolePeriodTypeIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testParameterLandsWithTypedValueTitleAndUse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testCalculatedFieldWithoutTitleCarriesNoPresentation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testFirstNestedMemberSourceBecomesDefaultForFollowingSiblings -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testFieldUseRestrictionLandsWithAllFlags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testLocalizedTitleUsesCanonicalLanguageCodeSpellings -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testNonObjectValueTypeIsShapeError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testAvailableValuesAcceptEmptyPresentationsAsAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testPresentObjectNameMustBeAStringAndCannotClearAnExistingValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testEmptyPayloadIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testMalformedDataSetLinkBooleansAreErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testMissingDataSetNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testQueryDataSetNeedsQuery -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testResolverErrorIsSurfaced -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testTotalFieldLandsWithExpressionAndGroups -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testPresentConnectionStringMustBeAStringAndCannotClearAnExistingValue -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testMalformedDataSetAutoFillBooleanIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsWriterTest.testMissingFieldDataPathIsError -- Time elapsed: 0 s

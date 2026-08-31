@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testStaleFrameRefWhenNoLiveSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testMissingValueIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testMissingVariableNameIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetVariableToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

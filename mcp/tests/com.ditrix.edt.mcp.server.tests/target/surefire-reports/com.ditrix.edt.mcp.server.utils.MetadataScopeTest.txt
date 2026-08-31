@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MetadataScopeTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.utils.MetadataScopeTest
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testConfigurationScopeListsTheTypeCollection -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testConfigurationScopeAnswersUnknownTypeWithNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testLanguageAccessorsDelegateToTheConfiguration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testAddressingHintNamesTheProjectKindForAnExternalType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testAddressingHintDecidesTheDeepFqnShapesToo -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testConfigurationScopeIsNotExternal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testSynonymLanguageHonoursThePostBatchDeclaredOverride -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testLocalesMissingAnswersFromTheManifestWhenThereIsNoConfiguration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testConfigurationScopeHasNoExternalObjects -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testSimilarObjectsComeFromTheScopeRootAndNeverFromTheBaseConfiguration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testExternalScopeResolvesItsOwnObjectsRatherThanTheBaseConfiguration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testBaseProjectNameSkipsAProjectThatIsGoneOrClosed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testConfigurationScopeFindsTopObjectByEnglishAndRussianToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testBaseProjectNameIsAPointerAndOnlyWhenThereIsOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testAddressingHintIsEmptyWhenTheTypeFitsTheRoot -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testUnreadableExternalRootFailsLoudlyInsteadOfLookingEmpty -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.MetadataScopeTest.testSynonymLanguageResolutionMatchesTheSharedHelper -- Time elapsed: 0 s

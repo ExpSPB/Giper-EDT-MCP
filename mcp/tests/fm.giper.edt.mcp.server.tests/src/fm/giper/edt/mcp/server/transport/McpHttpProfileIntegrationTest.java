@@ -115,17 +115,24 @@ public class McpHttpProfileIntegrationTest
         assertEquals(200, ping.status);
         assertTrue(ping.sessionId.isBlank());
 
-        // The first default-profile persist (ABSENT → VALID, i.e. migration) must not
-        // latch a permanent session requirement on /mcp. Sessionless clients stay valid.
-        Exchange afterDefaultSurfaceChange = post("/mcp", PING, null, false); //$NON-NLS-1$
-        assertEquals("sessionless /mcp must survive a default-profile persist", //$NON-NLS-1$
-            200, afterDefaultSurfaceChange.status);
-        assertTrue(afterDefaultSurfaceChange.sessionId.isBlank());
-        assertTrue(afterDefaultSurfaceChange.body.contains("\"result\"")); //$NON-NLS-1$
-
         Exchange invalid = post("/mcp/profiles/Review", INIT, null, false); //$NON-NLS-1$
         assertEquals(400, invalid.status);
         assertEquals(0, mcp.getSessionRegistry().size());
+    }
+
+    @Test
+    public void defaultProfileChangeRequiresInitializeOnSessionlessMcp() throws Exception
+    {
+        assertEquals(200, post("/mcp", PING, null, false).status); //$NON-NLS-1$
+        mcp.setLegacySessionRequired(true);
+        Exchange refused = post("/mcp", PING, null, false); //$NON-NLS-1$
+        assertEquals(400, refused.status);
+        assertTrue(refused.body.contains("initialize")); //$NON-NLS-1$
+
+        Exchange init = post("/mcp", INIT, null, false); //$NON-NLS-1$
+        assertEquals(200, init.status);
+        assertFalse(init.sessionId.isBlank());
+        assertEquals(200, post("/mcp", PING, init.sessionId, false).status); //$NON-NLS-1$
     }
 
     @Test

@@ -1,0 +1,51 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest
+-------------------------------------------------------------------------------
+Tests run: 47, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.035 s -- in com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testTemplateOpDefaultAdd -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionDegradesToNullWhenTheGeneratorThrowsForARegisteredDescription -- Time elapsed: 0.011 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateRolePropertiesAcceptsBooleans -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testApplyFailureKeepsTheDiagnosisTheIdentityWasAttachedTo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionReusesAnAlreadyRegisteredDescription -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionUndoesTheReferenceWhenTheFqnIsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionRefusesWhenTheFqnIsAlreadyRegistered -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testARefusalAfterTheBootstrapDeclaresTheWriteTheBootstrapMade -- Time elapsed: 0.014 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testIsValidRightValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testApplyFailureNamesTheRoleAndTheNextAction -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testNamesMatchRussian -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateTemplateEntryAddEditNeedCondition -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateTemplateEntryRejectsUnknownOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionRefusalCarriesNoEmfObjectIdentity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionReplacesATransientDescriptionBmNeverAttached -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateRightsEntryAcceptsValid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testInputSchemaDeclaresRolePayloadKeys -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionPointsTheRoleAtTheDescriptionBeforeGeneratingItsFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidatePayloadSurfacesFirstError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testResolveRlsFieldsEmptyIsWholeObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidatePayloadAllValid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionRestoresAPreviousReferenceWhenTheFqnIsAlreadyRegistered -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionUndoesTheReferenceWhenTheFqnIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateRightsEntryRejectsBadValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionReplacesAConcreteDescriptionThatIsNotATopObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionUndoesTheReferenceWhenTheGeneratorThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testNamesMatchEnglish -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateRolePropertiesNullOk -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionRestoresAPreviousReferenceWhenTheFqnIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateTemplateEntryRequiresName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAFirstEntryThatCommittedIsDeclaredWhenTheSecondIsRefused -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testApplyFailureCarriesNoEmfObjectIdentity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionRestoresAPreviousReferenceWhenTheGeneratorThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testInputSchemaDescribesRolePayloadKeys -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testParseRightValueBoolean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testTemplateOpNormalizesCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testNamesMatchNegativeAndNullSafe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testASuccessfulApplyReportsBothTheFqnAndTheWrite -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionRegistersTheFreshDescriptionUnderTheGeneratedFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAGeneratorThatCannotNameARegisteredRightsModelStillDeclaresTheWrite -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateTemplateEntryDeleteNeedsNoCondition -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testParseRightValueDefaultsToSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testParseRightValueTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testARefusalBeforeAnyWriteDeclaresNoWriteEvenThoughItCanNameTheRightsModel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateRightsEntryRequiresObjectAndRight -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testAttachRoleDescriptionDegradesToNullWhenTheGeneratorIsEmptyForARegisteredDescription -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.RoleRightsWriterTest.testValidateRolePropertiesRejectsNonBoolean -- Time elapsed: 0 s

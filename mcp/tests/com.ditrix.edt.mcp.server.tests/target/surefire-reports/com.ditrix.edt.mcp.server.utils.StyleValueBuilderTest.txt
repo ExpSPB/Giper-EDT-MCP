@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest
+-------------------------------------------------------------------------------
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildNamedStyleColorAsColorRef -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testIncompleteRgbIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildNamedPaletteColorAsColorRef -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBothColorAndFontIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testRgbOutOfRangeIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildFontWithFaceHeightAndFlags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testRenderExplicitColorIsRgb -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testRenderAutoColorIsAutoNotRgb -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testEmptyFontIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildAutoColorFromFlagObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testNonPositiveHeightIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testRenderNullFontIsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testNeitherColorNorFontIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildFontWithOnlyAFlag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testRenderFontShowsFaceHeightAndFlags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildExplicitRgbColor -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testUnknownNamedColorNamesTheDefinitionLocation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testNullValueIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testBuildAutoColorFromString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StyleValueBuilderTest.testRenderNullColorIsNull -- Time elapsed: 0 s

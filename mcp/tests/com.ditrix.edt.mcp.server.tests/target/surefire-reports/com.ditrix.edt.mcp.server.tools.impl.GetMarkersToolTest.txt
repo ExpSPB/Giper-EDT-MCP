@@ -1,0 +1,38 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest
+-------------------------------------------------------------------------------
+Tests run: 34, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testSchemaMarkerKindIsEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyEmbedsTheLineNumber -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testInvalidMarkerKindIsCaseInsensitiveReject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyUsesNewlineSeparator -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testAnnotationsDefaultToCentralClassifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testSchemaPriorityIsEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testInvalidPriorityIsCaseInsensitiveReject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testSchemaLimitAdvertisesDefaultAndMax -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testMarkerKindsVocabulary -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyDiffersByMessage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyDiffersByPriority -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testPriorityValuesVocabulary -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testPriorityWithBookmarkKindRejectedCaseInsensitively -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testResultFileNameDefaultsToMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testInputSchemaIsValidJsonObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyHandlesNulls -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyDiffersByLine -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyDiffersByPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testInvalidMarkerKindTakesPrecedenceOverPriority -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyIsStableForSameTask -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testInvalidMarkerKindRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testPriorityWithBookmarkKindRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testMarkerKindsAndPriorityValuesAreDisjoint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testInvalidPriorityRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testValidationErrorIsWellFormedToolResultJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testDescriptionListsTaskMarkerKeywords -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testGuideIsServedAndDocumentsKeyConcepts -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testTaskKeyFieldsDoNotBleedAcrossBoundary -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMarkersToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

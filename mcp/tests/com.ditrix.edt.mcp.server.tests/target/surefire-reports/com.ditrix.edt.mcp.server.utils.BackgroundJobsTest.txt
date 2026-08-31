@@ -1,0 +1,29 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.BackgroundJobsTest
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.603 s -- in com.ditrix.edt.mcp.server.utils.BackgroundJobsTest
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testRefusedStartDoesNotDiscardARetainedResult -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testLateNotStoppedLeavesPublishedWorkerOutcomeUnchanged -- Time elapsed: 0.123 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testThrowingCommittedCancellationHandlerLeavesJobRunning -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testInterruptedYaxunitVerificationPreservesIrreversibleTerminationRequest -- Time elapsed: 0.127 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testCommittedCancellationWaitsForWorkerExitBeforePublishingAndReusingSlot -- Time elapsed: 0.103 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testWorkArrivingAfterTheDeadlineIsRefusedTheCommit -- Time elapsed: 0.051 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testHandlerStoppingLongAfterTheGuardReconcilesPublishedWorkerOutcome -- Time elapsed: 0.403 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testConcurrentSecondCancelDoesNotInvokeCommittedHandlerTwice -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testCommittedCancellationDoesNotBlockSameJobSnapshot -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testAdmissionSlotComesBackWhenTheTaskIsCancelledBeforeItRuns -- Time elapsed: 0.051 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testLateStoppedSupersedesPublishedFailureWithoutLosingIt -- Time elapsed: 0.123 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testCommittedJobWithoutCancellationCapabilityRemainsRunning -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testTimedOutWorkKeepsItsSlotUntilTheCallableActuallyExits -- Time elapsed: 0.051 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testHungCommittedCancellationHandlerKeepsClaimAndReleasesDeferredOutcome -- Time elapsed: 0.123 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testRegistryRejectsInsteadOfEvictingRunningJob -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testLateStopInitiatedReconcilesAsTerminationRequested -- Time elapsed: 0.127 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testHandlerExitingWithinTheGuardPublishesItsOutcomeWithoutAbandonment -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testLateStopInitiatedDoesNotInterruptBlockedWorker -- Time elapsed: 0.373 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testDeadlineDoesNotFailWorkThatCanNoLongerBeAbandoned -- Time elapsed: 0.501 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testConcurrentStartsCannotExceedTheRunningLimit -- Time elapsed: 0.204 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testLateStoppedInterruptsBlockedWorkerAndPublishesCancelled -- Time elapsed: 0.103 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testOldestCompletedJobIsEvictedAtCapacity -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testHandlerFailureAfterGuardIsRecordedWithoutChangingTimeoutReply -- Time elapsed: 0.123 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testWorkRunsOnNamedDaemonWorker -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BackgroundJobsTest.testNullCommittedCancellationHandlerResultLeavesJobRunning -- Time elapsed: 0 s
