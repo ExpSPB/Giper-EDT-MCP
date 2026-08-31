@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -16,6 +17,7 @@ import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.UserSignal;
 import fm.giper.edt.mcp.server.history.McpCallHistory;
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.InitializeResult;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcResponse;
@@ -23,6 +25,7 @@ import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolCallResult;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolsListResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
+import fm.giper.edt.mcp.server.tools.Toolsets;
 import fm.giper.edt.mcp.server.utils.DcsXmlCodec;
 import fm.giper.edt.mcp.server.utils.GuideRenderer;
 import fm.giper.edt.mcp.server.utils.InfobaseAuthDialogSuppressor;
@@ -136,6 +139,14 @@ public class McpProtocolHandler
      */
     public String processRequest(String requestBody)
     {
+        return processRequest(requestBody, McpRequestContext.legacyDefault());
+    }
+
+    /**
+     * Same choke point as {@link #processRequest(String)} with an explicit request context.
+     */
+    public String processRequest(String requestBody, McpRequestContext context)
+    {
         long startNanos = System.nanoTime();
         // Parse once at the choke point; parse() swallows a JSON syntax error and
         // returns null, and dispatch() treats a null request as an invalid request —
@@ -144,7 +155,7 @@ public class McpProtocolHandler
         String response = null;
         try
         {
-            response = dispatch(request);
+            response = dispatch(request, context == null ? McpRequestContext.legacyDefault() : context);
         }
         finally
         {
@@ -244,7 +255,7 @@ public class McpProtocolHandler
      * @return JSON response with correct id from request ({@code null} for a
      *         notification answered with 202 Accepted)
      */
-    private String dispatch(JsonRpcRequest request)
+    private String dispatch(JsonRpcRequest request, McpRequestContext context)
     {
         // Per JSON-RPC 2.0: when the id cannot be determined (parse error /
         // invalid request) the error response id MUST be null. A real id from
@@ -278,8 +289,12 @@ public class McpProtocolHandler
                 // store it server-scoped so later tools/call (and future protocol
                 // features) can gate on it. Absent / malformed capabilities resolve
                 // to ClientCapabilities.ABSENT, which keeps every default permissive.
-                clientCapabilities.set(parseClientCapabilities(request));
-                return buildInitializeResponse(requestId, clientVersion);
+                ClientCapabilities parsed = parseClientCapabilities(request);
+                if (context.isLegacyCompatibilityWrapper())
+                {
+                    clientCapabilities.set(parsed);
+                }
+                return buildInitializeResponse(requestId, clientVersion, context.withClientCapabilities(parsed));
             }
             
             // Check for initialized notification (no response needed, but return 202)
@@ -291,25 +306,25 @@ public class McpProtocolHandler
             // Check for tools/list method
             if (McpConstants.METHOD_TOOLS_LIST.equals(method))
             {
-                return buildToolsListResponse(requestId);
+                return buildToolsListResponse(requestId, context);
             }
             
             // Check for tools/call method
             if (McpConstants.METHOD_TOOLS_CALL.equals(method))
             {
-                return handleToolCall(request, requestId);
+                return handleToolCall(request, requestId, context);
             }
 
             // Check for resources/list method (serves the per-tool guide:// docs)
             if (McpConstants.METHOD_RESOURCES_LIST.equals(method))
             {
-                return buildResourcesListResponse(requestId);
+                return buildResourcesListResponse(requestId, context);
             }
 
             // Check for resources/read method (returns one guide:// Markdown body)
             if (McpConstants.METHOD_RESOURCES_READ.equals(method))
             {
-                return handleResourcesRead(request, requestId);
+                return handleResourcesRead(request, requestId, context);
             }
 
             // Ping utility (MCP basic utilities): a connection-health check that takes no
@@ -377,7 +392,7 @@ public class McpProtocolHandler
     /**
      * Handles a tools/call request.
      */
-    private String handleToolCall(JsonRpcRequest request, Object requestId)
+    private String handleToolCall(JsonRpcRequest request, Object requestId, McpRequestContext context)
     {
         String toolName = request != null ? request.getToolName() : null;
         
@@ -388,13 +403,9 @@ public class McpProtocolHandler
             return buildErrorResponse(McpConstants.ERROR_METHOD_NOT_FOUND, "Tool not found: " + toolName, requestId); //$NON-NLS-1$
         }
 
-        // Check if tool is enabled
-        if (!toolRegistry.isToolEnabled(toolName))
+        if (!isCallable(toolName, context))
         {
-            String msg = "Tool '" + toolName + "' is disabled by the user. " //$NON-NLS-1$ //$NON-NLS-2$
-                + "If this functionality is needed, ask the user to enable it: " //$NON-NLS-1$
-                + "EDT Preferences \u2192 MCP Server \u2192 Tools tab \u2192 check '" + toolName + "'."; //$NON-NLS-1$ //$NON-NLS-2$
-            return buildToolCallTextResponse(msg, requestId);
+            return buildToolCallTextResponse(deniedMessage(toolName, context), requestId);
         }
         
         Activator.logInfo("Processing tools/call: " + tool.getName()); //$NON-NLS-1$
@@ -410,7 +421,7 @@ public class McpProtocolHandler
         }
         
         // Execute the tool (timed + logged + status-bar cleared in one place).
-        String result = executeToolTimed(tool, params, server);
+        String result = executeToolTimed(tool, params, server, context);
 
         // PII redaction (#242): the single wire-serialization choke point.
         // A no-op unless redaction is enabled AND the tool is flagged returnsInfobaseData -
@@ -432,7 +443,7 @@ public class McpProtocolHandler
                 .getBoolean(PreferenceConstants.PREF_PLAIN_TEXT_MODE);
 
         // Return response based on tool's declared response type
-        return buildToolCallResponse(tool, result, signal, plainTextMode, requestId, params);
+        return buildToolCallResponse(tool, result, signal, plainTextMode, requestId, params, context);
     }
 
     /**
@@ -449,7 +460,8 @@ public class McpProtocolHandler
      * @return the raw tool result payload (may be {@code null} only if {@code execute} returned
      *         {@code null})
      */
-    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server)
+    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server,
+        McpRequestContext context)
     {
         String result = null;
         long startNanos = System.nanoTime();
@@ -477,7 +489,7 @@ public class McpProtocolHandler
         }
         try
         {
-            result = tool.execute(params);
+            result = tool.execute(params, context);
             threw = false;
             return result;
         }
@@ -527,7 +539,7 @@ public class McpProtocolHandler
      * @return the serialized JSON-RPC response
      */
     private String buildToolCallResponse(IMcpTool tool, String result, UserSignal signal,
-        boolean plainTextMode, Object requestId, Map<String, String> params)
+        boolean plainTextMode, Object requestId, Map<String, String> params, McpRequestContext context)
     {
         // Per-call response type: a tool whose caller can choose the output format (e.g.
         // list_projects' format=md|json) decides from the arguments; every other tool falls back to
@@ -535,7 +547,7 @@ public class McpProtocolHandler
         switch (tool.getResponseType(params))
         {
             case JSON:
-                return buildJsonToolResponse(tool, result, signal, plainTextMode, requestId);
+                return buildJsonToolResponse(tool, result, signal, plainTextMode, requestId, context);
             case MARKDOWN:
                 return buildMarkdownToolResponse(tool, result, signal, plainTextMode, requestId,
                     params);
@@ -671,7 +683,7 @@ public class McpProtocolHandler
      * @return the serialized JSON-RPC response
      */
     private String buildJsonToolResponse(IMcpTool tool, String result, UserSignal signal,
-        boolean plainTextMode, Object requestId)
+        boolean plainTextMode, Object requestId, McpRequestContext context)
     {
         // For JSON, add signal as a separate field if present
         if (signal != null)
@@ -686,17 +698,22 @@ public class McpProtocolHandler
         {
             return buildTextOnlyJsonResponse(result, requestId);
         }
-        // Capability gate for structuredContent. By DEFAULT (no capabilities,
-        // or a client that does not explicitly opt out) this is true, so the
-        // structuredContent response below is emitted exactly as before — the
-        // no-regression guarantee. Only a client that EXPLICITLY declared it
-        // cannot accept structuredContent suppresses it; the JSON payload is
-        // then delivered as text so the data is still returned.
-        if (!clientCapabilities.get().allowsStructuredContent())
+        // Capability gate for structuredContent. HTTP sessions use the request
+        // context; the legacy wrapper still reads the last-initialize atomic.
+        if (!capabilitiesOf(context).allowsStructuredContent())
         {
             return buildTextOnlyJsonResponse(result, requestId);
         }
         return buildToolCallJsonResponse(result, requestId, tool.getName());
+    }
+
+    private ClientCapabilities capabilitiesOf(McpRequestContext context)
+    {
+        if (context != null && !context.isLegacyCompatibilityWrapper())
+        {
+            return context.getClientCapabilities();
+        }
+        return clientCapabilities.get();
     }
 
     /**
@@ -933,18 +950,33 @@ public class McpProtocolHandler
      * supported version ({@link McpConstants#PROTOCOL_VERSION}) so the client can
      * decide whether it can proceed.
      */
-    private String buildInitializeResponse(Object requestId, String clientVersion)
+    private String buildInitializeResponse(Object requestId, String clientVersion, McpRequestContext context)
     {
         // Echo the client's version only if we actually support it; otherwise
         // negotiate down to our latest supported version.
         String version = McpConstants.isSupportedVersion(clientVersion)
             ? clientVersion : McpConstants.PROTOCOL_VERSION;
+        String serverName = McpConstants.SERVER_NAME;
+        if (!context.isLegacyCompatibilityWrapper()
+            && context.getResolution() != null
+            && context.getResolution().isExplicitEndpoint())
+        {
+            serverName = McpConstants.SERVER_NAME + "/" + context.effectiveProfileId(); //$NON-NLS-1$
+        }
         InitializeResult result = new InitializeResult(
             version,
-            McpConstants.SERVER_NAME,
+            serverName,
             McpConstants.PLUGIN_VERSION,
             McpConstants.AUTHOR
         );
+        if (!context.isLegacyCompatibilityWrapper()
+            && context.getResolution() != null
+            && context.getResolution().isFallbackApplied())
+        {
+            result.setInstructions("Requested profile '" + context.getResolution().getRequestedProfileId()
+                + "' is unavailable (" + context.getResolution().getFallbackReason()
+                + "). Connected to profile 'default' instead. Call get_server_status to confirm."); //$NON-NLS-1$
+        }
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, result));
     }
 
@@ -988,11 +1020,11 @@ public class McpProtocolHandler
     /**
      * Builds tools/list response dynamically from registry.
      */
-    private String buildToolsListResponse(Object requestId)
+    private String buildToolsListResponse(Object requestId, McpRequestContext context)
     {
         ToolsListResult result = new ToolsListResult();
 
-        for (IMcpTool tool : toolRegistry.getVisibleTools())
+        for (IMcpTool tool : listedTools(context))
         {
             // Parse inputSchema from JSON string to JsonElement. The SHAPE a call is
             // built from goes over the wire; the prose around it stops here, except the
@@ -1030,10 +1062,10 @@ public class McpProtocolHandler
      * @param requestId the JSON-RPC request id to echo
      * @return the serialized JSON-RPC response
      */
-    private String buildResourcesListResponse(Object requestId)
+    private String buildResourcesListResponse(Object requestId, McpRequestContext context)
     {
         JsonArray resources = new JsonArray();
-        for (IMcpTool tool : toolRegistry.getVisibleTools())
+        for (IMcpTool tool : listedTools(context))
         {
             String name = tool.getName();
             JsonObject resource = new JsonObject();
@@ -1061,7 +1093,7 @@ public class McpProtocolHandler
      * @param requestId the JSON-RPC request id to echo
      * @return the serialized JSON-RPC response (result or error)
      */
-    private String handleResourcesRead(JsonRpcRequest request, Object requestId)
+    private String handleResourcesRead(JsonRpcRequest request, Object requestId, McpRequestContext context)
     {
         String uri = request != null ? request.getStringParam("uri") : null; //$NON-NLS-1$
         if (uri == null || !uri.startsWith(McpConstants.GUIDE_URI_SCHEME))
@@ -1073,7 +1105,7 @@ public class McpProtocolHandler
 
         String toolName = uri.substring(McpConstants.GUIDE_URI_SCHEME.length());
         IMcpTool tool = toolRegistry.getTool(toolName);
-        if (tool == null)
+        if (tool == null || (usesProfilePolicy(context) && !isCallable(toolName, context)))
         {
             return buildErrorResponse(McpConstants.ERROR_INVALID_PARAMS,
                 "Unknown guide resource: " + uri //$NON-NLS-1$
@@ -1091,6 +1123,43 @@ public class McpProtocolHandler
         JsonObject result = new JsonObject();
         result.add("contents", contents); //$NON-NLS-1$
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, result));
+    }
+
+    private boolean usesProfilePolicy(McpRequestContext context)
+    {
+        return context != null && !context.isLegacyCompatibilityWrapper();
+    }
+
+    private java.util.Collection<IMcpTool> listedTools(McpRequestContext context)
+    {
+        if (usesProfilePolicy(context))
+        {
+            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
+                .publishedTools(Toolsets.isProgressiveDisclosureEnabled());
+        }
+        return toolRegistry.getVisibleTools();
+    }
+
+    private boolean isCallable(String toolName, McpRequestContext context)
+    {
+        if (usesProfilePolicy(context))
+        {
+            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
+                .isCallable(toolName);
+        }
+        return toolRegistry.isToolEnabled(toolName);
+    }
+
+    private String deniedMessage(String toolName, McpRequestContext context)
+    {
+        if (usesProfilePolicy(context))
+        {
+            return new ProfileToolPolicy(context.getResolution(), toolRegistry.getAllTools())
+                .deniedMessage(toolName);
+        }
+        return "Tool '" + toolName + "' is disabled by the user. " //$NON-NLS-1$ //$NON-NLS-2$
+            + "If this functionality is needed, ask the user to enable it: " //$NON-NLS-1$
+            + "EDT Preferences \u2192 MCP Server \u2192 Tools tab \u2192 check '" + toolName + "'."; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     /**

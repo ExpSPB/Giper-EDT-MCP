@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -16,15 +17,17 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
+import fm.giper.edt.mcp.server.profiles.ToolProfileMigration;
+import fm.giper.edt.mcp.server.SseStreamRegistry;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
 import fm.giper.edt.mcp.server.tools.BuiltInToolRegistrar;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.transport.HealthHandler;
 import fm.giper.edt.mcp.server.transport.InterruptibleToolExecutor;
 import fm.giper.edt.mcp.server.transport.McpHttpHandler;
+import fm.giper.edt.mcp.server.transport.McpSessionRegistry;
 import com.sun.net.httpserver.HttpServer;
 
 /**
@@ -40,17 +43,20 @@ public class McpServer
     /** Request counter - use AtomicLong for thread safety */
     private final AtomicLong requestCount = new AtomicLong(0);
     
-    /** Current executing tool name */
-    private volatile String currentToolName = null;
-    
-    /** Timestamp when current tool execution started (milliseconds) */
-    private volatile long toolExecutionStartTime = 0;
-    
-    /** User signal for current operation (cancel, retry, background, expert) */
-    private final AtomicReference<UserSignal> userSignal = new AtomicReference<>();
+    /** Concurrent in-flight tool calls; status UI reads selected-or-last only. */
+    private final ActiveToolCallRegistry activeToolCalls = new ActiveToolCallRegistry();
 
-    /** Currently active tool call that can be interrupted */
-    private final AtomicReference<ActiveToolCall> activeToolCall = new AtomicReference<>();
+    /** The call being executed on this worker thread, if any. */
+    private final ThreadLocal<ActiveToolCall> executingCall = new ThreadLocal<>();
+
+    /** Path-bound MCP sessions for the 2025-11-25 transport. */
+    private final McpSessionRegistry sessionRegistry = new McpSessionRegistry();
+
+    public McpServer()
+    {
+        sessionRegistry.setSessionClosedListener(
+            id -> SseStreamRegistry.getInstance().unregisterBySession(id));
+    }
 
     /** Main thread pool for POST/OPTIONS/DELETE requests */
     private ThreadPoolExecutor mainExecutor;
@@ -174,6 +180,7 @@ public class McpServer
     void registerTools()
     {
         BuiltInToolRegistrar.registerAll(McpToolRegistry.getInstance());
+        ToolProfileMigration.migrateIfNeeded();
     }
 
     /**
@@ -196,6 +203,7 @@ public class McpServer
                 sseExecutor.shutdownNow();
                 sseExecutor = null;
             }
+            sessionRegistry.shutdown();
             Activator.logInfo("MCP Server stopped"); //$NON-NLS-1$
         }
     }
@@ -244,6 +252,44 @@ public class McpServer
     }
 
     /**
+     * Path-bound MCP sessions for initialize / POST / GET / DELETE.
+     *
+     * @return the live session registry
+     */
+    public McpSessionRegistry getSessionRegistry()
+    {
+        return sessionRegistry;
+    }
+
+    /**
+     * Concurrent in-flight tool calls, keyed by internal call id.
+     *
+     * @return the live registry
+     */
+    public ActiveToolCallRegistry getActiveToolCallRegistry()
+    {
+        return activeToolCalls;
+    }
+
+    /**
+     * Binds this worker thread to {@code call} so {@link #consumeUserSignal()}
+     * and {@link #setCurrentToolName(String)} affect that call only.
+     *
+     * @param call the call this thread is running, or {@code null} to unbind
+     */
+    public void bindExecutingCall(ActiveToolCall call)
+    {
+        if (call == null)
+        {
+            executingCall.remove();
+        }
+        else
+        {
+            executingCall.set(call);
+        }
+    }
+
+    /**
      * Returns the dedicated SSE thread pool. Used by the transport handler to
      * offload long-lived SSE streams. May be {@code null} when stopped.
      *
@@ -279,19 +325,20 @@ public class McpServer
      */
     public String getCurrentToolName()
     {
-        return currentToolName;
+        ActiveToolCall call = displayCall();
+        return call == null ? null : call.getToolName();
     }
 
     /**
-     * Sets the currently executing tool name.
-     * Also records the start time when a tool begins execution.
-     * 
-     * @param toolName the tool name or null when execution completes
+     * Status-bar hook: does not change which call owns a queued signal.
+     * A {@code null} name is ignored so finishing one call cannot wipe a neighbor.
+     *
+     * @param toolName unused for runtime isolation (kept for the protocol handler)
      */
     public void setCurrentToolName(String toolName)
     {
-        this.currentToolName = toolName;
-        this.toolExecutionStartTime = toolName != null ? System.currentTimeMillis() : 0;
+        // Kept for the protocol handler. Runtime ownership lives on the bound
+        // call; the status bar reads selected-or-last from the registry.
     }
 
     /**
@@ -301,7 +348,7 @@ public class McpServer
      */
     public boolean isToolExecuting()
     {
-        return currentToolName != null;
+        return displayCall() != null;
     }
 
     /**
@@ -311,87 +358,132 @@ public class McpServer
      */
     public long getToolExecutionSeconds()
     {
-        if (toolExecutionStartTime == 0)
-        {
-            return 0;
-        }
-        return (System.currentTimeMillis() - toolExecutionStartTime) / 1000;
+        ActiveToolCall call = displayCall();
+        return call == null ? 0 : call.getElapsedSeconds();
     }
 
     /**
-     * Sets a user signal for the current operation.
-     * This signal will be included in the tool response.
-     * 
+     * Queues a user signal on the call bound to this thread, else the
+     * selected-or-last call. Never writes a global slot.
+     *
      * @param signal the user signal
      */
     public void setUserSignal(UserSignal signal)
     {
-        this.userSignal.set(signal);
+        ActiveToolCall target = executingCall.get();
+        if (target == null)
+        {
+            target = displayCall();
+        }
+        if (target != null)
+        {
+            activeToolCalls.offerSignal(target.getCallId(), signal);
+        }
     }
 
     /**
-     * Gets and clears the current user signal.
-     * Returns null if no signal is pending.
-     * 
+     * Gets and clears the user signal for the call bound to this thread.
+     * A neighbor's signal is never returned.
+     *
      * @return the user signal or null
      */
     public UserSignal consumeUserSignal()
     {
-        // Atomic get-and-clear so a signal is consumed exactly once even under concurrent callers.
-        return this.userSignal.getAndSet(null);
+        ActiveToolCall bound = executingCall.get();
+        if (bound != null)
+        {
+            return activeToolCalls.consumeSignal(bound.getCallId());
+        }
+        return null;
     }
 
     /**
-     * Sets the active tool call.
-     * 
+     * Registers an in-flight call. Replaces the old single-slot setter.
+     *
      * @param toolCall the active tool call
      */
     public void setActiveToolCall(ActiveToolCall toolCall)
     {
-        this.activeToolCall.set(toolCall);
+        activeToolCalls.register(toolCall);
     }
 
     /**
-     * Gets the active tool call.
-     * 
-     * @return the active tool call or null
+     * Status-bar / last-call view of the registry. Runtime isolation uses
+     * {@link #getActiveToolCallRegistry()}.
+     *
+     * @return the selected or last live call, or null
      */
     public ActiveToolCall getActiveToolCall()
     {
-        return activeToolCall.get();
+        return displayCall();
     }
 
     /**
-     * Clears the active tool call.
+     * Unregisters the call bound to this thread, else the selected-or-last call.
+     * Prefer {@link #clearActiveToolCall(ActiveToolCall)} when the caller knows the id.
      */
     public void clearActiveToolCall()
     {
-        this.activeToolCall.set(null);
+        ActiveToolCall bound = executingCall.get();
+        if (bound != null)
+        {
+            activeToolCalls.unregister(bound.getCallId());
+            return;
+        }
+        ActiveToolCall display = displayCall();
+        if (display != null)
+        {
+            activeToolCalls.unregister(display.getCallId());
+        }
     }
 
     /**
-     * Interrupts the current tool call with a user signal.
-     * Sends the signal response immediately and returns control to the agent.
-     * This method is thread-safe.
-     * 
-     * @param signal the user signal
-     * @return true if the call was interrupted successfully
+     * Unregisters exactly one call. Finishing it does not clear a neighbor.
+     *
+     * @param toolCall the call that finished
      */
-    public synchronized boolean interruptToolCall(UserSignal signal)
+    public void clearActiveToolCall(ActiveToolCall toolCall)
     {
-        ActiveToolCall call = this.activeToolCall.get();
-        if (call != null && !call.hasResponded())
+        if (toolCall != null)
         {
-            boolean sent = call.sendSignalResponse(signal);
-            if (sent)
+            activeToolCalls.unregister(toolCall.getCallId());
+            if (toolCall.equals(executingCall.get()))
             {
-                // Clear tool execution state atomically
-                this.currentToolName = null;
-                this.toolExecutionStartTime = 0;
-                this.activeToolCall.set(null);
+                executingCall.remove();
             }
-            return sent;
         }
-        return false;
+    }
+
+    /**
+     * Interrupts the selected-or-last call only (status-bar action).
+     *
+     * @param signal the user signal
+     * @return true if that call was interrupted successfully
+     */
+    public boolean interruptToolCall(UserSignal signal)
+    {
+        return activeToolCalls.interruptSelectedOrLast(signal);
+    }
+
+    /**
+     * Interrupts one call by internal id.
+     *
+     * @param callId the target call
+     * @param signal the user signal
+     * @return true if that call was interrupted
+     */
+    public boolean interruptToolCall(String callId, UserSignal signal)
+    {
+        return activeToolCalls.interrupt(callId, signal);
+    }
+
+    private ActiveToolCall displayCall()
+    {
+        ActiveToolCall bound = executingCall.get();
+        if (bound != null && activeToolCalls.get(bound.getCallId()) != null)
+        {
+            return bound;
+        }
+        return activeToolCalls.getSelectedOrLast();
     }
 }

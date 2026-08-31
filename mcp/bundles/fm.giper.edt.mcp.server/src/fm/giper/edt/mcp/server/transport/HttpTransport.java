@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -46,7 +47,8 @@ public final class HttpTransport
             }
             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", origin); //$NON-NLS-1$
             exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"); //$NON-NLS-1$ //$NON-NLS-2$
-            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type, Accept"); //$NON-NLS-1$ //$NON-NLS-2$
+            exchange.getResponseHeaders().add("Access-Control-Allow-Headers", //$NON-NLS-1$
+                "Content-Type, Accept, MCP-Session-Id, MCP-Protocol-Version"); //$NON-NLS-1$
         }
         // A missing Origin means a non-browser client (CLI / MCP client) — browsers
         // always send Origin, so the browser-CSRF allow-list does not apply here.

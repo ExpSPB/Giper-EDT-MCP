@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.sun.net.httpserver.HttpExchange;
 
@@ -23,8 +25,11 @@ public class ActiveToolCall
     private final HttpExchange exchange;
     private final String toolName;
     private final Object requestId;
+    private final String sessionId;
     private final long startTime;
     private final AtomicBoolean responded = new AtomicBoolean(false);
+    private final AtomicReference<UserSignal> pendingSignal = new AtomicReference<>();
+    private volatile String callId;
     
     /**
      * Creates a new active tool call.
@@ -35,10 +40,84 @@ public class ActiveToolCall
      */
     public ActiveToolCall(HttpExchange exchange, String toolName, Object requestId)
     {
+        this(exchange, toolName, requestId, null, null);
+    }
+
+    /**
+     * Creates a call that belongs to one session and one internal id.
+     *
+     * @param exchange the HTTP exchange
+     * @param toolName the tool being executed
+     * @param requestId the JSON-RPC request ID
+     * @param callId internal call id, or {@code null} until the registry assigns one
+     * @param sessionId MCP session id, or {@code null}
+     */
+    public ActiveToolCall(HttpExchange exchange, String toolName, Object requestId, String callId,
+        String sessionId)
+    {
         this.exchange = exchange;
         this.toolName = toolName;
         this.requestId = requestId;
+        this.callId = callId;
+        this.sessionId = sessionId;
         this.startTime = System.currentTimeMillis();
+    }
+
+    /**
+     * Assigns the registry id when the constructor left it blank.
+     *
+     * @param assignedId the internal id
+     */
+    void assignCallId(String assignedId)
+    {
+        if (assignedId != null && (this.callId == null || this.callId.isBlank()))
+        {
+            this.callId = assignedId;
+        }
+    }
+
+    /**
+     * @return the internal call id, or {@code null} before registration
+     */
+    public String getCallId()
+    {
+        return callId;
+    }
+
+    /**
+     * @return the MCP session id, or {@code null}
+     */
+    public String getSessionId()
+    {
+        return sessionId;
+    }
+
+    /**
+     * @return epoch-millisecond start time
+     */
+    public long getStartTime()
+    {
+        return startTime;
+    }
+
+    /**
+     * Queues a signal for this call only.
+     *
+     * @param signal the signal
+     */
+    public void offerUserSignal(UserSignal signal)
+    {
+        this.pendingSignal.set(signal);
+    }
+
+    /**
+     * Takes the queued signal for this call. A neighbor cannot see it.
+     *
+     * @return the signal, or {@code null}
+     */
+    public UserSignal consumeUserSignal()
+    {
+        return this.pendingSignal.getAndSet(null);
     }
     
     /**

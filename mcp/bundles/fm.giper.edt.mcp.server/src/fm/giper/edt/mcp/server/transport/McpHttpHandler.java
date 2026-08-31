@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -19,10 +20,21 @@ import java.util.concurrent.atomic.AtomicLong;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.SseStreamRegistry;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
+import fm.giper.edt.mcp.server.protocol.ClientCapabilities;
+import fm.giper.edt.mcp.server.protocol.GsonProvider;
+import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
-import fm.giper.edt.mcp.server.protocol.JsonUtils;
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
+import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
+import fm.giper.edt.mcp.server.transport.McpSessionRegistry.Lookup;
+import fm.giper.edt.mcp.server.transport.McpSessionRegistry.LookupStatus;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
@@ -87,9 +99,35 @@ public class McpHttpHandler implements HttpHandler
             return;
         }
 
+        McpRequestContext context;
+        try
+        {
+            context = contextOf(exchange);
+        }
+        catch (InvalidMcpEndpointException e)
+        {
+            HttpTransport.sendResponse(exchange, 400, JsonUtils.buildSimpleError(e.getMessage()));
+            exchange.close();
+            return;
+        }
+        Activator.logDebug("MCP endpoint " + context.getRequestedPath()); //$NON-NLS-1$
+
         if ("GET".equals(method)) //$NON-NLS-1$
         {
-            handleSseInDedicatedPool(exchange);
+            if (!HttpTransport.addCorsHeaders(exchange))
+            {
+                HttpTransport.sendResponse(exchange, 403, JsonUtils.buildJsonRpcError(
+                    McpConstants.ERROR_INVALID_REQUEST, "Invalid Origin", null)); //$NON-NLS-1$
+                exchange.close();
+                return;
+            }
+            McpRequestContext bound = bindSession(exchange, context);
+            if (bound == null)
+            {
+                exchange.close();
+                return;
+            }
+            handleSseInDedicatedPool(exchange, bound);
             return;
         }
 
@@ -133,12 +171,11 @@ public class McpHttpHandler implements HttpHandler
 
             if ("POST".equals(method)) //$NON-NLS-1$
             {
-                handleMcpRequest(exchange);
+                handleMcpRequest(exchange, context);
             }
             else if ("DELETE".equals(method)) //$NON-NLS-1$
             {
-                // Session termination - accept but we don't track sessions currently
-                HttpTransport.sendResponse(exchange, 200, ""); //$NON-NLS-1$
+                handleSessionDelete(exchange, context);
             }
             else
             {
@@ -182,7 +219,7 @@ public class McpHttpHandler implements HttpHandler
      * The exchange lifecycle (including close) is managed entirely by the SSE thread,
      * so the main pool thread is released immediately.
      */
-    private void handleSseInDedicatedPool(HttpExchange exchange)
+    private void handleSseInDedicatedPool(HttpExchange exchange, McpRequestContext context)
     {
         ExecutorService sse = server.getSseExecutor();
         if (sse == null || sse.isShutdown())
@@ -208,15 +245,7 @@ public class McpHttpHandler implements HttpHandler
             sse.submit(() -> {
                 try
                 {
-                    // Validate Origin and add CORS headers
-                    if (!HttpTransport.addCorsHeaders(exchange))
-                    {
-                        HttpTransport.sendResponse(exchange, 403,
-                            JsonUtils.buildJsonRpcError(
-                                McpConstants.ERROR_INVALID_REQUEST, "Invalid Origin", null)); //$NON-NLS-1$
-                        return;
-                    }
-                    handleSseStream(exchange);
+                    handleSseStream(exchange, context);
                 }
                 catch (IOException e)
                 {
@@ -258,7 +287,7 @@ public class McpHttpHandler implements HttpHandler
         }
     }
 
-    private void handleMcpRequest(HttpExchange exchange) throws IOException
+    private void handleMcpRequest(HttpExchange exchange, McpRequestContext context) throws IOException
     {
         // The request counter is incremented by McpProtocolHandler, not here: calls also
         // arrive through the in-process bridge, and counting at the transport left the
@@ -290,16 +319,25 @@ public class McpHttpHandler implements HttpHandler
 
         Activator.logDebug("MCP request body: " + requestBody); //$NON-NLS-1$
 
-        String response;
-        boolean isInitialize = requestBody.contains("\"" + McpConstants.METHOD_INITIALIZE + "\""); //$NON-NLS-1$ //$NON-NLS-2$
-        boolean isToolCall = requestBody.contains("\"" + McpConstants.METHOD_TOOLS_CALL + "\""); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonRpcRequest parsed = protocolHandler.parse(requestBody);
+        boolean isInitialize = parsed != null && McpConstants.METHOD_INITIALIZE.equals(parsed.getMethod());
+        boolean isToolCall = parsed != null && McpConstants.METHOD_TOOLS_CALL.equals(parsed.getMethod());
+        if (parsed != null && !isInitialize)
+        {
+            context = bindSession(exchange, context);
+            if (context == null)
+            {
+                return;
+            }
+        }
 
+        String response;
         try
         {
             if (isToolCall)
             {
                 // Handle tool calls with interruptible execution
-                response = interruptibleExecutor.execute(exchange, requestBody);
+                response = interruptibleExecutor.execute(exchange, requestBody, context);
                 if (response == null)
                 {
                     // Response was already sent (user interrupted)
@@ -308,7 +346,7 @@ public class McpHttpHandler implements HttpHandler
             }
             else
             {
-                response = protocolHandler.processRequest(requestBody);
+                response = protocolHandler.processRequest(requestBody, context);
             }
 
             // null response means notification (no response needed)
@@ -328,21 +366,25 @@ public class McpHttpHandler implements HttpHandler
                 McpConstants.ERROR_INTERNAL, e.getMessage(), null);
         }
 
+        String sessionId = mintSessionAfterInitialize(exchange, context, parsed, response, isInitialize);
+        if (sessionId == null && isInitialize && isJsonRpcSuccess(response))
+        {
+            return;
+        }
+
         // Check if client accepts SSE
         String acceptHeader = exchange.getRequestHeaders().getFirst("Accept"); //$NON-NLS-1$
         boolean acceptsSse = acceptHeader != null && acceptHeader.contains(TEXT_EVENT_STREAM);
 
         if (acceptsSse)
         {
-            // Send response as SSE event
-            sendSseResponse(exchange, response, isInitialize);
+            sendSseResponse(exchange, response, sessionId);
         }
         else
         {
-            // Send as plain JSON - add session header for initialize
-            if (isInitialize)
+            if (sessionId != null)
             {
-                exchange.getResponseHeaders().add(McpConstants.HEADER_SESSION_ID, generateSessionId());
+                exchange.getResponseHeaders().add(McpConstants.HEADER_SESSION_ID, sessionId);
             }
             exchange.getResponseHeaders().add(CONTENT_TYPE, "application/json"); //$NON-NLS-1$
             exchange.getResponseHeaders().add(CONNECTION, KEEP_ALIVE);
@@ -351,27 +393,18 @@ public class McpHttpHandler implements HttpHandler
     }
 
     /**
-     * Generates a simple session ID.
-     */
-    private String generateSessionId()
-    {
-        return java.util.UUID.randomUUID().toString();
-    }
-
-    /**
      * Sends response as SSE event stream.
      * As per MCP 2025-11-25: should include event ID for reconnection.
      */
-    private void sendSseResponse(HttpExchange exchange, String response, boolean isInitialize) throws IOException
+    private void sendSseResponse(HttpExchange exchange, String response, String sessionId) throws IOException
     {
         exchange.getResponseHeaders().add(CONTENT_TYPE, TEXT_EVENT_STREAM);
         exchange.getResponseHeaders().add("Cache-Control", "no-cache"); //$NON-NLS-1$ //$NON-NLS-2$
         exchange.getResponseHeaders().add(CONNECTION, KEEP_ALIVE);
 
-        // Add session ID for initialize response
-        if (isInitialize)
+        if (sessionId != null)
         {
-            exchange.getResponseHeaders().add(McpConstants.HEADER_SESSION_ID, generateSessionId());
+            exchange.getResponseHeaders().add(McpConstants.HEADER_SESSION_ID, sessionId);
         }
 
         // Build SSE message with event ID (per 2025-11-25 spec)
@@ -397,7 +430,7 @@ public class McpHttpHandler implements HttpHandler
      * that require an established SSE stream before sending POST requests.
      * The server keeps the connection alive with periodic heartbeats.
      */
-    private void handleSseStream(HttpExchange exchange) throws IOException
+    private void handleSseStream(HttpExchange exchange, McpRequestContext context) throws IOException
     {
         String acceptHeader = exchange.getRequestHeaders().getFirst("Accept"); //$NON-NLS-1$
 
@@ -415,7 +448,9 @@ public class McpHttpHandler implements HttpHandler
             // comments. Both heartbeat and broadcast writes go through the registered
             // SseStream, which serializes them so frames never interleave.
             java.io.OutputStream os = exchange.getResponseBody();
-            SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(os);
+            SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance()
+                .register(os, context != null ? context.getSessionId() : null,
+                    context != null ? context.getRequestedPath() : McpEndpoint.LEGACY_PATH);
             try
             {
                 while (!Thread.currentThread().isInterrupted()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability
@@ -462,5 +497,140 @@ public class McpHttpHandler implements HttpHandler
             exchange.getResponseHeaders().add(CONTENT_TYPE, "application/json"); //$NON-NLS-1$
             HttpTransport.sendResponse(exchange, 200, response);
         }
+    }
+
+    private void handleSessionDelete(HttpExchange exchange, McpRequestContext context) throws IOException
+    {
+        McpRequestContext bound = bindSession(exchange, context);
+        if (bound == null)
+        {
+            return;
+        }
+        String sessionId = bound.getSessionId();
+        if (sessionId != null)
+        {
+            server.getSessionRegistry().close(sessionId);
+        }
+        HttpTransport.sendResponse(exchange, 200, ""); //$NON-NLS-1$
+    }
+
+    /**
+     * Binds a path-checked session to the request. Returns {@code null} when a
+     * 400/404 has already been written. Legacy {@code /mcp} may stay sessionless.
+     */
+    private McpRequestContext bindSession(HttpExchange exchange, McpRequestContext context)
+    {
+        boolean required = !isLegacyDefaultPath(context.getRequestedPath());
+        String sessionId = exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID);
+        Lookup lookup = server.getSessionRegistry().lookup(sessionId, context.getRequestedPath(), required);
+        if (lookup.getStatus() == LookupStatus.MISSING)
+        {
+            sendSessionError(exchange, 400, "Missing MCP-Session-Id"); //$NON-NLS-1$
+            return null;
+        }
+        if (lookup.getStatus() == LookupStatus.UNKNOWN || lookup.getStatus() == LookupStatus.PATH_MISMATCH)
+        {
+            sendSessionError(exchange, 404, "Session not found"); //$NON-NLS-1$
+            return null;
+        }
+        McpTransportSession session = lookup.getSession();
+        if (session == null)
+        {
+            return context;
+        }
+        return context
+            .withClientCapabilities(session.getCapabilities())
+            .withSessionId(session.getId());
+    }
+
+    /**
+     * Creates a path-bound session only after a successful initialize.
+     * Returns {@code null} when the cap is reached (503 already written) or
+     * when initialize did not succeed.
+     */
+    private String mintSessionAfterInitialize(HttpExchange exchange, McpRequestContext context,
+        JsonRpcRequest request, String response, boolean initialize) throws IOException
+    {
+        if (!initialize || !isJsonRpcSuccess(response))
+        {
+            return null;
+        }
+        String protocolVersion = negotiatedProtocolVersion(request);
+        ClientCapabilities capabilities = capabilitiesOf(request);
+        McpTransportSession session = server.getSessionRegistry().create(
+            context.getRequestedPath(), protocolVersion, capabilities);
+        if (session == null)
+        {
+            HttpTransport.sendResponse(exchange, 503,
+                JsonUtils.buildSimpleError("Session limit reached")); //$NON-NLS-1$
+            return null;
+        }
+        return session.getId();
+    }
+
+    private static void sendSessionError(HttpExchange exchange, int status, String message)
+    {
+        try
+        {
+            HttpTransport.sendResponse(exchange, status, JsonUtils.buildSimpleError(message));
+        }
+        catch (IOException e)
+        {
+            Activator.logInfo("Failed to send session error: " + e.getMessage()); //$NON-NLS-1$
+        }
+    }
+
+    private static boolean isLegacyDefaultPath(String path)
+    {
+        return "/mcp".equals(path); //$NON-NLS-1$
+    }
+
+    static boolean isJsonRpcSuccess(String response)
+    {
+        if (response == null || response.isBlank())
+        {
+            return false;
+        }
+        try
+        {
+            JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+            return json.has("result") && !json.has("error"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        catch (RuntimeException e)
+        {
+            return false;
+        }
+    }
+
+    static String negotiatedProtocolVersion(JsonRpcRequest request)
+    {
+        String clientVersion = request != null ? request.getStringParam("protocolVersion") : null; //$NON-NLS-1$
+        return McpConstants.isSupportedVersion(clientVersion) ? clientVersion : McpConstants.PROTOCOL_VERSION;
+    }
+
+    static ClientCapabilities capabilitiesOf(JsonRpcRequest request)
+    {
+        if (request == null || request.getParams() == null)
+        {
+            return ClientCapabilities.ABSENT;
+        }
+        Object capabilities = request.getParams().get("capabilities"); //$NON-NLS-1$
+        if (capabilities == null)
+        {
+            return ClientCapabilities.ABSENT;
+        }
+        return ClientCapabilities.from(GsonProvider.get().toJsonTree(capabilities));
+    }
+
+    static McpRequestContext contextOf(HttpExchange exchange) throws InvalidMcpEndpointException
+    {
+        McpEndpoint endpoint = McpEndpointResolver.resolve(exchange.getRequestURI().getRawPath());
+        Activator activator = Activator.getDefault();
+        ToolProfileRepository repository = activator != null ? activator.getToolProfileRepository() : null;
+        return McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve(endpoint.getRequestedProfileId(), endpoint.isLegacy(),
+                repository != null ? repository.getSnapshot() : DefaultToolProfileFactory.createSafeSnapshot()))
+            .requestedPath(endpoint.canonicalPath())
+            .build();
     }
 }

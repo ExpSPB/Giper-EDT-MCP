@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -14,6 +15,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.jface.preference.IPreferenceStore;
+
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
+import fm.giper.edt.mcp.server.profiles.FallbackReason;
+import fm.giper.edt.mcp.server.profiles.ProfileResolution;
 
 /**
  * Bounded, thread-safe in-memory ring of {@link McpCallRecord} exchanges captured
@@ -52,6 +57,12 @@ public final class McpCallHistory // NOSONAR intentional singleton (getInstance)
     static final Object INSTANCE_LOCK = new Object();
 
     private static McpCallHistory instance;
+
+    /**
+     * Per-thread request meta so {@link #record} can pick up profile/session
+     * without changing every choke-point signature at once.
+     */
+    private static final ThreadLocal<RequestMeta> REQUEST_META = new ThreadLocal<>();
 
     /**
      * Ordered ring of records, oldest first. A {@link ConcurrentLinkedDeque} (not an
@@ -115,6 +126,33 @@ public final class McpCallHistory // NOSONAR intentional singleton (getInstance)
     }
 
     /**
+     * Binds profile/session fields for the current thread until {@link #clearRequestMeta()}.
+     *
+     * @param context the request context (ignored when {@code null})
+     */
+    public static void bindRequestMeta(McpRequestContext context)
+    {
+        if (context == null)
+        {
+            REQUEST_META.remove();
+            return;
+        }
+        ProfileResolution resolution = context.getResolution();
+        FallbackReason fallback = resolution == null ? null : resolution.getFallbackReason();
+        REQUEST_META.set(new RequestMeta(
+            resolution == null ? null : resolution.getRequestedProfileId(),
+            context.effectiveProfileId(),
+            fallback == null ? null : fallback.name(),
+            context.getSessionId()));
+    }
+
+    /** Drops the thread-local recording context. */
+    public static void clearRequestMeta()
+    {
+        REQUEST_META.remove();
+    }
+
+    /**
      * Records one request/response exchange. Truncates each payload to
      * {@link #MAX_PAYLOAD_CHARS} outside the lock, then appends inside a short
      * critical section that evicts the oldest record(s) so the ring never exceeds
@@ -133,6 +171,26 @@ public final class McpCallHistory // NOSONAR intentional singleton (getInstance)
     public void record(String method, String toolName, String requestJson, String responseJson,
         long durationMs)
     {
+        RequestMeta meta = REQUEST_META.get();
+        if (meta == null)
+        {
+            record(method, toolName, requestJson, responseJson, durationMs, null, null, null, null);
+        }
+        else
+        {
+            record(method, toolName, requestJson, responseJson, durationMs, meta.requestedProfileId,
+                meta.effectiveProfileId, meta.fallbackReason, meta.sessionId);
+        }
+    }
+
+    /**
+     * Same as {@link #record(String, String, String, String, long)} with explicit
+     * profile and session fields. Pass {@code null}s to match the legacy overload.
+     */
+    public void record(String method, String toolName, String requestJson, String responseJson,
+        long durationMs, String requestedProfileId, String effectiveProfileId, String fallbackReason,
+        String sessionId)
+    {
         try
         {
             if (!recordingEnabled)
@@ -149,7 +207,8 @@ public final class McpCallHistory // NOSONAR intentional singleton (getInstance)
             int origResponseChars = responseJson == null ? 0 : responseJson.length();
             McpCallRecord entry = new McpCallRecord(System.currentTimeMillis(), method, toolName,
                 capPayload(requestJson), capPayload(responseJson), durationMs, origRequestChars,
-                origResponseChars);
+                origResponseChars, requestedProfileId, effectiveProfileId, fallbackReason,
+                sessionId);
 
             int cap = clampCap(bufferSize);
             synchronized (bufferLock)
@@ -404,6 +463,23 @@ public final class McpCallHistory // NOSONAR intentional singleton (getInstance)
         default void onConfigChanged()
         {
             // no-op by default
+        }
+    }
+
+    private static final class RequestMeta
+    {
+        private final String requestedProfileId;
+        private final String effectiveProfileId;
+        private final String fallbackReason;
+        private final String sessionId;
+
+        private RequestMeta(String requestedProfileId, String effectiveProfileId, String fallbackReason,
+            String sessionId)
+        {
+            this.requestedProfileId = requestedProfileId;
+            this.effectiveProfileId = effectiveProfileId;
+            this.fallbackReason = fallbackReason;
+            this.sessionId = sessionId;
         }
     }
 }

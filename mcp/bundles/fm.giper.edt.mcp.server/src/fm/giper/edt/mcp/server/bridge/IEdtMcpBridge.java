@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -53,6 +54,15 @@ public interface IEdtMcpBridge
     String listTools();
 
     /**
+     * Lists tools published for {@code profileId}. Policy is applied on this
+     * call; a previously listed name is not trusted later.
+     *
+     * @param profileId requested profile id; blank means {@code default}
+     * @return JSON array {@code [{"name":...,"description":...}]}
+     */
+    String listTools(String profileId);
+
+    /**
      * Calls a registered tool through the normal MCP {@code tools/call}
      * dispatcher.
      *
@@ -63,4 +73,15 @@ public interface IEdtMcpBridge
      *         {@code tools/call}
      */
     String callTool(String toolName, String argsJson);
+
+    /**
+     * Calls a tool under {@code profileId}. Policy is re-applied; a name from an
+     * earlier {@link #listTools()} of another profile is not enough.
+     *
+     * @param toolName exact registered tool name
+     * @param argsJson JSON object containing the tool arguments
+     * @param profileId requested profile id; blank means {@code default}
+     * @return the same JSON-RPC response shape produced for MCP {@code tools/call}
+     */
+    String callTool(String toolName, String argsJson, String profileId);
 }
