@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -30,6 +31,15 @@ import com.google.gson.JsonObject;
  */
 public class FanOutTest
 {
+    @Test
+    public void testFingerprintIgnoresJsonRpcIds()
+    {
+        String first = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"b\"},{\"name\":\"a\"}]}}"; //$NON-NLS-1$
+        String second = "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{\"tools\":[{\"name\":\"a\"},{\"name\":\"b\"}]}}"; //$NON-NLS-1$
+        assertEquals(BackendProfileChannel.fingerprintToolsList(first),
+            BackendProfileChannel.fingerprintToolsList(second));
+    }
+
     private static String listProjectsResponse(Object id, String... projectNames)
     {
         JsonArray projects = new JsonArray();

@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -159,6 +160,19 @@ public final class RouterTools
     public static String routerStatus(BackendRegistry registry, Object requestId,
         boolean allowStructuredContent)
     {
+        return routerStatus(registry, requestId, allowStructuredContent, ProfileEndpoint.legacyDefault());
+    }
+
+    /**
+     * As {@link #routerStatus(BackendRegistry, Object, boolean)} plus incompatible backends
+     * for the client's profile endpoint.
+     *
+     * @param endpoint the client MCP path
+     * @return the JSON-RPC response
+     */
+    public static String routerStatus(BackendRegistry registry, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint)
+    {
         Map<String, List<Integer>> duplicates = registry.duplicateProjects();
         Map<Integer, List<String>> projectsByPort = projectsByPort(registry, duplicates);
 
@@ -214,6 +228,26 @@ public final class RouterTools
         structured.addProperty("scanRange", //$NON-NLS-1$
             cfg != null ? cfg.scanFrom + "-" + cfg.scanTo : ""); //$NON-NLS-1$ //$NON-NLS-2$
 
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        JsonArray incompatibleJson = new JsonArray();
+        for (ProfileGroupSnapshot.IncompatibleBackend item : group.getIncompatible())
+        {
+            JsonObject row = new JsonObject();
+            row.addProperty("port", item.port); //$NON-NLS-1$
+            row.addProperty("reason", item.reason); //$NON-NLS-1$
+            incompatibleJson.add(row);
+        }
+        structured.add("incompatibleBackends", incompatibleJson); //$NON-NLS-1$
+        if (group.getEffectiveProfileId() != null)
+        {
+            structured.addProperty("effectiveProfileId", group.getEffectiveProfileId()); //$NON-NLS-1$
+        }
+        if (group.getFallbackReason() != null)
+        {
+            structured.addProperty("fallbackReason", group.getFallbackReason()); //$NON-NLS-1$
+        }
+        structured.add("availableProfiles", registry.availableProfilesForProxy(cfg != null ? cfg.port : 0)); //$NON-NLS-1$
+
         return toolCallSuccess(structured, "OK - backends: " + backends.size(), requestId, //$NON-NLS-1$
             allowStructuredContent);
     }
@@ -244,7 +278,14 @@ public final class RouterTools
         boolean allowStructuredContent)
     {
         registry.refresh();
-        return routerStatus(registry, requestId, allowStructuredContent);
+        return routerStatus(registry, requestId, allowStructuredContent, ProfileEndpoint.legacyDefault());
+    }
+
+    public static String routerRefresh(BackendRegistry registry, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint)
+    {
+        registry.refresh();
+        return routerStatus(registry, requestId, allowStructuredContent, endpoint);
     }
 
     /**

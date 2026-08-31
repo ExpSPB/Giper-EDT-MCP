@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -12,7 +13,11 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -70,6 +75,11 @@ public final class FakeBackend
     private final AtomicInteger sessionGeneration = new AtomicInteger(0);
     private final AtomicInteger initializeCount = new AtomicInteger(0);
     private volatile String currentSessionId;
+    private final Map<String, String> sessionByPath = new ConcurrentHashMap<>();
+    private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
+    private final Map<String, List<OutputStream>> sseByPath = new ConcurrentHashMap<>();
+    private volatile List<String> defaultToolNames = List.of("fake_tool_one", "echo_port");
+    private volatile boolean plainTextMode;
 
     /**
      * Creates a fake backend on an OS-chosen free port (port 0).
@@ -198,6 +208,7 @@ public final class FakeBackend
     {
         sessionGeneration.incrementAndGet();
         currentSessionId = null;
+        sessionByPath.clear();
     }
 
     /**
@@ -211,6 +222,62 @@ public final class FakeBackend
         return initializeCount.get();
     }
 
+    /**
+     * Declares an enabled profile with its own {@code tools/list} names.
+     *
+     * @param id profile id
+     * @param toolNames published tool names
+     */
+    public void putProfile(String id, String... toolNames)
+    {
+        profiles.put(id, new ProfileSpec(id, true, List.of(toolNames)));
+    }
+
+    /**
+     * Marks a profile as disabled (requests fall back to {@code default}).
+     *
+     * @param id profile id
+     */
+    public void disableProfile(String id)
+    {
+        ProfileSpec previous = profiles.get(id);
+        List<String> tools = previous == null ? defaultToolNames : previous.toolNames;
+        profiles.put(id, new ProfileSpec(id, false, tools));
+    }
+
+    /**
+     * Omits {@code structuredContent} on {@code get_server_status} and puts the JSON in
+     * {@code content[0].text}, matching a backend with {@code plainTextMode} enabled.
+     *
+     * @param enabled whether to answer without structured content
+     */
+    public void setPlainTextMode(boolean enabled)
+    {
+        this.plainTextMode = enabled;
+    }
+
+    /**
+     * Pushes {@code notifications/tools/list_changed} to GET/SSE clients on {@code path}.
+     *
+     * @param canonicalPath {@code /mcp} or {@code /mcp/profiles/<id>}
+     */
+    public void emitListChanged(String canonicalPath) throws IOException
+    {
+        String frame = "event: message\nid: 2\ndata: "
+            + "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n";
+        byte[] bytes = frame.getBytes(StandardCharsets.UTF_8);
+        List<OutputStream> streams = sseByPath.get(canonicalPath);
+        if (streams == null)
+        {
+            return;
+        }
+        for (OutputStream out : streams)
+        {
+            out.write(bytes);
+            out.flush();
+        }
+    }
+
     private void handleHealth(HttpExchange exchange) throws IOException
     {
         sendPlain(exchange, 200, "application/json", "{\"status\":\"ok\",\"edt_version\":\"fake\"}");
@@ -220,6 +287,24 @@ public final class FakeBackend
     {
         try
         {
+            String rawPath = exchange.getRequestURI().getPath();
+            ProfileEndpoint endpoint;
+            try
+            {
+                endpoint = ProfileEndpointResolver.resolve(rawPath);
+            }
+            catch (InvalidProfileEndpointException e)
+            {
+                sendPlain(exchange, 400, "application/json", "{\"error\":\"" + e.getMessage() + "\"}");
+                return;
+            }
+            String path = endpoint.canonicalPath();
+
+            if ("GET".equals(exchange.getRequestMethod()))
+            {
+                handleSseGet(exchange, path);
+                return;
+            }
             if (!"POST".equals(exchange.getRequestMethod()))
             {
                 sendPlain(exchange, 405, "text/plain", "method not allowed");
@@ -236,17 +321,20 @@ public final class FakeBackend
             if ("initialize".equals(method))
             {
                 initializeCount.incrementAndGet();
-                String issued = issueSessionId();
+                String issued = issueSessionId(path);
                 exchange.getResponseHeaders().add(HEADER_SESSION_ID, issued);
-                sendFramed(exchange, jsonRpcResponse(id, initializeResult()), acceptsSse);
+                sendFramed(exchange, jsonRpcResponse(id, initializeResult(endpoint)), acceptsSse);
                 return;
             }
 
             String presented = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
-            String issued = currentSessionId;
+            String issued = sessionByPath.get(path);
+            if (issued == null)
+            {
+                issued = currentSessionId;
+            }
             if (issued == null || !issued.equals(presented))
             {
-                // Mirrors the plugin: a call outside a known session is 404.
                 sendPlain(exchange, 404, "text/plain", "session not found");
                 return;
             }
@@ -258,12 +346,12 @@ public final class FakeBackend
             }
             if ("tools/list".equals(method))
             {
-                sendFramed(exchange, jsonRpcResponse(id, toolsListResult()), acceptsSse);
+                sendFramed(exchange, jsonRpcResponse(id, toolsListResult(endpoint)), acceptsSse);
                 return;
             }
             if ("tools/call".equals(method))
             {
-                handleToolCall(exchange, request, id, acceptsSse);
+                handleToolCall(exchange, request, id, acceptsSse, endpoint);
                 return;
             }
             // ping and anything else: an empty result
@@ -275,8 +363,28 @@ public final class FakeBackend
         }
     }
 
-    private void handleToolCall(HttpExchange exchange, JsonObject request, JsonElement id, boolean acceptsSse)
-        throws IOException
+    private void handleSseGet(HttpExchange exchange, String path) throws IOException
+    {
+        exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+        exchange.getResponseHeaders().add("Cache-Control", "no-cache");
+        exchange.sendResponseHeaders(200, 0);
+        OutputStream out = exchange.getResponseBody();
+        sseByPath.computeIfAbsent(path, k -> new CopyOnWriteArrayList<>()).add(out);
+        try
+        {
+            synchronized (out)
+            {
+                out.wait(5_000);
+            }
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void handleToolCall(HttpExchange exchange, JsonObject request, JsonElement id, boolean acceptsSse,
+        ProfileEndpoint endpoint) throws IOException
     {
         JsonObject params = request.get("params") != null && request.get("params").isJsonObject()
             ? request.getAsJsonObject("params") : new JsonObject();
@@ -297,6 +405,11 @@ public final class FakeBackend
         if ("echo_port".equals(toolName))
         {
             sendFramed(exchange, jsonRpcResponse(id, echoPortResult()), acceptsSse);
+            return;
+        }
+        if ("get_server_status".equals(toolName))
+        {
+            sendFramed(exchange, jsonRpcResponse(id, serverStatusResult(endpoint)), acceptsSse);
             return;
         }
         sendFramed(exchange, jsonRpcResponse(id, textResult("fake tool '" + toolName + "' executed")), acceptsSse);
@@ -320,10 +433,30 @@ public final class FakeBackend
 
     private String issueSessionId()
     {
+        return issueSessionId(ProfileEndpoint.LEGACY_PATH);
+    }
+
+    private String issueSessionId(String path)
+    {
         int generation = sessionGeneration.get();
-        String issued = generation == 0 ? "fake-" + getPort() : "fake-" + getPort() + "-g" + generation;
+        String issued = generation == 0 ? "fake-" + getPort() + path.replace('/', '-')
+            : "fake-" + getPort() + "-g" + generation + path.replace('/', '-');
         currentSessionId = issued;
+        sessionByPath.put(path, issued);
         return issued;
+    }
+
+    private JsonObject initializeResult(ProfileEndpoint endpoint)
+    {
+        JsonObject result = initializeResult();
+        Resolved resolved = resolve(endpoint);
+        if (resolved.fallbackReason != null)
+        {
+            result.addProperty("instructions", "Requested profile '" + endpoint.getRequestedProfileId()
+                + "' is unavailable (" + resolved.fallbackReason
+                + "). Connected to profile 'default' instead. Call get_server_status to confirm.");
+        }
+        return result;
     }
 
     private static JsonObject initializeResult()
@@ -340,14 +473,120 @@ public final class FakeBackend
         return result;
     }
 
-    private static JsonObject toolsListResult()
+    private JsonObject toolsListResult()
     {
+        return toolsListResult(ProfileEndpoint.legacyDefault());
+    }
+
+    private JsonObject toolsListResult(ProfileEndpoint endpoint)
+    {
+        Resolved resolved = resolve(endpoint);
         JsonArray tools = new JsonArray();
-        tools.add(toolDescriptor("fake_tool_one", "First fake tool"));
-        tools.add(toolDescriptor("echo_port", "Echoes the port of the backend that served the call"));
+        for (String name : resolved.toolNames)
+        {
+            tools.add(toolDescriptor(name, "Fake tool " + name));
+        }
         JsonObject result = new JsonObject();
         result.add("tools", tools);
         return result;
+    }
+
+    private JsonObject serverStatusResult(ProfileEndpoint endpoint)
+    {
+        Resolved resolved = resolve(endpoint);
+        JsonObject structured = new JsonObject();
+        structured.addProperty("success", true);
+        structured.addProperty("requestedProfileId", endpoint.getRequestedProfileId());
+        structured.addProperty("fallbackApplied", resolved.fallbackReason != null);
+        if (resolved.fallbackReason != null)
+        {
+            structured.addProperty("fallbackReason", resolved.fallbackReason);
+        }
+        JsonObject active = new JsonObject();
+        active.addProperty("id", resolved.effectiveId);
+        structured.add("activeProfile", active);
+        JsonArray available = new JsonArray();
+        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, ProfileEndpoint.LEGACY_PATH));
+        for (ProfileSpec spec : profiles.values())
+        {
+            if (spec.enabled && !ProfileEndpoint.DEFAULT_PROFILE_ID.equals(spec.id))
+            {
+                available.add(profileItem(spec.id, "/mcp/profiles/" + spec.id));
+            }
+        }
+        structured.add("availableProfiles", available);
+        if (plainTextMode)
+        {
+            return textResult(structured.toString());
+        }
+        JsonObject result = textResult("status");
+        result.add("structuredContent", structured);
+        return result;
+    }
+
+    private JsonObject profileItem(String id, String path)
+    {
+        JsonObject item = new JsonObject();
+        item.addProperty("id", id);
+        item.addProperty("endpoint", "http://127.0.0.1:" + getPort() + path);
+        return item;
+    }
+
+    private Resolved resolve(ProfileEndpoint endpoint)
+    {
+        String requested = endpoint.getRequestedProfileId();
+        if (profiles.isEmpty())
+        {
+            return new Resolved(requested, requested, null, defaultToolNames);
+        }
+        ProfileSpec spec = profiles.get(requested);
+        if (spec == null)
+        {
+            return new Resolved(requested, ProfileEndpoint.DEFAULT_PROFILE_ID, "UNKNOWN_PROFILE",
+                toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID));
+        }
+        if (!spec.enabled)
+        {
+            return new Resolved(requested, ProfileEndpoint.DEFAULT_PROFILE_ID, "DISABLED_PROFILE",
+                toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID));
+        }
+        return new Resolved(requested, spec.id, null, spec.toolNames);
+    }
+
+    private List<String> toolsOf(String profileId)
+    {
+        ProfileSpec spec = profiles.get(profileId);
+        return spec == null ? defaultToolNames : spec.toolNames;
+    }
+
+    private static final class ProfileSpec
+    {
+        final String id;
+        final boolean enabled;
+        final List<String> toolNames;
+
+        ProfileSpec(String id, boolean enabled, List<String> toolNames)
+        {
+            this.id = id;
+            this.enabled = enabled;
+            this.toolNames = toolNames;
+        }
+    }
+
+    private static final class Resolved
+    {
+        final String requestedId;
+        final String effectiveId;
+        final String fallbackReason;
+        final List<String> toolNames;
+
+        Resolved(String requestedId, String effectiveId, String fallbackReason, List<String> toolNames)
+        {
+            this.requestedId = requestedId;
+            this.effectiveId = effectiveId;
+            this.fallbackReason = fallbackReason;
+            this.toolNames = toolNames;
+        }
     }
 
     private static JsonObject toolDescriptor(String name, String description)

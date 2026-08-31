@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT - Proxy Tests
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -621,6 +622,11 @@ public class ProxyRoutingIT
         {
             return server.getPort();
         }
+
+        BackendRegistry registry()
+        {
+            return registry;
+        }
     }
 
     /**
@@ -650,7 +656,12 @@ public class ProxyRoutingIT
          */
         McpTestClient(int proxyPort)
         {
-            mcpUri = URI.create("http://127.0.0.1:" + proxyPort + "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+            this(proxyPort, ProfileEndpoint.LEGACY_PATH);
+        }
+
+        McpTestClient(int proxyPort, String path)
+        {
+            mcpUri = URI.create("http://127.0.0.1:" + proxyPort + path); //$NON-NLS-1$
         }
 
         /**
@@ -709,6 +720,11 @@ public class ProxyRoutingIT
             return parseSseData(response);
         }
 
+        HttpResponse<String> requestRaw(String method, JsonObject params) throws IOException, InterruptedException
+        {
+            return post(jsonRpcRequest(method, params).toString());
+        }
+
         /**
          * Calls {@code tools/call} for the given tool.
          *
@@ -762,6 +778,33 @@ public class ProxyRoutingIT
         private HttpResponse<String> post(String body) throws IOException, InterruptedException
         {
             return post(body, ACCEPT_BOTH);
+        }
+
+        HttpResponse<String> postRaw(String body) throws IOException, InterruptedException
+        {
+            return post(body, ACCEPT_BOTH);
+        }
+
+        HttpResponse<String> deleteSession() throws IOException, InterruptedException
+        {
+            HttpRequest.Builder builder = HttpRequest.newBuilder(mcpUri)
+                .timeout(Duration.ofSeconds(10))
+                .DELETE();
+            if (sessionId != null)
+            {
+                builder.header(SESSION_HEADER, sessionId);
+            }
+            return http.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        }
+
+        String sessionId()
+        {
+            return sessionId;
+        }
+
+        void useSession(String stolenSessionId)
+        {
+            this.sessionId = stolenSessionId;
         }
 
         private HttpResponse<String> post(String body, String acceptHeader) throws IOException, InterruptedException
