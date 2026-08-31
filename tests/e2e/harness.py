@@ -489,6 +489,21 @@ def call(tool, arguments):
         time.sleep(min(2 * attempt, 10))
 
 
+def fixture_form_has_auto_command_bar():
+    """True when Catalog.Catalog.Form.ItemForm has a persisted autoCommandBar.
+
+    8.5.1+ forms keep that containment (name FormCommandBar / token AutoCommandBar).
+    Compatibility 8.3.27 fixtures often omit it, so parent=AutoCommandBar is a
+    not-found — CI on 8.5.1 still takes the happy path.
+    """
+    r = call("get_metadata_details", {
+        "projectName": PROJECT,
+        "objectFqns": ["Catalog.Catalog.Form.ItemForm.Group.FormCommandBar"],
+        "assignable": True,
+    })
+    return (not r.is_error) and "Assignable properties" in (r.text or "")
+
+
 # ── Model-reset shortcut: don't pay for a reset when nothing was changed ──────────────
 #
 # The write-metadata cleanup (reset_fixture + reset_model) dominates the whole suite: 331
@@ -908,8 +923,14 @@ def wait_for_project_ready(timeout=None, failure_details=None):
             pass
         now = time.time()
         if now - last_log >= 15:
-            print("  [wait_for_project_ready] config still indexing (%ds elapsed, %ds left of %ds)..."
-                  % (int(now - start), int(deadline - now), timeout), flush=True)
+            # Windows + Python 3.13/3.14 can raise OSError 22 (Invalid argument) on
+            # print(..., flush=True) when stdout is a pipe/console in a bad state.
+            # That must not abort a model reset that was otherwise succeeding.
+            try:
+                print("  [wait_for_project_ready] config still indexing (%ds elapsed, %ds left of %ds)..."
+                      % (int(now - start), int(deadline - now), timeout), flush=True)
+            except OSError:
+                pass
             last_log = now
         time.sleep(2)
     if failure_details is not None:
