@@ -19,6 +19,18 @@ npx @modelcontextprotocol/conformance@latest server \
   --spec-version 2025-11-25 \
   --expected-failures tests/conformance/baseline.yml
 ```
+
+Repeat against the same baseline (do **not** grow it) for each surface:
+
+| Surface | URL |
+|---------|-----|
+| plugin default | `http://127.0.0.1:8765/mcp` |
+| plugin default by id | `http://127.0.0.1:8765/mcp/profiles/default` |
+| plugin explicit profile | `http://127.0.0.1:8765/mcp/profiles/<enabled-id>` |
+| proxy default | `http://127.0.0.1:8764/mcp` |
+| proxy default by id | `http://127.0.0.1:8764/mcp/profiles/default` |
+
+Path-bound sessions, fallback, HTTP 400 on invalid paths, and notification isolation are covered by the Java HTTP integration tests and `tests/e2e/tools/test_profiles.py`, not by expanding this official suite.
 With the baseline, the run is GREEN as long as only the pinned (intentional)
 gaps fail. A failure of any scenario **not** in `baseline.yml` is a real protocol
 regression → fix the server. If a pinned scenario starts passing, drop it from
