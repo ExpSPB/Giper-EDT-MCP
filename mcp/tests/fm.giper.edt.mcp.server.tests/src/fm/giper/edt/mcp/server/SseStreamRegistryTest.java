@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT - Tests
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -82,5 +83,53 @@ public class SseStreamRegistryTest
     {
         SseStreamRegistry reg = SseStreamRegistry.getInstance();
         assertEquals(0, reg.broadcast(null));
+    }
+
+    @Test
+    public void listChangedIsDeliveredOncePerSessionAndIsolatedByPath()
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        ByteArrayOutputStream first = new ByteArrayOutputStream();
+        ByteArrayOutputStream second = new ByteArrayOutputStream();
+        ByteArrayOutputStream otherPath = new ByteArrayOutputStream();
+        SseStreamRegistry.SseStream a = reg.register(first, "same-session", "/mcp/profiles/zz-sse-once"); //$NON-NLS-1$ //$NON-NLS-2$
+        SseStreamRegistry.SseStream b = reg.register(second, "same-session", "/mcp/profiles/zz-sse-once"); //$NON-NLS-1$ //$NON-NLS-2$
+        SseStreamRegistry.SseStream c = reg.register(otherPath, "other-session", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+        try
+        {
+            assertEquals(1, reg.notifyToolsListChanged("/mcp/profiles/zz-sse-once")); //$NON-NLS-1$
+            assertEquals(1, (first.size() > 0 ? 1 : 0) + (second.size() > 0 ? 1 : 0));
+            assertEquals(0, otherPath.size());
+        }
+        finally
+        {
+            reg.unregister(a);
+            reg.unregister(b);
+            reg.unregister(c);
+        }
+    }
+
+    @Test
+    public void unregisterBySessionDropsOnlyThatSession()
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        int before = reg.activeStreamCount();
+        ByteArrayOutputStream keep = new ByteArrayOutputStream();
+        ByteArrayOutputStream drop = new ByteArrayOutputStream();
+        SseStreamRegistry.SseStream kept = reg.register(keep, "keep-zz", "/mcp/profiles/zz-keep"); //$NON-NLS-1$ //$NON-NLS-2$
+        SseStreamRegistry.SseStream gone = reg.register(drop, "drop-zz", "/mcp/profiles/zz-drop"); //$NON-NLS-1$ //$NON-NLS-2$
+        try
+        {
+            reg.unregisterBySession("drop-zz"); //$NON-NLS-1$
+            assertEquals(before + 1, reg.activeStreamCount());
+            assertEquals(1, reg.notifyToolsListChanged("/mcp/profiles/zz-keep")); //$NON-NLS-1$
+            assertTrue(keep.toString(StandardCharsets.UTF_8).contains("list_changed")); //$NON-NLS-1$
+            assertEquals(0, drop.size());
+        }
+        finally
+        {
+            reg.unregister(kept);
+            reg.unregister(gone);
+        }
     }
 }

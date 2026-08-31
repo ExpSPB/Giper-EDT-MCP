@@ -1,5 +1,6 @@
 /**
  * Copyright (c) 2025 DitriX
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  */
 package fm.giper.edt.mcp.server.tools.impl;
 
