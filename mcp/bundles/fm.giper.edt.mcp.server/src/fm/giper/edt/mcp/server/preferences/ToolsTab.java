@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -13,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.viewers.CheckStateChangedEvent;
@@ -28,6 +31,11 @@ import org.eclipse.jface.viewers.TreeExpansionEvent;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
+import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.events.ModifyEvent;
+import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Image;
@@ -45,31 +53,43 @@ import org.eclipse.ui.plugin.AbstractUIPlugin;
 
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.preferences.ToolParameterSettings.ParameterDef;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ReplaceResult;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.utils.DestructiveConsentGate;
 
 /**
  * Tools management tab for MCP Server preferences.
- * Left side: tree of tool groups with checkboxes to enable/disable tools and groups.
- * Right side: description and configurable parameter settings for the selected item.
+ * Profile drafts are edited through {@link ToolProfilesEditorModel}; the tree
+ * and presets mutate the selected draft. Parameter values and destructive
+ * consent stay global.
  */
 public class ToolsTab
 {
     private final Composite composite;
+    private final ToolProfilesEditorModel model;
     private CheckboxTreeViewer treeViewer;
+    private Combo profileCombo;
     private Combo presetCombo;
     private Label countLabel;
+    private Label fallbackWarning;
+    private Text displayNameText;
+    private Text descriptionText;
+    private Text endpointText;
+    private Button enableButton;
+    private Button deleteButton;
     private Composite detailPanel;
-
-    /** Local copy of disabled tools for editing (committed on performOk) */
-    private final Set<String> disabledTools;
 
     /** Local copy of destructive-allowed tools for editing (committed on performOk) */
     private final Set<String> destructiveAllowedTools;
 
     /** Flag to avoid recursion when updating check states (SWT is single-threaded) */
     private boolean updatingChecks = false;
+    private boolean updatingProfileFields = false;
 
     /** Track created images for disposal */
     private final List<Image> managedImages = new ArrayList<>();
@@ -91,7 +111,7 @@ public class ToolsTab
 
     public ToolsTab(Composite parent)
     {
-        disabledTools = new HashSet<>(ToolSettingsService.getInstance().getDisabledTools());
+        model = ToolProfilesEditorModel.load(publishedSnapshot(), ToolProfilesEditorModel.catalogFromGroups());
         destructiveAllowedTools = new HashSet<>(ConsentSettingsService.getInstance().getAllowedTools());
         loadAllValues();
 
@@ -100,6 +120,8 @@ public class ToolsTab
         layout.marginWidth = 0;
         layout.marginHeight = 0;
         composite.setLayout(layout);
+
+        createProfileBar(composite);
 
         SashForm sash = new SashForm(composite, SWT.HORIZONTAL);
         GridData sashGd = new GridData(SWT.FILL, SWT.FILL, true, true);
@@ -121,6 +143,11 @@ public class ToolsTab
         createDetailPanel(sash);
 
         sash.setWeights(new int[]{40, 60});
+
+        // Full refresh only after tree / preset / count widgets exist.
+        // createProfileBar() fills the profile fields earlier; calling refreshProfileUi()
+        // there NPEs and Eclipse shows "The current page contains invalid values".
+        refreshProfileUi();
     }
 
     public Composite getControl()
@@ -138,6 +165,334 @@ public class ToolsTab
     public void setGeneralTab(GeneralTab generalTab)
     {
         this.generalTab = generalTab;
+    }
+
+    private void createProfileBar(Composite parent)
+    {
+        Group group = new Group(parent, SWT.NONE);
+        group.setText(Messages.ToolsTab_Profile);
+        group.setLayout(new GridLayout(2, false));
+        group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+
+        profileCombo = new Combo(group, SWT.DROP_DOWN | SWT.READ_ONLY);
+        profileCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        profileCombo.addSelectionListener(new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected(SelectionEvent e)
+            {
+                if (updatingProfileFields)
+                {
+                    return;
+                }
+                flushProfileFields();
+                int idx = profileCombo.getSelectionIndex();
+                if (idx >= 0 && idx < model.getDrafts().size())
+                {
+                    model.select(model.getDrafts().get(idx).getId());
+                    refreshProfileUi();
+                }
+            }
+        });
+
+        Composite buttons = new Composite(group, SWT.NONE);
+        GridLayout buttonsLayout = new GridLayout(6, false);
+        buttonsLayout.marginWidth = 0;
+        buttonsLayout.marginHeight = 0;
+        buttons.setLayout(buttonsLayout);
+        addActionButton(buttons, Messages.ToolsTab_Add, this::addProfile);
+        addActionButton(buttons, Messages.ToolsTab_Duplicate, this::duplicateProfile);
+        addActionButton(buttons, Messages.ToolsTab_Rename, this::renameProfile);
+        enableButton = addActionButton(buttons, Messages.ToolsTab_Disable, this::toggleEnabled);
+        deleteButton = addActionButton(buttons, Messages.ToolsTab_Delete, this::deleteProfile);
+        addActionButton(buttons, Messages.ToolsTab_RestoreSelected, this::restoreSelected);
+
+        Label nameLabel = new Label(group, SWT.NONE);
+        nameLabel.setText(Messages.ToolsTab_DisplayName);
+        displayNameText = new Text(group, SWT.BORDER);
+        displayNameText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        displayNameText.addModifyListener(profileFieldListener(true));
+
+        Label descLabel = new Label(group, SWT.NONE);
+        descLabel.setText(Messages.ToolsTab_Description);
+        descriptionText = new Text(group, SWT.BORDER | SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
+        GridData descGd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        descGd.heightHint = 40;
+        descriptionText.setLayoutData(descGd);
+        descriptionText.setToolTipText(Messages.ToolsTab_DescriptionHint);
+        descriptionText.addModifyListener(profileFieldListener(false));
+
+        Label hint = new Label(group, SWT.WRAP);
+        hint.setText(Messages.ToolsTab_DescriptionHint);
+        GridData hintGd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        hintGd.horizontalSpan = 2;
+        hint.setLayoutData(hintGd);
+
+        Label endpointLabel = new Label(group, SWT.NONE);
+        endpointLabel.setText(Messages.ToolsTab_Endpoint);
+        Composite endpointRow = new Composite(group, SWT.NONE);
+        endpointRow.setLayout(new GridLayout(2, false));
+        endpointRow.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        endpointText = new Text(endpointRow, SWT.BORDER | SWT.READ_ONLY);
+        endpointText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        Button copy = new Button(endpointRow, SWT.PUSH);
+        copy.setText(Messages.ToolsTab_CopyUrl);
+        copy.addSelectionListener(new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected(SelectionEvent e)
+            {
+                copyEndpointUrl();
+            }
+        });
+
+        fallbackWarning = new Label(group, SWT.WRAP);
+        fallbackWarning.setText(Messages.ToolsTab_DefaultFallbackWarning);
+        GridData warnGd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        warnGd.horizontalSpan = 2;
+        fallbackWarning.setLayoutData(warnGd);
+
+        refreshProfileFields();
+    }
+
+    private Button addActionButton(Composite parent, String text, Runnable action)
+    {
+        Button button = new Button(parent, SWT.PUSH);
+        button.setText(text);
+        button.addSelectionListener(new SelectionAdapter()
+        {
+            @Override
+            public void widgetSelected(SelectionEvent e)
+            {
+                action.run();
+            }
+        });
+        return button;
+    }
+
+    private ModifyListener profileFieldListener(boolean displayName)
+    {
+        return new ModifyListener()
+        {
+            @Override
+            public void modifyText(ModifyEvent e)
+            {
+                if (updatingProfileFields)
+                {
+                    return;
+                }
+                if (displayName)
+                {
+                    model.renameDisplayName(displayNameText.getText());
+                }
+                else
+                {
+                    model.setDescription(descriptionText.getText());
+                }
+            }
+        };
+    }
+
+    private void addProfile()
+    {
+        flushProfileFields();
+        ToolProfileDialog dialog = new ToolProfileDialog(composite.getShell(),
+            ToolProfileDialog.Mode.ADD, "", "", ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        if (dialog.open() == ToolProfileDialog.OK)
+        {
+            showIfFailed(model.add(dialog.getProfileId(), dialog.getDisplayName(), dialog.getDescription()));
+            refreshProfileUi();
+        }
+    }
+
+    private void duplicateProfile()
+    {
+        flushProfileFields();
+        ToolProfile selected = model.getSelected();
+        if (selected == null)
+        {
+            return;
+        }
+        ToolProfileDialog dialog = new ToolProfileDialog(composite.getShell(),
+            ToolProfileDialog.Mode.DUPLICATE, selected.getId() + "-copy", //$NON-NLS-1$
+            selected.getDisplayName() + " copy", selected.getDescription()); //$NON-NLS-1$
+        if (dialog.open() == ToolProfileDialog.OK)
+        {
+            showIfFailed(model.duplicate(dialog.getProfileId(), dialog.getDisplayName()));
+            if (dialog.getDescription() != null)
+            {
+                model.setDescription(dialog.getDescription());
+            }
+            refreshProfileUi();
+        }
+    }
+
+    private void renameProfile()
+    {
+        flushProfileFields();
+        ToolProfile selected = model.getSelected();
+        if (selected == null)
+        {
+            return;
+        }
+        ToolProfileDialog dialog = new ToolProfileDialog(composite.getShell(),
+            ToolProfileDialog.Mode.RENAME, selected.getId(), selected.getDisplayName(),
+            selected.getDescription());
+        if (dialog.open() == ToolProfileDialog.OK)
+        {
+            showIfFailed(model.renameDisplayName(dialog.getDisplayName()));
+            refreshProfileUi();
+        }
+    }
+
+    private void toggleEnabled()
+    {
+        flushProfileFields();
+        ToolProfile selected = model.getSelected();
+        if (selected == null)
+        {
+            return;
+        }
+        showIfFailed(model.setEnabled(!selected.isEnabled()));
+        refreshProfileUi();
+    }
+
+    private void deleteProfile()
+    {
+        flushProfileFields();
+        showIfFailed(model.deleteSelected());
+        refreshProfileUi();
+    }
+
+    private void restoreSelected()
+    {
+        showIfFailed(model.restoreSelected());
+        refreshProfileUi();
+    }
+
+    private void showIfFailed(ToolProfilesEditorModel.OperationResult result)
+    {
+        if (!result.isOk())
+        {
+            MessageDialog.openError(composite.getShell(), Messages.ToolsTab_Profile, result.getMessage());
+        }
+    }
+
+    private void copyEndpointUrl()
+    {
+        Clipboard clipboard = new Clipboard(composite.getDisplay());
+        try
+        {
+            clipboard.setContents(new Object[]{endpointText.getText()},
+                new Transfer[]{TextTransfer.getInstance()});
+        }
+        finally
+        {
+            clipboard.dispose();
+        }
+    }
+
+    private void flushProfileFields()
+    {
+        if (displayNameText == null || displayNameText.isDisposed())
+        {
+            return;
+        }
+        model.renameDisplayName(displayNameText.getText());
+        model.setDescription(descriptionText.getText());
+    }
+
+    private void refreshProfileUi()
+    {
+        refreshProfileFields();
+        refreshCheckStates();
+        selectMatchingPreset();
+        updateCountLabel();
+    }
+
+    private void refreshProfileFields()
+    {
+        if (profileCombo == null || displayNameText == null)
+        {
+            return;
+        }
+        updatingProfileFields = true;
+        try
+        {
+            List<ToolProfile> drafts = model.getDrafts();
+            profileCombo.removeAll();
+            int selected = 0;
+            for (int i = 0; i < drafts.size(); i++)
+            {
+                ToolProfile profile = drafts.get(i);
+                String label = profile.getDisplayName() + " [" + profile.getId() + "]"; //$NON-NLS-1$ //$NON-NLS-2$
+                if (profile.isDefault())
+                {
+                    label += Messages.ToolsTab_ProfileDefaultMarker;
+                }
+                if (!profile.isEnabled())
+                {
+                    label += Messages.ToolsTab_ProfileDisabledMarker;
+                }
+                profileCombo.add(label);
+                if (profile.getId().equals(model.getSelectedId()))
+                {
+                    selected = i;
+                }
+            }
+            if (!drafts.isEmpty())
+            {
+                profileCombo.select(selected);
+            }
+            ToolProfile current = model.getSelected();
+            displayNameText.setText(current == null || current.getDisplayName() == null
+                ? "" : current.getDisplayName()); //$NON-NLS-1$
+            descriptionText.setText(current == null || current.getDescription() == null
+                ? "" : current.getDescription()); //$NON-NLS-1$
+            endpointText.setText(profileUrl(current == null ? ToolProfile.DEFAULT_ID : current.getId()));
+            fallbackWarning.setVisible(current != null && current.isDefault());
+            boolean canMutate = model.canDeleteSelected();
+            enableButton.setEnabled(canMutate);
+            deleteButton.setEnabled(canMutate);
+            enableButton.setText(current != null && !current.isEnabled()
+                ? Messages.ToolsTab_Enable : Messages.ToolsTab_Disable);
+        }
+        finally
+        {
+            updatingProfileFields = false;
+        }
+    }
+
+    private String profileUrl(String profileId)
+    {
+        int port = PreferenceConstants.DEFAULT_PORT;
+        if (generalTab != null)
+        {
+            port = generalTab.getPort();
+        }
+        else
+        {
+            Activator activator = Activator.getDefault();
+            if (activator != null)
+            {
+                IPreferenceStore store = activator.getPreferenceStore();
+                if (store != null)
+                {
+                    port = store.getInt(PreferenceConstants.PREF_PORT);
+                }
+            }
+        }
+        return "http://127.0.0.1:" + port + model.profileEndpointPath(profileId); //$NON-NLS-1$
+    }
+
+    private static ToolProfileSnapshot publishedSnapshot()
+    {
+        Activator activator = Activator.getDefault();
+        if (activator != null && activator.getToolProfileRepository() != null)
+        {
+            return activator.getToolProfileRepository().getSnapshot();
+        }
+        return DefaultToolProfileFactory.createSafeSnapshot();
     }
 
     private void createPresetBar(Composite parent)
@@ -170,7 +525,10 @@ public class ToolsTab
             @Override
             public void widgetSelected(SelectionEvent e)
             {
-                disabledTools.clear();
+                for (ToolGroup group : ToolGroup.values())
+                {
+                    model.setGroupEnabled(group.getToolNames(), true);
+                }
                 refreshCheckStates();
                 selectMatchingPreset();
                 updateCountLabel();
@@ -197,10 +555,9 @@ public class ToolsTab
             @Override
             public void widgetSelected(SelectionEvent e)
             {
-                disabledTools.clear();
                 for (ToolGroup group : ToolGroup.values())
                 {
-                    disabledTools.addAll(group.getToolNames());
+                    model.setGroupEnabled(group.getToolNames(), false);
                 }
                 refreshCheckStates();
                 selectMatchingPreset();
@@ -233,8 +590,7 @@ public class ToolsTab
                     ToolPreset preset = ToolPreset.values()[idx];
                     if (preset != ToolPreset.CUSTOM && preset.getDisabledTools() != null)
                     {
-                        disabledTools.clear();
-                        disabledTools.addAll(preset.getDisabledTools());
+                        model.applyPreset(preset);
                         refreshCheckStates();
                         updateCountLabel();
                     }
@@ -290,7 +646,7 @@ public class ToolsTab
                     {
                         for (String toolName : group.getToolNames())
                         {
-                            treeViewer.setChecked(toolName, !disabledTools.contains(toolName));
+                            treeViewer.setChecked(toolName, model.isToolChecked(toolName));
                         }
                     }
                     finally
@@ -313,10 +669,10 @@ public class ToolsTab
     }
 
     /**
-     * Applies a single checkbox change to {@link #disabledTools}: a checked element
-     * enables (removes from disabled) and an unchecked element disables (adds to
-     * disabled). A {@link ToolGroup} element fans the change out to all its tools;
-     * a {@link String} element is a single tool. Any other element type is ignored.
+     * Applies a single checkbox change to the selected profile draft. A checked
+     * element enables the tool; an unchecked element removes it from the allowlist.
+     * {@code get_server_status} stays checked. A {@link ToolGroup} fans the change
+     * out; a {@link String} is a single tool.
      *
      * @param element the changed tree element (a {@link ToolGroup} or tool-name {@link String})
      * @param checked {@code true} when the element was checked (enabled)
@@ -325,28 +681,11 @@ public class ToolsTab
     {
         if (element instanceof ToolGroup group)
         {
-            for (String toolName : group.getToolNames())
-            {
-                if (checked)
-                {
-                    disabledTools.remove(toolName);
-                }
-                else
-                {
-                    disabledTools.add(toolName);
-                }
-            }
+            model.setGroupEnabled(group.getToolNames(), checked);
         }
         else if (element instanceof String toolName)
         {
-            if (checked)
-            {
-                disabledTools.remove(toolName);
-            }
-            else
-            {
-                disabledTools.add(toolName);
-            }
+            model.setToolEnabled(toolName, checked);
         }
     }
 
@@ -433,7 +772,7 @@ public class ToolsTab
         }
 
         Group settingsGroup = new Group(detailPanel, SWT.NONE);
-        settingsGroup.setText(Messages.ToolsTab_Settings);
+        settingsGroup.setText(Messages.ToolsTab_SettingsGlobal);
         GridLayout groupLayout = new GridLayout(2, false);
         groupLayout.marginWidth = 8;
         groupLayout.marginHeight = 8;
@@ -498,7 +837,7 @@ public class ToolsTab
         boolean perToolLevel = currentConsentLevel() == ConsentSettingsService.Level.PER_TOOL;
 
         Button allowCheck = new Button(detailPanel, SWT.CHECK);
-        allowCheck.setText(Messages.ToolsTab_AllowDestructive);
+        allowCheck.setText(Messages.ToolsTab_AllowDestructiveGlobal);
         allowCheck.setSelection(destructiveAllowedTools.contains(toolName));
         allowCheck.setEnabled(perToolLevel);
         allowCheck.setToolTipText(perToolLevel
@@ -546,6 +885,10 @@ public class ToolsTab
 
     private void refreshCheckStates()
     {
+        if (treeViewer == null)
+        {
+            return;
+        }
         updatingChecks = true;
         try
         {
@@ -556,7 +899,7 @@ public class ToolsTab
 
                 for (String toolName : group.getToolNames())
                 {
-                    boolean enabled = !disabledTools.contains(toolName);
+                    boolean enabled = model.isToolChecked(toolName);
                     // Only update tool widget if group is already expanded (avoids forcing expansion)
                     if (treeViewer.getExpandedState(group))
                     {
@@ -584,7 +927,11 @@ public class ToolsTab
 
     private void selectMatchingPreset()
     {
-        ToolPreset matched = ToolPreset.matchPreset(disabledTools);
+        if (presetCombo == null)
+        {
+            return;
+        }
+        ToolPreset matched = model.matchPreset();
         ToolPreset[] presets = ToolPreset.values();
         for (int i = 0; i < presets.length; i++)
         {
@@ -598,6 +945,10 @@ public class ToolsTab
 
     private void updateCountLabel()
     {
+        if (countLabel == null)
+        {
+            return;
+        }
         int total = 0;
         int enabled = 0;
         for (ToolGroup group : ToolGroup.values())
@@ -605,7 +956,7 @@ public class ToolsTab
             for (String toolName : group.getToolNames())
             {
                 total++;
-                if (!disabledTools.contains(toolName))
+                if (model.isToolChecked(toolName))
                 {
                     enabled++;
                 }
@@ -659,12 +1010,36 @@ public class ToolsTab
     }
 
     /**
-     * Saves tool enablement state and parameter values to preferences.
+     * Publishes every profile draft with one optimistic replace. Does not write
+     * global parameter or consent settings.
+     */
+    public ReplaceResult saveProfiles()
+    {
+        flushProfileFields();
+        ToolProfileRepository repository = profileRepository();
+        if (repository == null)
+        {
+            return ReplaceResult.rejected(publishedSnapshot(), "Profile repository is not available"); //$NON-NLS-1$
+        }
+        return model.apply(repository);
+    }
+
+    /**
+     * Reloads drafts from the published repository snapshot after a revision conflict.
+     */
+    public void reloadProfiles()
+    {
+        ToolProfileRepository repository = profileRepository();
+        model.reload(repository == null ? publishedSnapshot() : repository.getSnapshot());
+        refreshProfileUi();
+    }
+
+    /**
+     * Saves global parameter values and destructive-consent allow-set only.
      */
     public void performOk()
     {
         savePendingSpinnerValues();
-        ToolSettingsService.getInstance().setDisabledTools(disabledTools);
         ConsentSettingsService.getInstance().setAllowedTools(destructiveAllowedTools);
         for (Map.Entry<String, Integer> entry : pendingValues.entrySet())
         {
@@ -678,20 +1053,19 @@ public class ToolsTab
     }
 
     /**
-     * Resets tool enablement and all parameter values to defaults.
+     * Resets only the selected profile allowlist after confirmation. Other profiles
+     * and global settings stay as they are except parameter defaults.
      */
     public void performDefaults()
     {
-        // Restore the DEFAULT disabled set, not an empty one: tools that ship disabled (the raw
-        // git command tool) must stay disabled after "Restore Defaults" - clearing the set would
-        // silently enable them.
-        disabledTools.clear();
-        disabledTools.addAll(
-            ToolSettingsService.parseDisabledTools(PreferenceConstants.DEFAULT_DISABLED_TOOLS));
+        if (!MessageDialog.openQuestion(composite.getShell(),
+            Messages.ToolsTab_RestoreDefaultsConfirmTitle, Messages.ToolsTab_RestoreDefaultsConfirm))
+        {
+            return;
+        }
+        model.resetSelectedToShippedDefaults();
         destructiveAllowedTools.clear();
-        refreshCheckStates();
-        selectMatchingPreset();
-        updateCountLabel();
+        refreshProfileUi();
 
         for (Map.Entry<String, List<ParameterDef>> entry : paramSettings.getAllParameters().entrySet())
         {
@@ -709,11 +1083,17 @@ public class ToolsTab
     }
 
     /**
-     * Returns true if the disabled tools set has changed from the stored value.
+     * Returns true when profile drafts differ from the last loaded snapshot.
      */
     public boolean hasChanges()
     {
-        return !disabledTools.equals(ToolSettingsService.getInstance().getDisabledTools());
+        return model.isDirty();
+    }
+
+    private static ToolProfileRepository profileRepository()
+    {
+        Activator activator = Activator.getDefault();
+        return activator == null ? null : activator.getToolProfileRepository();
     }
 
     /**
@@ -787,6 +1167,10 @@ public class ToolsTab
             }
             if (element instanceof String toolName)
             {
+                if (ToolProfilesEditorModel.MANDATORY_TOOL.equals(toolName))
+                {
+                    return toolName + Messages.ToolsTab_MandatoryTool;
+                }
                 return toolName;
             }
             return super.getText(element);

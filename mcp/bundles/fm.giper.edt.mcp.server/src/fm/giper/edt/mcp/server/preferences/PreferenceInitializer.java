@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -43,6 +44,12 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer
         // Tool enablement
         store.setDefault(PreferenceConstants.PREF_DISABLED_TOOLS,
             PreferenceConstants.DEFAULT_DISABLED_TOOLS);
+
+        // Multi-profile document (empty until first migration / UI save)
+        store.setDefault(PreferenceConstants.PREF_TOOL_PROFILES_JSON,
+            PreferenceConstants.DEFAULT_TOOL_PROFILES_JSON);
+        store.setDefault(PreferenceConstants.PREF_TOOL_PROFILES_BACKUP,
+            PreferenceConstants.DEFAULT_TOOL_PROFILES_BACKUP);
 
         // Progressive tool disclosure (dynamic toolsets)
         store.setDefault(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE,
