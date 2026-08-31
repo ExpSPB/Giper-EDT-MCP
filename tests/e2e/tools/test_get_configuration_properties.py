@@ -27,7 +27,7 @@ Fixture ground truth (TestConfiguration/src/Configuration/Configuration.mdo):
   name=TestConfiguration, synonym{en:Test configuration},
   defaultRunMode=ManagedApplication, usePurposes=[PersonalComputer],
   dataLockControlMode=Managed, objectAutonumerationMode=NotAutoFree,
-  modalityUseMode=DontUse, compatibilityMode=8.5.1,
+  modalityUseMode=DontUse, compatibilityMode=8.3.27,
   defaultLanguage=Language.English (languageCode=en, name=English).
 These are the discriminating values asserted below: a broken tool that returned a
 no-op / wrong project / empty body would FAIL these (mutation thinking).
@@ -55,12 +55,12 @@ def test_default_project_returns_fixture_properties():
     # was actually read (not an echo: we passed no projectName at all).
     assert_contains(r.text, "name: TestConfiguration",
                     "YAML must report the configuration name from the model")
-    # compatibilityMode is fixture-specific (8.5.1) — a wrong/empty model read
+    # compatibilityMode is fixture-specific (8.3.27) — a wrong/empty model read
     # would not produce this exact value.
     assert_contains(r.text, "compatibilityMode:",
                     "YAML must include the compatibilityMode key")
-    assert_contains(r.text, "8.5.1",
-                    "compatibilityMode must be the fixture's 8.5.1")
+    assert_contains(r.text, "8.3.27",
+                    "compatibilityMode must be the fixture's 8.3.27")
     # defaultLanguage is reported by language CODE (the synonym map key), not name
     # — the bilingual contract. Fixture default language code is 'en'.
     assert_contains(r.text, "defaultLanguage: en",
