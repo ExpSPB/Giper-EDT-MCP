@@ -3,6 +3,14 @@
 **/.classpath
 **/.settings/
 
+# Build output from all modules
+**/target/
+**/bin/
+
+# Do not reintroduce legacy Ditrix module trees
+/mcp/bundles/com.ditrix.*/
+/mcp/tests/com.ditrix.*/
+
 /mcp/bundles/com.ditrix.edt.mcp.server/target
 /mcp/tests/com.ditrix.edt.mcp.server.tests/target
 /mcp/tests/com.ditrix.edt.mcp.server.tests/bin
