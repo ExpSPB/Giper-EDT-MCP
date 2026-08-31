@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testExecuteMissingImportPathIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testExecuteMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testExecuteImportPathIsAFileIsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testRequiredArrayMarksOnlyMandatoryParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testExecuteNonExistentImportPathIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ImportConfigurationFromXmlToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s

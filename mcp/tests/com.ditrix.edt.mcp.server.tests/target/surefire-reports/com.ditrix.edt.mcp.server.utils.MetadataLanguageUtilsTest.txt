@@ -1,0 +1,44 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 40, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesMissingListsTheDeclaredCodesWithNoValue -- Time elapsed: 0.023 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesMissingSkipsADeclaredLanguageTheConfigurationDoesNotUse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesInUseIsEmptyForOrphanedTextAndForNoTextAtAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveFallsBackToDefaultLanguageCodeWhenExplicitNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.declaredOrOverrideTakesTheOverrideOnlyWhenItHasContent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesInUseAnswersAboutTheCodesTHISCallDeclares -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageThrowsActionableErrorWhenUndeterminable -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageReturnsNullForAbsentValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.theFallbackCodeIsAlsoRefusedWhenTheSameCallRemovesIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymKeyedByCodeNotName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageValidatesAgainstThePostCallCodesWhenGivenThem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymHitByCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveUsesCodeNotName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.declaredLanguageCodesIsEmptyForANullOrLanguagelessConfiguration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageRefusesEveryCodeWhenNothingIsDeclared -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveReturnsNullWhenNothingAvailable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.theFallbackFollowsTheDefaultThatJUSTGotItsFirstCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.theFallbackFollowsTheRENAMEDDefaultEvenWithOtherLanguagesAround -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveReturnsNullForNullConfig -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymNullCodeFallsBackToFirstNonEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.aFallbackThatSurvivesTheCallIsLeftAlone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageRejectsAnUndeclaredCodeAndListsTheDeclaredOnes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageResolvesCodeForPresentValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSkipsBlankDefaultCodeAndUsesFirstConfigured -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageCanonicalizesADeclaredCodesCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveFallsBackToFirstConfiguredLanguageWhenNoDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymSkipsEmptyValuesInFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.declaredLanguageCodesListsThemInDeclarationOrderWithoutBlanksOrDuplicates -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymEmptyMapReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageDoesNotValidateTheFallbackCode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesInUseKeepsDeclarationOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesInUseIsEmptyWhenTheConfigurationIsNamedInNoLanguage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymNullMapReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.canonicalLanguageCodeReturnsTheDeclaredSpelling -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveFallsBackToDefaultLanguageCodeWhenExplicitEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.localesInUseKeepsOnlyTheLanguagesTheConfigurationFillsIn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveExplicitWins -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.synonymMissingCodeFallsBackToFirstNonEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.isDeclaredButUnusedFlagsAWriteIntoALanguageNobodyTranslatesInto -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataLanguageUtilsTest.resolveSynonymLanguageRefusesACodeTheSameCallREMOVES -- Time elapsed: 0 s

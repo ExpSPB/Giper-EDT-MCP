@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testUnknownProjectIsNamedError -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testProjectNameIsTheOnlyRequiredParam -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testResultFileNameUsesLowercasedProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testAllParamsLowerCamelCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testSchemaDeclaresAllExecuteParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testDescriptionSteersToGuideAndSiblingTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testSchemaDeclaresNoExtraParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testEmptyProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListCommonPicturesToolTest.testResultFileNameFallbackWhenProjectNameMissing -- Time elapsed: 0 s

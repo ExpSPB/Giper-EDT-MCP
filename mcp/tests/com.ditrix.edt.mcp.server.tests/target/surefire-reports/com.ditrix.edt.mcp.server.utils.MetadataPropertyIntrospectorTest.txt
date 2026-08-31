@@ -1,0 +1,50 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest
+-------------------------------------------------------------------------------
+Tests run: 46, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureWithNullExtInfoResolvesOnlyDirect -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureUnknownReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureDirectWinsOnNameCollision -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testMcoreValueListCurrentValueRendersAsRoundTrippableJsonArray -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testStyleItemColorValueRendersCurrent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testQNameCurrentValueRendersCompactForm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testStyleItemValueIsStyleValueKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureDirectFeatureHasOnExtInfoFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAContainedAdjustableBooleanIsTheAdjustableBooleanKind -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testCommandGroupOwnSuppressObjectStaysExcluded -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAManyContainedPictureStaysExcludedAsAChildCollection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testANonContainmentAdjustableBooleanReferenceIsNotClassified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAssignableNamesUnionDirectThenExtInfo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testCommonCommandGroupIsSingleReferenceToo -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureResolvesExtInfoLayoutEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testIntrospectDirectPropsPrecedeAndKeepOnExtInfoFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAssignableNamesAgreeWithIntrospect -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureResolvesExtInfoBoolean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testEnumCurrentValueSharesAllowedVocabulary -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testSynonymCurrentValueRendersPerLanguageEntry -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testNameAndCommentAreAssignableStrings -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testSubsystemParentIsSingleReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAContainedPictureIsThePictureKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAttributeTypeIsTypeDescription -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testIntrospectExtInfoInstanceRendersCurrent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAManyAdjustableBooleanReferenceIsNotClassified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAdjustableBooleanCurrentValueRendersTheNestedCommonFlag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testSynonymIsLocalizedString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAManyContainedMcoreValueIsTheMcoreValueListKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAContainedQNameIsTheQNameKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testNullObjectYieldsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testASubtypeOfAdjustableBooleanIsStillClassified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testLongAttributeIsClassifiedAsLong -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testSubsystemContentIsManyReferenceWithTargetType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAContainedUnrelatedTypeIsNotClassified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testDataProcessorCommandGroupIsSingleReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testFindFeatureMatchesFindWithoutRenderingCurrentValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAccountingRegisterChartOfAccountsIsSingleReference -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testResolveEnumLiteralIsCaseInsensitiveAndRejectsUnknown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testASubtypeOfPictureIsStillClassified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAttributeHasAnEnumPropertyWithAllowedValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testAssignableNamesNullExtInfoEqualsDirect -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testContainmentChildrenAreNotAssignable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testIntrospectExtInfoEClassListsKindAndAllowedWithoutCurrent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testResolveEnumLiteralOnExtInfoFeatureIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataPropertyIntrospectorTest.testSingleArgIntrospectUnaffectedByExtInfoOverloads -- Time elapsed: 0 s

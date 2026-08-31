@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testRenderBranchTableEmptyRefsShowsNoBranchesFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testResultFileNameFallsBackWithoutProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testNonexistentProjectIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testRenderBranchTableMarksTheCurrentLocalBranch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testRenderBranchTableShortensRemoteTrackingRefs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testMissingProjectNameIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testInputSchemaDeclaresProjectNameLowerCamelCaseAndRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testRenderBranchTableDetachedHeadNeverMarksAnyRowCurrent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testResultFileNameIncludesProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testRenderBranchTableFallsBackToOtherForANonBranchRef -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListGitBranchesToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s

@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest.testProjectNameRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest.testInputSchemaContainsProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetTranslationProjectInfoToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s

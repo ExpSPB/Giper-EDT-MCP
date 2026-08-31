@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testFromPreferenceValuePerTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testFromPreferenceValueAllowAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testPreferenceValueRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testFromPreferenceValueUnknownFallsBackToAskAlways -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testFromPreferenceValueAskAlways -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testFromPreferenceValueNullFallsBackToAskAlways -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConsentSettingsServiceTest.testDefaultLevelIsAskAlways -- Time elapsed: 0 s

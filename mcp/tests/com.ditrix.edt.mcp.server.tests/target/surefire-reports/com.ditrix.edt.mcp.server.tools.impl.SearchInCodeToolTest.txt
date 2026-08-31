@@ -1,0 +1,26 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest
+-------------------------------------------------------------------------------
+Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testResultFileNameTruncatesLongQueryToForty -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testInvalidOutputMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testResultFileNameKeepsCyrillic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testInvalidOutputModeIsCaseInsensitiveStillRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testMissingQueryWinsOverInvalidOutputMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testSchemaRequiresProjectNameAndQuery -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testResultFileNameDefaultsWhenQueryAbsent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testNullParamsMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testMissingQuery -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testResultFileNameSanitisesAndLowercases -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testResultFileNameDefaultsWhenQueryEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testDescriptionSteersToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testSchemaDeclaresAllOptionalParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testMissingProjectNameWinsOverInvalidOutputMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testOutputModeEnumDeclaresAllModes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SearchInCodeToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

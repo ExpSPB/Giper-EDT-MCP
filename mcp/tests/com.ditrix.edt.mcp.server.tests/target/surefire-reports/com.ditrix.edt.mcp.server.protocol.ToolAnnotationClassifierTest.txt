@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testOtherWriteTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testOpenWorldHintAlwaysFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testReadOnlyPrefixes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testDestructiveTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testNullToolNameIsConservativeWrite -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testRecoverableWritesAreNotDestructive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testAllDestructiveTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolAnnotationClassifierTest.testReadOnlyTool -- Time elapsed: 0 s

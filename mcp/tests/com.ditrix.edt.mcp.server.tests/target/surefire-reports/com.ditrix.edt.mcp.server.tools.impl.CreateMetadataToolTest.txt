@@ -1,0 +1,37 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest
+-------------------------------------------------------------------------------
+Tests run: 33, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testCreateMemberOwnerLookupToleratesYoSpelledObjectTypeName -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testOutputSchemaDeclaresApplied -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testOutputSchemaDeclaresSetAsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveDefaultsToServerKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testOutputSchemaDeclaresGenerateContent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveUnknownKindIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testSetAsDefaultIsOptional -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveServerCallCachedYieldsDuringSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolvePrivilegedOnNonServerKindIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testOptionalParametersNotRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testObjectFieldsIsOptionalStringArray -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testCommonModuleKindIsDeclaredAsAClosedEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testNewOptionalParametersAreNotRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testNestedSubsystemIsAdvertisedOnTheWire -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testDescriptionMentionsPredefinedItems -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveServerCallKindSetsServerCallCombo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testNormalizeYoIsOptional -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveServerCallOnGlobalKindIsRejectedNamingGlobal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testPropertiesDescriptionDocumentsXdtoVocabulary -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveDuringRequestHasNoCanonicalCombo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testResolveServerCallOnClientKindIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testDescriptionDocumentsXdtoPackageMembers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testChartOfAccountsPredefinedItemIsSupported -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testPredefinedItemFqnRecognizedByCreateDispatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testRequiredParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testGuideCarriesKeyDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testCallTypeIsOptionalClosedEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testOutputSchemaDeclaresCallType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CreateMetadataToolTest.testGenerateContentIsOptional -- Time elapsed: 0 s

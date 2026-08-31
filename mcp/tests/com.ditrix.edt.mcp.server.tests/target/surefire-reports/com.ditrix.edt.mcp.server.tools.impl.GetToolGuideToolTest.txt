@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testDoesNotRevealGuideForAToolForbiddenByTheCurrentProfile -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testResultFileNameUsesToolName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testRendersGuideForItself -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testUnknownToolErrorNamesBadValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testSchemaDeclaresToolName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testMissingToolNameErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetToolGuideToolTest.testRendersGuideForKnownTool -- Time elapsed: 0.013 s

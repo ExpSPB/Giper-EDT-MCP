@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testInputSchemaDeclaresParametersLowerCamelCaseAndRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testAttachActionIsAcceptedCaseInsensitively -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testNonexistentProjectIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testOutputSchemaDeclaresTheResultEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testEmptyActionDefaultsToAttachAndReachesProjectResolution -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testInvalidActionIsRejectedActionablyBeforeAnyRepositoryAccess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testMissingBranchIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testMissingActionDefaultsToAttachAndReachesProjectResolution -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testMissingProjectNameIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testMissingApplicationIdIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SetBranchInfobaseToolTest.testDetachActionIsAccepted -- Time elapsed: 0 s

@@ -1,0 +1,22 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.McpToolRegistryTest
+-------------------------------------------------------------------------------
+Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.639 s -- in com.ditrix.edt.mcp.server.tools.McpToolRegistryTest
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetAllToolsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetAllToolsReturnsAll -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetToolCountEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testConcurrentReadersNeverSeeAPartialCatalogue -- Time elapsed: 1.635 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testRegisterOverwritesSameName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetAllToolsUnmodifiable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetToolCountAfterOperations -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testClear -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testReplaceAllIgnoresNullEntriesAndAcceptsNoCatalogue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testSingleton -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testRegisterTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testRegisterMultipleTools -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testReplaceAllPublishesTheWholeCatalogueAndDropsTheOldOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetToolNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetToolFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testRegisterToolWithNullName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testGetToolNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.McpToolRegistryTest.testRegisterNullTool -- Time elapsed: 0 s

@@ -1,0 +1,22 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest
+-------------------------------------------------------------------------------
+Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testInvalidRegexReturnsErrorAndSkipsDecoder -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testDefaultRefIsMaster -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testBareTopLevelArrayIsAccepted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testMissingRegexReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testScalarPayloadReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testObjectWithoutRulesArrayReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testMalformedJsonReturnsErrorAndSkipsDecoder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testValidPayloadReturnsDecodedRuleset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testRuleNotAnObjectReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testBundledCodecDefaultsPassValidation -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testTooManyRulesReturnsError -- Time elapsed: 0.008 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testNullDecoderValidatesOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testOverlongPatternReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testNameScopeRegexIsCompileValidated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testOversizedPayloadReturnsErrorAndSkipsDecoder -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testEmptyPayloadReturnsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testDecoderRejectionIsShapedAsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiDefaultsFetcherTest.testScopelessRuleRegexIsCompileValidated -- Time elapsed: 0 s

@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testResolvesRegisteredFrameByRef -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testStaleFrameRefReturnsExactError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testStaleThreadIdReturnsExactError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testFrameIndexOutOfRangeReturnsExactError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testNegativeFrameIndexReturnsExactError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testNoAutoSessionReturnsExactError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DebugFrameResolverTest.testResolvesFrameByThreadIdAndIndex -- Time elapsed: 0 s

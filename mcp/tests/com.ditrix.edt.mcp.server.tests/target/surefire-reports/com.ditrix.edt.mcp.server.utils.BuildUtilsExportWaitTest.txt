@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest
+com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest.testTheLimitIsPerProjectAndNotGlobal -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest.testASecondWaitIsRefusedWhileTheFirstHasNotReturned -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest.testConcurrentClaimsOnTheSameProjectYieldExactlyOneWinner -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest.testAClaimThatIsNeverReturnedStillLapses -- Time elapsed: 0.028 s
+com.ditrix.edt.mcp.server.utils.BuildUtilsExportWaitTest.testTheSlotReopensOnceTheWaitReturns -- Time elapsed: 0 s

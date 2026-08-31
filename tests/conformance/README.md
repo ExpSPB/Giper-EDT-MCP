@@ -19,6 +19,18 @@ npx @modelcontextprotocol/conformance@latest server \
   --spec-version 2025-11-25 \
   --expected-failures tests/conformance/baseline.yml
 ```
+
+Repeat against the same baseline (do **not** grow it) for each surface:
+
+| Surface | URL |
+|---------|-----|
+| plugin default | `http://127.0.0.1:8765/mcp` |
+| plugin default by id | `http://127.0.0.1:8765/mcp/profiles/default` |
+| plugin explicit profile | `http://127.0.0.1:8765/mcp/profiles/<enabled-id>` |
+| proxy default | `http://127.0.0.1:8764/mcp` |
+| proxy default by id | `http://127.0.0.1:8764/mcp/profiles/default` |
+
+Path-bound sessions, fallback, HTTP 400 on invalid paths, and notification isolation are covered by the Java HTTP integration tests and `tests/e2e/tools/test_profiles.py`, not by expanding this official suite.
 With the baseline, the run is GREEN as long as only the pinned (intentional)
 gaps fail. A failure of any scenario **not** in `baseline.yml` is a real protocol
 regression → fix the server. If a pinned scenario starts passing, drop it from
@@ -38,12 +50,14 @@ One real bug was found and fixed during the first run: `ping` returned
 ## CI
 `.github/workflows/conformance.yml` runs this on **stock GitHub-hosted runners**
 (`ubuntu-latest`) — no docker image, no self-hosted runner. A `build` job builds
-the plugin once; a `conformance` job then runs against **EDT 2026.1** (currently
-build 2026.1.2), and the [`setup-edt`](../../.github/actions/setup-edt/action.yml)
+the plugin and the proxy; a `conformance` job then runs against **EDT 2026.1**
+(currently build 2026.1.2), and the [`setup-edt`](../../.github/actions/setup-edt/action.yml)
 composite action materializes Eclipse + 1C:EDT of that version (from the public p2
-via `p2 director`) + the built plugin and boots EDT headless under Xvfb, so the
-conformance client can hit the local `:8765`. Protocol-only conformance needs no
-EDT project and no 1C platform license, so it runs unattended in the cloud.
+via `p2 director`) + the built plugin, seeds `e2e-review`, and boots EDT headless
+under Xvfb. After `:8765` is up the job starts `edt-mcp-proxy` on `:8764` and
+runs the official suite against all five URLs (same `baseline.yml`).
+Protocol-only conformance needs no EDT project and no 1C platform license, so it
+runs unattended in the cloud.
 
 The plugin is compiled against the 2026.1 target — the OLDEST supported EDT — so one
 artifact resolves on 2026.1 and 2026.2 alike, and this gate runs it on the NEWEST

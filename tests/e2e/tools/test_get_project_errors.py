@@ -164,13 +164,37 @@ def _assert_verdicts(result, resolved, not_found, unsupported):
             _fail("an unsupported verdict must carry a reason: %r" % (entry,))
 
 
-def _seed_form_problem_and_wait():
-    """Bind an OnChange handler to a procedure that does not exist and wait for EDT's marker.
+# OnChange bound to a missing procedure is a form-ITEM problem on 8.5.1
+# (form-legacy-check-event-handler). 8.3.27 / EDT 2025.2 never publishes that
+# check; a form-module syntax error does, at Catalog.X.Form.Y.Form.Module.
+FORM_MODULE_PATH = "Catalogs/%s/Forms/%s/Module.bsl" % (FIXTURE_CATALOG, FIXTURE_FORM)
+FORM_CONTENT_FQN = "Catalog.%s.Form.%s.Form" % (FIXTURE_CATALOG, FIXTURE_FORM)
+# Do not burn MARKER_POLL_TIMEOUT on a check this platform will never emit.
+HANDLER_MARKER_WAIT = 15
 
-    The fixture form has no module at all, so the binding is a guaranteed
-    `form-legacy-check-event-handler` problem - a problem that belongs to a form ITEM. Returns the
-    marker's reported LOCATION, which is the point of the exercise: EDT indexes it on the form
-    CONTENT object, not on the item.
+
+def _poll_form_marker(form, timeout):
+    """Return the Location cell of a problem under `form`, or (None, last_report)."""
+    deadline = time.time() + timeout
+    last = ""
+    while time.time() < deadline:
+        r = call("get_project_errors", {"projectName": PROJECT, "objects": [form]})
+        assert_ok(r, "polling for the seeded form marker")
+        last = _report(r)
+        for row in _rows(last)[2:]:
+            cells = [c.strip() for c in row.strip("|").split("|")]
+            if len(cells) > 1 and cells[1].startswith(form):
+                return cells[1], last
+        time.sleep(2)
+    return None, last
+
+
+def _seed_form_problem_and_wait():
+    """Seed a form-scoped EDT marker and return its reported LOCATION.
+
+    Prefer the 8.5.1 item-handler check (so CI keeps proving form-ITEM granularity).
+    If that check never appears, fall back to a BSL syntax error in the form module
+    — Location is still under Catalog.X.Form.Y, which is what the selection tests need.
 
     Fails (rather than skipping) if no marker appears: the assertions that follow would be
     vacuously true otherwise, which is the false-green this file exists to avoid.
@@ -183,19 +207,24 @@ def _seed_form_problem_and_wait():
     })
     assert_ok(bound, "binding an OnChange handler to a procedure that does not exist")
     wait_for_project_ready()
-    call("revalidate_objects", {"projectName": PROJECT, "objects": [form]})
+    # ItemForm alone is not a revalidate target here; the content object (...Form) is.
+    call("revalidate_objects", {"projectName": PROJECT, "objects": [form, FORM_CONTENT_FQN]})
 
-    deadline = time.time() + MARKER_POLL_TIMEOUT
-    last = ""
-    while time.time() < deadline:
-        r = call("get_project_errors", {"projectName": PROJECT, "objects": [form]})
-        assert_ok(r, "polling for the seeded form marker")
-        last = _report(r)
-        for row in _rows(last)[2:]:
-            cells = [c.strip() for c in row.strip("|").split("|")]
-            if len(cells) > 1 and cells[1].startswith(form):
-                return cells[1]
-        time.sleep(2)
+    loc, last = _poll_form_marker(form, HANDLER_MARKER_WAIT)
+    if loc:
+        return loc
+
+    w = call("write_module_source", {
+        "projectName": PROJECT, "modulePath": FORM_MODULE_PATH,
+        "mode": "replace", "source": SEEDED_BAD_SOURCE,
+    })
+    assert_ok(w, "seeding a BSL syntax error into the form module (no form-legacy-check on this platform)")
+    wait_for_project_ready()
+    call("revalidate_objects", {"projectName": PROJECT, "objects": [FORM_CONTENT_FQN]})
+
+    loc, last = _poll_form_marker(form, MARKER_POLL_TIMEOUT)
+    if loc:
+        return loc
     _fail("no marker appeared on %s within %ds; last report:\n%s"
           % (form, MARKER_POLL_TIMEOUT, last[:600]))
     return ""  # unreachable; _fail raises

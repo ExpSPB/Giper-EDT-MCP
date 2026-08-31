@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.WriteScopeInventoryTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in com.ditrix.edt.mcp.server.tools.WriteScopeInventoryTest
+com.ditrix.edt.mcp.server.tools.WriteScopeInventoryTest.everyToolThatInheritsTheExportBarrierIsClassified -- Time elapsed: 0.012 s
+com.ditrix.edt.mcp.server.tools.WriteScopeInventoryTest.theClassificationTableNamesOnlyRealWriteTools -- Time elapsed: 0.013 s

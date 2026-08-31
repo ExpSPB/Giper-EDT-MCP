@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ContentHashTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.ContentHashTest
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testTokenIsStableForSameInput -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testMatchesRoundTripsOwnToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testCrlfAndLfHashIdentically -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testNullHashesAsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testDifferentContentDiffersWithHighProbability -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testTokenIsSixteenLowercaseHexChars -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testMatchesRejectsWrongOrBlankToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testMatchesToleratesCrlfDifference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ContentHashTest.testMatchesToleratesSurroundingQuotesAndCase -- Time elapsed: 0 s

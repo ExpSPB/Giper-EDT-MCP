@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testGetFieldValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testFindMethodWrongParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testInvokeMethodNoArgs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testInvokeMethodNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testFindMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testGetFieldValueNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testGetFieldValueInherited -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testInvokeMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testFindMethodWithParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testFindMethodNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testFindMethodInherited -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ReflectionUtilsTest.testGetFieldValueChildField -- Time elapsed: 0 s

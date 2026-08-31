@@ -1,0 +1,54 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 50, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testNestedChainRejectsTopLevelSubsystem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParsePluralTypeToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testResolveByFqnStillResolvesTheWholeChain -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenRussianPlural -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseNested -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testAPaddedSegmentIsRefusedByName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymNullMap -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseMixedEnglishRussian -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseEmptyName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenEnglishPlural -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseGarbage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseNullOrBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenNotASubsystem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymAllValuesEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenEnglishSingular -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseOddNumberOfParts -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testResolveByPathOutOfRangeDepth -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenNullOrEmpty -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseWrongTypeToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseLeadingTrailingWhitespace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testChainFqnRendersTheCanonicalEnglishToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenGarbage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseTopLevel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testLeadingAndMidStringEmptySegmentsNeverReachTheCreateBranch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testNestedChainAcceptsDeeperChains -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testNestedChainAcceptsDepthTwo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseRussianNested -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testResolveByPathAnswersNullForADeadEndParent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testNestedChainIsBilingualAtEVERYPosition -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymNullLanguageFallsBack -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testWellFormedAddressIsNotRefused -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testNestedChainRejectsNonSubsystemAddresses -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseDeeplyNested -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenRussianSingular -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testTypeTokenWithWhitespace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseSingleToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testResolveLanguageExplicitWins -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testResolveByPathWalksOnlyTheRequestedPrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymFallbackSkipsEmptyValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymPreferredLanguage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymEmptyMap -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testATrailingSeparatorIsRefusedAndNotSilentlyDropped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymEmptyLanguageFallsBack -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testGetSynonymFallbackWhenLanguageMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testResolveLanguageNullConfigAndExplicit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseRussianTopLevel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseWrongTypeTokenInNestedSegment -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseNameTrimmed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SubsystemUtilsTest.testParseLowercaseTypeToken -- Time elapsed: 0 s

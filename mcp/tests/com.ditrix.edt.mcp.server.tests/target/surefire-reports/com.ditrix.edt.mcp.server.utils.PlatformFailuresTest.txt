@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.PlatformFailuresTest
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.PlatformFailuresTest
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testAnAddressWhoseDomainLabelIsEntirelyHexIsLeftAlone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testCauseChainIsWalked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testSpecificChildBeatsTheGenericWrapperHeadline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testAnIdentityHashShorterThanFourDigitsIsScrubbed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testEveryIdentityInTheMessageIsScrubbed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testDescriptionIsTrimmed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testWrapperHeadlineIsStillUsedWhenNoChildCarriesText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testMessagelessExceptionWithoutAStatus -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testInformationalChildIsUsedWhenNothingFailed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testFirstMessageMatchingReturnsNullWhenNothingMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testInnerClassIdentityIsScrubbedAndDoesNotBreakTheReplacement -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testFirstMessageMatchingSearchesEverywhereDescribeStops -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testTextlessCancelIsNamedByItsSeverity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testFirstMessageMatchingFindsAChildStatus -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testOwnMessageWins -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testBlankMessageFallsBackToTheStatusTree -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testStatusExceptionMessageIsUsedWhenTheStatusItselfIsBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testNullInNullOutAndEmptyStaysEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testFailingChildBeatsAnEarlierInformationalOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testAtSignsThatAreNotObjectIdentitiesAreLeftAlone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testAnIdentityThatEndsTheSentenceIsScrubbed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testNullFailureIsDescribedNotThrown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testMessagesWithoutAnIdentityComeBackByteIdentical -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testObjectIdentityIsReducedToTheSimpleTypeName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testIdentityInTheMiddleOfASentenceIsScrubbed -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PlatformFailuresTest.testScrubbingComposesWithDescribeAndCannotBeReplacedByIt -- Time elapsed: 0 s

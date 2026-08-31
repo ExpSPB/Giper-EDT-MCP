@@ -8,12 +8,12 @@ description: How to build the EDT-MCP Eclipse plugin (Tycho/Maven) and run its u
 ## Layout
 
 - Maven/Tycho reactor: `mcp/` (bom, bundles, features, repositories, targets, tests).
-- Unit tests: `mcp/tests/com.ditrix.edt.mcp.server.tests/src` (JUnit4, a plug-in fragment).
+- Unit tests: `mcp/tests/fm.giper.edt.mcp.server.tests/src` (JUnit4, a plug-in fragment).
 - E2E: `tests/e2e/run_all.py` + `tools/test_<tool>.py` (Python; runs the MCP server against `TestConfiguration/`).
 
 ## Build
 
-A Tycho build from `mcp/` (Maven, JDK 17). The artifact is a p2 update-site in `repositories/com.ditrix.edt.mcp.server.repository/target`.
+A Tycho build from `mcp/` (Maven, JDK 17). The artifact is a p2 update-site in `repositories/fm.giper.edt.mcp.server.repository/target`.
 
 **A local build is available — use it to validate Java edits** (don't claim "verified by review/grep only"). The canonical script is `source/compile.sh` (it reproduces the CI flow `mvn clean verify -T 1C` from `.github/workflows/build.yml`):
 
@@ -27,6 +27,16 @@ bash source/compile.sh --skip-tests
 - The toolchain (JDK 17 + Maven 3.9+) is often **not on `PATH`** — pass it explicitly: `--java-home <JDK17 home> --maven-home <maven home>` (or env `JAVA_HOME`/`MAVEN_HOME`). The exact paths are **machine-specific — discover them on the spot**, don't hardcode into committed files. Exact options are in README "Building from source".
 - **The first build is slow**: Tycho pulls the EDT p2 repository (`edt.1c.ru`) + the Eclipse SDK (hundreds of MB). Once the caches are warm (`~/.m2/repository/p2`, `.cache/tycho`) it runs in ~1 minute. If the caches are absent and there's no network, the build legitimately can't run — say so, don't fake "green".
 - **Unit tests need the target platform too** (Mockito/JUnit come from the p2 target, not plain Maven Central) — a green `compile.sh` is the real proof for Java edits; grep only catches anchor/text problems.
+
+## Plugin version (p2 Update)
+
+EDT **Help → Check for Updates** / Install New Software compares OSGi `major.minor.micro`. Maven `1.0.4-SNAPSHOT` becomes `1.0.4.qualifier`; a qualifier-only rebuild is **not** an update. **Always bump the micro** (`1.0.3` → `1.0.4-SNAPSHOT`) when the installed plugin must pick up new bits:
+
+```bash
+mvn -f mcp/pom.xml org.eclipse.tycho:tycho-versions-plugin:set-version -DnewVersion=1.0.4-SNAPSHOT
+```
+
+Then check `mcp/bom/pom.xml` and the `bom` parent version in `mcp/pom.xml` — the Tycho plugin often leaves those at the old value. Do not bump for a docs-only or test-only change that will not be installed into EDT.
 
 ## Live redeploy (Tier 2 — the only proof of runtime behaviour)
 

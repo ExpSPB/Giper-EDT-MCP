@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.transport.HealthHandlerTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.transport.HealthHandlerTest
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testStatusStaysStringAndEdtVersionPreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testDegradedNamesTheMissingServiceWhenRunning -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testLiveFieldAlwaysPresentAndTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testComputeMissingServicesAllPresent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testComputeMissingServicesNamesNullsInOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testComputeMissingServicesNullMapIsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testReadyWhenRunningAndAllServicesPresent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testLegacyOverloadStillReportsOkWithLiveness -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testDegradedListsAllMissingServicesInOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.transport.HealthHandlerTest.testStartingWhenNotRunningEvenIfServicesPresent -- Time elapsed: 0 s

@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testPropertyFixedAndDefaultRenderWhenSet -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testObjectTypeWithPropertiesAndFlags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testExplicitEmptyDefaultRendersDistinctFromAbsent -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testEmptyPackageRendersOnlyHeaderAndNamespace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testValueTypeWithEnumerations -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testDependenciesSection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testPropertyFixedAndDefaultOmittedWhenUnset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testNullContentRendersNote -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testPackageGlobalPropertiesSection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.XdtoStructureReaderTest.testUnboundedUpperRendersStar -- Time elapsed: 0 s

@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testStyleConstantValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testSuffixStyleIsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testFirstTagStyleSingleTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testSuffixStyleMultipleTags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testSuffixStyleSingleTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testCountStyleMultipleTags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testEmptyTagSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testCountStyleSingleTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testNullTagSet -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.TagDecorationUtilsTest.testFirstTagStyleMultipleTags -- Time elapsed: 0 s

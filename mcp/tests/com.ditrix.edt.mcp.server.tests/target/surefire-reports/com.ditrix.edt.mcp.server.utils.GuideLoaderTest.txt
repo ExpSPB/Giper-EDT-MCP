@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.GuideLoaderTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.GuideLoaderTest
+com.ditrix.edt.mcp.server.utils.GuideLoaderTest.testLoadedGuideHasNoCarriageReturns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.GuideLoaderTest.testMissingGuideDegradesToEmpty -- Time elapsed: 0 s

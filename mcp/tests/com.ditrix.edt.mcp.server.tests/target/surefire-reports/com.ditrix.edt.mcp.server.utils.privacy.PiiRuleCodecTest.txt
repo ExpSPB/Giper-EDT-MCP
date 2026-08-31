@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.bundledDefaultsLoadNonEmptyWithExpectedEntries -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.bundledDefaultsSerializeWithSharedGson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.missingFieldsGetSensibleDefaults -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.encodeProducesVersionedRulesShape -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.roundTripPreservesTrickyRegexChars -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.unparseableJsonYieldsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.nullAndEmptyYieldEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.ruleWithoutRegexIsSkipped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.unknownScopeFallsBackToDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.bareTopLevelArrayIsAccepted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRuleCodecTest.roundTripPreservesEveryField -- Time elapsed: 0 s

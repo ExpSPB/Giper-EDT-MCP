@@ -78,6 +78,7 @@ from harness import (
     assert_contains,
     assert_no_diff,
     e2e_test,
+    fixture_form_has_auto_command_bar,
     PROJECT,
 )
 
@@ -367,6 +368,7 @@ def test_designer_xml_carries_form_command_action_and_bar_button():
     kind=write-metadata -> the orchestrator resets the model after the test.
     """
     from harness import wait_for_project_ready
+    has_bar = fixture_form_has_auto_command_bar()
     cmd, proc, btn = "XBarCmd", "XBarActProc", "XBarBtn"
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -382,6 +384,11 @@ def test_designer_xml_carries_form_command_action_and_bar_button():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "command", "value": cmd},
                        {"name": "parent", "value": "AutoCommandBar"}]})
+    if not has_bar:
+        e = assert_error(r, "seed a button inside AutoCommandBar when the form has no persisted bar")
+        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
+                             ctx="8.3.27 export pipeline must not invent a bar to parent into")
+        return
     assert_ok(r, "seed a button inside the AutoCommandBar")
     wait_for_project_ready()
 

@@ -1,0 +1,24 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest
+-------------------------------------------------------------------------------
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testChildKindsAreReadOffTheOwnerType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testTopLevelCreateOfAConfigurationTypeDoesNotResolveInAnExternalScope -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testYoNotFoundHintNamesTheNormalizedForm -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForInlineSpecialChildTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testValidArity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForServiceChildTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForSeparateFileChildTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForEnglishEnumValuePlural -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForLongAndPluralRussianTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testRussianTokenIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForInlineSpecialChildRussianTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testYoRetryFqnReturnsNormalizedFormOnlyWhenDistinct -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForRussianTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForEnglishTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testUnknownAndNullTokens -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testTopLevelCreateOfAStandaloneTypeDoesNotResolve -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testInvalidArity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testResolveWithYoFallbackIsNullSafeAndEchoesInput -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MetadataNodeResolverTest.testFeatureNameForServiceChildRussianTokens -- Time elapsed: 0 s

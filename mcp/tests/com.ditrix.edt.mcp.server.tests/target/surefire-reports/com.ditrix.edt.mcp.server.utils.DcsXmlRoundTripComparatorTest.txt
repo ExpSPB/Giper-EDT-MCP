@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.492 s -- in com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testEmptySubmittedChartMatchesGenuineEnrichedSerialization -- Time elapsed: 0.013 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testAllowsSubmittedElementToGainAttributes -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testFindsNewNilMarkerWhenSubmittedElementWasEmpty -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testFindsValueThatDeserializerTurnedIntoNil -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testDeepAppearanceLossDoesNotBlameInnocentFilterSibling -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testHundredThousandNearIdenticalNodesCompleteWithinTenSeconds -- Time elapsed: 0.454 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testFindsMissingRepeatedElementByStableIndex -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testAllowsMixedAugmentedAndExactSameNameSiblings -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testPreservesContentWhitespaceButIgnoresPrettyPrintingIndentation -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testAllowsDefaultsFormattingAttributeOrderAndNamespacePrefixChanges -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testSubsetSiblingDoesNotStealRicherSurvivor -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testAugmentedSiblingsDoNotHideGenuineRemovalPath -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsXmlRoundTripComparatorTest.testAllowsRepeatedElementsToReorderWithoutGreedyFalseRefusal -- Time elapsed: 0.001 s

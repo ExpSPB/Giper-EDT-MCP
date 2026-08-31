@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testResolveInfobaseReferenceReturnsNullWhenGetInfobaseThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testModuleOfApplicationInvokesGetModuleWhenPresent -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testAccessErrorAcceptsNullEmptyAndEnumValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testNullEmptyAndUnknownDefaultToInfobase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testIsOsAccessAgreesWithParseAccess -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testResolveInfobaseReferenceReturnsNullWhenGetInfobaseReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testResolveInfobaseReferenceReturnsGetInfobaseForInfobaseApplication -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testStoreCredentialsForNonInfobaseApplicationWithNoAdapterRejectsActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testResolveInfobaseReferenceReturnsNullWhenNoAdapterMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testOsAnyCaseSelectsOs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testModuleOfApplicationReturnsNullWhenNoGetModuleMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testAccessErrorRejectsOutOfEnumValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAccessSupportTest.testInfobaseExplicit -- Time elapsed: 0 s

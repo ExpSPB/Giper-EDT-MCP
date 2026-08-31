@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testExecuteMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testStaticRevalidateNullProjectIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testProjectNameIsTheOnlyRequiredParameter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testExecuteBlankProjectNameWithObjectsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testGuideNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testStaticRevalidateErrorPayloadIsJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testStaticRevalidateEmptyProjectIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testStaticRevalidateNullObjectsListWithBlankProjectIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RevalidateObjectsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

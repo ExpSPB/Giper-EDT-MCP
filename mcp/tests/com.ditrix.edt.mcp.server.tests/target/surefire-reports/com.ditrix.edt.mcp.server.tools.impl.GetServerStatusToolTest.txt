@@ -1,0 +1,23 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest
+-------------------------------------------------------------------------------
+Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testExecuteHeadlessReturnsSuccessJson -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testFormRenderFlagsReflectSystemProperties -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.unknownProfileFallsBackAndKeepsRequestedId -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testSchemaDeclaresProfileDiscoveryParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testDescriptionNamesKeyDiagnostics -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.disabledProfileFallsBackAndIsOmittedFromAvailableProfiles -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.defaultLegacyEndpointUsesMcpPath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testHeadlessPortAndRunningDegradeToDefaults -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testExecuteNeverLeaksChecksFolderPathOrToken -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testExecuteIsWellFormedJsonObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.compactDiscoveryOmitsAllowlistsAndFullDiscoverySortsTools -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.statusDoesNotChangeRightsOrSwitchContext -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.existingProfileReportsRequestedAndEffectiveMatch -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testOutputSchemaDeclaresAllFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.includeProfileToolsWithoutIncludeProfilesIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetServerStatusToolTest.testNameConstant -- Time elapsed: 0 s

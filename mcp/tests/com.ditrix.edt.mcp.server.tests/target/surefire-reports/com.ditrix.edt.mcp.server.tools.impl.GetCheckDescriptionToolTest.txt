@@ -1,0 +1,25 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest
+-------------------------------------------------------------------------------
+Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testProjectNameIsOptional -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testStaticGetCheckDescriptionTwoArgEmptyCheckIdIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testStaticGetCheckDescriptionEmptyCheckIdIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResolveSymbolicCheckUidReturnsNullWhenUnresolved -- Time elapsed: 0.009 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testHasCheckDocumentationPathTraversalIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResolveSymbolicCheckUidMapsUidToSymbolicId -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testHasCheckDocumentationNullCheckIdIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResultFileNameEmptyCheckIdFallsBackToToolName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testHasCheckDocumentationForUnknownCheckIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResolveSymbolicCheckUidIsNullSafe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testStaticGetCheckDescriptionNullCheckIdIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResultFileNameFallsBackToToolName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testMissingCheckId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testGetCheckDescriptionForUnknownCheckIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testDescriptionMentionsUidResolution -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testResultFileNameUsesCheckId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetCheckDescriptionToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

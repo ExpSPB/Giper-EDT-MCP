@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.PaginationTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.PaginationTest
+com.ditrix.edt.mcp.server.utils.PaginationTest.testTruncationNoticeEmptyWhenAllShown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitMaxOfOneClampsEverythingToOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitZeroClampedToOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testCanonicalConstants -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitAtUpperBoundReturnsMax -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitAboveMaxClampedToMax -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitWithinRangeReturnsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testTruncationNoticeWhenTruncated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitAtLowerBoundReturnsOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitNegativeClampedToOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testClampLimitRespectsCustomMax -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PaginationTest.testLimitReachedNoticeMentionsLimitAndIsActionable -- Time elapsed: 0 s

@@ -3,9 +3,16 @@
 **/.classpath
 **/.settings/
 
-/mcp/bundles/com.ditrix.edt.mcp.server/target
-/mcp/tests/com.ditrix.edt.mcp.server.tests/target
-/mcp/tests/com.ditrix.edt.mcp.server.tests/bin
+# Build output from all modules
+**/target/
+**/bin/
+
+# Do not reintroduce legacy Ditrix module trees
+/mcp/bundles/com.ditrix.*/
+/mcp/tests/com.ditrix.*/
+/mcp/bundles/fm.giper.*/target
+/mcp/tests/fm.giper.edt.*/target
+/mcp/tests/fm.giper.edt.*/bin
 nulq
 nul
 /source/*
@@ -17,7 +24,7 @@ log.log
 !.claude/skills/
 !.claude/hooks/
 !.claude/settings.json
-/mcp/repositories/com.ditrix.edt.mcp.server.repository/target
+/mcp/repositories/fm.giper.edt.mcp.server.repository/target
 /tests/e2e/__pycache__/
 # grade.py now imports a sibling module, so this directory grows one too.
 /tests/tool-choice/__pycache__/

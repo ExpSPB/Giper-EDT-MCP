@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.BuiltInToolTestCoverageTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in com.ditrix.edt.mcp.server.tools.BuiltInToolTestCoverageTest
+com.ditrix.edt.mcp.server.tools.BuiltInToolTestCoverageTest.allowListHasNoStaleEntries -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.tools.BuiltInToolTestCoverageTest.everyRegisteredToolHasATestOrIsAllowlisted -- Time elapsed: 0.013 s

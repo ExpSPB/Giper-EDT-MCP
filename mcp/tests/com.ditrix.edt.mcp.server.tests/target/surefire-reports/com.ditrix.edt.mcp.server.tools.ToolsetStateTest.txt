@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.ToolsetStateTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.ToolsetStateTest
+com.ditrix.edt.mcp.server.tools.ToolsetStateTest.resetClearsRevealedToolsets -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.ToolsetStateTest.disableHidesAgain -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetStateTest.coreIsAlwaysVisibleAndCannotBeToggled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetStateTest.unknownIdIsIgnored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.ToolsetStateTest.nonCoreToolsetHiddenUntilEnabled -- Time elapsed: 0 s

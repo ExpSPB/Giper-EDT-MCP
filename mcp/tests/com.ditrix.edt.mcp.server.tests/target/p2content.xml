@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<units size='1'>
+  <unit id='com.ditrix.edt.mcp.server.tests' version='1.0.2.202608292009' singleton='false' generation='2'>
+    <update id='com.ditrix.edt.mcp.server.tests' range='[0.0.0,1.0.2.202608292009)' severity='0'/>
+    <properties size='6'>
+      <property name='org.eclipse.equinox.p2.name' value='EDT MCP Server Tests'/>
+      <property name='org.eclipse.equinox.p2.provider' value='DitriX'/>
+      <property name='maven-groupId' value='com.ditrix.edt.mcp'/>
+      <property name='maven-artifactId' value='com.ditrix.edt.mcp.server.tests'/>
+      <property name='maven-version' value='1.0.2-SNAPSHOT'/>
+      <property name='maven-type' value='eclipse-test-plugin'/>
+    </properties>
+    <provides size='5'>
+      <provided namespace='org.eclipse.equinox.p2.iu' name='com.ditrix.edt.mcp.server.tests' version='1.0.2.202608292009'/>
+      <provided namespace='osgi.bundle' name='com.ditrix.edt.mcp.server.tests' version='1.0.2.202608292009'/>
+      <provided namespace='osgi.identity' name='com.ditrix.edt.mcp.server.tests' version='1.0.2.202608292009'>
+        <properties size='1'>
+          <property name='type' value='osgi.fragment'/>
+        </properties>
+      </provided>
+      <provided namespace='org.eclipse.equinox.p2.eclipse.type' name='bundle' version='1.0.0'/>
+      <provided namespace='osgi.fragment' name='com.ditrix.edt.mcp.server' version='1.0.2.202608292009'/>
+    </provides>
+    <requires size='9'>
+      <required namespace='osgi.bundle' name='com.ditrix.edt.mcp.server' range='1.0.0'/>
+      <required namespace='java.package' name='com._1c.g5.v8.dt.dcs.typedvalue' range='0.0.0'/>
+      <required namespace='java.package' name='org.junit' range='4.13.0'/>
+      <required namespace='java.package' name='org.junit.runner' range='4.13.0'/>
+      <required namespace='java.package' name='org.junit.runners' range='4.13.0'/>
+      <required namespace='java.package' name='org.mockito' range='0.0.0'/>
+      <required namespace='java.package' name='org.mockito.invocation' range='0.0.0'/>
+      <required namespace='java.package' name='org.mockito.stubbing' range='0.0.0'/>
+      <requiredProperties namespace='osgi.ee' match='(&amp;(osgi.ee=JavaSE)(version=17))'>
+        <description>
+          com.ditrix.edt.mcp.server.tests
+        </description>
+      </requiredProperties>
+    </requires>
+    <artifacts size='1'>
+      <artifact classifier='osgi.bundle' id='com.ditrix.edt.mcp.server.tests' version='1.0.2.202608292009'/>
+    </artifacts>
+    <touchpoint id='org.eclipse.equinox.p2.osgi' version='1.0.0'/>
+    <touchpointData size='1'>
+      <instructions size='1'>
+        <instruction key='manifest'>
+          Bundle-SymbolicName: com.ditrix.edt.mcp.server.tests&#xA;Bundle-Version: 1.0.2.202608292009&#xA;Fragment-Host: com.ditrix.edt.mcp.server;bundle-version=&quot;1.0.0&quot;&#xA;
+        </instruction>
+      </instructions>
+    </touchpointData>
+  </unit>
+</units>

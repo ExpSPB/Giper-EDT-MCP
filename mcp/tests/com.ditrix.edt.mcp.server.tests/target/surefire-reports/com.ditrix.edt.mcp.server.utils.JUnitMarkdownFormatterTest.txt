@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest
+-------------------------------------------------------------------------------
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testLanguageIndependentOnEnglishPlatform -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testTrailingEngineValueDumpRemoved -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testHeadDroppedWhenMessageHasExtraPrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testHeadDroppedWhenWrappedAsFailedMarker -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testPassedVerdict -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testTrailingEngineMarkerWithoutValueBlockRemoved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testInternalYaxunitFramesCollapsed -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testUniqueHeadKept -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testTraceFencedAsCodeBlock -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testFailedVerdictWithSections -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testMessageEmbeddedFramesNotTouched -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.JUnitMarkdownFormatterTest.testHeaderAndSummaryAlwaysPresent -- Time elapsed: 0 s

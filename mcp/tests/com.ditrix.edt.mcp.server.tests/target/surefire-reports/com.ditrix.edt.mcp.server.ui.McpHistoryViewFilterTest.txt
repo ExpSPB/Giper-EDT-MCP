@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testIntervalBoundsAreInclusiveAndAppliedOnlyWhenOn -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testMinDurationIsInclusiveLowerBound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testRenderEscapedNewlinesUnescapesGenuineBreaks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testFiltersComposeWithAnd -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testNullRecordNeverMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testStatKeyUsesToolNameForToolsCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testNoFiltersMatchesEverything -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testStatKeyFallsBackToMethodWhenToolBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testErrorsOnlyKeepsOnlyErrorOutcomes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testRenderEscapedNewlinesKeepsEscapedBackslash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testToolsCallOnlyExcludesOtherMethods -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testIsErrorClassifiesResponse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testStatKeyUnknownForNoMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testStatKeyUsesMethodForNonToolsCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testTextFilterMatchesSubstringCaseInsensitively -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ui.McpHistoryViewFilterTest.testProfileContextLabelAndClipboardModelCarryBothProfileIds -- Time elapsed: 0 s

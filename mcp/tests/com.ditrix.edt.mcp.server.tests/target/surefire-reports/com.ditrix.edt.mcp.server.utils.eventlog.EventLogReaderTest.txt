@@ -1,0 +1,32 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest
+-------------------------------------------------------------------------------
+Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s -- in com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.modernSqliteLgd_reportedAsUnsupported -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterBySeverity_russianWordAndLetterAgree -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.type13LineSkipped_referencesAfterItStillParse -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterByUser_emptyNameSystemUser -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.missingDirectory_actionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterByEventContains -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterByCommentContains_cyrillicSubstring -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterByDateRange -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterByMetadataContains_cyrillicSubstring -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterByUser_exactName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.bareToDate_isInclusiveOfWholeDay -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.pagination_offsetLimit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.descendingTruncation_keepsNewestPartitionNotOldest -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.nestedDataRecord_decodedTolerantly -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.partitionRange_skipsFarOutOfRangeFilesButKeepsCarryOver -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.scalarStringData_isCaptured -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.ordering_descendingWithOffset -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.multiPartition_offsetSpansPartitions -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.scanCap_setsTruncatedFlag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterBySession -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.readsWholeFixture_resolvingReferencesAndToleratingTruncatedTail -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.filterBySeverity_english -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.severityCanonicalisation_isBilingualAndForgiving -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.severityDecoding -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.missingLgf_actionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.partitionRange_descendingReversesOrder -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.isoRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.eventlog.EventLogReaderTest.ordering_descendingNewestFirst -- Time elapsed: 0.001 s

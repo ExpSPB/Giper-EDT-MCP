@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ProjectContextTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.ProjectContextTest
+com.ditrix.edt.mcp.server.utils.ProjectContextTest.testNullNameIsEmptyContext -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectContextTest.testEmptyNameIsEmptyContext -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectContextTest.testExistsAndIsOpenAreFalseWithoutProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectContextTest.testNoConfigurationMessageStaysGenericForAConfigurationProject -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.ProjectContextTest.testNoConfigurationMessageNamesTheExternalObjectsKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ProjectContextTest.testUnreadableExternalRootMessageSendsTheCallerToTheWorkspace -- Time elapsed: 0 s

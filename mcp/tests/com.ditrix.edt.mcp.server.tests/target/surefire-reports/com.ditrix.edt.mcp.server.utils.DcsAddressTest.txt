@@ -1,0 +1,28 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsAddressTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.DcsAddressTest
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testRowsAndColumnsRequireIndices -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testBareRootHasNoPointer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testInvalidPointerEscapesAreRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testNaturalKeysAreContextualEvenWhenNumeric -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testPointerMustStartWithSlash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testEveryAuthorableOrderedReaderAddressIsIndexAddressed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testNegativeIndexIsRejectedWhereIndexIsRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testStructureItemRequiresIndexEvenWhenGroupingHasAName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testSegmentHelpersReturnFalseOutsideTheAddress -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testEmptyRootIsStructuredFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testRootWhitespaceIsStructuredFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testEmptyPointerSegmentsAreRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testDataSetLinksRequireIndices -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testSplitsAtFirstHashOnly -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testRendererEscapesSlashAndTildeForExactRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testDecodesEscapesInRfcOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testNestedFilterItemRemainsIndexAddressed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testNonNumericIndexIsRejectedWhereIndexIsRequired -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testMissingAddressIsStructuredFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testRenderBareRootForNullOrEmptySegments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testValueEqualityUsesRootAndDecodedSegments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testZeroBasedIndexLexicalHelper -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testOutOfRangeIndexIsRejectedWhereIndexIsRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsAddressTest.testOrderedSettingsItemIsAnIndex -- Time elapsed: 0 s

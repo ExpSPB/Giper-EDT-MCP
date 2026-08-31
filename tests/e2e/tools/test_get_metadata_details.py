@@ -34,6 +34,7 @@ from harness import (
     assert_not_contains,
     assert_no_diff,
     wait_for_project_ready,
+    fixture_form_has_auto_command_bar,
     e2e_test,
     PROJECT,
 )
@@ -402,14 +403,21 @@ def test_assignable_reaches_a_designer_child_by_its_inherited_kind_only():
     # but a token addresses its EClass AND its subclasses - an AutoCommandBar IS a Group. So the
     # form-root command bar keeps exactly ONE supported address, and a foreign token is refused
     # ("no token denotes it" must not degrade into "every token fits").
+    has_bar = fixture_form_has_auto_command_bar()
     r = call("get_metadata_details", {
         "projectName": PROJECT,
         "objectFqns": ["Catalog.Catalog.Form.ItemForm.Group.FormCommandBar"],
         "assignable": True,
     })
     assert_ok(r, "assignable schema for the auto command bar via its inherited kind 'Group'")
-    assert_contains(r.text, "Assignable properties",
-        "the auto command bar must stay readable via 'Group'")
+    if has_bar:
+        assert_contains(r.text, "Assignable properties",
+            "the auto command bar must stay readable via 'Group'")
+    else:
+        assert_not_contains(r.text, "Assignable properties",
+            "8.3.27 without autoCommandBar must not invent assignable props for FormCommandBar")
+        assert_contains(r.text, "could not be resolved",
+            "the miss must show up in the per-object Errors table")
 
     for kind in ("Field", "Button", "Decoration", "Table", "Grroup"):
         r = call("get_metadata_details", {

@@ -1,0 +1,29 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testTheFinalityInstructionCannotBeSwallowedByACodeFence -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testMixedRefusalAndPromiseIsStillAPlan -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testEnglishAnnouncementIsContinued -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testTheGoingToFutureIsAnAnnouncementToo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testMarkerMatchingIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testAMarkerInsideAnotherWordIsNotAMarker -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testATypographicApostropheIsTheSameContraction -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testABarePresentTimeStatusIsNotAPlan -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testAPunctuatedAnnouncementIsStillAnAnnouncement -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testTheAnalyticFutureAnnouncesWorkButPolitenessDoesNot -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testAShortRealAnswerIsNotContinued -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testStrippingSurvivesACharacterThatGrowsWhenLowercased -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testALineBreakDoesNotHideTheNegation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testAMentionedMarkerIsNotADeclaration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testTheDeclaredMarkerIsWhatDecidesFinality -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testAnInclusiveRecommendationIsNotMistakenForAPlan -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testALongAnswerIsTakenAtFaceValueEvenWithAMarkerInIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testARussianRefusalBuiltFromTheVerbItselfIsNotAPlan -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testOnlyTheTrailingMarkerIsProtocol -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testANegatedPromiseIsADecisionNotAPlan -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testTheMarkerNeverReachesTheCaller -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testNotOnlyIntensifiesRatherThanNegates -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testARhetoricalLetMeIsNotAnAnnouncement -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testEmptyAnswerIsNeverTheResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateGatewayContinuationTest.testTheAnnouncementFromTheIssueIsContinued -- Time elapsed: 0 s

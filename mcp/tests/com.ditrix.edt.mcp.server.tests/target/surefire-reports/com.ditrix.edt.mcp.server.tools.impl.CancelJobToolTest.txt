@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.048 s -- in com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testMissingUnknownAndBlankJobIdsAreActionable -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testPreviewNamesOwnerStateAndProgressWithoutChangingJob -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testConfirmReportsAlreadyTerminalWithoutClaimingNewCancellation -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testYaxunitLaunchAndReportDirectoryHaveOneAtomicPublicationPoint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testConfirmCancelsBeforeCommit -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testCommittedYaxunitCapabilityTerminatesLaunchAndWarnsNoRollback -- Time elapsed: 0.031 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testContractAndDestructiveAnnotation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testFailedYaxunitTerminateLeavesCommittedJobRunning -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testYaxunitPreviewExplainsDestructiveEffectsAndInvokesNothing -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testConfirmNeverClaimsCommittedExternalWorkWasCancelled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CancelJobToolTest.testUnverifiedYaxunitTerminationCancelsNormalWorkerOutcomeHonestly -- Time elapsed: 1.008 s

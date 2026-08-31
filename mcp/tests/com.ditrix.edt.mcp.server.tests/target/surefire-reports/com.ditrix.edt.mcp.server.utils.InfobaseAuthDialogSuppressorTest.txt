@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envDefaultsOnWhenUnsetOrBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.isEnvSuppressEnabledDelegatesToClassifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.graceWindowIsThirtySeconds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testRussianTitleWithInfobaseNameMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envDisablesSuppressionOnlyForExplicitOffValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testHintMatcherIgnoresAccessSettingsAndUnrelated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.markActivityStartEndAdjustCounterAndTimestamp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testHintMatcherNullAndEmptyDoNotMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testNullAndEmptyDoNotMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.unrelatedDialogIsNeverTouched -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.dispatchArmsInFlightOnlyForConnectsToInfobaseTool -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testEnglishTitleNoNameMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envOnDoesNotSuppressWhenIdleBeyondGrace -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envOffNeverSuppresses -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.authDialogIsDismissedWhileTheGateIsOpen -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envOnSuppressesWhileCallInFlight -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envKeepsSuppressionOnForNonNegativeValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testUnrelatedTitlesDoNotMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.graceBoundaryIsExclusive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testEnglishTitleWithInfobaseNameMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.hintDialogIsDismissedRegardlessOfTheGate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testRussianTitleNoNameMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.authDialogIsLeftWhenTheGateIsClosed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.envOnSuppressesWithinGraceAfterLastCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.testSecureStorageHintTitleMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.InfobaseAuthDialogSuppressorTest.markActivityEndClampsCounterAtZero -- Time elapsed: 0 s

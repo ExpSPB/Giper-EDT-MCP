@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testPlainStringUsesSelectedLanguageOrConfigurationDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testSingleArgumentContextKeepsDeclarationOrderFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testPlainStringWithoutLanguageContextStillParses -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testPlainStringSurvivesAnEmptyDeclaredListWhenTheCallerNamedALanguage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testResolvedLanguageOverridesDeclarationOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testBuildNullReturnsNoPresentation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsPresentationParserTest.testPlainStringRequiresDeclaredLanguageWhenContextExists -- Time elapsed: 0 s

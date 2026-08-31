@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest
+com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest.testEventBrokerNullSafeAfterDispose -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest.testRightInfosServiceResolvesViaInjectorAfterDispose -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest.testCollectionOrderSorterNullSafeBeforeInit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest.testEventBrokerNullSafeBeforeInit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest.testCollectionOrderSorterNullSafeAfterDispose -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.EdtServicesRightsWiringTest.testRightInfosServiceResolvesViaInjectorBeforeInit -- Time elapsed: 0 s

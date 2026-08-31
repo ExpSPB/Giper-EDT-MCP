@@ -1,0 +1,30 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testProjectNameAloneIsAmbiguous -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testSelectStaleTerminatedReturnsMutableList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testNameAndAllAreMutuallyExclusive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameTruncatesLongApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testSelectStaleTerminatedToleratesNullAlreadySelected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testSchemaDeclaresAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameForProjectPlusApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testGuideCarriesMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameDefaultFallbackForEmptyParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testToolName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testSelectStaleTerminatedEmptySnapshotReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testAllWithoutConfirm -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameForAllModeWithProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameByConfigName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameByConfigNameIgnoresOtherParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testNameAndProjectAppIdAreMutuallyExclusive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testEmptyParamsReturnsProvideOneOfError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameDefaultFallback -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameForAllMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testApplicationIdCannotBeCombinedWithAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testSelectStaleTerminatedNullSnapshotReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testSchemaHasNoRequiredFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testFileNameAllModeIgnoresBlankProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.TerminateLaunchToolTest.testApplicationIdWithoutProjectName -- Time elapsed: 0 s

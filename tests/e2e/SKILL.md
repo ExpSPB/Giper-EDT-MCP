@@ -130,7 +130,8 @@ A separate **anti-cheat verifier subagent** will read every test and rule REAL o
 
 ```python
 from harness import (
-    call,                                                     # tools/call (the orchestrator does the initialize handshake once)
+    call,                                                     # tools/call on the default /mcp client
+    McpClient, profile_client, http_post_status,              # extra URL/session for profile tests
     assert_ok, assert_error, assert_error_quality,            # outcome + error quality
     assert_contains, assert_not_contains,                     # text content
     assert_no_diff, assert_diff_contains, assert_diff_paths,  # on-disk truth (git)

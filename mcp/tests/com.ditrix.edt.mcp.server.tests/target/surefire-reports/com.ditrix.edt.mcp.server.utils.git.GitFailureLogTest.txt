@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.git.GitFailureLogTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.git.GitFailureLogTest
+com.ditrix.edt.mcp.server.utils.git.GitFailureLogTest.testNothingToReportStillRendersAReadableLine -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.git.GitFailureLogTest.testAConfigurationValueInTheCauseChainNeverReachesTheLog -- Time elapsed: 0.001 s

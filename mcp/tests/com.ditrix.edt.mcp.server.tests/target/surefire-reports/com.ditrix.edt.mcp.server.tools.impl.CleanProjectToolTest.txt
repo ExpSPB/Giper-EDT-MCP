@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.512 s -- in com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testOutOfRangeWireTimeoutIsClampedIntoTheAcceptedRange -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testConfigurableTimeoutMatchesTheToolsOwnBounds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testCleanThatNeverStartedSaysNothingWasCleaned -- Time elapsed: 2.002 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testDeadlineStopsTheLoopInsteadOfCleaningTheNextProject -- Time elapsed: 2.507 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testWedgedCleanFailsOnItsDeadlineWithAnActionableError -- Time elapsed: 2.000 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testWireTimeoutIsTheOneThatBoundsTheClean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testCleanThatFinishesReportsNoError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testCleanFailureIsReportedWithItsOwnMessage -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.CleanProjectToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

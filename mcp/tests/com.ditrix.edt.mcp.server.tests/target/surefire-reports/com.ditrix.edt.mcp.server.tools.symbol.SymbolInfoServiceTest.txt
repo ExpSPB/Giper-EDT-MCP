@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testFormalParamInfo -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testModuleInfo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testRealHoverContentIsKept -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testExportedFunctionWithParameter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testDynamicFeatureAccessInfo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testSimpleClassAtHashBecomesNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testCellNullValueRendersEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testCodeCellWrapsInBackticks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testCellEscapesPipe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testRawObjectReferenceBecomesNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testStaticFeatureAccessInfo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testProcedureInfo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testInvocationInfoUsesMethodAccessName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testNullAndBlankBecomeNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.symbol.SymbolInfoServiceTest.testTextWithAtSignInProseIsKept -- Time elapsed: 0 s

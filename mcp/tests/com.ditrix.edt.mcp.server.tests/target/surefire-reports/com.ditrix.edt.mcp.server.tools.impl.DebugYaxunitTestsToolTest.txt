@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testExecuteMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testAliasForwardsTimeoutAndPreservesItsOwningToolIdentity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testExecuteEmptyParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testExecuteMissingApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testConnectsToInfobaseIsFalseByDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testSchemaDeclaresExpectedFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testToolName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testDeprecatedAliasPointsToRunTool -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.DebugYaxunitTestsToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s

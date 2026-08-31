@@ -1,0 +1,25 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest
+-------------------------------------------------------------------------------
+Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAnActualWriteBeatsAnEarlierStatementThatNothingWasQueued -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testTheWaitFollowsTheProjectTheToolActuallyWroteTo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testSayingNothingAtAllIsNotTheSameAsSayingNothingWasQueued -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testPendingExportTurnsASuccessIntoAnActionableRefusal -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAnUndeterminableScopeWaitsItsFallbackAndPublishesNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testTheFloorDoesNotFireOnAFullBudget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testThePublishedListIsSortedAndDeduplicated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testARefusalCarriesNoWriteScope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAWriteToolThatOverridesNothingStillGetsTheBarrier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testACascadeParticipantIsWaitedForButCanNeverRefuse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testUnobservableExportDoesNotRefuse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testTheWaitIsGivenABoundedDeadlineAndTheRefusalQuotesTheSameOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAnUnreadableResultIsNotTurnedIntoARefusal -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testWrittenProjectsAreWaitedForBeforeCascadeParticipants -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testDrainedExportReturnsTheToolsOwnPayloadPlusItsWriteScope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAnErrorAfterARecordedWriteIsMarkedAndNeverWaitedOn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAProjectBothWrittenAndCascadedIntoIsWaitedForOnceUnderTheStrongerGrade -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testACallThatStatesItQueuedNothingIsNeverWaitedOn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAnUndeterminableScopeWithAnEmptyFallbackSkipsTheWait -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAMissingProjectNameSkipsTheWaitInsteadOfRefusing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.base.AbstractMetadataWriteToolTest.testAWaitIsNotStartedOnASliceTooSmallToBeWorthIt -- Time elapsed: 0.001 s

@@ -1,0 +1,26 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest
+-------------------------------------------------------------------------------
+Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testExecuteMissingOutputDirIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testRecordBuildTimeDefaultsTrueWhenAbsentOrBlank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testOutputSchemaIsPermissive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testInputSchemaDeclaresNoExtraParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testExecuteMissingProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testOutputSchemaShape -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testGuideNotesGoldenRegeneration -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testAllParamsLowerCamelCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testExecuteOutputDirIsAFileIsError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testInputSchemaDeclaresRecordBuildTime -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testRequiredParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testConnectsToInfobaseIsTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testRecordBuildTimeTrueValuesEnableStamping -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testGuideNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testRecordBuildTimeFalseValuesDisableStamping -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testInputSchemaDeclaresAllExecuteParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testExecuteUnknownProjectIsNamedError -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.impl.BuildExternalObjectsToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s

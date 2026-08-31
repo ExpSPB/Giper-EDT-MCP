@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ConstantsTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.preferences.ConstantsTest
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testGroupSettingsFolder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagDecorationStyles -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagIconSizes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagPreferenceKeys -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagBmUriScheme -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testDefaultDecorationStyle -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testDefaultPort -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testGroupFileName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testPreferenceKeysNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testGroupPathConsistency -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testPreferenceKeysNotNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testDisabledToolsDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagSettingsFolder -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagNavigatorViewId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagReflectionMethodNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagDefaultColor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ConstantsTest.testTagFileName -- Time elapsed: 0 s

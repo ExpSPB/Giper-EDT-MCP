@@ -1,0 +1,28 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testIsExportedParamsSpanMultipleLines -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseTrailingDotIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testDecideNotExported -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseLeadingDotIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseNoDotIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testIsExportedFalseWhenNoExportKeyword -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testIsExportedFalseWhenNotExportedButBodyMentionsTheWord -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testDecideNotServer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testExportInsideParameterDefaultStringIsNotExported -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testDecideMethodNotFoundWhenMissingFromSource -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParsePlainModuleDotMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseNullValueIsActionableError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testIsExportedIncludesAdjacentDocCommentInScanRange -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testDecideValidReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testIsExportedSingleLineSignature -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseStripsEnglishCommonModulePrefix -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseNonPrefixModulePartWithDotIsKeptVerbatim -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testCanonicalReferenceResolvedCasingAndPrefixes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testMaskStringsAndStripComment -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testDecideMethodNotFoundWhenLinesNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testParseStripsRussianCommonModulePrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testDecideChecksExportBeforeServer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testTrailingCommentExportIsNotExported -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.MethodReferenceValidatorTest.testIsExportedRussianKeyword -- Time elapsed: 0 s

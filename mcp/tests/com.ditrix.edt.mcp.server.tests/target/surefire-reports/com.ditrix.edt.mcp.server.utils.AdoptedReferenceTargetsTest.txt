@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.missingPredefinedCounterpartIsACompleteEmptyAddition -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.unavailablePredefinedOwnerMarksAugmentationIncomplete -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.undeterminedDependencySnapshotMarksAdoptedAugmentationIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.noExtensionDependenciesNeedNoTargetOrModelAugmentation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.predefinedCounterpartUsesExactNameInsideAdoptedOwnerNotId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.producedTypesFeatureWithUnavailableValueMarksAugmentationIncomplete -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.AdoptedReferenceTargetsTest.metadataClassWithoutProducedTypesFeatureNeedsOnlyItsObjectUri -- Time elapsed: 0 s

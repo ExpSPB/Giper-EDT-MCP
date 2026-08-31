@@ -1,0 +1,51 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.JsonUtilsTest
+-------------------------------------------------------------------------------
+Tests run: 47, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.protocol.JsonUtilsTest
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildSimpleErrorNull -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractLongArgumentFloat -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractLongArgumentValid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractArrayArgumentNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildJsonRpcError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractLongArgumentBeyondIntRange -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentWithDetailMissingAppendsDetail -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentMappedParamsCarryTheirOwnDiscoveryTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentUnmappedParamHasNoDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildHealthResponse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentMissingReturnsErrorJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentNonInteger -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentsNoNamesReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentOutOfRange -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentsReturnsFirstMissingInOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractArrayArgumentMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractStringArgumentNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentsAllPresentReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractArrayArgumentJsonArray -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractBooleanArgumentDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractStringArgumentExists -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractLongArgumentNonInteger -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractArrayArgumentEmptyJsonArrayYieldsEmptyList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractArrayArgumentCommaSeparated -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentWithDetailPresentReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractBooleanArgumentInvalid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentsBlankMiddleArgument -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractBooleanArgumentFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractBooleanArgumentYesNo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentFloat -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentValid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildJsonRpcErrorStringId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractLongArgumentInvalid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentEmptyReturnsErrorJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentsVariadicInheritsDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractBooleanArgumentTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractStringArgumentMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractIntArgumentInvalid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildJsonRpcErrorNullId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractLongArgumentMissingNullEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testExtractArrayArgumentEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildJsonRpcErrorNullMessage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testRequireArgumentPresentReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonUtilsTest.testBuildSimpleError -- Time elapsed: 0.001 s

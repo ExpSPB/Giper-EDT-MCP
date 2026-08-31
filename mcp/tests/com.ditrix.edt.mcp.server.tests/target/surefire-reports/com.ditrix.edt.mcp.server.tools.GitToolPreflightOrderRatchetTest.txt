@@ -1,0 +1,6 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.GitToolPreflightOrderRatchetTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.GitToolPreflightOrderRatchetTest
+com.ditrix.edt.mcp.server.tools.GitToolPreflightOrderRatchetTest.executeRunsTheReadOnlyPreFlightBeforeTheConsentGate -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.GitToolPreflightOrderRatchetTest.storedRemoteRefusalReportsThroughTheLogSanitizer -- Time elapsed: 0.001 s

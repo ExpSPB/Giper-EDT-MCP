@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.entitiesAreDecodedAndWhitespaceCollapses -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.listItemsDoNotRunTogetherWhenTheirTagsAreStripped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.lineBreaksBecomeSpacesRatherThanRunOnWords -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.markupOnlyInputYieldsNothing -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.helpCrossReferenceMarkersKeepTheReferencedName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.theDisabledInstanceReadsNothingAtAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.anUnknownNameYieldsNoDocumentationRatherThanAFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.aPlainSentenceSurvivesUnchanged -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.bracesThatAreNotHelpMarkersSurviveVerbatim -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.blankInputYieldsNothingAtAll -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformHelpServiceTest.tagsAreStrippedAndALinkKeepsItsVisibleText -- Time elapsed: 0.001 s

@@ -74,6 +74,11 @@ LIVE_LAUNCH_CONFIG = os.environ.get("MCP_LIVE_LAUNCH_CONFIG", "TestConfiguration
 MCP_URL = "http://%s:%s/mcp" % (MCP_HOST, MCP_PORT)
 HEALTH_URL = "http://%s:%s/health" % (MCP_HOST, MCP_PORT)
 
+# Optional edt-mcp-proxy surface. When MCP_PROXY_PORT is set, test_profiles
+# repeats the isolation matrix through the proxy (CI e2e starts it on :8764).
+MCP_PROXY_HOST = os.environ.get("MCP_PROXY_HOST", MCP_HOST)
+MCP_PROXY_PORT = os.environ.get("MCP_PROXY_PORT", "").strip()
+
 # Per-CALL HTTP timeout (seconds). A single MCP call that exceeds this raises a socket
 # timeout instead of blocking forever; run_all's per-TEST timeout is the outer backstop
 # that fails the test and aborts the run. Generous by default — clean_project can
@@ -197,11 +202,11 @@ MODEL_RESET_BUDGET = int(os.environ.get(
 # per the 2025-11-25 Streamable HTTP transport spec).
 PROTOCOL_VERSION = os.environ.get("MCP_PROTOCOL_VERSION", "2025-11-25")
 
-_REQUEST_ID = 0
-# Captured from the server's InitializeResult response (Mcp-Session-Id header). When
-# the server issues one, every subsequent request MUST echo it (2025-11-25 spec).
-# Our server is currently session-less, so this stays None and nothing is sent.
-_SESSION_ID = None
+# Optional named profiles the workspace is expected to host for the profile suite.
+# Seed them in Preferences (Tools tab) as e2e-review / e2e-development / e2e-disabled.
+E2E_REVIEW_PROFILE = os.environ.get("E2E_REVIEW_PROFILE", "e2e-review")
+E2E_DEV_PROFILE = os.environ.get("E2E_DEV_PROFILE", "e2e-development")
+E2E_DISABLED_PROFILE = os.environ.get("E2E_DISABLED_PROFILE", "e2e-disabled")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -263,6 +268,144 @@ def requires_live_infobase(reason=""):
 # ──────────────────────────────────────────────────────────────────────────────
 # MCP client (real black-box client over HTTP; handles SSE framing)
 # ──────────────────────────────────────────────────────────────────────────────
+class McpClient:
+    """One Streamable-HTTP client bound to a single MCP path and session.
+
+    The suite default is ``/mcp``. Profile tests construct extra clients for
+    ``/mcp/profiles/<id>``. Each client owns its request ids and Mcp-Session-Id;
+    they must not share a session across paths.
+    """
+
+    def __init__(self, path="/mcp", host=None, port=None):
+        if not path.startswith("/"):
+            path = "/" + path
+        self.path = path
+        self.host = host or MCP_HOST
+        self.port = str(port or MCP_PORT)
+        self.url = "http://%s:%s%s" % (self.host, self.port, path)
+        self.session_id = None
+        self.request_id = 0
+
+    def initialize(self, capabilities=None):
+        result = self._post("initialize", {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": capabilities or {},
+            "clientInfo": {"name": "edt-mcp-e2e", "version": "1"},
+        })
+        self._notify("notifications/initialized", {})
+        return result
+
+    def call(self, tool, arguments):
+        """tools/call with the same building-retry policy as the module-level call()."""
+        deadline = time.time() + BUILDING_RETRY_TIMEOUT
+        attempt = 0
+        _record_attempt(tool)
+        while True:
+            try:
+                raw = self._post("tools/call", {"name": tool, "arguments": arguments})
+            except _UNCERTAIN_TRANSPORT_ERRORS:
+                if tool in MODEL_MUTATION_TOOLS and not _TIMED_OUT:
+                    abort_further_calls(
+                        "a %s request died in flight, so the server may still be executing it" % tool)
+                raise
+            result = Result(raw)
+            if not _is_transient_building(result) or time.time() >= deadline:
+                _record_outcome(tool, result.is_error, result.structured)
+                return result
+            attempt += 1
+            time.sleep(min(2 * attempt, 10))
+
+    def tools_list(self):
+        return self._post("tools/list", {})
+
+    def _post(self, method, params):
+        self.request_id += 1
+        body = json.dumps({
+            "jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params,
+        }).encode("utf-8")
+        status, headers, text = self._http_post(body)
+        if status >= 400 and not text.strip():
+            raise E2EAssertion(
+                "HTTP %s from %s for %s with an empty body" % (status, self.path, method))
+        sid = headers.get("Mcp-Session-Id")
+        if sid:
+            self.session_id = sid
+        return _parse_response(text)
+
+    def _notify(self, method, params):
+        body = json.dumps({"jsonrpc": "2.0", "method": method, "params": params}).encode("utf-8")
+        try:
+            self._http_post(body)
+        except urllib.error.HTTPError:
+            pass
+
+    def _http_post(self, body):
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json, text/event-stream",
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+        }
+        if self.session_id:
+            headers["Mcp-Session-Id"] = self.session_id
+        if _TIMED_OUT:
+            raise E2ECallTimeout(
+                "refusing to send request: %s, so the run is over. (The latch, not a new timeout - see "
+                "_TIMED_OUT.)" % _ABORT_REASON)
+        req = urllib.request.Request(self.url, data=body, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=CALL_TIMEOUT) as resp:
+                return resp.status, resp.headers, resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            try:
+                text = e.read().decode("utf-8", "replace")
+            except (TimeoutError, socket.timeout) as body_timeout:
+                _arm_timeout_latch()
+                raise E2ECallTimeout(_call_timeout_message(body_timeout))
+            return e.code, e.headers, text
+        except urllib.error.URLError as e:
+            if isinstance(getattr(e, "reason", None), (TimeoutError, socket.timeout)):
+                _arm_timeout_latch()
+                raise E2ECallTimeout(_call_timeout_message(e))
+            raise
+        except (TimeoutError, socket.timeout) as e:
+            _arm_timeout_latch()
+            raise E2ECallTimeout(_call_timeout_message(e))
+
+
+def http_post_status(path, method="initialize", params=None, host=None, port=None):
+    """POST one JSON-RPC method to an arbitrary path and return (status, body).
+
+    Used for invalid-URL contract tests (HTTP 400) that must not go through McpClient
+    parsing.
+    """
+    url = "http://%s:%s%s" % (host or MCP_HOST, str(port or MCP_PORT), path)
+    body = json.dumps({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": params if params is not None else {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "edt-mcp-e2e", "version": "1"},
+        },
+    }).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": PROTOCOL_VERSION,
+    }
+    req = urllib.request.Request(url, data=body, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=CALL_TIMEOUT) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        try:
+            text = e.read().decode("utf-8", "replace")
+        except Exception:
+            text = ""
+        return e.code, text
+
+
 class Result:
     def __init__(self, raw):
         self.raw = raw
@@ -334,49 +477,70 @@ _TIMED_OUT = False
 _ABORT_REASON = "an earlier call timed out and may still be running"
 
 
-def _post(method, params):
-    global _REQUEST_ID, _SESSION_ID
-    _REQUEST_ID += 1
-    body = json.dumps({
-        "jsonrpc": "2.0", "id": _REQUEST_ID, "method": method, "params": params,
-    }).encode("utf-8")
-    headers = {
-        "Content-Type": "application/json; charset=utf-8",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": PROTOCOL_VERSION,
-    }
-    if _SESSION_ID:
-        headers["Mcp-Session-Id"] = _SESSION_ID
-    if _TIMED_OUT:
-        raise E2ECallTimeout(
-            "refusing to send %s: %s, so the run is over. (The latch, not a new timeout - see "
-            "_TIMED_OUT.)" % (method, _ABORT_REASON))
-    req = urllib.request.Request(MCP_URL, data=body, headers=headers)
+_DEFAULT_CLIENT = McpClient("/mcp")
+
+
+def default_client():
+    """The process-wide ``/mcp`` client used by call() / initialize() wrappers."""
+    return _DEFAULT_CLIENT
+
+
+def profile_client(profile_id):
+    """A fresh client on ``/mcp/profiles/<id>``. Caller must initialize() it."""
+    return McpClient("/mcp/profiles/" + profile_id)
+
+
+def require_proxy():
+    """Fail unless ``MCP_PROXY_PORT`` is set and the proxy answers ``/health``."""
+    if not MCP_PROXY_PORT:
+        raise E2ESkip("proxy matrix skipped (set MCP_PROXY_PORT, e.g. 8764)")
+    url = "http://%s:%s/health" % (MCP_PROXY_HOST, MCP_PROXY_PORT)
     try:
-        with urllib.request.urlopen(req, timeout=CALL_TIMEOUT) as resp:
-            sid = resp.headers.get("Mcp-Session-Id")
-            if sid:
-                _SESSION_ID = sid
-            text = resp.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        try:
-            text = e.read().decode("utf-8", "replace")
-        except (TimeoutError, socket.timeout) as body_timeout:
-            # Headers arrived, the body did not - still a call we cannot account for.
-            _arm_timeout_latch()
-            raise E2ECallTimeout(_call_timeout_message(body_timeout))
-    except urllib.error.URLError as e:
-        # A socket read timeout arrives either bare or wrapped in URLError, depending on the
-        # Python build; only the timeout becomes E2ECallTimeout - a refused connection is a
-        # different failure and must keep its own traceback.
-        if isinstance(getattr(e, "reason", None), (TimeoutError, socket.timeout)):
-            _arm_timeout_latch()
-            raise E2ECallTimeout(_call_timeout_message(e))
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            if resp.status >= 400:
+                raise AssertionError("proxy health HTTP %s at %s" % (resp.status, url))
+    except E2ESkip:
         raise
-    except (TimeoutError, socket.timeout) as e:
-        _arm_timeout_latch()
-        raise E2ECallTimeout(_call_timeout_message(e))
-    return _parse_response(text)
+    except Exception as exc:
+        raise AssertionError("proxy is configured (%s) but /health failed: %s" % (url, exc))
+
+
+def proxy_client(path="/mcp"):
+    """A fresh client against edt-mcp-proxy. Caller must initialize() it."""
+    require_proxy()
+    return McpClient(path, host=MCP_PROXY_HOST, port=MCP_PROXY_PORT)
+
+
+def proxy_profile_client(profile_id):
+    return proxy_client("/mcp/profiles/" + profile_id)
+
+
+def require_enabled_profile(profile_id):
+    """Fail unless get_server_status lists an enabled profile with this id.
+
+    Seed ``e2e-review``, ``e2e-development`` and ``e2e-disabled`` from
+    ``tests/e2e/fixtures/e2e_tool_profiles.json`` into the EDT instance
+    preferences (``fm.giper.edt.mcp.server.prefs`` / ``mcpToolProfiles``)
+    before boot, or Add them from a built-in preset on the Tools tab.
+    """
+    r = _DEFAULT_CLIENT.call("get_server_status", {"includeProfiles": True})
+    if r.is_error:
+        raise AssertionError("get_server_status failed while looking up profile %s: %s"
+                             % (profile_id, r.error_text()))
+    data = r.structured if isinstance(r.structured, dict) else {}
+    available = data.get("availableProfiles") or []
+    ids = [p.get("id") for p in available if isinstance(p, dict)]
+    if profile_id not in ids:
+        raise AssertionError(
+            "workspace has no enabled profile %r (have %s). Seed "
+            "tests/e2e/fixtures/e2e_tool_profiles.json into instance "
+            "preferences or Add the profile from a built-in preset."
+            % (profile_id, ids))
+    return data
+
+
+def _post(method, params):
+    return _DEFAULT_CLIENT._post(method, params)
 
 
 def _arm_timeout_latch():
@@ -450,43 +614,26 @@ def _is_transient_building(result):
 
 
 def call(tool, arguments):
-    """Send tools/call and return a Result.
+    """Send tools/call on the default ``/mcp`` client and return a Result.
 
-    Transparently retries the transient "Project is building ... please wait and retry"
-    refusal (derived data still recomputing — the call was refused with no side effect, so
-    re-issuing the SAME call is safe). That message is never asserted on, so retrying it
-    until it clears stabilizes the slower matrix legs without masking a real success/error
-    (which returns unchanged on the next attempt). Bounded by BUILDING_RETRY_TIMEOUT; on
-    expiry the building refusal is returned so the test fails loudly rather than hanging."""
-    deadline = time.time() + BUILDING_RETRY_TIMEOUT
-    attempt = 0
-    # Record the attempt BEFORE issuing it, once for the whole retry loop. If the request dies
-    # without a parseable answer (connection reset, truncated body, timeout), the server may
-    # still have committed the write — recording only on the way out left the shortcut believing
-    # nothing happened, so it skipped the reset and the next test inherited the mutation. An
-    # unknown outcome counts as a mutation; a REFUSAL that was actually read back takes it back.
-    _record_attempt(tool)
-    while True:
-        try:
-            raw = _post("tools/call", {"name": tool, "arguments": arguments})
-        except _UNCERTAIN_TRANSPORT_ERRORS:
-            # A MUTATING request that died IN FLIGHT is the same situation as one that timed out,
-            # and gets the same treatment. The socket is gone; the server-side handler is not
-            # necessarily gone with it, and it may still be committing the write. Cleaning up on top
-            # of that - git-reverting the fixture, then clean_project - RACES it: the late commit or
-            # export lands on the restored tree and leaks into the next test. So arm the same latch
-            # a timeout arms, which also freezes the fixtures, and let the run stop. Reading a write
-            # back is what makes it safe to undo; nothing else does.
-            if tool in MODEL_MUTATION_TOOLS and not _TIMED_OUT:
-                abort_further_calls(
-                    "a %s request died in flight, so the server may still be executing it" % tool)
-            raise
-        result = Result(raw)
-        if not _is_transient_building(result) or time.time() >= deadline:
-            _record_outcome(tool, result.is_error, result.structured)
-            return result
-        attempt += 1
-        time.sleep(min(2 * attempt, 10))
+    Wrapper over :meth:`McpClient.call` so existing tests keep importing ``call``.
+    """
+    return _DEFAULT_CLIENT.call(tool, arguments)
+
+
+def fixture_form_has_auto_command_bar():
+    """True when Catalog.Catalog.Form.ItemForm has a persisted autoCommandBar.
+
+    8.5.1+ forms keep that containment (name FormCommandBar / token AutoCommandBar).
+    Compatibility 8.3.27 fixtures often omit it, so parent=AutoCommandBar is a
+    not-found — CI on 8.5.1 still takes the happy path.
+    """
+    r = call("get_metadata_details", {
+        "projectName": PROJECT,
+        "objectFqns": ["Catalog.Catalog.Form.ItemForm.Group.FormCommandBar"],
+        "assignable": True,
+    })
+    return (not r.is_error) and "Assignable properties" in (r.text or "")
 
 
 # ── Model-reset shortcut: don't pay for a reset when nothing was changed ──────────────
@@ -745,37 +892,12 @@ def model_is_pristine():
     return _baseline_mismatch() is None
 
 
-def _notify(method, params):
-    """Send a JSON-RPC notification (no id, no response expected)."""
-    global _SESSION_ID
-    body = json.dumps({"jsonrpc": "2.0", "method": method, "params": params}).encode("utf-8")
-    headers = {
-        "Content-Type": "application/json; charset=utf-8",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": PROTOCOL_VERSION,
-    }
-    if _SESSION_ID:
-        headers["Mcp-Session-Id"] = _SESSION_ID
-    req = urllib.request.Request(MCP_URL, data=body, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            resp.read()  # notifications return 202 Accepted / empty body
-    except urllib.error.HTTPError:
-        pass
-
-
 def initialize(capabilities=None):
-    """MCP lifecycle handshake: initialize -> capture session id -> notifications/initialized.
+    """MCP lifecycle handshake on the default ``/mcp`` client.
 
-    Per the 2025-06-18 / 2025-11-25 spec the client MUST send initialize first and
-    then the initialized notification before normal operations. Done once at startup."""
-    result = _post("initialize", {
-        "protocolVersion": PROTOCOL_VERSION,
-        "capabilities": capabilities or {},
-        "clientInfo": {"name": "edt-mcp-e2e", "version": "1"},
-    })
-    _notify("notifications/initialized", {})
-    return result
+    Wrapper over :meth:`McpClient.initialize` so existing tests keep importing ``initialize``.
+    """
+    return _DEFAULT_CLIENT.initialize(capabilities)
 
 
 def wait_for_server(timeout=60):
@@ -908,8 +1030,14 @@ def wait_for_project_ready(timeout=None, failure_details=None):
             pass
         now = time.time()
         if now - last_log >= 15:
-            print("  [wait_for_project_ready] config still indexing (%ds elapsed, %ds left of %ds)..."
-                  % (int(now - start), int(deadline - now), timeout), flush=True)
+            # Windows + Python 3.13/3.14 can raise OSError 22 (Invalid argument) on
+            # print(..., flush=True) when stdout is a pipe/console in a bad state.
+            # That must not abort a model reset that was otherwise succeeding.
+            try:
+                print("  [wait_for_project_ready] config still indexing (%ds elapsed, %ds left of %ds)..."
+                      % (int(now - start), int(deadline - now), timeout), flush=True)
+            except OSError:
+                pass
             last_log = now
         time.sleep(2)
     if failure_details is not None:

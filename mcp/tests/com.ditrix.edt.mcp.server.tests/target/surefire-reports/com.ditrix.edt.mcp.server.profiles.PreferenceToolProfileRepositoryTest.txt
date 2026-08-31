@@ -1,0 +1,13 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.semanticNoOpDoesNotBumpRevisionOrNotify -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.replaceAllPersistsCanonicalDocumentAndNotifies -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.staleExpectedRevisionDoesNotOverwrite -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.malformedDocumentIsBackedUpAndNotOverwritten -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.unsupportedSchemaIsDiagnosedSeparatelyAndNotBackedUpAsMalformed -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.sameSnapshotInstanceIsPublishedAtomically -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.unchangedProfileKeepsRevisionWhenSiblingChanges -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.absentDocumentPublishesSafeDefaultWithoutPersisting -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.PreferenceToolProfileRepositoryTest.concurrentReadersSeeWholeOldOrWholeNewSnapshot -- Time elapsed: 0.003 s

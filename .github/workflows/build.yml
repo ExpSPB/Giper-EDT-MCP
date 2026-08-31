@@ -58,7 +58,7 @@ jobs:
 
       - name: JaCoCo coverage report
         working-directory: mcp
-        run: mvn --batch-mode --no-transfer-progress -pl bundles/com.ditrix.edt.mcp.server jacoco:report
+        run: mvn --batch-mode --no-transfer-progress -pl bundles/fm.giper.edt.mcp.server jacoco:report
 
       - name: SonarQube Cloud analysis
         if: env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -78,11 +78,11 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(grep -oP 'Bundle-Version:\s*\K[\d.]+' mcp/bundles/com.ditrix.edt.mcp.server/META-INF/MANIFEST.MF)
+          VERSION=$(grep -oP 'Bundle-Version:\s*\K[\d.]+' mcp/bundles/fm.giper.edt.mcp.server/META-INF/MANIFEST.MF)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: MCP-EDT.v${{ steps.version.outputs.version }}
-          path: mcp/repositories/com.ditrix.edt.mcp.server.repository/target/repository/
+          path: mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository/

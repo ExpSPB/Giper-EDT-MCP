@@ -1,0 +1,45 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest
+-------------------------------------------------------------------------------
+Tests run: 41, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.712 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideDebugLaunchWithOnlyThreadlessTargetsIsNotASession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideRunModeLaunchIsSessionWithNoTarget -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideDebugLaunchWithOnlyServerTypedThreadsIsNotASession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetClientTypedThreadReturnsIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideUnknownTypedLiveThreadTargetIsSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingLaunchAndWaitNullLaunchIsSafe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingSessionAndWaitNullReturnsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetClientTargetReturnsIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingSessionAndWaitTerminateThrowsIsSwallowed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideMixedServerAndClientThreadsIsSession -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideServerTypedLiveThreadTargetIsNotASession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetOnlyTerminatedThreadsReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideNoSessionsReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepNullSessionIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideThreadlessServerTargetIsNotASession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingSessionAndWaitTerminatesAndReturns -- Time elapsed: 0.100 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideLiveClientDebugTargetIsSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testEnsureNoExistingClientSessionNullEmptyAppIdIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepTargetManagerNullTargetIsNoOp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepTerminatesForeignRunLaunch -- Time elapsed: 0.102 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepTargetManagerSkipsOwnedDebugSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetThreadlessServerTargetReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testEnsureNoExistingClientSessionHeadlessNoSessionsReturnsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingLaunchAndWaitTerminatesAndReturns -- Time elapsed: 0.102 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testEnsureNoExistingClientSessionNullProjectSkipsTargetManagerSource -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testResolveExistingClientSessionHeadlessUnknownAppIdReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testResolveExistingClientSessionNullEmptyAppIdReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingSessionAndWaitNullTargetIsSafe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepTargetManagerTerminatesForeignDebugSession -- Time elapsed: 0.101 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetNoTargetsReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingSessionAndWaitReturnsTrueWhenConfirmed -- Time elapsed: 0.102 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetNullLaunchReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetServerThenClientReturnsClient -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetSkipsTerminatedTargets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideServerTargetButLiveRunLaunchPrefersRunClient -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingSessionAndWaitReturnsFalseOnTimeout -- Time elapsed: 0.203 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testFirstLiveClientThreadTargetServerTypedLiveThreadReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepSkipsOwnedRunLaunch -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testDecideDebugLaunchWithLiveClientThreadTargetIsSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testTerminateExistingLaunchAndWaitCannotTerminateSkipsTerminate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSessionTest.testSweepSkipsOwnedDebugSession -- Time elapsed: 0 s

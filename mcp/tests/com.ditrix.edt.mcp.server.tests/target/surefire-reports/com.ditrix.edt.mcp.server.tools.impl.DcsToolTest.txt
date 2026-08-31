@@ -1,0 +1,23 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.DcsToolTest
+-------------------------------------------------------------------------------
+Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.ditrix.edt.mcp.server.tools.impl.DcsToolTest
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testBareSettingsReplaceWithAbsentRootDoesNotScanTheWholeDocument -- Time elapsed: 0.012 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testIndexAddressedMutationIsRefusedWithoutExpectedHash -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testReadDispatchRaceReturnsStructuredActionableError -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testXmlFormatRefusesNonSchemaType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testXmlFormatRefusesFragmentAddress -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testExactSchemaPropertiesRequiredAndEnums -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testExactDataSetLinkMutationIsRefusedWithoutExpectedHash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testDynamicWriteAppliedClaimRequiresMatchingPostCommitModel -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testBareUserSettingsAndVariantReplaceScanOnlyTheirActualTargets -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testGuideDocumentsOwnerDerivedStructureCollectionTypes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testIdentityCollectionReplaceRequiresHashThroughStructuredErrorContract -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testStaleHashErrorNamesBothHashesAndTheFix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testNameDescriptionAndResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testMarkdownLimitPreservesOmissionAndLargeCharacterRequest -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testMutationExitDerivesMarkerFromTheRecordedWrite -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testDynamicListSettingsReplaceScansBareAndRelativePointerScopes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testXmlBodyIsMutuallyExclusiveWithStructuredSchemaMembers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testXmlFormatRefusesWriteAction -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.DcsToolTest.testAnnotationsMatchFixedMixedReadWriteContract -- Time elapsed: 0 s
