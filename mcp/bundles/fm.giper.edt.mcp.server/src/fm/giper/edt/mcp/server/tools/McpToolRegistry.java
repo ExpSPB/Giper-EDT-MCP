@@ -135,11 +135,6 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
     {
         return catalogRevision.get();
     }
-
-    public long getCatalogRevision()
-    {
-        return catalogRevision.get();
-    }
     
     /**
      * Returns the number of registered tools.

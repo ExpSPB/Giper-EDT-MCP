@@ -25,6 +25,8 @@ import org.junit.Test;
 
 import fm.giper.edt.mcp.server.UserSignal;
 import fm.giper.edt.mcp.server.UserSignal.SignalType;
+import fm.giper.edt.mcp.server.history.McpCallHistory;
+import fm.giper.edt.mcp.server.history.McpCallRecord;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.utils.OutputSizeGuard;

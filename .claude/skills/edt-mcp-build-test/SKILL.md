@@ -30,10 +30,10 @@ bash source/compile.sh --skip-tests
 
 ## Plugin version (p2 Update)
 
-EDT **Help → Check for Updates** / Install New Software compares OSGi `major.minor.micro`. Maven `1.0.3-SNAPSHOT` becomes `1.0.3.qualifier`; a qualifier-only rebuild is **not** an update. **Always bump the micro** (`1.0.2` → `1.0.3-SNAPSHOT`) when the installed plugin must pick up new bits:
+EDT **Help → Check for Updates** / Install New Software compares OSGi `major.minor.micro`. Maven `1.0.4-SNAPSHOT` becomes `1.0.4.qualifier`; a qualifier-only rebuild is **not** an update. **Always bump the micro** (`1.0.3` → `1.0.4-SNAPSHOT`) when the installed plugin must pick up new bits:
 
 ```bash
-mvn -f mcp/pom.xml org.eclipse.tycho:tycho-versions-plugin:set-version -DnewVersion=1.0.3-SNAPSHOT
+mvn -f mcp/pom.xml org.eclipse.tycho:tycho-versions-plugin:set-version -DnewVersion=1.0.4-SNAPSHOT
 ```
 
 Then check `mcp/bom/pom.xml` and the `bom` parent version in `mcp/pom.xml` — the Tycho plugin often leaves those at the old value. Do not bump for a docs-only or test-only change that will not be installed into EDT.

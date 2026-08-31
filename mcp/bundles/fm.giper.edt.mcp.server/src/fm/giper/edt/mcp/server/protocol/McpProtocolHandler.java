@@ -135,13 +135,10 @@ public class McpProtocolHandler
         }
         finally
         {
-            McpCallHistory.clearRequestMeta();
-            // Record this exchange into the in-memory history at the choke point.
-            // Best-effort and strictly non-intrusive: a recorder failure, a
-            // null/unparseable request, a notification's null response, or a missing
-            // plugin context (Activator.getDefault()==null during a shutdown race or
-            // in a headless unit test) are ALL swallowed here so the returned value —
-            // dispatch's exact String — is never altered.
+            // Record while the thread-local meta is still bound. Clearing first
+            // drops profile/session from the history row (the HTTP non-tools/call
+            // path never re-binds). Always clear afterwards, even if the recorder
+            // throws — the wire path must not leak request meta onto the next call.
             try
             {
                 long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
@@ -154,6 +151,10 @@ public class McpProtocolHandler
             {
                 // Intentionally swallowed — the wire path must be unaffected by the
                 // recorder (see the contract above).
+            }
+            finally
+            {
+                McpCallHistory.clearRequestMeta();
             }
 
             // Counted in its OWN guard, not the recorder's: the recorder is allowed to

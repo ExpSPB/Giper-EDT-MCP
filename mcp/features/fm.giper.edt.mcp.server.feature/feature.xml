@@ -2,7 +2,7 @@
 <feature
     id="fm.giper.edt.mcp.server.feature"
     label="%featureName"
-    version="1.0.3.qualifier"
+    version="1.0.4.qualifier"
     provider-name="%providerName">
 
     <description url="https://github.com/ExpSPB/Giper-EDT-MCP">
@@ -27,10 +27,6 @@
         download-size="0"
         install-size="0"
         version="0.0.0"
-        id="com.ditrix.edt.mcp.server"
-        download-size="3754"
-        install-size="7544"
-        version="1.0.3.202608292009"
         unpack="false"/>
 
 </feature>
