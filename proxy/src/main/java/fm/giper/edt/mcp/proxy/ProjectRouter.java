@@ -220,7 +220,12 @@ public final class ProjectRouter
             return null;
         }
         ProfileGroupSnapshot group = registry.groupFor(endpoint);
-        if (group.getDonor() != null && !group.contains(owner))
+        if (group.getDonor() == null)
+        {
+            return RouteResult.error("Project '" + project + "' cannot be routed: the profile group for " //$NON-NLS-1$ //$NON-NLS-2$
+                + endpoint.canonicalPath() + " is not resolved. " + describeIncompatible(group)); //$NON-NLS-1$
+        }
+        if (!group.contains(owner))
         {
             return RouteResult.error("Project '" + project + "' is on backend :" + owner.getPort() //$NON-NLS-1$ //$NON-NLS-2$
                 + " which is not in the compatible profile group for " + endpoint.canonicalPath() //$NON-NLS-1$
@@ -248,7 +253,9 @@ public final class ProjectRouter
         List<Backend> live = registry.live();
         if (!live.isEmpty())
         {
-            return RouteResult.backend(live.get(0));
+            return RouteResult.error("Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$
+                + "' is not resolved: live backends have no donor for " //$NON-NLS-1$
+                + endpoint.canonicalPath() + ". " + describeIncompatible(group)); //$NON-NLS-1$
         }
         ProxyConfig cfg = registry.getConfig();
         return RouteResult.error("No running EDT backends. Scanned ports " + cfg.scanFrom + "-" + cfg.scanTo //$NON-NLS-1$ //$NON-NLS-2$

@@ -76,6 +76,21 @@ public class ProfileRoutingIT
     }
 
     @Test
+    public void testDoubleEncodedProfilePathIsHttp400() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        McpTestClient client = new McpTestClient(proxy.port(), "/mcp/profiles/%2570rod"); //$NON-NLS-1$
+        HttpResponse<String> response = client.postRaw(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}"); //$NON-NLS-1$
+        assertEquals(400, response.statusCode());
+    }
+
+    @Test
     public void testSessionReplayOnAnotherPathIs404AndDeleteIsPathBound() throws Exception
     {
         int[] ports = reserveFreePorts(1);
@@ -199,6 +214,27 @@ public class ProfileRoutingIT
         proxy.registry().sseHub().onBackendListChanged("review", "/mcp/profiles/review"); //$NON-NLS-1$ //$NON-NLS-2$
         assertEquals(2, delivered.get());
         assertNotNull(TOOL_ROUTER_REFRESH);
+    }
+
+    @Test
+    public void testPlainTextStatusDoesNotConfirmMissingProfileOrLeakBackendUrls() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.setPlainTextMode(true);
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        McpTestClient client = new McpTestClient(proxy.port(), "/mcp/profiles/ghost"); //$NON-NLS-1$
+        JsonObject init = client.handshake();
+        assertTrue("initialize must name UNKNOWN_PROFILE, not a silent hit on 'ghost'", //$NON-NLS-1$
+            init.toString().contains("UNKNOWN_PROFILE")); //$NON-NLS-1$
+
+        JsonObject status = client.callTool("get_server_status", includeProfiles()); //$NON-NLS-1$
+        String leaked = "http://127.0.0.1:" + backendA.getPort(); //$NON-NLS-1$
+        assertFalse("plain-text get_server_status must not leak backend URLs: " + status, //$NON-NLS-1$
+            status.toString().contains(leaked));
     }
 
     @Test

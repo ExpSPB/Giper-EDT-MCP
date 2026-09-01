@@ -67,6 +67,10 @@ public final class ProfileNotificationService implements ToolProfileRepository.L
         {
             return;
         }
+        if (isInitialSafeDefault(previous))
+        {
+            return;
+        }
         Collection<IMcpTool> tools = catalog.get();
         Set<String> paths = new LinkedHashSet<>();
         paths.addAll(streams.activeRequestedPaths());
@@ -130,6 +134,21 @@ public final class ProfileNotificationService implements ToolProfileRepository.L
             registry.closeByRequestedPath(path);
         }
         streams.closeByRequestedPath(path);
+    }
+
+    /**
+     * The in-memory conservative {@code default} published before the first persist
+     * (empty allowlist, document revision 0). Treating that transition as a live
+     * surface change would kick sessionless {@code /mcp} on every upgrade.
+     */
+    static boolean isInitialSafeDefault(ToolProfileSnapshot snapshot)
+    {
+        if (snapshot == null || snapshot.getDocumentRevision() != 0L)
+        {
+            return false;
+        }
+        ToolProfile fallback = snapshot.getDefault();
+        return fallback != null && fallback.getAllowedTools().isEmpty() && snapshot.asMap().size() == 1;
     }
 
     private static ProfileResolution resolve(String path, ToolProfileSnapshot snapshot)

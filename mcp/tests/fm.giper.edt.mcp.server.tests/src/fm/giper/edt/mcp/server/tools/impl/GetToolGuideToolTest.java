@@ -179,6 +179,29 @@ public class GetToolGuideToolTest
         assertTrue(ok.contains("# list_projects")); //$NON-NLS-1$
     }
 
+    @Test
+    public void testDeniesGuideOnLegacyMcpWhenToolIsOutsideTheAllowlist()
+    {
+        McpToolRegistry.getInstance().register(new NamedGuideProbe("list_projects")); //$NON-NLS-1$
+        McpToolRegistry.getInstance().register(new NamedGuideProbe("write_module_source")); //$NON-NLS-1$
+
+        ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(
+            DefaultToolProfileFactory.createDefault(Set.of("list_projects")))); //$NON-NLS-1$
+        McpRequestContext legacy = McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve("default", true, snapshot)) //$NON-NLS-1$
+            .requestedPath("/mcp") //$NON-NLS-1$
+            .legacyCompatibilityWrapper(true)
+            .build();
+
+        Map<String, String> forbidden = new HashMap<>();
+        forbidden.put("toolName", "write_module_source"); //$NON-NLS-1$ //$NON-NLS-2$
+        String denied = new GetToolGuideTool().execute(forbidden, legacy);
+        assertTrue("legacy /mcp must apply the same allowlist as resources/read", //$NON-NLS-1$
+            denied.contains("\"success\":false")); //$NON-NLS-1$
+        assertTrue(denied.contains("write_module_source")); //$NON-NLS-1$
+        assertFalse(denied.contains("# write_module_source")); //$NON-NLS-1$
+    }
+
     private static final class NamedGuideProbe implements IMcpTool
     {
         private final String name;

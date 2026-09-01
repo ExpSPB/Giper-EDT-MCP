@@ -26,12 +26,15 @@ public final class ToolProfileSnapshot
 
     private final int schemaVersion;
     private final long documentRevision;
+    private final List<ToolProfile> listed;
     private final Map<String, ToolProfile> profiles;
 
-    private ToolProfileSnapshot(int schemaVersion, long documentRevision, Map<String, ToolProfile> profiles)
+    private ToolProfileSnapshot(int schemaVersion, long documentRevision, List<ToolProfile> listed,
+        Map<String, ToolProfile> profiles)
     {
         this.schemaVersion = schemaVersion;
         this.documentRevision = documentRevision;
+        this.listed = listed;
         this.profiles = profiles;
     }
 
@@ -43,6 +46,7 @@ public final class ToolProfileSnapshot
     public static ToolProfileSnapshot of(int schemaVersion, long documentRevision,
         Collection<ToolProfile> profiles)
     {
+        List<ToolProfile> listed = new ArrayList<>();
         TreeMap<String, ToolProfile> sorted = new TreeMap<>();
         if (profiles != null)
         {
@@ -52,10 +56,11 @@ public final class ToolProfileSnapshot
                 {
                     continue;
                 }
+                listed.add(profile);
                 sorted.put(profile.getId(), profile);
             }
         }
-        return new ToolProfileSnapshot(schemaVersion, documentRevision,
+        return new ToolProfileSnapshot(schemaVersion, documentRevision, List.copyOf(listed),
             Collections.unmodifiableMap(new LinkedHashMap<>(sorted)));
     }
 
@@ -76,7 +81,7 @@ public final class ToolProfileSnapshot
 
     public List<ToolProfile> asList()
     {
-        return List.copyOf(profiles.values());
+        return listed;
     }
 
     public ToolProfile get(String id)
@@ -113,7 +118,7 @@ public final class ToolProfileSnapshot
         {
             return this;
         }
-        return new ToolProfileSnapshot(schemaVersion, revision, profiles);
+        return new ToolProfileSnapshot(schemaVersion, revision, listed, profiles);
     }
 
     /**
@@ -150,13 +155,13 @@ public final class ToolProfileSnapshot
         ToolProfileSnapshot other = (ToolProfileSnapshot) obj;
         return schemaVersion == other.schemaVersion
             && documentRevision == other.documentRevision
-            && profiles.equals(other.profiles);
+            && listed.equals(other.listed);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(schemaVersion, documentRevision, profiles);
+        return Objects.hash(schemaVersion, documentRevision, listed);
     }
 
     @Override

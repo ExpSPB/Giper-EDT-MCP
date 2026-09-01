@@ -100,8 +100,7 @@ public class GetToolGuideTool implements IMcpTool
                 + ". Call tools/list to see available tool names.").toJson(); //$NON-NLS-1$
         }
 
-        if (context != null && context.getResolution() != null
-            && context.getResolution().isExplicitEndpoint())
+        if (context != null && context.getResolution() != null)
         {
             ProfileToolPolicy policy = new ProfileToolPolicy(context.getResolution(),
                 registry.getAllTools());

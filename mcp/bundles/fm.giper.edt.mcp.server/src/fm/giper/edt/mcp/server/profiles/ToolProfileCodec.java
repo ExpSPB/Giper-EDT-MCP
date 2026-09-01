@@ -193,7 +193,15 @@ public final class ToolProfileCodec
 
     private static int requireInt(JsonObject object, String key) throws MalformedToolProfileDocumentException
     {
-        return Math.toIntExact(requireLong(object, key));
+        try
+        {
+            return Math.toIntExact(requireLong(object, key));
+        }
+        catch (ArithmeticException e)
+        {
+            throw new MalformedToolProfileDocumentException(
+                "Field '" + key + "' is outside the int range", e); //$NON-NLS-1$ //$NON-NLS-2$
+        }
     }
 
     private static long requireLong(JsonObject object, String key) throws MalformedToolProfileDocumentException

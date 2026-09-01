@@ -2654,7 +2654,10 @@
           "type": "boolean"
         },
         "availableProfiles": {
-          "type": "object"
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
         },
         "checksFolderConfigured": {
           "type": "boolean"

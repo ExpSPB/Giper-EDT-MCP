@@ -58,6 +58,21 @@ public class ToolProfileMigrationTest
     }
 
     @Test
+    public void refusesToMigrateOverAMalformedDocument()
+    {
+        PreferenceStore store = new PreferenceStore();
+        store.setValue(PreferenceConstants.PREF_TOOL_PROFILES_JSON, "{broken"); //$NON-NLS-1$
+        PreferenceToolProfileRepository repo = new PreferenceToolProfileRepository(store);
+        assertEquals(ProfileDocumentState.MALFORMED, repo.getDocumentState());
+
+        ReplaceResult result = ToolProfileMigration.migrateIfNeeded(repo,
+            Set.of("list_projects", "get_server_status"), ToolSettingsService.getInstance()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(ReplaceResult.Status.REJECTED, result.getStatus());
+        assertEquals(ProfileDocumentState.MALFORMED, repo.getDocumentState());
+        assertEquals("{broken", store.getString(PreferenceConstants.PREF_TOOL_PROFILES_JSON)); //$NON-NLS-1$
+    }
+
+    @Test
     public void refusesToRunBeforeCatalogueIsRegistered()
     {
         PreferenceStore store = new PreferenceStore();

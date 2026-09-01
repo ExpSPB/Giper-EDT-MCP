@@ -79,6 +79,7 @@ public final class FakeBackend
     private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
     private final Map<String, List<OutputStream>> sseByPath = new ConcurrentHashMap<>();
     private volatile List<String> defaultToolNames = List.of("fake_tool_one", "echo_port");
+    private volatile boolean plainTextMode;
 
     /**
      * Creates a fake backend on an OS-chosen free port (port 0).
@@ -237,6 +238,15 @@ public final class FakeBackend
      *
      * @param id profile id
      */
+    /**
+     * Drops {@code structuredContent} from tool results, matching an EDT backend with
+     * {@code plainTextMode} on. Status JSON (including backend URLs) stays in {@code content}.
+     */
+    public void setPlainTextMode(boolean plainTextMode)
+    {
+        this.plainTextMode = plainTextMode;
+    }
+
     public void disableProfile(String id)
     {
         ProfileSpec previous = profiles.get(id);
@@ -510,6 +520,10 @@ public final class FakeBackend
             }
         }
         structured.add("availableProfiles", available);
+        if (plainTextMode)
+        {
+            return textResult(structured.toString());
+        }
         JsonObject result = textResult("status");
         result.add("structuredContent", structured);
         return result;

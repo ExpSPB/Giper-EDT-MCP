@@ -134,6 +134,18 @@ public class ProfileNotificationServiceTest
     }
 
     @Test
+    public void firstDefaultPersistDoesNotDropLegacyStream()
+    {
+        ToolProfileSnapshot previous = DefaultToolProfileFactory.createSafeSnapshot();
+        ToolProfileSnapshot next = snapshot(defaultProfile(Set.of("list_projects"))); //$NON-NLS-1$
+        service.onProfilesChanged(previous, next, ToolProfileChangeSet.between(previous, next));
+        assertTrue("first persist of default must keep sessionless /mcp", //$NON-NLS-1$
+            streams.activeRequestedPaths().contains("/mcp")); //$NON-NLS-1$
+        assertEquals(2, sessions.size());
+        assertFalse("first persist must not arm the legacy session latch", legacyRequired.get()); //$NON-NLS-1$
+    }
+
+    @Test
     public void disableAndEnableReviewKickThatPath()
     {
         ToolProfileSnapshot enabled = snapshot(defaultProfile(Set.of("list_projects")), //$NON-NLS-1$

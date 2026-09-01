@@ -745,6 +745,19 @@ public final class BackendRegistry
     }
 
     /**
+     * Test seam: installs a group after {@link #installStateForTest} without letting
+     * {@link #groupFor} synthesize {@code donor = live.get(0)}.
+     */
+    void putGroupForTest(ProfileGroupSnapshot group)
+    {
+        if (group == null || group.getEndpoint() == null)
+        {
+            return;
+        }
+        groupsByPath.put(group.getEndpoint().canonicalPath(), group);
+    }
+
+    /**
      * Fetches a backend's project names via {@code list_projects}, defensively: any
      * transport or shape failure yields an empty list and the backend stays live. Bounded by
      * the SHORT {@link #DISCOVERY_TIMEOUT_SECONDS} rather than the backend's own end-user

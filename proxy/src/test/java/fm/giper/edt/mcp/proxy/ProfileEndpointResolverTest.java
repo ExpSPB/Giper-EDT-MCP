@@ -51,6 +51,15 @@ public class ProfileEndpointResolverTest
         assertInvalid("/other"); //$NON-NLS-1$
     }
 
+    @Test
+    public void onceDecodedDoubleEncodingMustStayRejectedLikeTheRawWirePath() throws Exception
+    {
+        java.net.URI uri = java.net.URI.create("http://127.0.0.1/mcp/profiles/%2570rod"); //$NON-NLS-1$
+        assertInvalid(uri.getRawPath());
+        ProfileEndpoint singleEncoded = ProfileEndpointResolver.resolve("/mcp/profiles/%70rod"); //$NON-NLS-1$
+        assertEquals("prod", singleEncoded.getRequestedProfileId()); //$NON-NLS-1$
+    }
+
     private static void assertInvalid(String path)
     {
         try

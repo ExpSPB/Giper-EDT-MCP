@@ -164,7 +164,7 @@ public final class McpProxyHandler implements HttpHandler
             ProfileEndpoint endpoint;
             try
             {
-                endpoint = ProfileEndpointResolver.resolve(exchange.getRequestURI().getPath());
+                endpoint = ProfileEndpointResolver.resolve(exchange.getRequestURI().getRawPath());
             }
             catch (InvalidProfileEndpointException e)
             {
@@ -656,10 +656,9 @@ public final class McpProxyHandler implements HttpHandler
             String raw = donor.channel(endpoint).callToolBlocking("get_server_status", arguments); //$NON-NLS-1$
             JsonObject envelope = Json.parseObject(raw);
             JsonObject result = envelope == null ? null : Json.obj(envelope, KEY_RESULT);
-            JsonObject structured = result == null ? null : Json.obj(result, KEY_STRUCTURED_CONTENT);
-            if (structured != null)
+            if (result != null)
             {
-                rewriteStatusEndpoints(structured, includeProfiles, exchange.getLocalAddress().getPort());
+                rewriteStatusPayload(result, includeProfiles, exchange.getLocalAddress().getPort());
             }
             if (envelope != null)
             {
@@ -1150,6 +1149,59 @@ public final class McpProxyHandler implements HttpHandler
             return primitive.getAsBoolean();
         }
         return "true".equalsIgnoreCase(primitive.getAsString()); //$NON-NLS-1$
+    }
+
+    private void rewriteStatusPayload(JsonObject result, boolean includeProfiles, int proxyPort)
+    {
+        JsonObject structured = Json.obj(result, KEY_STRUCTURED_CONTENT);
+        JsonObject payload = structured != null ? structured : statusFromContentText(result);
+        if (payload == null)
+        {
+            return;
+        }
+        rewriteStatusEndpoints(payload, includeProfiles, proxyPort);
+        if (structured != null)
+        {
+            result.add(KEY_STRUCTURED_CONTENT, payload);
+        }
+        replaceContentText(result, Json.compact(payload));
+    }
+
+    private static JsonObject statusFromContentText(JsonObject result)
+    {
+        JsonElement content = result.get("content"); //$NON-NLS-1$
+        if (content == null || !content.isJsonArray())
+        {
+            return null;
+        }
+        for (JsonElement element : content.getAsJsonArray())
+        {
+            if (!element.isJsonObject())
+            {
+                continue;
+            }
+            String text = Json.str(element.getAsJsonObject(), "text"); //$NON-NLS-1$
+            JsonObject parsed = Json.parseObject(text);
+            if (parsed != null)
+            {
+                return parsed;
+            }
+        }
+        return null;
+    }
+
+    private static void replaceContentText(JsonObject result, String text)
+    {
+        JsonElement content = result.get("content"); //$NON-NLS-1$
+        if (content == null || !content.isJsonArray() || content.getAsJsonArray().isEmpty())
+        {
+            return;
+        }
+        JsonElement first = content.getAsJsonArray().get(0);
+        if (first != null && first.isJsonObject())
+        {
+            first.getAsJsonObject().addProperty("text", text); //$NON-NLS-1$
+        }
     }
 
     private void rewriteStatusEndpoints(JsonObject structured, boolean includeProfiles, int proxyPort)

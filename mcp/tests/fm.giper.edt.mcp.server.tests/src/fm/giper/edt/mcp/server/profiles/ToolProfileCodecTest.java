@@ -87,6 +87,27 @@ public class ToolProfileCodecTest
     }
 
     @Test
+    public void schemaVersionOutsideIntRangeIsMalformedNotUnchecked()
+    {
+        String json = "{\"schemaVersion\":" + Long.MAX_VALUE //$NON-NLS-1$
+            + ",\"documentRevision\":1,\"profiles\":[]}"; //$NON-NLS-1$
+        try
+        {
+            ToolProfileCodec.decode(json);
+            fail("expected malformed document"); //$NON-NLS-1$
+        }
+        catch (MalformedToolProfileDocumentException expected)
+        {
+            assertTrue(expected.getMessage(), expected.getMessage().length() > 0);
+        }
+        catch (RuntimeException e)
+        {
+            fail("schemaVersion outside int range must be malformed, not " //$NON-NLS-1$
+                + e.getClass().getName());
+        }
+    }
+
+    @Test
     public void preservesUnknownToolNames() throws Exception
     {
         ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(

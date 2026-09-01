@@ -49,10 +49,13 @@ public final class SseNotificationHub
     }
 
     public void setSessionCloser(SessionCloser sessionCloser)
+    {
+        this.sessionCloser = sessionCloser;
     }
 
     public void registerClient(String canonicalPath, OutputStream out)
     {
+        clientsByPath.computeIfAbsent(canonicalPath, k -> new CopyOnWriteArrayList<>())
             .add(new ClientStream(out));
     }
 

@@ -147,7 +147,7 @@ public class GetServerStatusTool implements IMcpTool
             .objectProperty("formRenderFlags", "Form-render JVM flag states keyed by flag name") //$NON-NLS-1$ //$NON-NLS-2$
             .objectProperty("activeProfile", //$NON-NLS-1$
                 "Requested vs effective profile, revision, canonical endpoint, allowedToolCount, fallback flags") //$NON-NLS-1$
-            .objectProperty("availableProfiles", //$NON-NLS-1$
+            .objectArrayProperty("availableProfiles", //$NON-NLS-1$
                 "Enabled profiles when includeProfiles=true; optional allowedTools when includeProfileTools=true") //$NON-NLS-1$
             .build();
     }

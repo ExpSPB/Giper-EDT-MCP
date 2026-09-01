@@ -71,6 +71,23 @@ public class ToolProfileValidatorTest
     }
 
     @Test
+    public void duplicateIdsAreRejectedInsteadOfSilentlyCollapsed()
+    {
+        ToolProfile first = ToolProfile.builder()
+            .id("review") //$NON-NLS-1$
+            .displayName("Review A") //$NON-NLS-1$
+            .build();
+        ToolProfile second = ToolProfile.builder()
+            .id("review") //$NON-NLS-1$
+            .displayName("Review B") //$NON-NLS-1$
+            .build();
+        ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(
+            DefaultToolProfileFactory.createSafeDefault(), first, second));
+        assertFalse("duplicate profile ids must fail validation, not collapse in the snapshot", //$NON-NLS-1$
+            ToolProfileValidator.validate(snapshot).isValid());
+    }
+
+    @Test
     public void unknownToolsDoNotFailValidation()
     {
         ToolProfile profile = DefaultToolProfileFactory.createDefault(Set.of("future_tool")); //$NON-NLS-1$

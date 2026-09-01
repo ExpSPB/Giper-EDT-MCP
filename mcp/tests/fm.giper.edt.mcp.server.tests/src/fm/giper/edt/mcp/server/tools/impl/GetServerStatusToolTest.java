@@ -131,6 +131,12 @@ public class GetServerStatusToolTest
         assertTrue(schema.contains("\"formRenderFlags\"")); //$NON-NLS-1$
         assertTrue(schema.contains("\"activeProfile\"")); //$NON-NLS-1$
         assertTrue(schema.contains("\"availableProfiles\"")); //$NON-NLS-1$
+        JsonObject properties = JsonParser.parseString(schema).getAsJsonObject()
+            .getAsJsonObject("properties"); //$NON-NLS-1$
+        assertEquals("availableProfiles is a list of profile objects", "array", //$NON-NLS-1$ //$NON-NLS-2$
+            properties.getAsJsonObject("availableProfiles").get("type").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("object", properties.getAsJsonObject("availableProfiles") //$NON-NLS-1$ //$NON-NLS-2$
+            .getAsJsonObject("items").get("type").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     @Test

@@ -8,6 +8,7 @@
 package fm.giper.edt.mcp.proxy;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -53,6 +54,20 @@ public class BackendProfileChannelTest
         ChannelResolution resolution = BackendProfileChannel.parseResolution(endpoint, status, tools);
         assertEquals("review", resolution.getEffectiveProfileId()); //$NON-NLS-1$
         assertNull(resolution.getFallbackReason());
+    }
+
+    @Test
+    public void parseResolutionDoesNotConfirmRequestedIdWhenStatusHasNoActiveProfile()
+    {
+        String status = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{" //$NON-NLS-1$
+            + "\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]," //$NON-NLS-1$
+            + "\"plainTextMode\":true}}"; //$NON-NLS-1$
+        String tools = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}"; //$NON-NLS-1$
+        ProfileEndpoint endpoint = new ProfileEndpoint("/mcp/profiles/missing", "missing", false); //$NON-NLS-1$ //$NON-NLS-2$
+        ChannelResolution resolution = BackendProfileChannel.parseResolution(endpoint, status, tools);
+        boolean confirmed = "missing".equals(resolution.getEffectiveProfileId()) && !resolution.isFallback(); //$NON-NLS-1$
+        assertFalse("text-only status without activeProfile must not confirm the requested id", //$NON-NLS-1$
+            confirmed);
     }
 
     @Test

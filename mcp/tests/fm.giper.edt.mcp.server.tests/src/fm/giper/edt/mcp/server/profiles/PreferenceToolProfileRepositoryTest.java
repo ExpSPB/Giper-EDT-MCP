@@ -11,6 +11,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -130,6 +131,29 @@ public class PreferenceToolProfileRepositoryTest
         assertEquals(ProfileDocumentState.MALFORMED, repo.getDocumentState());
         assertEquals("{broken", store.getString(PreferenceConstants.PREF_TOOL_PROFILES_JSON)); //$NON-NLS-1$
         assertEquals("{broken", store.getString(PreferenceConstants.PREF_TOOL_PROFILES_BACKUP)); //$NON-NLS-1$
+        assertEquals(ToolProfile.DEFAULT_ID, repo.getSnapshot().getDefault().getId());
+    }
+
+    @Test
+    public void schemaVersionOutsideIntRangeIsMalformedAndDoesNotAbortLoad()
+    {
+        PreferenceStore store = new PreferenceStore();
+        String oversized = "{\"schemaVersion\":" + Long.MAX_VALUE //$NON-NLS-1$
+            + ",\"documentRevision\":1,\"profiles\":[]}"; //$NON-NLS-1$
+        store.setValue(PreferenceConstants.PREF_TOOL_PROFILES_JSON, oversized);
+        PreferenceToolProfileRepository repo;
+        try
+        {
+            repo = new PreferenceToolProfileRepository(store);
+        }
+        catch (RuntimeException e)
+        {
+            fail("constructor must survive an out-of-range schemaVersion, got " //$NON-NLS-1$
+                + e.getClass().getName());
+            return;
+        }
+        assertEquals(ProfileDocumentState.MALFORMED, repo.getDocumentState());
+        assertEquals(oversized, store.getString(PreferenceConstants.PREF_TOOL_PROFILES_JSON));
         assertEquals(ToolProfile.DEFAULT_ID, repo.getSnapshot().getDefault().getId());
     }
 

@@ -350,6 +350,12 @@ public final class BackendProfileChannel
             {
                 available = profiles.getAsJsonArray();
             }
+            if (active == null && Json.str(status, "requestedProfileId") == null //$NON-NLS-1$
+                && Json.str(status, "effectiveProfileId") == null //$NON-NLS-1$
+                && boolOrNull(status, "fallbackApplied") == null) //$NON-NLS-1$
+            {
+                fallback = "UNKNOWN_PROFILE"; //$NON-NLS-1$
+            }
         }
         else
         {
