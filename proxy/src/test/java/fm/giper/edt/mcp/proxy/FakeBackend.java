@@ -445,9 +445,9 @@ public final class FakeBackend
             {
                 if (malformedToolsProfiles.contains(endpoint.getRequestedProfileId()))
                 {
-                    sendFramed(exchange,
-                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":\"not-an-array\"}}",
-                        acceptsSse); //$NON-NLS-1$
+                    JsonObject malformed = new JsonObject();
+                    malformed.addProperty("tools", "not-an-array"); //$NON-NLS-1$ //$NON-NLS-2$
+                    sendFramed(exchange, jsonRpcResponse(id, malformed), acceptsSse);
                     return;
                 }
                 sendFramed(exchange, jsonRpcResponse(id, toolsListResult(endpoint)), acceptsSse);
@@ -734,6 +734,10 @@ public final class FakeBackend
         if (profiles.isEmpty())
         {
             return new Resolved(requested, requested, null, defaultToolNames);
+        }
+        if (ProfileEndpoint.DEFAULT_PROFILE_ID.equals(requested))
+        {
+            return new Resolved(requested, requested, null, toolsOf(requested));
         }
         ProfileSpec spec = profiles.get(requested);
         if (spec == null)

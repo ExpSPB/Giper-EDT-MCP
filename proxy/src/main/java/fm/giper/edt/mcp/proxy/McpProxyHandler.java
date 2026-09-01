@@ -358,9 +358,13 @@ public final class McpProxyHandler implements HttpHandler
 
         if (group.getDonor() == null)
         {
+            boolean noLiveBackends = isZeroBackendGroup(group);
             result.addProperty("instructions", "Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$ //$NON-NLS-2$
-                + "' is not yet confirmed: no live EDT backends. Only router_status and " //$NON-NLS-1$
-                + "router_refresh are available. Call router_refresh after starting EDT."); //$NON-NLS-1$
+                + (noLiveBackends
+                    ? "' is not yet confirmed: no live EDT backends. " //$NON-NLS-1$
+                    : "' is not confirmed by any compatible backend. ") //$NON-NLS-1$
+                + "Only router_status and router_refresh are available. Call router_status for details, " //$NON-NLS-1$
+                + "then router_refresh after fixing the backend profile or wire contract."); //$NON-NLS-1$
         }
         else if (group.isFallback())
         {
@@ -379,6 +383,13 @@ public final class McpProxyHandler implements HttpHandler
             return;
         }
         sendMcpResponse(exchange, 200, wrapResult(result, requestId), sessionId);
+    }
+
+    /** Empty incompatibility diagnostics distinguish zero-live from a rejected live backend. */
+    static boolean isZeroBackendGroup(ProfileGroupSnapshot group)
+    {
+        return group != null && group.getDonor() == null && group.getCompatible().isEmpty()
+            && group.getIncompatible().isEmpty();
     }
 
     /** Answers {@code ping} itself with an empty result object, per the MCP basic utilities. */
@@ -603,6 +614,12 @@ public final class McpProxyHandler implements HttpHandler
         List<Backend> live = group.getCompatible();
         if (group.getDonor() == null || live.isEmpty())
         {
+            if (group.getIncompatible().isEmpty())
+            {
+                sendMcpResponse(exchange, 200,
+                    FanOut.mergeListProjects(List.of(), requestId, jsonFormat, allowStructuredContent), null);
+                return;
+            }
             sendMcpResponse(exchange, 200, RouterTools.toolCallError(
                 "Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$
                     + "' is not confirmed by any compatible backend. Call router_status for details, " //$NON-NLS-1$

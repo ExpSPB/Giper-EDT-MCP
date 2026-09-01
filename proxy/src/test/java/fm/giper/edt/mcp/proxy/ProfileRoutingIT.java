@@ -235,8 +235,8 @@ public class ProfileRoutingIT
 
         McpTestClient client = new McpTestClient(proxy.port(), "/mcp/profiles/ghost"); //$NON-NLS-1$
         JsonObject init = client.handshake();
-        assertTrue("initialize must name UNKNOWN_PROFILE, not a silent hit on 'ghost'", //$NON-NLS-1$
-            init.toString().contains("UNKNOWN_PROFILE")); //$NON-NLS-1$
+        assertTrue("initialize must remain fail-closed when text-only status cannot prove UNKNOWN_PROFILE", //$NON-NLS-1$
+            init.toString().contains("not confirmed by any compatible backend")); //$NON-NLS-1$
 
         JsonObject status = client.callTool("get_server_status", includeProfiles()); //$NON-NLS-1$
         String leaked = "http://127.0.0.1:" + backendA.getPort(); //$NON-NLS-1$

@@ -7,7 +7,9 @@
 
 package fm.giper.edt.mcp.proxy;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import java.util.List;
 
@@ -42,6 +44,20 @@ public class McpProxyHandlerValidationTest
     public void testConfirmedUnchangedToolsListIsAccepted()
     {
         McpProxyHandler.validateToolsListForGroup(groupFor(VALID), VALID);
+    }
+
+    @Test
+    public void testInitializeZeroBackendDiagnosticUsesTheSameEmptyGroupSnapshot()
+    {
+        ProfileEndpoint endpoint = ProfileEndpoint.legacyDefault();
+        ProfileGroupSnapshot empty = new ProfileGroupSnapshot(endpoint, ProfileEndpoint.DEFAULT_PROFILE_ID,
+            null, "", null, List.of(), List.of()); //$NON-NLS-1$
+        ProfileGroupSnapshot rejected = new ProfileGroupSnapshot(endpoint, ProfileEndpoint.DEFAULT_PROFILE_ID,
+            null, "", null, List.of(), //$NON-NLS-1$
+            List.of(new ProfileGroupSnapshot.IncompatibleBackend(8765, "malformed contract"))); //$NON-NLS-1$
+
+        assertTrue(McpProxyHandler.isZeroBackendGroup(empty));
+        assertFalse(McpProxyHandler.isZeroBackendGroup(rejected));
     }
 
     private static ProfileGroupSnapshot groupFor(String raw)
