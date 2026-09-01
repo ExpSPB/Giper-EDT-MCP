@@ -14,6 +14,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.Field;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.junit.Test;
 
 /**
@@ -273,5 +282,101 @@ public class SessionManagerTest
         assertFalse(sessions.isValid(reviewId));
         assertTrue(sessions.isValid(defaultId));
         assertEquals(0, sessions.closeByCanonicalPath("/mcp/profiles/review")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void concurrentCreateCannotExceedTheHardCap() throws Exception
+    {
+        SessionManager sessions = new SessionManager();
+        BarrierSessionMap map = new BarrierSessionMap();
+        for (int i = 0; i < SessionManager.MAX_SESSIONS - 1; i++)
+        {
+            String id = "seed-" + i; //$NON-NLS-1$
+            map.put(id, new SessionContext(id, ProfileEndpoint.legacyDefault(),
+                Backend.PROTOCOL_VERSION, true));
+        }
+        replaceSessionMap(sessions, map);
+
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        try
+        {
+            Future<String> first = workers.submit(() -> sessions.create());
+            Future<String> second = workers.submit(() -> sessions.create());
+            assertNotNull(get(first));
+            assertNotNull(get(second));
+        }
+        finally
+        {
+            workers.shutdownNow();
+        }
+
+        assertTrue("the size()+put() race must never exceed MAX_SESSIONS: " //$NON-NLS-1$
+            + sessions.activeCount(), sessions.activeCount() <= SessionManager.MAX_SESSIONS);
+    }
+
+    @Test
+    public void abandonedSessionDoesNotRemainValidForever() throws Exception
+    {
+        SessionManager sessions = new SessionManager();
+        String id = sessions.create();
+        SessionContext context = sessions.lookup(id, null);
+        Field lastAccess = SessionContext.class.getDeclaredField("lastAccessMillis"); //$NON-NLS-1$
+        lastAccess.setAccessible(true);
+        lastAccess.setLong(context, 0L);
+
+        assertFalse("a session last used at epoch must be expired instead of blocking capacity forever", //$NON-NLS-1$
+            sessions.isValid(id));
+    }
+
+    private static void replaceSessionMap(SessionManager sessions,
+        ConcurrentHashMap<String, SessionContext> replacement) throws Exception
+    {
+        Field field = SessionManager.class.getDeclaredField("sessions"); //$NON-NLS-1$
+        field.setAccessible(true);
+        field.set(sessions, replacement);
+    }
+
+    private static String get(Future<String> future) throws Exception
+    {
+        try
+        {
+            return future.get();
+        }
+        catch (ExecutionException e)
+        {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception)
+            {
+                throw (Exception)cause;
+            }
+            throw e;
+        }
+    }
+
+    private static final class BarrierSessionMap extends ConcurrentHashMap<String, SessionContext>
+    {
+        private static final long serialVersionUID = 1L;
+
+        private final CyclicBarrier barrier = new CyclicBarrier(2);
+        private final AtomicInteger gatedSizeCalls = new AtomicInteger();
+
+        @Override
+        public int size()
+        {
+            int observedSize = super.size();
+            if (observedSize == SessionManager.MAX_SESSIONS - 1
+                && gatedSizeCalls.incrementAndGet() <= 2)
+            {
+                try
+                {
+                    barrier.await();
+                }
+                catch (Exception e)
+                {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return observedSize;
+        }
     }
 }

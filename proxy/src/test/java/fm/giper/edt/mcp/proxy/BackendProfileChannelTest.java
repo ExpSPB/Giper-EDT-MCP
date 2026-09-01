@@ -86,6 +86,23 @@ public class BackendProfileChannelTest
         assertEquals("default", resolution.getEffectiveProfileId()); //$NON-NLS-1$
     }
 
+    @Test
+    public void legacyDefaultWithoutProfileFieldsIsNotAnUnknownProfileFallback()
+    {
+        String status = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{" //$NON-NLS-1$
+            + "\"content\":[{\"type\":\"text\",\"text\":\"legacy status\"}]}}"; //$NON-NLS-1$
+        String tools = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}"; //$NON-NLS-1$
+
+        ChannelResolution resolution = BackendProfileChannel.parseResolution(
+            ProfileEndpoint.legacyDefault(), status, tools);
+
+        assertEquals("default", resolution.getRequestedProfileId()); //$NON-NLS-1$
+        assertEquals("default", resolution.getEffectiveProfileId()); //$NON-NLS-1$
+        assertNull("legacy /mcp must not be reported as UNKNOWN_PROFILE", //$NON-NLS-1$
+            resolution.getFallbackReason());
+        assertFalse(resolution.isFallback());
+    }
+
     private static String envelope(String structured)
     {
         return "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"structuredContent\":" //$NON-NLS-1$

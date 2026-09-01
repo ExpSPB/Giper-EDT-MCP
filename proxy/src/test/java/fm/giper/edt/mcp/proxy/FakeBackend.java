@@ -16,8 +16,10 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -78,8 +80,15 @@ public final class FakeBackend
     private final Map<String, String> sessionByPath = new ConcurrentHashMap<>();
     private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
     private final Map<String, List<OutputStream>> sseByPath = new ConcurrentHashMap<>();
+    private final Set<String> failedResolutionProfiles = ConcurrentHashMap.newKeySet();
+    private final Set<String> malformedStatusProfiles = ConcurrentHashMap.newKeySet();
+    private final Set<String> malformedToolsProfiles = ConcurrentHashMap.newKeySet();
     private volatile List<String> defaultToolNames = List.of("fake_tool_one", "echo_port");
     private volatile boolean plainTextMode;
+    private volatile boolean validateSseSession;
+    private volatile String blockedStatusProfile;
+    private volatile CountDownLatch statusRequestEntered;
+    private volatile CountDownLatch releaseStatusResponse;
 
     /**
      * Creates a fake backend on an OS-chosen free port (port 0).
@@ -209,6 +218,21 @@ public final class FakeBackend
         sessionGeneration.incrementAndGet();
         currentSessionId = null;
         sessionByPath.clear();
+        for (List<OutputStream> streams : sseByPath.values())
+        {
+            for (OutputStream stream : streams)
+            {
+                try
+                {
+                    stream.close();
+                }
+                catch (IOException ignored)
+                {
+                    // Test fixture cleanup: the listener will observe EOF or a broken stream.
+                }
+            }
+        }
+        sseByPath.clear();
     }
 
     /**
@@ -220,6 +244,45 @@ public final class FakeBackend
     public int getInitializeCount()
     {
         return initializeCount.get();
+    }
+
+    /** Makes profile resolution fail while ordinary calls on the same profile still work. */
+    public void failResolutionForProfile(String profileId)
+    {
+        failedResolutionProfiles.add(profileId);
+    }
+
+    /** Makes {@code get_server_status} return malformed JSON for one requested profile. */
+    public void returnMalformedStatusForProfile(String profileId)
+    {
+        malformedStatusProfiles.add(profileId);
+    }
+
+    /** Makes {@code tools/list} return a result whose {@code tools} field is not an array. */
+    public void returnMalformedToolsForProfile(String profileId)
+    {
+        malformedToolsProfiles.add(profileId);
+    }
+
+    /** Makes GET/SSE reject missing or stale backend sessions with HTTP 404. */
+    public void validateSseSessions()
+    {
+        validateSseSession = true;
+    }
+
+    /** Blocks one profile status response until the supplied release latch is opened. */
+    public void blockStatusForProfile(String profileId, CountDownLatch entered, CountDownLatch release)
+    {
+        blockedStatusProfile = profileId;
+        statusRequestEntered = entered;
+        releaseStatusResponse = release;
+    }
+
+    /** Number of currently open GET/SSE streams for a canonical path. */
+    public int activeSseStreams(String canonicalPath)
+    {
+        List<OutputStream> streams = sseByPath.get(canonicalPath);
+        return streams == null ? 0 : streams.size();
     }
 
     /**
@@ -344,6 +407,13 @@ public final class FakeBackend
             }
             if ("tools/list".equals(method))
             {
+                if (malformedToolsProfiles.contains(endpoint.getRequestedProfileId()))
+                {
+                    sendFramed(exchange,
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":\"not-an-array\"}}",
+                        acceptsSse); //$NON-NLS-1$
+                    return;
+                }
                 sendFramed(exchange, jsonRpcResponse(id, toolsListResult(endpoint)), acceptsSse);
                 return;
             }
@@ -363,6 +433,20 @@ public final class FakeBackend
 
     private void handleSseGet(HttpExchange exchange, String path) throws IOException
     {
+        if (validateSseSession)
+        {
+            String presented = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
+            String issued = sessionByPath.get(path);
+            if (issued == null)
+            {
+                issued = currentSessionId;
+            }
+            if (issued == null || !issued.equals(presented))
+            {
+                sendPlain(exchange, 404, "text/plain", "session not found"); //$NON-NLS-1$ //$NON-NLS-2$
+                return;
+            }
+        }
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
         exchange.getResponseHeaders().add("Cache-Control", "no-cache");
         exchange.sendResponseHeaders(200, 0);
@@ -407,6 +491,17 @@ public final class FakeBackend
         }
         if ("get_server_status".equals(toolName))
         {
+            awaitBlockedStatus(endpoint.getRequestedProfileId());
+            if (failedResolutionProfiles.contains(endpoint.getRequestedProfileId()))
+            {
+                exchange.close();
+                return;
+            }
+            if (malformedStatusProfiles.contains(endpoint.getRequestedProfileId()))
+            {
+                sendSseRaw(exchange, "this-is-not-json"); //$NON-NLS-1$
+                return;
+            }
             sendFramed(exchange, jsonRpcResponse(id, serverStatusResult(endpoint)), acceptsSse);
             return;
         }
@@ -421,6 +516,31 @@ public final class FakeBackend
             try
             {
                 Thread.sleep(delay);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private void awaitBlockedStatus(String requestedProfileId)
+    {
+        if (!requestedProfileId.equals(blockedStatusProfile))
+        {
+            return;
+        }
+        CountDownLatch entered = statusRequestEntered;
+        CountDownLatch release = releaseStatusResponse;
+        if (entered != null)
+        {
+            entered.countDown();
+        }
+        if (release != null)
+        {
+            try
+            {
+                release.await();
             }
             catch (InterruptedException e)
             {

@@ -10,6 +10,7 @@ package fm.giper.edt.mcp.proxy;
 import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.PROJECT_A;
 import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.PROJECT_B;
 import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.TOOL_ECHO_PORT;
+import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.TOOL_LIST_PROJECTS;
 import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.TOOL_ROUTER_REFRESH;
 import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.TOOL_ROUTER_STATUS;
 import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.isToolError;
@@ -21,11 +22,17 @@ import static fm.giper.edt.mcp.proxy.ProxyRoutingIT.toolNames;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.After;
@@ -266,6 +273,160 @@ public class ProfileRoutingIT
         assertTrue(first.has("displayName")); //$NON-NLS-1$
         assertTrue(first.get("endpoint").getAsString().contains(":" + proxy.port())); //$NON-NLS-1$ //$NON-NLS-2$
         assertFalse("compact discovery must omit allowedTools", first.has("allowedTools")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testUnresolvedProfileDoesNotBorrowGlobalDonorForToolsList() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.failResolutionForProfile("review"); //$NON-NLS-1$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        McpTestClient review = new McpTestClient(proxy.port(), "/mcp/profiles/review"); //$NON-NLS-1$
+        review.handshake();
+        Set<String> names = toolNames(review.request("tools/list", new JsonObject())); //$NON-NLS-1$
+
+        assertEquals("an unresolved profile may expose only proxy-core tools", //$NON-NLS-1$
+            Set.of(TOOL_ROUTER_STATUS, TOOL_ROUTER_REFRESH), names);
+    }
+
+    @Test
+    public void testUnresolvedProfileDoesNotFanOutToAllLiveBackends() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.failResolutionForProfile("review"); //$NON-NLS-1$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        McpTestClient review = new McpTestClient(proxy.port(), "/mcp/profiles/review"); //$NON-NLS-1$
+        review.handshake();
+        JsonObject response = review.callTool(TOOL_LIST_PROJECTS, new JsonObject());
+
+        assertTrue("fan-out must fail closed when no compatible profile group exists: " + response, //$NON-NLS-1$
+            isToolError(response));
+    }
+
+    @Test
+    public void testMalformedStatusDoesNotConfirmAProfileGroup() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.returnMalformedStatusForProfile("review"); //$NON-NLS-1$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        ProfileGroupSnapshot group = proxy.registry()
+            .groupFor(ProfileEndpointResolver.resolve("/mcp/profiles/review")); //$NON-NLS-1$
+
+        assertNull("malformed get_server_status must not create a donor", group.getDonor()); //$NON-NLS-1$
+        assertEquals(1, group.getIncompatible().size());
+    }
+
+    @Test
+    public void testMalformedToolsListDoesNotConfirmAProfileGroup() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.returnMalformedToolsForProfile("review"); //$NON-NLS-1$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        ProfileGroupSnapshot group = proxy.registry()
+            .groupFor(ProfileEndpointResolver.resolve("/mcp/profiles/review")); //$NON-NLS-1$
+
+        assertNull("malformed tools/list must not become an empty-surface donor", group.getDonor()); //$NON-NLS-1$
+        assertEquals(1, group.getIncompatible().size());
+    }
+
+    @Test
+    public void testBackendSse404ReinitializesTheSameProfileChannel() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.validateSseSessions();
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+
+        assertTrue("review notification listener must connect before the simulated restart", //$NON-NLS-1$
+            await(() -> backendA.activeSseStreams("/mcp/profiles/review") > 0, 5_000L)); //$NON-NLS-1$
+        int initializeBeforeRestart = backendA.getInitializeCount();
+
+        backendA.invalidateSessions();
+
+        assertTrue("GET/SSE 404 must invalidate the stale channel session and initialize again", //$NON-NLS-1$
+            await(() -> backendA.getInitializeCount() > initializeBeforeRestart, 6_000L));
+    }
+
+    @Test
+    public void testRefreshCannotPublishAGroupFromThePreviousSnapshot() throws Exception
+    {
+        int[] ports = reserveFreePorts(2);
+        CountDownLatch oldResolutionEntered = new CountDownLatch(1);
+        CountDownLatch releaseOldResolution = new CountDownLatch(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.blockStatusForProfile("review", oldResolutionEntered, releaseOldResolution); //$NON-NLS-1$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[1]);
+        proxy.start();
+
+        ProfileEndpoint endpoint = ProfileEndpointResolver.resolve("/mcp/profiles/review"); //$NON-NLS-1$
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        Future<ProfileGroupSnapshot> staleCalculation = worker.submit(() -> proxy.registry().groupFor(endpoint));
+        try
+        {
+            assertTrue("the old group calculation must reach its controlled pause", //$NON-NLS-1$
+                oldResolutionEntered.await(5, TimeUnit.SECONDS));
+
+            backendB = new FakeBackend(ports[1], List.of(PROJECT_B));
+            backendB.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+            backendB.start();
+            proxy.registry().refresh();
+            releaseOldResolution.countDown();
+            staleCalculation.get(10, TimeUnit.SECONDS);
+
+            ProfileGroupSnapshot current = proxy.registry().groupFor(endpoint);
+            assertEquals("a result computed before refresh must not overwrite the new generation", //$NON-NLS-1$
+                2, current.getCompatible().size());
+        }
+        finally
+        {
+            releaseOldResolution.countDown();
+            worker.shutdownNow();
+        }
+    }
+
+    private static boolean await(Check check, long timeoutMillis) throws Exception
+    {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline)
+        {
+            if (check.get())
+            {
+                return true;
+            }
+            Thread.sleep(50L);
+        }
+        return check.get();
+    }
+
+    @FunctionalInterface
+    private interface Check
+    {
+        boolean get() throws Exception;
     }
 
     private static JsonObject includeProfiles()

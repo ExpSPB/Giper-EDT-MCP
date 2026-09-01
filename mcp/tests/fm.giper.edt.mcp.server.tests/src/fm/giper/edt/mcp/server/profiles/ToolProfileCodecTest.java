@@ -100,6 +100,10 @@ public class ToolProfileCodecTest
         {
             assertTrue(expected.getMessage(), expected.getMessage().length() > 0);
         }
+        catch (ToolProfileDocumentException e)
+        {
+            fail("expected malformed, got " + e.getClass().getSimpleName()); //$NON-NLS-1$
+        }
         catch (RuntimeException e)
         {
             fail("schemaVersion outside int range must be malformed, not " //$NON-NLS-1$
@@ -114,5 +118,26 @@ public class ToolProfileCodecTest
             DefaultToolProfileFactory.createDefault(Set.of("retired_tool")))); //$NON-NLS-1$
         ToolProfileSnapshot decoded = ToolProfileCodec.decode(ToolProfileCodec.encode(snapshot));
         assertTrue(decoded.getDefault().getAllowedTools().contains("retired_tool")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void inputProfileOrderDoesNotChangeCanonicalJson()
+    {
+        ToolProfile defaultProfile = DefaultToolProfileFactory.createDefault(Set.of("list_projects")); //$NON-NLS-1$
+        ToolProfile review = ToolProfile.builder()
+            .id("review") //$NON-NLS-1$
+            .displayName("Review") //$NON-NLS-1$
+            .description("Read-only") //$NON-NLS-1$
+            .allowedTools(Set.of("get_server_status")) //$NON-NLS-1$
+            .revision(2L)
+            .build();
+
+        ToolProfileSnapshot canonical = ToolProfileSnapshot.of(7L, List.of(defaultProfile, review));
+        ToolProfileSnapshot reversed = ToolProfileSnapshot.of(7L, List.of(review, defaultProfile));
+
+        assertEquals("snapshot list order must be canonical by profile id", //$NON-NLS-1$
+            canonical.asList(), reversed.asList());
+        assertEquals("canonical JSON must not depend on collection insertion order", //$NON-NLS-1$
+            ToolProfileCodec.encode(canonical), ToolProfileCodec.encode(reversed));
     }
 }

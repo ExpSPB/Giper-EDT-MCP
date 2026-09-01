@@ -132,4 +132,36 @@ public class SseStreamRegistryTest
             reg.unregister(gone);
         }
     }
+
+    @Test
+    public void unregisterBySessionClosesTheRemovedOutput()
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        CloseTrackingOutputStream output = new CloseTrackingOutputStream();
+        SseStreamRegistry.SseStream stream = reg.register(output, "close-zz", //$NON-NLS-1$
+            "/mcp/profiles/zz-close"); //$NON-NLS-1$
+        try
+        {
+            reg.unregisterBySession("close-zz"); //$NON-NLS-1$
+
+            assertTrue("DELETE/session removal must close the SSE socket, not only forget it", //$NON-NLS-1$
+                output.closed);
+        }
+        finally
+        {
+            reg.unregister(stream);
+        }
+    }
+
+    private static final class CloseTrackingOutputStream extends ByteArrayOutputStream
+    {
+        boolean closed;
+
+        @Override
+        public void close() throws IOException
+        {
+            closed = true;
+            super.close();
+        }
+    }
 }
