@@ -76,6 +76,7 @@ public final class FakeBackend
 
     private final AtomicInteger sessionGeneration = new AtomicInteger(0);
     private final AtomicInteger initializeCount = new AtomicInteger(0);
+    private final Map<String, AtomicInteger> initializeCountByPath = new ConcurrentHashMap<>();
     private volatile String currentSessionId;
     private final Map<String, String> sessionByPath = new ConcurrentHashMap<>();
     private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
@@ -235,6 +236,33 @@ public final class FakeBackend
         sseByPath.clear();
     }
 
+    /** Invalidates and disconnects only one canonical profile-path session. */
+    public void invalidateSession(String canonicalPath)
+    {
+        sessionGeneration.incrementAndGet();
+        String removed = sessionByPath.remove(canonicalPath);
+        if (removed != null && removed.equals(currentSessionId))
+        {
+            currentSessionId = null;
+        }
+        List<OutputStream> streams = sseByPath.remove(canonicalPath);
+        if (streams == null)
+        {
+            return;
+        }
+        for (OutputStream stream : streams)
+        {
+            try
+            {
+                stream.close();
+            }
+            catch (IOException ignored)
+            {
+                // Test fixture intentionally disconnects the selected channel.
+            }
+        }
+    }
+
     /**
      * Returns how many {@code initialize} requests this fake has served — proves whether
      * a client re-handshook or reused its cached session.
@@ -244,6 +272,13 @@ public final class FakeBackend
     public int getInitializeCount()
     {
         return initializeCount.get();
+    }
+
+    /** Number of initialize calls received on one canonical profile path. */
+    public int getInitializeCount(String canonicalPath)
+    {
+        AtomicInteger count = initializeCountByPath.get(canonicalPath);
+        return count == null ? 0 : count.get();
     }
 
     /** Makes profile resolution fail while ordinary calls on the same profile still work. */
@@ -382,6 +417,7 @@ public final class FakeBackend
             if ("initialize".equals(method))
             {
                 initializeCount.incrementAndGet();
+                initializeCountByPath.computeIfAbsent(path, ignored -> new AtomicInteger()).incrementAndGet();
                 String issued = issueSessionId(path);
                 exchange.getResponseHeaders().add(HEADER_SESSION_ID, issued);
                 sendFramed(exchange, jsonRpcResponse(id, initializeResult(endpoint)), acceptsSse);
@@ -454,14 +490,45 @@ public final class FakeBackend
         sseByPath.computeIfAbsent(path, k -> new CopyOnWriteArrayList<>()).add(out);
         try
         {
-            synchronized (out)
+            byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8); //$NON-NLS-1$
+            while (true)
             {
-                out.wait(5_000);
+                try
+                {
+                    Thread.sleep(100L);
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                out.write(heartbeat);
+                out.flush();
             }
         }
-        catch (InterruptedException e)
+        catch (IOException ignored)
         {
-            Thread.currentThread().interrupt();
+            // Client closed or backend test invalidated this stream.
+        }
+        finally
+        {
+            List<OutputStream> streams = sseByPath.get(path);
+            if (streams != null)
+            {
+                streams.remove(out);
+                if (streams.isEmpty())
+                {
+                    sseByPath.remove(path, streams);
+                }
+            }
+            try
+            {
+                out.close();
+            }
+            catch (IOException ignored)
+            {
+                // already disconnected
+            }
         }
     }
 

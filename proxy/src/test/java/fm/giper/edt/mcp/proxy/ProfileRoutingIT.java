@@ -332,6 +332,59 @@ public class ProfileRoutingIT
     }
 
     @Test
+    public void testMalformedDefaultStatusDoesNotCrashInitialRefresh() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.returnMalformedStatusForProfile(ProfileEndpoint.DEFAULT_PROFILE_ID);
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+
+        proxy.start();
+
+        assertEquals("transport-live backend remains visible despite an invalid profile contract", //$NON-NLS-1$
+            1, proxy.registry().live().size());
+        ProfileGroupSnapshot group = proxy.registry().groupFor(ProfileEndpoint.legacyDefault());
+        assertNull("malformed default status must remain fail-closed", group.getDonor()); //$NON-NLS-1$
+        assertEquals(1, group.getIncompatible().size());
+    }
+
+    @Test
+    public void testBackendRemovalStopsItsProfileListeners() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+        Backend backend = proxy.registry().live().get(0);
+        assertTrue(await(() -> backend.activeNotificationListenerCount() >= 2, 5_000L));
+
+        backendA.stop();
+        proxy.registry().refresh();
+
+        assertEquals(0, backend.activeNotificationListenerCount());
+    }
+
+    @Test
+    public void testRegistryShutdownStopsAllProfileListeners() throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+        Backend backend = proxy.registry().live().get(0);
+        assertTrue(await(() -> backend.activeNotificationListenerCount() >= 2, 5_000L));
+
+        proxy.registry().shutdown();
+
+        assertEquals(0, backend.activeNotificationListenerCount());
+    }
+
+    @Test
     public void testMalformedToolsListDoesNotConfirmAProfileGroup() throws Exception
     {
         int[] ports = reserveFreePorts(1);

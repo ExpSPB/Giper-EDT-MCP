@@ -11,6 +11,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -25,6 +26,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -56,6 +58,7 @@ public final class BackendProfileChannel
     private volatile ChannelResolution resolution;
     private volatile Thread notificationThread;
     private volatile boolean stopNotifications;
+    private final AtomicReference<InputStream> notificationStream = new AtomicReference<>();
 
     BackendProfileChannel(Backend backend, ProfileEndpoint endpoint, HttpClient client, int timeoutSeconds)
     {
@@ -107,7 +110,7 @@ public final class BackendProfileChannel
         params.add("clientInfo", clientInfo); //$NON-NLS-1$
 
         HttpRequest initialize =
-            newPostRequest(buildJsonRpcRequest("initialize", params), null, HANDSHAKE_TIMEOUT_SECONDS); //$NON-NLS-1$
+            newPostRequest(buildJsonRpcRequest("initialize", params).body, null, HANDSHAKE_TIMEOUT_SECONDS); //$NON-NLS-1$
         HttpResponse<String> response = client.send(initialize, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200)
         {
@@ -136,7 +139,7 @@ public final class BackendProfileChannel
      * Opens a long-lived GET/SSE against this backend path and forwards
      * {@code notifications/tools/list_changed} to {@code hub}.
      */
-    public void ensureNotificationListener(SseNotificationHub hub)
+    public synchronized void ensureNotificationListener(SseNotificationHub hub)
     {
         if (hub == null || notificationThread != null)
         {
@@ -153,6 +156,7 @@ public final class BackendProfileChannel
     public void stopNotificationListener()
     {
         stopNotifications = true;
+        closeQuietly(notificationStream.getAndSet(null));
         Thread thread = notificationThread;
         if (thread != null)
         {
@@ -160,52 +164,129 @@ public final class BackendProfileChannel
         }
     }
 
+    boolean awaitNotificationListenerStopped(long timeoutMillis)
+    {
+        Thread thread = notificationThread;
+        if (thread == null || thread == Thread.currentThread())
+        {
+            return thread == null;
+        }
+        if (timeoutMillis <= 0L)
+        {
+            return false;
+        }
+        try
+        {
+            thread.join(timeoutMillis);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
+        return notificationThread == null;
+    }
+
+    boolean isNotificationListenerRunning()
+    {
+        Thread thread = notificationThread;
+        return thread != null && thread.isAlive();
+    }
+
     private void listenForNotifications(SseNotificationHub hub)
     {
-        while (!stopNotifications && !Thread.currentThread().isInterrupted())
+        long backoffMillis = 250L;
+        boolean recoveredSession = false;
+        try
         {
-            try
+            while (!stopNotifications && !Thread.currentThread().isInterrupted())
             {
-                String session = ensureSession();
-                HttpRequest.Builder builder = HttpRequest.newBuilder(mcpUri)
-                    .timeout(Duration.ofHours(6))
-                    .header("Accept", "text/event-stream") //$NON-NLS-1$ //$NON-NLS-2$
-                    .header(HEADER_PROTOCOL_VERSION, PROTOCOL_VERSION)
-                    .GET();
-                if (session != null)
+                try
                 {
-                    builder.header(HEADER_SESSION_ID, session);
-                }
-                HttpResponse<InputStream> response = client.send(builder.build(),
-                    HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() != 200)
-                {
-                    closeQuietly(response.body());
-                    sleepQuietly(2000);
-                    continue;
-                }
-                try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(response.body(), StandardCharsets.UTF_8)))
-                {
-                    String line;
-                    while (!stopNotifications && (line = reader.readLine()) != null)
+                    String session = ensureSession();
+                    HttpRequest.Builder builder = HttpRequest.newBuilder(mcpUri)
+                        .timeout(Duration.ofHours(6))
+                        .header("Accept", "text/event-stream") //$NON-NLS-1$ //$NON-NLS-2$
+                        .header(HEADER_PROTOCOL_VERSION, PROTOCOL_VERSION)
+                        .GET();
+                    if (session != null)
                     {
-                        if (line.startsWith("data:") && line.contains("list_changed")) //$NON-NLS-1$ //$NON-NLS-2$
+                        builder.header(HEADER_SESSION_ID, session);
+                    }
+                    HttpResponse<InputStream> response = client.send(builder.build(),
+                        HttpResponse.BodyHandlers.ofInputStream());
+                    InputStream body = response.body();
+                    if (response.statusCode() == 404)
+                    {
+                        closeQuietly(body);
+                        invalidateSessionIfCurrent(session);
+                        ensureSession();
+                        recoveredSession = true;
+                        backoffMillis = 250L;
+                        continue;
+                    }
+                    if (response.statusCode() != 200)
+                    {
+                        closeQuietly(body);
+                        sleepQuietly(backoffMillis);
+                        backoffMillis = Math.min(backoffMillis * 2L, 4000L);
+                        continue;
+                    }
+                    backoffMillis = 250L;
+                    if (!notificationStream.compareAndSet(null, body))
+                    {
+                        closeQuietly(body);
+                        continue;
+                    }
+                    try (InputStream stream = body;
+                        BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(stream, StandardCharsets.UTF_8)))
+                    {
+                        if (recoveredSession)
                         {
+                            refreshResolution();
                             hub.onBackendListChanged(endpoint.getRequestedProfileId(),
                                 endpoint.canonicalPath());
+                            recoveredSession = false;
                         }
+                        String line;
+                        while (!stopNotifications && (line = reader.readLine()) != null)
+                        {
+                            if (line.startsWith("data:") && line.contains("list_changed")) //$NON-NLS-1$ //$NON-NLS-2$
+                            {
+                                hub.onBackendListChanged(endpoint.getRequestedProfileId(),
+                                    endpoint.canonicalPath());
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        notificationStream.compareAndSet(body, null);
+                    }
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                catch (IOException | RuntimeException ignored)
+                {
+                    if (!stopNotifications)
+                    {
+                        sleepQuietly(backoffMillis);
+                        backoffMillis = Math.min(backoffMillis * 2L, 4000L);
                     }
                 }
             }
-            catch (InterruptedException e)
+        }
+        finally
+        {
+            closeQuietly(notificationStream.getAndSet(null));
+            synchronized (this)
             {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            catch (IOException ignored)
-            {
-                sleepQuietly(2000);
+                if (notificationThread == Thread.currentThread())
+                {
+                    notificationThread = null;
+                }
             }
         }
     }
@@ -251,19 +332,26 @@ public final class BackendProfileChannel
     public String callToolBlocking(String toolName, JsonObject arguments, int timeoutSecondsOverride)
         throws IOException, InterruptedException
     {
+        return callToolBlockingResponse(toolName, arguments, timeoutSecondsOverride).body;
+    }
+
+    private JsonRpcResponse callToolBlockingResponse(String toolName, JsonObject arguments,
+        int timeoutSecondsOverride) throws IOException, InterruptedException
+    {
         JsonObject params = new JsonObject();
         params.addProperty("name", toolName); //$NON-NLS-1$
         params.add("arguments", arguments == null ? new JsonObject() : arguments); //$NON-NLS-1$
 
         int effectiveTimeoutSeconds = timeoutSecondsOverride > 0 ? timeoutSecondsOverride : timeoutSeconds;
+        JsonRpcRequest request = buildJsonRpcRequest("tools/call", params); //$NON-NLS-1$
         HttpResponse<InputStream> response =
-            sendWithStaleSessionRetry(buildJsonRpcRequest("tools/call", params), null, effectiveTimeoutSeconds); //$NON-NLS-1$
+            sendWithStaleSessionRetry(request.body, null, effectiveTimeoutSeconds);
         String body;
         try (InputStream in = response.body())
         {
             body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
-        return Backend.stripSseFraming(body);
+        return new JsonRpcResponse(request.id, Backend.stripSseFraming(body));
     }
 
     /**
@@ -275,20 +363,23 @@ public final class BackendProfileChannel
     public ChannelResolution refreshResolution() throws IOException, InterruptedException
     {
         ensureSession();
-        String statusRaw = callToolBlocking("get_server_status", includeProfilesArgs(), 10); //$NON-NLS-1$
-        String toolsRaw = callToolBlockingList();
-        ChannelResolution parsed = parseResolution(endpoint, statusRaw, toolsRaw);
+        JsonRpcResponse status = callToolBlockingResponse("get_server_status", includeProfilesArgs(), 10); //$NON-NLS-1$
+        JsonRpcResponse tools = callToolBlockingList();
+        ChannelResolution parsed = parseResolution(endpoint, status.body, Long.valueOf(status.requestId),
+            tools.body, Long.valueOf(tools.requestId));
         this.resolution = parsed;
         return parsed;
     }
 
-    private String callToolBlockingList() throws IOException, InterruptedException
+    private JsonRpcResponse callToolBlockingList() throws IOException, InterruptedException
     {
+        JsonRpcRequest request = buildJsonRpcRequest("tools/list", new JsonObject()); //$NON-NLS-1$
         HttpResponse<InputStream> response =
-            sendWithStaleSessionRetry(buildJsonRpcRequest("tools/list", new JsonObject()), null, 10); //$NON-NLS-1$
+            sendWithStaleSessionRetry(request.body, null, 10);
         try (InputStream in = response.body())
         {
-            return Backend.stripSseFraming(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            String body = Backend.stripSseFraming(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            return new JsonRpcResponse(request.id, body);
         }
     }
 
@@ -312,72 +403,133 @@ public final class BackendProfileChannel
 
     static ChannelResolution parseResolution(ProfileEndpoint endpoint, String statusRaw, String toolsListRaw)
     {
-        JsonObject status = structuredOrResult(statusRaw);
-        String requested = endpoint.getRequestedProfileId();
-        String effective = requested;
-        String fallback = null;
-        JsonArray available = new JsonArray();
-        if (status != null)
+        return parseResolution(endpoint, statusRaw, null, toolsListRaw, null);
+    }
+
+    static ChannelResolution parseResolution(ProfileEndpoint endpoint, String statusRaw, Long expectedStatusId,
+        String toolsListRaw, Long expectedToolsListId)
+    {
+        Objects.requireNonNull(endpoint, "endpoint"); //$NON-NLS-1$
+        String fingerprint = fingerprintToolsList(toolsListRaw, expectedToolsListId);
+        JsonObject result = requireJsonRpcResult(statusRaw, "get_server_status", expectedStatusId); //$NON-NLS-1$
+        Boolean toolError = strictBoolean(result, "isError"); //$NON-NLS-1$
+        if (Boolean.TRUE.equals(toolError))
         {
-            JsonObject active = Json.obj(status, "activeProfile"); //$NON-NLS-1$
-            String req = firstNonBlank(Json.str(active, "requestedProfileId"), //$NON-NLS-1$
-                Json.str(status, "requestedProfileId")); //$NON-NLS-1$
-            if (req != null)
-            {
-                requested = req;
-            }
-            String activeId = firstNonBlank(Json.str(active, "id"), Json.str(status, "effectiveProfileId")); //$NON-NLS-1$ //$NON-NLS-2$
-            if (activeId != null)
-            {
-                effective = activeId;
-            }
-            Boolean applied = boolOrNull(active, "fallbackApplied"); //$NON-NLS-1$
-            if (applied == null)
-            {
-                applied = boolOrNull(status, "fallbackApplied"); //$NON-NLS-1$
-            }
-            fallback = firstNonBlank(Json.str(active, "fallbackReason"), Json.str(status, "fallbackReason")); //$NON-NLS-1$ //$NON-NLS-2$
-            if (Boolean.TRUE.equals(applied) && (fallback == null || fallback.isBlank()))
-            {
-                fallback = "UNKNOWN_PROFILE"; //$NON-NLS-1$
-            }
-            if (Boolean.FALSE.equals(applied))
-            {
-                fallback = null;
-            }
-            JsonElement profiles = status.get("availableProfiles"); //$NON-NLS-1$
-            if (profiles != null && profiles.isJsonArray())
-            {
-                available = profiles.getAsJsonArray();
-            }
-            if (active == null && Json.str(status, "requestedProfileId") == null //$NON-NLS-1$
-                && Json.str(status, "effectiveProfileId") == null //$NON-NLS-1$
-                && boolOrNull(status, "fallbackApplied") == null) //$NON-NLS-1$
-            {
-                fallback = "UNKNOWN_PROFILE"; //$NON-NLS-1$
-            }
+            throw new IllegalArgumentException("backend tool error: get_server_status result.isError=true"); //$NON-NLS-1$
+        }
+        JsonElement structuredElement = result.get("structuredContent"); //$NON-NLS-1$
+        JsonObject status;
+        if (structuredElement == null)
+        {
+            status = result;
         }
         else
         {
-            effective = endpoint.getRequestedProfileId();
+            if (!structuredElement.isJsonObject())
+            {
+                throw malformed("get_server_status structuredContent must be an object"); //$NON-NLS-1$
+            }
+            status = structuredElement.getAsJsonObject();
         }
-        return new ChannelResolution(requested, effective, fallback, fingerprintToolsList(toolsListRaw), available);
+        Boolean success = strictBoolean(status, "success"); //$NON-NLS-1$
+        if (Boolean.FALSE.equals(success))
+        {
+            throw new IllegalArgumentException("backend tool error: get_server_status success=false"); //$NON-NLS-1$
+        }
+        if (!hasAnyProfileField(status))
+        {
+            if (!endpoint.isLegacy())
+            {
+                throw malformed("legacy status is allowed only on /mcp"); //$NON-NLS-1$
+            }
+            return ChannelResolution.legacyDefault(fingerprint);
+        }
+
+        JsonObject active = requireObject(status, "activeProfile", "get_server_status"); //$NON-NLS-1$ //$NON-NLS-2$
+        String requested = active.has("requestedProfileId") //$NON-NLS-1$
+            ? strictString(active, "requestedProfileId") : strictString(status, "requestedProfileId"); //$NON-NLS-1$ //$NON-NLS-2$
+        if (requested == null)
+        {
+            throw malformed("get_server_status requestedProfileId is missing"); //$NON-NLS-1$
+        }
+        if (!endpoint.getRequestedProfileId().equals(requested))
+        {
+            throw new IllegalArgumentException("profile mismatch: backend requestedProfileId=" + requested //$NON-NLS-1$
+                + " for endpoint " + endpoint.canonicalPath()); //$NON-NLS-1$
+        }
+        String effective = active.has("id") ? strictString(active, "id") //$NON-NLS-1$ //$NON-NLS-2$
+            : strictString(status, "effectiveProfileId"); //$NON-NLS-1$
+        if (effective == null)
+        {
+            throw malformed("get_server_status effective profile id is missing"); //$NON-NLS-1$
+        }
+        Boolean applied = active.has("fallbackApplied") //$NON-NLS-1$
+            ? strictBoolean(active, "fallbackApplied") : strictBoolean(status, "fallbackApplied"); //$NON-NLS-1$ //$NON-NLS-2$
+        if (applied == null)
+        {
+            throw malformed("get_server_status fallbackApplied is missing or not boolean"); //$NON-NLS-1$
+        }
+        String fallback = active.has("fallbackApplied") //$NON-NLS-1$
+            ? strictString(active, "fallbackReason") : strictString(status, "fallbackReason"); //$NON-NLS-1$ //$NON-NLS-2$
+        if (applied.booleanValue() && fallback == null)
+        {
+            throw malformed("fallbackApplied=true requires fallbackReason"); //$NON-NLS-1$
+        }
+        if (!applied.booleanValue() && fallback != null)
+        {
+            throw malformed("fallbackApplied=false forbids fallbackReason"); //$NON-NLS-1$
+        }
+        if (applied.booleanValue() && requested.equals(effective))
+        {
+            throw new IllegalArgumentException("profile mismatch: fallback did not change effective profile " //$NON-NLS-1$
+                + effective);
+        }
+        if (!applied.booleanValue() && !requested.equals(effective))
+        {
+            throw new IllegalArgumentException("profile mismatch: effective profile " + effective //$NON-NLS-1$
+                + " differs from requested " + requested + " without fallback"); //$NON-NLS-1$
+        }
+        JsonArray available = new JsonArray();
+        JsonElement profiles = status.get("availableProfiles"); //$NON-NLS-1$
+        if (profiles != null)
+        {
+            if (!profiles.isJsonArray())
+            {
+                throw malformed("get_server_status availableProfiles must be an array"); //$NON-NLS-1$
+            }
+            available = profiles.getAsJsonArray();
+        }
+        return ChannelResolution.confirmed(requested, effective, fallback, fingerprint, available);
     }
 
     static String fingerprintToolsList(String toolsListRaw)
     {
-        JsonObject envelope = Json.parseObject(toolsListRaw);
-        JsonObject result = envelope == null ? null : Json.obj(envelope, "result"); //$NON-NLS-1$
-        JsonElement toolsElement = result == null ? null : result.get("tools"); //$NON-NLS-1$
-        JsonArray tools = toolsElement != null && toolsElement.isJsonArray() ? toolsElement.getAsJsonArray()
-            : new JsonArray();
+        return fingerprintToolsList(toolsListRaw, null);
+    }
+
+    private static String fingerprintToolsList(String toolsListRaw, Long expectedId)
+    {
+        JsonObject result = requireJsonRpcResult(toolsListRaw, "tools/list", expectedId); //$NON-NLS-1$
+        JsonElement toolsElement = result.get("tools"); //$NON-NLS-1$
+        if (toolsElement == null || !toolsElement.isJsonArray())
+        {
+            throw malformed("tools/list result.tools must be an array"); //$NON-NLS-1$
+        }
+        JsonArray tools = toolsElement.getAsJsonArray();
         List<JsonObject> descriptors = new ArrayList<>();
         for (JsonElement element : tools)
         {
-            if (element.isJsonObject())
+            if (!element.isJsonObject())
             {
-                descriptors.add(element.getAsJsonObject().deepCopy());
+                throw malformed("tools/list descriptor must be an object"); //$NON-NLS-1$
             }
+            JsonObject descriptor = element.getAsJsonObject();
+            String name = strictString(descriptor, "name"); //$NON-NLS-1$
+            if (name == null || name.isBlank())
+            {
+                throw malformed("tools/list descriptor name is missing or blank"); //$NON-NLS-1$
+            }
+            descriptors.add(descriptor.deepCopy());
         }
         descriptors.sort(Comparator.comparing(o -> {
             String name = Json.str(o, "name"); //$NON-NLS-1$
@@ -414,18 +566,113 @@ public final class BackendProfileChannel
         return null;
     }
 
-    private static Boolean boolOrNull(JsonObject object, String key)
+    private static JsonObject requireJsonRpcResult(String raw, String operation, Long expectedId)
     {
-        if (object == null || key == null)
+        JsonObject envelope = Json.parseObject(Backend.stripSseFraming(raw));
+        if (envelope == null)
+        {
+            throw malformed(operation + " response is not a JSON object"); //$NON-NLS-1$
+        }
+        JsonElement version = envelope.get("jsonrpc"); //$NON-NLS-1$
+        if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isString()
+            || !"2.0".equals(version.getAsString())) //$NON-NLS-1$
+        {
+            throw malformed(operation + " response has invalid JSON-RPC envelope"); //$NON-NLS-1$
+        }
+        JsonElement id = envelope.get("id"); //$NON-NLS-1$
+        if (!isValidResponseId(id))
+        {
+            throw malformed(operation + " response id is missing or invalid"); //$NON-NLS-1$
+        }
+        if (expectedId != null && !matchesNumericRequestId(id, expectedId.longValue()))
+        {
+            throw malformed(operation + " response id does not match request id " + expectedId); //$NON-NLS-1$
+        }
+        boolean hasResult = envelope.has("result"); //$NON-NLS-1$
+        boolean hasError = envelope.has("error"); //$NON-NLS-1$
+        if (hasResult == hasError)
+        {
+            throw malformed(operation + " response must contain exactly one of result or error"); //$NON-NLS-1$
+        }
+        if (hasError)
+        {
+            requireObject(envelope, "error", operation + " response"); //$NON-NLS-1$ //$NON-NLS-2$
+            throw new IllegalArgumentException("backend JSON-RPC error: " + operation); //$NON-NLS-1$
+        }
+        return requireObject(envelope, "result", operation + " response"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static boolean isValidResponseId(JsonElement id)
+    {
+        return id != null && !id.isJsonNull() && id.isJsonPrimitive()
+            && (id.getAsJsonPrimitive().isString() || id.getAsJsonPrimitive().isNumber());
+    }
+
+    private static boolean matchesNumericRequestId(JsonElement id, long expectedId)
+    {
+        if (!id.getAsJsonPrimitive().isNumber())
+        {
+            return false;
+        }
+        try
+        {
+            return new BigDecimal(id.getAsString()).compareTo(BigDecimal.valueOf(expectedId)) == 0;
+        }
+        catch (NumberFormatException e)
+        {
+            return false;
+        }
+    }
+
+    private static JsonObject requireObject(JsonObject object, String key, String context)
+    {
+        JsonElement element = object == null ? null : object.get(key);
+        if (element == null || !element.isJsonObject())
+        {
+            throw malformed(context + "." + key + " must be an object"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return element.getAsJsonObject();
+    }
+
+    private static String strictString(JsonObject object, String key)
+    {
+        JsonElement element = object == null ? null : object.get(key);
+        if (element == null)
         {
             return null;
         }
-        JsonElement element = object.get(key);
-        if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isBoolean())
+        if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString())
+        {
+            throw malformed(key + " must be a string"); //$NON-NLS-1$
+        }
+        String value = element.getAsString();
+        return value.isBlank() ? null : value;
+    }
+
+    private static Boolean strictBoolean(JsonObject object, String key)
+    {
+        JsonElement element = object == null ? null : object.get(key);
+        if (element == null)
         {
             return null;
+        }
+        if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isBoolean())
+        {
+            throw malformed(key + " must be boolean"); //$NON-NLS-1$
         }
         return Boolean.valueOf(element.getAsBoolean());
+    }
+
+    private static boolean hasAnyProfileField(JsonObject object)
+    {
+        return object.has("activeProfile") || object.has("requestedProfileId") //$NON-NLS-1$ //$NON-NLS-2$
+            || object.has("effectiveProfileId") || object.has("fallbackApplied") //$NON-NLS-1$ //$NON-NLS-2$
+            || object.has("fallbackReason") || object.has("availableProfiles"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static IllegalArgumentException malformed(String message)
+    {
+        return new IllegalArgumentException("malformed backend contract: " + message); //$NON-NLS-1$
     }
 
     private static JsonObject includeProfilesArgs()
@@ -435,26 +682,39 @@ public final class BackendProfileChannel
         return arguments;
     }
 
-    private static JsonObject structuredOrResult(String raw)
+    private JsonRpcRequest buildJsonRpcRequest(String method, JsonObject params)
     {
-        JsonObject envelope = Json.parseObject(Backend.stripSseFraming(raw));
-        JsonObject result = Json.obj(envelope, "result"); //$NON-NLS-1$
-        if (result == null)
-        {
-            return null;
-        }
-        JsonObject structured = Json.obj(result, "structuredContent"); //$NON-NLS-1$
-        return structured != null ? structured : result;
-    }
-
-    private String buildJsonRpcRequest(String method, JsonObject params)
-    {
+        long id = requestId.incrementAndGet();
         JsonObject request = new JsonObject();
         request.addProperty("jsonrpc", "2.0"); //$NON-NLS-1$ //$NON-NLS-2$
-        request.addProperty("id", requestId.incrementAndGet()); //$NON-NLS-1$
+        request.addProperty("id", id); //$NON-NLS-1$
         request.addProperty("method", method); //$NON-NLS-1$
         request.add("params", params); //$NON-NLS-1$
-        return Json.compact(request);
+        return new JsonRpcRequest(id, Json.compact(request));
+    }
+
+    private static final class JsonRpcRequest
+    {
+        final long id;
+        final String body;
+
+        JsonRpcRequest(long id, String body)
+        {
+            this.id = id;
+            this.body = body;
+        }
+    }
+
+    private static final class JsonRpcResponse
+    {
+        final long requestId;
+        final String body;
+
+        JsonRpcResponse(long requestId, String body)
+        {
+            this.requestId = requestId;
+            this.body = body;
+        }
     }
 
     private HttpRequest newPostRequest(String body, String session, int requestTimeoutSeconds)
@@ -479,6 +739,10 @@ public final class BackendProfileChannel
 
     private static void closeQuietly(InputStream in)
     {
+        if (in == null)
+        {
+            return;
+        }
         try
         {
             in.close();

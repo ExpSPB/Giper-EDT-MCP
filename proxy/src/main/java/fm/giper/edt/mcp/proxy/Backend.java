@@ -17,6 +17,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.google.gson.JsonObject;
 
@@ -29,6 +31,8 @@ import com.google.gson.JsonObject;
  */
 public final class Backend
 {
+    private static final Logger LOG = Logger.getLogger(Backend.class.getName());
+
     /** MCP protocol version this proxy speaks to its backends. */
     static final String PROTOCOL_VERSION = "2025-11-25"; //$NON-NLS-1$
 
@@ -135,6 +139,13 @@ public final class Backend
         {
             // still attach the discovery stream; profile paths wait for the next refresh
         }
+        catch (RuntimeException e)
+        {
+            stopNotificationListeners();
+            LOG.log(Level.WARNING, "Backend :" + port //$NON-NLS-1$
+                + " returned an invalid discovery profile contract; listeners were not started", e); //$NON-NLS-1$
+            return;
+        }
         discoveryChannel().ensureNotificationListener(hub);
         ChannelResolution resolution = discoveryChannel().getResolution();
         if (resolution == null || resolution.getAvailableProfiles() == null)
@@ -155,6 +166,35 @@ public final class Backend
             channel(new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false))
                 .ensureNotificationListener(hub);
         }
+    }
+
+    /** Stops every profile listener owned by this backend and waits briefly for thread exit. */
+    public void stopNotificationListeners()
+    {
+        List<BackendProfileChannel> current = new ArrayList<>(channels.values());
+        for (BackendProfileChannel channel : current)
+        {
+            channel.stopNotificationListener();
+        }
+        long deadline = System.currentTimeMillis() + 2000L;
+        for (BackendProfileChannel channel : current)
+        {
+            long remaining = Math.max(0L, deadline - System.currentTimeMillis());
+            channel.awaitNotificationListenerStopped(remaining);
+        }
+    }
+
+    int activeNotificationListenerCount()
+    {
+        int count = 0;
+        for (BackendProfileChannel channel : channels.values())
+        {
+            if (channel.isNotificationListenerRunning())
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     public HttpResponse<InputStream> forward(String rawBody) throws IOException, InterruptedException

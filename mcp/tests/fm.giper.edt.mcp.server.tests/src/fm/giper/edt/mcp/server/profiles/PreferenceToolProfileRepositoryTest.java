@@ -81,6 +81,28 @@ public class PreferenceToolProfileRepositoryTest
     }
 
     @Test
+    public void reorderingProfilesIsSemanticNoOp()
+    {
+        PreferenceStore store = new PreferenceStore();
+        PreferenceToolProfileRepository repo = new PreferenceToolProfileRepository(store);
+        ToolProfile review = ToolProfile.builder()
+            .id("review") //$NON-NLS-1$
+            .displayName("Review") //$NON-NLS-1$
+            .allowedTools(Set.of("list_projects")) //$NON-NLS-1$
+            .build();
+        ReplaceResult initial = repo.replaceAll(0L, ToolProfileSnapshot.of(0L, List.of(
+            DefaultToolProfileFactory.createSafeDefault(), review)));
+
+        ToolProfileSnapshot current = initial.getSnapshot();
+        ReplaceResult reordered = repo.replaceAll(current.getDocumentRevision(),
+            ToolProfileSnapshot.of(current.getDocumentRevision(), List.of(
+                current.get("review"), current.getDefault()))); //$NON-NLS-1$
+
+        assertEquals(ReplaceResult.Status.NO_OP, reordered.getStatus());
+        assertEquals(current.getDocumentRevision(), reordered.getSnapshot().getDocumentRevision());
+    }
+
+    @Test
     public void staleExpectedRevisionDoesNotOverwrite()
     {
         PreferenceStore store = new PreferenceStore();

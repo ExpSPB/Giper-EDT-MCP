@@ -200,12 +200,36 @@ public class ToolProfilesEditorModelTest
     {
         ToolProfilesEditorModel model = loadWithUnknown();
         model.select("review"); //$NON-NLS-1$
+        model.setEnabled(false);
+        ToolProfile defaultBefore = model.getDrafts().stream()
+            .filter(ToolProfile::isDefault)
+            .findFirst().orElseThrow();
 
         assertTrue(model.resetSelectedToShippedDefaults().isOk());
         assertEquals(2, model.getDrafts().size());
-        assertNotNull(model.getDrafts().stream()
+        assertEquals(defaultBefore, model.getDrafts().stream()
             .filter(p -> ToolProfile.DEFAULT_ID.equals(p.getId()))
             .findFirst().orElse(null));
+        assertEquals("Review", model.getSelected().getDisplayName()); //$NON-NLS-1$
+        assertEquals("Review role", model.getSelected().getDescription()); //$NON-NLS-1$
+        assertFalse("Restore Defaults changes the allowlist, not enabled state", //$NON-NLS-1$
+            model.getSelected().isEnabled());
+    }
+
+    @Test
+    public void resetSelectedStaysDraftUntilApply()
+    {
+        PreferenceStore store = new PreferenceStore();
+        PreferenceToolProfileRepository repo = new PreferenceToolProfileRepository(store);
+        repo.replaceAll(0L, snapshotWithReview());
+        ToolProfile before = repo.getSnapshot().get("review"); //$NON-NLS-1$
+        ToolProfilesEditorModel model = ToolProfilesEditorModel.load(repo.getSnapshot(), CATALOG);
+        model.select("review"); //$NON-NLS-1$
+
+        assertTrue(model.resetSelectedToShippedDefaults().isOk());
+        assertNotEquals(before.getAllowedTools(), model.getSelected().getAllowedTools());
+        assertEquals("Cancel must not publish the Restore Defaults draft", before, //$NON-NLS-1$
+            repo.getSnapshot().get("review")); //$NON-NLS-1$
     }
 
     private static ToolProfilesEditorModel loadDefault()

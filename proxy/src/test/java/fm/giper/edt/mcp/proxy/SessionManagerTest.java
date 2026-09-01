@@ -14,13 +14,19 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import java.lang.reflect.Field;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CyclicBarrier;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
@@ -287,53 +293,145 @@ public class SessionManagerTest
     @Test
     public void concurrentCreateCannotExceedTheHardCap() throws Exception
     {
-        SessionManager sessions = new SessionManager();
-        BarrierSessionMap map = new BarrierSessionMap();
-        for (int i = 0; i < SessionManager.MAX_SESSIONS - 1; i++)
-        {
-            String id = "seed-" + i; //$NON-NLS-1$
-            map.put(id, new SessionContext(id, ProfileEndpoint.legacyDefault(),
-                Backend.PROTOCOL_VERSION, true));
-        }
-        replaceSessionMap(sessions, map);
-
-        ExecutorService workers = Executors.newFixedThreadPool(2);
+        int cap = 32;
+        int contenders = 64;
+        MutableClock clock = new MutableClock(1_000L);
+        SessionManager sessions = new SessionManager(Duration.ofMinutes(5), clock, cap);
+        ExecutorService workers = Executors.newFixedThreadPool(contenders);
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch start = new CountDownLatch(1);
         try
         {
-            Future<String> first = workers.submit(() -> sessions.create());
-            Future<String> second = workers.submit(() -> sessions.create());
-            assertNotNull(get(first));
-            assertNotNull(get(second));
+            List<Future<String>> futures = new ArrayList<>();
+            for (int i = 0; i < contenders; i++)
+            {
+                futures.add(workers.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return sessions.create();
+                }));
+            }
+            ready.await();
+            start.countDown();
+            AtomicInteger created = new AtomicInteger();
+            for (Future<String> future : futures)
+            {
+                if (get(future) != null)
+                {
+                    created.incrementAndGet();
+                }
+            }
+            assertEquals("exactly the configured capacity may be allocated", cap, created.get()); //$NON-NLS-1$
         }
         finally
         {
             workers.shutdownNow();
         }
-
-        assertTrue("the size()+put() race must never exceed MAX_SESSIONS: " //$NON-NLS-1$
-            + sessions.activeCount(), sessions.activeCount() <= SessionManager.MAX_SESSIONS);
+        assertEquals("concurrent create must never oversubscribe the cap", cap, sessions.activeCount()); //$NON-NLS-1$
     }
 
     @Test
-    public void abandonedSessionDoesNotRemainValidForever() throws Exception
+    public void expiredSessionsFreeCapacityWithoutDelete()
     {
-        SessionManager sessions = new SessionManager();
-        String id = sessions.create();
-        SessionContext context = sessions.lookup(id, null);
-        Field lastAccess = SessionContext.class.getDeclaredField("lastAccessMillis"); //$NON-NLS-1$
-        lastAccess.setAccessible(true);
-        lastAccess.setLong(context, 0L);
+        MutableClock clock = new MutableClock(10_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock, 2);
+        String first = sessions.create();
+        assertNotNull(sessions.create());
+        assertNull(sessions.create());
 
-        assertFalse("a session last used at epoch must be expired instead of blocking capacity forever", //$NON-NLS-1$
-            sessions.isValid(id));
+        clock.advance(Duration.ofSeconds(10));
+        String replacement = sessions.create();
+
+        assertNotNull("create must lazily reclaim expired capacity", replacement); //$NON-NLS-1$
+        assertFalse(sessions.isValid(first));
+        assertEquals(1, sessions.activeCount());
     }
 
-    private static void replaceSessionMap(SessionManager sessions,
-        ConcurrentHashMap<String, SessionContext> replacement) throws Exception
+    @Test
+    public void expiredLookupAndWrongPathReplayAreUnknown()
     {
-        Field field = SessionManager.class.getDeclaredField("sessions"); //$NON-NLS-1$
-        field.setAccessible(true);
-        field.set(sessions, replacement);
+        MutableClock clock = new MutableClock(20_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock);
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+
+        clock.advance(Duration.ofSeconds(9));
+        assertNull("wrong-path replay must not touch the session", sessions.lookup(id, "/mcp")); //$NON-NLS-1$ //$NON-NLS-2$
+        clock.advance(Duration.ofSeconds(1));
+
+        assertNull("the original path must see an expired session as unknown", //$NON-NLS-1$
+            sessions.lookup(id, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertEquals(0, sessions.activeCount());
+    }
+
+    @Test
+    public void wrongPathDeleteDoesNotExtendSessionTtl()
+    {
+        MutableClock clock = new MutableClock(25_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock);
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+
+        clock.advance(Duration.ofSeconds(9));
+        assertEquals(SessionManager.CloseResult.PATH_MISMATCH,
+            sessions.closeForDelete(id, "/mcp")); //$NON-NLS-1$
+        clock.advance(Duration.ofSeconds(1));
+
+        assertFalse("wrong-path DELETE must not touch the valid session", sessions.isValid(id)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void successfulLookupExtendsOnlyTheValidSession()
+    {
+        MutableClock clock = new MutableClock(30_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock);
+        String touched = sessions.create();
+        String abandoned = sessions.create();
+
+        clock.advance(Duration.ofSeconds(9));
+        assertNotNull(sessions.lookup(touched, "/mcp")); //$NON-NLS-1$
+        clock.advance(Duration.ofSeconds(2));
+
+        assertTrue("successful lookup must extend the idle deadline", sessions.isValid(touched)); //$NON-NLS-1$
+        assertFalse("an untouched peer must expire independently", sessions.isValid(abandoned)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void explicitCleanupRemovesIdleSessions()
+    {
+        MutableClock clock = new MutableClock(40_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(5), clock);
+        sessions.create();
+        sessions.create();
+        clock.advance(Duration.ofSeconds(5));
+
+        assertEquals(2, sessions.cleanupExpired());
+        assertEquals(0, sessions.activeCount());
+    }
+
+    @Test
+    public void shutdownClearsSessionsAndCancelsPeriodicCleanup()
+    {
+        MutableClock clock = new MutableClock(50_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(5), clock);
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        try
+        {
+            sessions.create();
+            sessions.startPeriodicCleanup(scheduler);
+            assertTrue(sessions.hasCleanupTask());
+
+            sessions.shutdown();
+            sessions.shutdown();
+
+            assertFalse(sessions.hasCleanupTask());
+            assertEquals(0, sessions.activeCount());
+            assertNull("a shut-down manager must not issue new sessions", sessions.create()); //$NON-NLS-1$
+        }
+        finally
+        {
+            scheduler.shutdownNow();
+        }
     }
 
     private static String get(Future<String> future) throws Exception
@@ -353,30 +451,49 @@ public class SessionManagerTest
         }
     }
 
-    private static final class BarrierSessionMap extends ConcurrentHashMap<String, SessionContext>
+    private static final class MutableClock extends Clock
     {
-        private static final long serialVersionUID = 1L;
+        private volatile long millis;
+        private final ZoneId zone;
 
-        private final CyclicBarrier barrier = new CyclicBarrier(2);
-        private final AtomicInteger gatedSizeCalls = new AtomicInteger();
+        MutableClock(long millis)
+        {
+            this(millis, ZoneOffset.UTC);
+        }
+
+        private MutableClock(long millis, ZoneId zone)
+        {
+            this.millis = millis;
+            this.zone = zone;
+        }
+
+        void advance(Duration duration)
+        {
+            millis += duration.toMillis();
+        }
 
         @Override
-        public int size()
+        public ZoneId getZone()
         {
-            int observedSize = super.size();
-            if (observedSize == SessionManager.MAX_SESSIONS - 1
-                && gatedSizeCalls.incrementAndGet() <= 2)
-            {
-                try
-                {
-                    barrier.await();
-                }
-                catch (Exception e)
-                {
-                    throw new IllegalStateException(e);
-                }
-            }
-            return observedSize;
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId requestedZone)
+        {
+            return new MutableClock(millis, requestedZone);
+        }
+
+        @Override
+        public Instant instant()
+        {
+            return Instant.ofEpochMilli(millis);
+        }
+
+        @Override
+        public long millis()
+        {
+            return millis;
         }
     }
 }

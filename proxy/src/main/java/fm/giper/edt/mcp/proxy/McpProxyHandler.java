@@ -35,16 +35,15 @@ import com.sun.net.httpserver.HttpHandler;
  * itself (via {@link SessionManager}) and answers {@code initialize} / {@code ping} /
  * {@code router_status} / {@code router_refresh} locally instead of forwarding them.
  * <p>
- * {@code tools/list} is forwarded to the backend {@link BackendRegistry#toolsListDonor()}
- * picks (the lowest-port one that supports the machine project list, so a mixed-version fleet
- * does not publish an outdated descriptor set) and has the two
+ * {@code tools/list} is forwarded only to the donor of the endpoint's confirmed profile group
+ * and has the two
  * {@code router_*} tool descriptors injected before being cached and returned; a
  * {@code tools/call} (and any other method) is routed via {@link ProjectRouter} to one
  * backend (forwarded WITH the client's own {@code Accept} header - see
  * {@link #forwardToBackend} - and streamed back byte-for-byte, so the relayed framing is the
  * one the client actually asked for; the ONE exception is a tool call from a session that opted out
  * of {@code structuredContent}, whose response is rewritten to move that payload into the text
- * channel, since the backends share a handshake made by the proxy and cannot apply that gate), fanned out across every live backend
+ * channel, since the backends share a handshake made by the proxy and cannot apply that gate), fanned out across every compatible backend
  * ({@code list_projects}), answered by the proxy itself (the router tools), or refused with
  * an actionable error. A backend {@link IOException} triggers a registry refresh and an
  * actionable error naming the dead port; no exception ever escapes {@link #handle(HttpExchange)}.
@@ -227,14 +226,13 @@ public final class McpProxyHandler implements HttpHandler
     private void handleDelete(HttpExchange exchange, ProfileEndpoint endpoint) throws IOException
     {
         String sessionId = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
-        if (sessionId != null && !sessionId.isBlank() && sessions.isValid(sessionId)
-            && !sessions.isValid(sessionId, endpoint.canonicalPath()))
+        SessionManager.CloseResult result = sessions.closeForDelete(sessionId, endpoint.canonicalPath());
+        if (result == SessionManager.CloseResult.PATH_MISMATCH)
         {
             sendPlain(exchange, 404, buildJsonRpcError(ERROR_INVALID_REQUEST,
                 "Unknown or expired session '" + sessionId + "' - call initialize again.", null)); //$NON-NLS-1$ //$NON-NLS-2$
             return;
         }
-        sessions.closeOnPath(sessionId, endpoint.canonicalPath());
         sendPlain(exchange, 200, ""); //$NON-NLS-1$
     }
 
@@ -348,8 +346,9 @@ public final class McpProxyHandler implements HttpHandler
         JsonObject capabilities = new JsonObject();
         capabilities.add(KEY_TOOLS, new JsonObject());
 
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
         JsonObject serverInfo = new JsonObject();
-        serverInfo.addProperty(KEY_NAME, proxyServerName(endpoint, registry.groupFor(endpoint)));
+        serverInfo.addProperty(KEY_NAME, proxyServerName(endpoint, group));
         serverInfo.addProperty(KEY_VERSION, proxyVersion());
 
         JsonObject result = new JsonObject();
@@ -357,7 +356,6 @@ public final class McpProxyHandler implements HttpHandler
         result.add(KEY_CAPABILITIES, capabilities);
         result.add(KEY_SERVER_INFO, serverInfo);
 
-        ProfileGroupSnapshot group = registry.groupFor(endpoint);
         if (group.getDonor() == null)
         {
             result.addProperty("instructions", "Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$ //$NON-NLS-2$
@@ -390,23 +388,13 @@ public final class McpProxyHandler implements HttpHandler
     }
 
     /**
-     * Serves {@code tools/list}: forwards the raw request to the DONOR backend (see
-     * {@link BackendRegistry#toolsListDonor()} - the lowest-port one that supports the machine
-     * project list, so a mixed-version fleet does not publish an outdated descriptor set), injects
-     * the two {@code router_*} descriptors, and caches the injected response. With zero live
-     * backends, serves the cache (re-stamped with the caller's request id) when one exists,
-     * or a minimal list containing ONLY the router tools otherwise.
+     * Serves {@code tools/list}: forwards only to the donor of the endpoint's confirmed profile
+     * group, injects the two {@code router_*} descriptors, and caches the response for that registry
+     * generation. Without a confirmed donor it returns only the proxy-core router tools.
      */
     private void handleToolsList(HttpExchange exchange, String rawBody, Object requestId, ProfileEndpoint endpoint)
         throws IOException
     {
-        List<Backend> live = registry.live();
-        if (live.isEmpty())
-        {
-            sendMcpResponse(exchange, 200, minimalToolsListResponse(requestId), null);
-            return;
-        }
-
         ProfileGroupSnapshot group = registry.groupFor(endpoint);
         String cached = registry.cachedToolsListResponse(group);
         if (cached != null)
@@ -415,7 +403,7 @@ public final class McpProxyHandler implements HttpHandler
             return;
         }
 
-        Backend backend = group.getDonor() != null ? group.getDonor() : registry.toolsListDonor();
+        Backend backend = group.getDonor();
         if (backend == null)
         {
             sendMcpResponse(exchange, 200, minimalToolsListResponse(requestId), null);
@@ -429,9 +417,16 @@ public final class McpProxyHandler implements HttpHandler
             {
                 raw = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            String injected = RouterTools.injectIntoToolsList(Backend.stripSseFraming(raw));
+            String normalized = Backend.stripSseFraming(raw);
+            validateToolsListForGroup(group, normalized);
+            String injected = RouterTools.injectIntoToolsList(normalized);
             registry.cacheToolsListResponse(group, injected);
             sendMcpResponse(exchange, 200, rewriteId(injected, requestId), null);
+        }
+        catch (IllegalArgumentException e)
+        {
+            registry.invalidateRequestedProfile(endpoint.getRequestedProfileId());
+            sendMcpResponse(exchange, 200, minimalToolsListResponse(requestId), null);
         }
         catch (IOException e)
         {
@@ -444,6 +439,20 @@ public final class McpProxyHandler implements HttpHandler
             Thread.currentThread().interrupt();
             sendPlain(exchange, 500,
                 buildJsonRpcError(ERROR_INTERNAL, "Interrupted while forwarding tools/list to a backend", requestId)); //$NON-NLS-1$
+        }
+    }
+
+    /** Strictly validates the response actually being published against the confirmed group. */
+    static void validateToolsListForGroup(ProfileGroupSnapshot group, String raw)
+    {
+        if (group == null || group.getDonor() == null)
+        {
+            throw new IllegalArgumentException("tools/list has no confirmed donor"); //$NON-NLS-1$
+        }
+        String fingerprint = BackendProfileChannel.fingerprintToolsList(raw);
+        if (!fingerprint.equals(group.getFingerprint()))
+        {
+            throw new IllegalArgumentException("tools/list changed after profile resolution"); //$NON-NLS-1$
         }
     }
 
@@ -579,7 +588,8 @@ public final class McpProxyHandler implements HttpHandler
     }
 
     /**
-     * Calls {@code list_projects} on every live backend and merges the results via
+     * Calls {@code list_projects} on every backend in the confirmed compatibility group and merges
+     * the results via
      * {@link FanOut#mergeListProjects}. A backend that fails the call simply contributes no
      * response (mirroring the registry's own defensive {@code list_projects} handling); the
      * registry is refreshed once when at least one backend failed. The merge is told whether the
@@ -590,7 +600,16 @@ public final class McpProxyHandler implements HttpHandler
         boolean allowStructuredContent, ProfileEndpoint endpoint) throws IOException
     {
         ProfileGroupSnapshot group = registry.groupFor(endpoint);
-        List<Backend> live = group.getCompatible().isEmpty() ? registry.live() : group.getCompatible();
+        List<Backend> live = group.getCompatible();
+        if (group.getDonor() == null || live.isEmpty())
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(
+                "Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$
+                    + "' is not confirmed by any compatible backend. Call router_status for details, " //$NON-NLS-1$
+                    + "then router_refresh after fixing the backend profile or wire contract.", //$NON-NLS-1$
+                requestId, allowStructuredContent), null);
+            return;
+        }
         List<String> responses = new ArrayList<>(live.size());
         boolean anyBackendFailed = false;
         for (Backend backend : live)
@@ -658,7 +677,8 @@ public final class McpProxyHandler implements HttpHandler
             JsonObject result = envelope == null ? null : Json.obj(envelope, KEY_RESULT);
             if (result != null)
             {
-                rewriteStatusPayload(result, includeProfiles, exchange.getLocalAddress().getPort());
+                rewriteStatusPayload(result, includeProfiles, exchange.getLocalAddress().getPort(),
+                    group.getGeneration());
             }
             if (envelope != null)
             {
@@ -1151,7 +1171,8 @@ public final class McpProxyHandler implements HttpHandler
         return "true".equalsIgnoreCase(primitive.getAsString()); //$NON-NLS-1$
     }
 
-    private void rewriteStatusPayload(JsonObject result, boolean includeProfiles, int proxyPort)
+    private void rewriteStatusPayload(JsonObject result, boolean includeProfiles, int proxyPort,
+        long sourceGeneration)
     {
         JsonObject structured = Json.obj(result, KEY_STRUCTURED_CONTENT);
         JsonObject payload = structured != null ? structured : statusFromContentText(result);
@@ -1159,7 +1180,7 @@ public final class McpProxyHandler implements HttpHandler
         {
             return;
         }
-        rewriteStatusEndpoints(payload, includeProfiles, proxyPort);
+        rewriteStatusEndpoints(payload, includeProfiles, proxyPort, sourceGeneration);
         if (structured != null)
         {
             result.add(KEY_STRUCTURED_CONTENT, payload);
@@ -1204,7 +1225,8 @@ public final class McpProxyHandler implements HttpHandler
         }
     }
 
-    private void rewriteStatusEndpoints(JsonObject structured, boolean includeProfiles, int proxyPort)
+    private void rewriteStatusEndpoints(JsonObject structured, boolean includeProfiles, int proxyPort,
+        long sourceGeneration)
     {
         int port = proxyPort > 0 ? proxyPort
             : (registry.getConfig() != null ? registry.getConfig().port : 0);
@@ -1219,7 +1241,30 @@ public final class McpProxyHandler implements HttpHandler
         {
             return;
         }
+        List<ProfileEndpoint> paths = new ArrayList<>();
+        for (JsonElement element : listed.getAsJsonArray())
+        {
+            if (!element.isJsonObject())
+            {
+                continue;
+            }
+            String id = Json.str(element.getAsJsonObject(), "id"); //$NON-NLS-1$
+            if (id == null || id.isBlank())
+            {
+                continue;
+            }
+            paths.add(ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id)
+                ? ProfileEndpoint.legacyDefault()
+                : new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false));
+        }
+        java.util.Map<String, ProfileGroupSnapshot> groups =
+            registry.groupsForGeneration(sourceGeneration, paths);
         JsonArray rewritten = new JsonArray();
+        if (groups == null)
+        {
+            structured.add("availableProfiles", rewritten); //$NON-NLS-1$
+            return;
+        }
         for (JsonElement element : listed.getAsJsonArray())
         {
             if (!element.isJsonObject())
@@ -1235,7 +1280,7 @@ public final class McpProxyHandler implements HttpHandler
             ProfileEndpoint path = ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id)
                 ? ProfileEndpoint.legacyDefault()
                 : new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
-            ProfileGroupSnapshot group = registry.groupFor(path);
+            ProfileGroupSnapshot group = groups.get(path.canonicalPath());
             if (group.getDonor() == null || !group.getIncompatible().isEmpty())
             {
                 continue;

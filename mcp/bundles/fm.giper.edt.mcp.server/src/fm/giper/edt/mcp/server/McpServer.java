@@ -209,6 +209,7 @@ public class McpServer
                 sseExecutor.shutdownNow();
                 sseExecutor = null;
             }
+            SseStreamRegistry.getInstance().clearPendingAdmissions();
             sessionRegistry.shutdown();
             Activator.logInfo("MCP Server stopped"); //$NON-NLS-1$
         }

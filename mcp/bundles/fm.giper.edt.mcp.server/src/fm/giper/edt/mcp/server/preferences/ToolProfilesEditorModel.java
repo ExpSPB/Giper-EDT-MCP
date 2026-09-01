@@ -337,7 +337,6 @@ public final class ToolProfilesEditorModel
         allowed.removeAll(ToolSettingsService.parseDisabledTools(PreferenceConstants.DEFAULT_DISABLED_TOOLS));
         allowed.addAll(unknownAllowedTools());
         return replaceSelected(selected.toBuilder()
-            .enabled(true)
             .allowedTools(allowed)
             .build());
     }

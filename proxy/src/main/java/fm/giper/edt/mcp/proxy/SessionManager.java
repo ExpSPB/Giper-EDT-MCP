@@ -7,72 +7,119 @@
 
 package fm.giper.edt.mcp.proxy;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Tracks the proxy's OWN client-facing MCP sessions.
+ * Tracks the proxy's own client-facing MCP sessions.
  *
- * <p>Each session is a {@link SessionContext} bound to one {@link ProfileEndpoint}. Replaying
- * the same {@code Mcp-Session-Id} on another path is a 404; {@code DELETE} closes only that
- * session. StructuredContent capability stays per session because the proxy terminates
- * initialize itself.</p>
+ * <p>All map operations are serialized on one lock. In particular, expiry cleanup, the hard-cap
+ * check and insertion form one atomic create operation, so concurrent initialize requests cannot
+ * oversubscribe the cap. Sessions are removed lazily by create/lookup and may also be swept by the
+ * proxy lifecycle scheduler.</p>
  */
 public final class SessionManager
 {
+    enum CloseResult
+    {
+        CLOSED,
+        UNKNOWN,
+        PATH_MISMATCH
+    }
+
     /** Hard cap on concurrently open sessions; {@link #create()} returns {@code null} past it. */
     static final int MAX_SESSIONS = 10_000;
 
-    private final Map<String, SessionContext> sessions = new ConcurrentHashMap<>();
+    static final Duration DEFAULT_TTL = Duration.ofMinutes(30);
 
-    /**
-     * Creates a session on the legacy {@code /mcp} path that accepts structuredContent.
-     *
-     * @return the issued id, or {@code null} when the session cap is reached
-     */
+    private final Object lock = new Object();
+    private final Map<String, SessionContext> sessions = new HashMap<>();
+    private final Duration ttl;
+    private final Clock clock;
+    private final int maxSessions;
+
+    private ScheduledFuture<?> cleanupTask;
+    private boolean shutdown;
+
+    public SessionManager()
+    {
+        this(DEFAULT_TTL, Clock.systemUTC(), MAX_SESSIONS);
+    }
+
+    /** Creates a manager with a caller-selected idle TTL and the system UTC clock. */
+    public SessionManager(Duration ttl)
+    {
+        this(ttl, Clock.systemUTC(), MAX_SESSIONS);
+    }
+
+    SessionManager(Duration ttl, Clock clock)
+    {
+        this(ttl, clock, MAX_SESSIONS);
+    }
+
+    SessionManager(Duration ttl, Clock clock, int maxSessions)
+    {
+        this.ttl = Objects.requireNonNull(ttl, "ttl"); //$NON-NLS-1$
+        this.clock = Objects.requireNonNull(clock, "clock"); //$NON-NLS-1$
+        if (ttl.isZero() || ttl.isNegative() || ttl.toMillis() == 0)
+        {
+            throw new IllegalArgumentException("Session TTL must be at least one millisecond"); //$NON-NLS-1$
+        }
+        if (maxSessions <= 0)
+        {
+            throw new IllegalArgumentException("Session cap must be positive"); //$NON-NLS-1$
+        }
+        this.maxSessions = maxSessions;
+    }
+
     public String create()
     {
         return create(ProfileEndpoint.legacyDefault(), Backend.PROTOCOL_VERSION, true);
     }
 
-    /**
-     * Creates a legacy {@code /mcp} session that remembers the client's structuredContent capability.
-     *
-     * @param allowsStructuredContent whether this client accepts {@code structuredContent}
-     * @return the issued id, or {@code null} when the session cap is reached
-     */
     public String create(boolean allowsStructuredContent)
     {
         return create(ProfileEndpoint.legacyDefault(), Backend.PROTOCOL_VERSION, allowsStructuredContent);
     }
 
-    /**
-     * Creates a path-bound client session.
-     *
-     * @param endpoint the MCP path this session may be replayed on
-     * @param protocolVersion the protocol version echoed at initialize
-     * @param allowsStructuredContent whether this client accepts {@code structuredContent}
-     * @return the issued id, or {@code null} when the session cap is reached
-     */
     public String create(ProfileEndpoint endpoint, String protocolVersion, boolean allowsStructuredContent)
     {
-        if (sessions.size() >= MAX_SESSIONS)
+        Objects.requireNonNull(endpoint, "endpoint"); //$NON-NLS-1$
+        synchronized (lock)
         {
-            return null;
+            if (shutdown)
+            {
+                return null;
+            }
+            long now = clock.millis();
+            cleanupExpiredLocked(now);
+            if (sessions.size() >= maxSessions)
+            {
+                return null;
+            }
+            String sessionId;
+            do
+            {
+                sessionId = UUID.randomUUID().toString();
+            }
+            while (sessions.containsKey(sessionId));
+            sessions.put(sessionId,
+                new SessionContext(sessionId, endpoint, protocolVersion, allowsStructuredContent, now));
+            return sessionId;
         }
-        String sessionId = UUID.randomUUID().toString();
-        sessions.put(sessionId,
-            new SessionContext(sessionId, endpoint, protocolVersion, allowsStructuredContent));
-        return sessionId;
     }
 
     /**
-     * Looks a session up. A path mismatch is reported as unknown (HTTP 404, no existence leak).
-     *
-     * @param sessionId the {@code Mcp-Session-Id} header (may be {@code null})
-     * @param canonicalPath the request path, or {@code null} to skip the path check
-     * @return the context, or {@code null} when missing or bound to another path
+     * Looks a session up. Expired, missing and path-mismatched sessions are all reported as unknown.
+     * The access timestamp is advanced only after both the id and path have been accepted.
      */
     public SessionContext lookup(String sessionId, String canonicalPath)
     {
@@ -80,128 +127,174 @@ public final class SessionManager
         {
             return null;
         }
-        SessionContext context = sessions.get(sessionId);
-        if (context == null)
+        synchronized (lock)
         {
-            return null;
+            if (shutdown)
+            {
+                return null;
+            }
+            long now = clock.millis();
+            cleanupExpiredLocked(now);
+            SessionContext context = sessions.get(sessionId);
+            if (context == null || canonicalPath != null && !context.matchesPath(canonicalPath))
+            {
+                return null;
+            }
+            context.touch(now);
+            return context;
         }
-        if (canonicalPath != null && !context.matchesPath(canonicalPath))
-        {
-            return null;
-        }
-        context.touch();
-        return context;
     }
 
-    /**
-     * Whether the client behind a session accepts {@code structuredContent}. An unknown or
-     * {@code null} session answers {@code true}.
-     *
-     * @param sessionId the session id (may be {@code null})
-     * @return {@code false} only when that session's client explicitly opted out
-     */
     public boolean allowsStructuredContent(String sessionId)
     {
         return !Boolean.FALSE.equals(capabilityOf(sessionId));
     }
 
-    /**
-     * Looks a session up ONCE, answering both "is it open?" and the capability.
-     *
-     * @param sessionId the session id (may be {@code null})
-     * @return {@code TRUE}/{@code FALSE} for an open session, or {@code null} when unknown
-     */
     public Boolean capabilityOf(String sessionId)
     {
         SessionContext context = lookup(sessionId, null);
         return context == null ? null : Boolean.valueOf(context.allowsStructuredContent());
     }
 
-    /**
-     * Whether the id identifies an open session (any path).
-     *
-     * @param sessionId the session id (may be {@code null})
-     * @return {@code true} when the id belongs to an open session
-     */
     public boolean isValid(String sessionId)
     {
         return lookup(sessionId, null) != null;
     }
 
-    /**
-     * Whether the id identifies an open session bound to {@code canonicalPath}.
-     *
-     * @param sessionId the session id (may be {@code null})
-     * @param canonicalPath the request path
-     * @return {@code true} when the session exists on that path
-     */
     public boolean isValid(String sessionId, String canonicalPath)
     {
         return lookup(sessionId, canonicalPath) != null;
     }
 
-    /**
-     * Closes a session. Unknown or {@code null} ids are ignored (idempotent).
-     *
-     * @param sessionId the session id to close (may be {@code null})
-     */
     public void close(String sessionId)
     {
         if (sessionId != null)
         {
-            sessions.remove(sessionId);
+            synchronized (lock)
+            {
+                sessions.remove(sessionId);
+            }
         }
     }
 
-    /**
-     * Closes {@code sessionId} only when it is bound to {@code canonicalPath}.
-     *
-     * @param sessionId the session to close
-     * @param canonicalPath the DELETE path
-     * @return {@code true} when a matching session was removed
-     */
     public boolean closeOnPath(String sessionId, String canonicalPath)
+    {
+        return closeForDelete(sessionId, canonicalPath) == CloseResult.CLOSED;
+    }
+
+    CloseResult closeForDelete(String sessionId, String canonicalPath)
     {
         if (sessionId == null || canonicalPath == null)
         {
-            return false;
+            return CloseResult.UNKNOWN;
         }
-        SessionContext context = sessions.get(sessionId);
-        if (context == null || !context.matchesPath(canonicalPath))
+        synchronized (lock)
         {
-            return false;
+            cleanupExpiredLocked(clock.millis());
+            SessionContext context = sessions.get(sessionId);
+            if (context == null)
+            {
+                return CloseResult.UNKNOWN;
+            }
+            if (!context.matchesPath(canonicalPath))
+            {
+                return CloseResult.PATH_MISMATCH;
+            }
+            sessions.remove(sessionId);
+            return CloseResult.CLOSED;
         }
-        return sessions.remove(sessionId, context);
     }
 
-    /**
-     * Closes every client session bound to {@code canonicalPath}.
-     *
-     * @param canonicalPath the MCP path whose sessions must reconnect
-     * @return how many sessions were closed
-     */
     public int closeByCanonicalPath(String canonicalPath)
     {
         if (canonicalPath == null)
         {
             return 0;
         }
-        int closed = 0;
-        for (SessionContext context : sessions.values())
+        synchronized (lock)
         {
-            if (context.matchesPath(canonicalPath) && sessions.remove(context.getSessionId(), context))
-            {
-                closed++;
-            }
+            cleanupExpiredLocked(clock.millis());
+            int before = sessions.size();
+            sessions.values().removeIf(context -> context.matchesPath(canonicalPath));
+            return before - sessions.size();
         }
-        return closed;
+    }
+
+    /** Removes every session whose idle time has reached the configured TTL. */
+    public int cleanupExpired()
+    {
+        synchronized (lock)
+        {
+            return cleanupExpiredLocked(clock.millis());
+        }
     }
 
     /**
-     * @return the open session count
+     * Attaches idle cleanup to the proxy's lifecycle scheduler. Repeated calls replace the previous
+     * task; shutdown cancels the task without owning or stopping the supplied executor.
      */
+    public void startPeriodicCleanup(ScheduledExecutorService scheduler)
+    {
+        Objects.requireNonNull(scheduler, "scheduler"); //$NON-NLS-1$
+        synchronized (lock)
+        {
+            if (shutdown)
+            {
+                throw new IllegalStateException("Session manager is shut down"); //$NON-NLS-1$
+            }
+            if (cleanupTask != null)
+            {
+                cleanupTask.cancel(false);
+            }
+            long delayMillis = Math.max(1L, Math.min(ttl.toMillis(), Duration.ofMinutes(1).toMillis()));
+            cleanupTask = scheduler.scheduleWithFixedDelay(this::cleanupExpired,
+                delayMillis, delayMillis, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /** Cancels periodic cleanup and permanently drops all client sessions. Idempotent. */
+    public void shutdown()
+    {
+        synchronized (lock)
+        {
+            shutdown = true;
+            if (cleanupTask != null)
+            {
+                cleanupTask.cancel(false);
+                cleanupTask = null;
+            }
+            sessions.clear();
+        }
+    }
+
     public int activeCount()
     {
-        return sessions.size();
+        synchronized (lock)
+        {
+            cleanupExpiredLocked(clock.millis());
+            return sessions.size();
+        }
+    }
+
+    boolean hasCleanupTask()
+    {
+        synchronized (lock)
+        {
+            return cleanupTask != null && !cleanupTask.isCancelled();
+        }
+    }
+
+    private int cleanupExpiredLocked(long now)
+    {
+        int removed = 0;
+        for (Iterator<SessionContext> iterator = sessions.values().iterator(); iterator.hasNext();)
+        {
+            if (iterator.next().isExpired(now, ttl))
+            {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
     }
 }

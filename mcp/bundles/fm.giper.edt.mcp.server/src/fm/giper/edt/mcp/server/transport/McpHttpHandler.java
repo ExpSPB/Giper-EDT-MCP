@@ -121,13 +121,17 @@ public class McpHttpHandler implements HttpHandler
                 exchange.close();
                 return;
             }
+            SseStreamRegistry registry = SseStreamRegistry.getInstance();
+            SseStreamRegistry.RequestedPathAdmission admission = registry
+                .admitRequestedPath(context.getRequestedPath());
             McpRequestContext bound = bindSession(exchange, context);
             if (bound == null)
             {
+                registry.releaseAdmission(admission);
                 exchange.close();
                 return;
             }
-            handleSseInDedicatedPool(exchange, bound);
+            handleSseInDedicatedPool(exchange, bound, admission);
             return;
         }
 
@@ -219,11 +223,13 @@ public class McpHttpHandler implements HttpHandler
      * The exchange lifecycle (including close) is managed entirely by the SSE thread,
      * so the main pool thread is released immediately.
      */
-    private void handleSseInDedicatedPool(HttpExchange exchange, McpRequestContext context)
+    private void handleSseInDedicatedPool(HttpExchange exchange, McpRequestContext context,
+        SseStreamRegistry.RequestedPathAdmission admission)
     {
         ExecutorService sse = server.getSseExecutor();
         if (sse == null || sse.isShutdown())
         {
+            SseStreamRegistry.getInstance().releaseAdmission(admission);
             try
             {
                 HttpTransport.sendResponse(exchange, 503,
@@ -245,7 +251,7 @@ public class McpHttpHandler implements HttpHandler
             sse.submit(() -> {
                 try
                 {
-                    handleSseStream(exchange, context);
+                    handleSseStream(exchange, context, admission);
                 }
                 catch (IOException e)
                 {
@@ -257,6 +263,7 @@ public class McpHttpHandler implements HttpHandler
                 }
                 finally
                 {
+                    SseStreamRegistry.getInstance().releaseAdmission(admission);
                     try
                     {
                         exchange.close();
@@ -270,6 +277,7 @@ public class McpHttpHandler implements HttpHandler
         }
         catch (RejectedExecutionException e)
         {
+            SseStreamRegistry.getInstance().releaseAdmission(admission);
             // SSE pool shutting down
             try
             {
@@ -430,7 +438,8 @@ public class McpHttpHandler implements HttpHandler
      * that require an established SSE stream before sending POST requests.
      * The server keeps the connection alive with periodic heartbeats.
      */
-    private void handleSseStream(HttpExchange exchange, McpRequestContext context) throws IOException
+    private void handleSseStream(HttpExchange exchange, McpRequestContext context,
+        SseStreamRegistry.RequestedPathAdmission admission) throws IOException
     {
         String acceptHeader = exchange.getRequestHeaders().getFirst("Accept"); //$NON-NLS-1$
 
@@ -448,10 +457,23 @@ public class McpHttpHandler implements HttpHandler
             // comments. Both heartbeat and broadcast writes go through the registered
             // SseStream, which serializes them so frames never interleave.
             java.io.OutputStream os = exchange.getResponseBody();
-            SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance()
-                .register(os, context != null ? context.getSessionId() : null,
+            SseStreamRegistry registry = SseStreamRegistry.getInstance();
+            SseStreamRegistry.SseStream stream = registry.registerIfCurrent(os,
+                context != null ? context.getSessionId() : null,
                     context != null ? context.getRequestedPath() : McpEndpoint.LEGACY_PATH,
-                    context != null ? context.getProtocolVersion() : null);
+                    context != null ? context.getProtocolVersion() : null, admission);
+            if (stream == null)
+            {
+                return;
+            }
+            String sessionId = context != null ? context.getSessionId() : null;
+            if (sessionId != null && server.getSessionRegistry()
+                .lookup(sessionId, context.getRequestedPath(), true).getStatus() != LookupStatus.OK)
+            {
+                registry.unregister(stream);
+                stream.closeQuietly();
+                return;
+            }
             try
             {
                 while (!Thread.currentThread().isInterrupted()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability
@@ -475,7 +497,7 @@ public class McpHttpHandler implements HttpHandler
             }
             finally
             {
-                SseStreamRegistry.getInstance().unregister(stream);
+                registry.unregister(stream);
                 try
                 {
                     os.close();

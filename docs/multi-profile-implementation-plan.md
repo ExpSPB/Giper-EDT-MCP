@@ -1,6 +1,6 @@
 # План реализации многопрофильных наборов MCP
 
-Статус: утверждено пользователем 29 августа 2026 года. Исходный код не изменён, реализация не начата.
+Статус: утверждено пользователем 29 августа 2026 года; реализация проходит remediation после code review.
 
 Основание: утверждённая спецификация
 [`multi-profile-tool-surfaces.md`](multi-profile-tool-surfaces.md).
@@ -38,8 +38,9 @@ allowlist прямым вызовом, ресурсом, Workmate bridge или 
    backend'ах. Endpoint в ответе переписывается на URL proxy.
 7. Если backend'ов нет, proxy публикует только `router_status` и `router_refresh`, а initialize
    сообщает, что существование профиля ещё не подтверждено.
-8. Изменение состава или fingerprint группы атомарно инвалидирует кеш и создаёт
-   `notifications/tools/list_changed` только для затронутого endpoint.
+8. Изменение состава или fingerprint proxy-группы атомарно инвалидирует кеш. Backend
+   `notifications/tools/list_changed` может адресно обновить proxy-клиентов; Apply профиля на самом
+   plugin использует reconnect/kick и не требует live notification.
 
 Это правило предпочтительнее пересечения allowlist: пересечение скрыто меняло бы роль при каждом
 подключении EDT и не давало бы правдивого единственного `activeProfile`.
@@ -52,7 +53,7 @@ allowlist прямым вызовом, ресурсом, Workmate bridge или 
 | `profiles` | `ProfileResolution`, `ProfileResolver`, `ToolProfileChangeSet` | Requested/effective profile, fallback и diff snapshot'ов. |
 | `protocol` | `McpRequestContext`, `ProfileToolPolicy` | Явный контекст запроса и единая авторизация списков, ресурсов и вызовов. |
 | `transport` | `McpEndpointResolver`, `McpTransportSession`, `McpSessionRegistry` | Строгий разбор URL, path-bound sessions, TTL и DELETE. |
-| transport/runtime | `ProfileNotificationService` | Адресные list-changed уведомления при изменении эффективной поверхности. |
+| transport/runtime | `ProfileNotificationService` | Адресное закрытие сессий/SSE изменившейся эффективной поверхности. |
 | runtime | `ActiveToolCallRegistry` | Изоляция параллельных вызовов, сигналов прерывания и отображаемого статуса. |
 | preferences | `ToolProfilesEditorModel`, `ToolProfileDialog` | Тестируемая без SWT модель CRUD и UI-диалоги. |
 | proxy | `ProfileEndpoint`, `BackendProfileChannel`, профильный registry snapshot | Раздельные backend sessions, кеши и routing groups по профилю. |
@@ -279,35 +280,39 @@ proxy -> только публичный wire-контракт backend
 - профиль невозможно выбрать телом, заголовком или session state;
 - `/mcp` остаётся совместимым.
 
-## 10. Этап 6. Адресные SSE-уведомления и горячее изменение профиля
+## 10. Этап 6. Адресный reconnect/kick при горячем изменении профиля
 
 ### Изменения
 
-1. `SseStreamRegistry` регистрирует stream с session и requested endpoint, а не в общем наборе.
-2. Из нескольких GET streams одной session сообщение отправляется ровно в один; heartbeat и
-   notification остаются сериализованными на stream lock.
+1. `SseStreamRegistry` регистрирует stream с session и requested endpoint, а не в общем наборе, и
+   физически закрывает output при удалении сессии.
+2. Repository change закрывает сессии и SSE streams затронутого requested endpoint. Клиент повторяет
+   `initialize` на том же URL; live `tools/list_changed` без reconnect не является обязательным.
 3. `ProfileNotificationService` слушает repository и сравнивает старую/новую эффективную поверхность
    каждого активного requested path.
-4. Уведомлять только при фактическом изменении tool descriptors:
+4. Выполнять kick только при фактическом изменении tool descriptors:
    - изменение обычного профиля;
    - disable/delete → `default`;
    - create/enable ранее неизвестного профиля;
    - изменение `default`, включая подключённые fallback paths.
-5. Авторизация нового snapshot действует до попытки доставки уведомления.
-6. Fallback warning логируется на initialize и изменение resolution, а не на каждый poll.
+5. Изменение `default` также закрывает `/mcp`, explicit default и активные fallback paths, поверхность
+   которых фактически изменилась; посторонние endpoint'ы не затрагиваются.
+6. Авторизация нового snapshot действует до попытки закрытия соединений.
+7. Fallback warning логируется на initialize и изменение resolution, а не на каждый poll.
 
 ### Тесты
 
 - расширить `SseStreamRegistryTest`;
-- одна доставка на session, изоляция endpoint'ов, очистка при DELETE/expiry;
-- no-op profile update не уведомляет;
-- disable/create/enable и изменение `default` уведомляют правильные пути;
-- ошибка SSE не оставляет старое разрешение действующим.
+- закрытие output при DELETE/expiry, изоляция endpoint'ов;
+- no-op profile update не закрывает соединения;
+- disable/create/enable и изменение `default` закрывают правильные paths;
+- клиент повторяет initialize и получает новую поверхность;
+- ошибка kick не оставляет старое разрешение действующим.
 
 ### Критерии выхода
 
 - изменение профиля не вызывает `McpServer.restart`;
-- посторонние клиенты не получают уведомление;
+- посторонние клиенты не отключаются;
 - права меняются атомарно независимо от состояния SSE.
 
 ## 11. Этап 7. Самодиагностика и выбор профиля агентом
@@ -426,12 +431,13 @@ errors и README остаются английскими согласно пра
 - `ToolProfilesEditorModelTest`: весь CRUD, dirty state, preset, unknown tools, conflict/reload;
 - `MessagesParityTest`;
 - существующие `ToolSettingsServiceTest` и page tests;
-- ручной UI smoke: CRUD, Copy URL, Apply без disconnect, Restore Selected и restart только для port.
+- ручной UI smoke: CRUD, Copy URL, адресный reconnect после Apply, Restore Selected без изменения
+  global destructive consent/parameters и restart только для port.
 
 ### Критерии выхода
 
 - вся бизнес-логика редактора покрыта headless tests;
-- Apply профиля не разрывает MCP connections;
+- Apply профиля разрывает только сессии затронутой поверхности и требует повторного initialize;
 - два окна Preferences не могут молча перезаписать изменения друг друга.
 
 ## 14. Этап 10. Profile-aware proxy
@@ -451,6 +457,8 @@ errors и README остаются английскими согласно пра
    client endpoint.
 4. HTTP 404 инвалидирует только session соответствующего channel и повторяет initialize на том же
    profile URL.
+5. Malformed status или `tools/list` не создаёт успешный resolution; отсутствие профильных полей
+   считается legacy default только для `/mcp`.
 
 ### Profile groups и cache
 
@@ -466,6 +474,8 @@ errors и README остаются английскими согласно пра
    path-bound client session.
 6. `router_status` показывает несовместимые backend'ы; `availableProfiles` строится по правилу
    раздела 2.
+7. При пустой или неподтверждённой compatible group proxy публикует только `router_status` и
+   `router_refresh`; routed/fan-out вызовы не используют глобальный donor или все live backend'ы.
 
 ### SSE
 

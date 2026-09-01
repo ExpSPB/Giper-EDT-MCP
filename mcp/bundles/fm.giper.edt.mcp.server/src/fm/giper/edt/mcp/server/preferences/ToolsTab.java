@@ -1080,7 +1080,7 @@ public class ToolsTab
 
     /**
      * Resets only the selected profile allowlist after confirmation. Other profiles
-     * and global settings stay as they are except parameter defaults.
+     * and global consent/parameter settings stay unchanged.
      */
     public void performDefaults()
     {
@@ -1090,17 +1090,7 @@ public class ToolsTab
             return;
         }
         model.resetSelectedToShippedDefaults();
-        destructiveAllowedTools.clear();
         refreshProfileUi();
-
-        for (Map.Entry<String, List<ParameterDef>> entry : paramSettings.getAllParameters().entrySet())
-        {
-            for (ParameterDef param : entry.getValue())
-            {
-                String key = ToolParameterSettings.buildKey(entry.getKey(), param.getName());
-                pendingValues.put(key, param.getDefaultValue());
-            }
-        }
         if (selectedTool != null)
         {
             currentSpinners.clear();

@@ -39,6 +39,7 @@ public class ProfileNotificationServiceTest
     private ByteArrayOutputStream mcpSink;
     private ByteArrayOutputStream reviewSink;
     private final AtomicBoolean legacyRequired = new AtomicBoolean(false);
+    private final AtomicBoolean legacyArmedBeforeKick = new AtomicBoolean(false);
 
     @Before
     public void setUp()
@@ -46,7 +47,13 @@ public class ProfileNotificationServiceTest
         streams = SseStreamRegistry.getInstance();
         sessions = new McpSessionRegistry();
         service = new ProfileNotificationService(ProfileNotificationServiceTest::catalog, streams,
-            () -> sessions, legacyRequired::set);
+            () -> sessions, required -> {
+                if (required && streams.activeRequestedPaths().contains("/mcp")) //$NON-NLS-1$
+                {
+                    legacyArmedBeforeKick.set(true);
+                }
+                legacyRequired.set(required);
+            });
         mcpSink = new ByteArrayOutputStream();
         reviewSink = new ByteArrayOutputStream();
         mcpStream = streams.register(mcpSink, "mcp-session", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -62,6 +69,7 @@ public class ProfileNotificationServiceTest
         streams.unregister(reviewStream);
         sessions.shutdown();
         legacyRequired.set(false);
+        legacyArmedBeforeKick.set(false);
     }
 
     @Test
@@ -124,6 +132,8 @@ public class ProfileNotificationServiceTest
             assertFalse(streams.activeRequestedPaths().contains("/mcp/profiles/zz-missing")); //$NON-NLS-1$
             assertTrue(streams.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
             assertTrue(legacyRequired.get());
+            assertTrue("legacy session requirement must be armed before /mcp streams are kicked", //$NON-NLS-1$
+                legacyArmedBeforeKick.get());
             assertEquals(1, sessions.size());
             assertTrue(sessions.activeRequestedPaths().contains("/mcp/profiles/review")); //$NON-NLS-1$
         }

@@ -13,7 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 import fm.giper.edt.mcp.server.transport.McpEndpoint;
 
@@ -35,6 +37,7 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
     private static final SseStreamRegistry INSTANCE = new SseStreamRegistry();
 
     private final Set<SseStream> streams = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<String, RequestedPathState> requestedPathStates = new ConcurrentHashMap<>();
     private final AtomicLong eventId = new AtomicLong(0);
 
     private SseStreamRegistry()
@@ -82,6 +85,89 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
     }
 
     /**
+     * Captures the current close generation for a requested path before an SSE GET
+     * is queued on the dedicated executor.
+     */
+    public RequestedPathAdmission admitRequestedPath(String requestedPath)
+    {
+        String path = normalizePath(requestedPath);
+        RequestedPathAdmission[] admitted = new RequestedPathAdmission[1];
+        requestedPathStates.compute(path, (key, state) -> {
+            RequestedPathState current = state == null ? new RequestedPathState() : state;
+            current.lock.lock();
+            try
+            {
+                current.pendingAdmissions++;
+                admitted[0] = new RequestedPathAdmission(path, current, current.generation);
+            }
+            finally
+            {
+                current.lock.unlock();
+            }
+            return current;
+        });
+        return admitted[0];
+    }
+
+    /**
+     * Registers a queued SSE GET only if no path-level kick happened since admission.
+     * A kick racing with insertion either finds the stream in its scan or makes the
+     * post-insert generation check remove and close it.
+     *
+     * @return the registered stream, or {@code null} when its admission is stale
+     */
+    public SseStream registerIfCurrent(OutputStream out, String sessionId, String requestedPath,
+        String protocolVersion, RequestedPathAdmission admission)
+    {
+        return registerIfCurrent(out, sessionId, requestedPath, protocolVersion, admission, () -> {
+            // production path has no insertion hook
+        });
+    }
+
+    SseStream registerIfCurrent(OutputStream out, String sessionId, String requestedPath,
+        String protocolVersion, RequestedPathAdmission admission, Runnable afterAdd)
+    {
+        String path = normalizePath(requestedPath);
+        try
+        {
+            if (admission == null || !path.equals(admission.requestedPath))
+            {
+                closeQuietly(out);
+                return null;
+            }
+            admission.state.lock.lock();
+            try
+            {
+                if (admission.state.generation != admission.generation)
+                {
+                    closeQuietly(out);
+                    return null;
+                }
+                SseStream stream = new SseStream(out, sessionId, path, protocolVersion);
+                streams.add(stream);
+                afterAdd.run();
+                if (admission.state.generation != admission.generation)
+                {
+                    if (streams.remove(stream))
+                    {
+                        stream.closeQuietly();
+                    }
+                    return null;
+                }
+                return stream;
+            }
+            finally
+            {
+                admission.state.lock.unlock();
+            }
+        }
+        finally
+        {
+            release(admission);
+        }
+    }
+
+    /**
      * Removes a stream from the registry (on disconnect / close).
      *
      * @param stream the handle returned by {@link #register}
@@ -95,7 +181,10 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
     }
 
     /**
-     * Drops every stream bound to {@code sessionId}. No-op when the id is blank.
+     * Removes and closes every stream bound to {@code sessionId}. No-op when the id
+     * is blank. A stream is removed before its output is closed so heartbeat and
+     * broadcast iterations cannot discover it again; close failures are isolated to
+     * that stream.
      */
     public void unregisterBySession(String sessionId)
     {
@@ -107,7 +196,10 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
         {
             if (sessionId.equals(stream.getSessionId()))
             {
-                streams.remove(stream);
+                if (streams.remove(stream))
+                {
+                    stream.closeQuietly();
+                }
             }
         }
     }
@@ -144,17 +236,116 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
         {
             return 0;
         }
+        String path = normalizePath(requestedPath);
+        RequestedPathState[] selected = new RequestedPathState[1];
+        requestedPathStates.compute(path, (key, state) -> {
+            RequestedPathState current = state == null ? new RequestedPathState() : state;
+            current.kicksInProgress++;
+            selected[0] = current;
+            return current;
+        });
+        RequestedPathState state = selected[0];
         int closed = 0;
-        for (SseStream stream : streams)
+        state.lock.lock();
+        try
         {
-            if (requestedPath.equals(stream.getRequestedPath()))
+            state.generation++;
+            for (SseStream stream : streams)
             {
-                streams.remove(stream);
-                stream.closeQuietly();
-                closed++;
+                if (path.equals(stream.getRequestedPath()) && streams.remove(stream))
+                {
+                    stream.closeQuietly();
+                    closed++;
+                }
             }
         }
+        finally
+        {
+            state.lock.unlock();
+            requestedPathStates.computeIfPresent(path, (key, current) -> {
+                if (current == state)
+                {
+                    current.kicksInProgress--;
+                    return current.pendingAdmissions == 0 && current.kicksInProgress == 0 ? null : current;
+                }
+                return current;
+            });
+        }
         return closed;
+    }
+
+    private void release(RequestedPathAdmission admission)
+    {
+        if (admission == null || !admission.released.compareAndSet(false, true))
+        {
+            return;
+        }
+        requestedPathStates.computeIfPresent(admission.requestedPath, (key, state) -> {
+            if (state == admission.state)
+            {
+                state.pendingAdmissions--;
+                return state.pendingAdmissions == 0 && state.kicksInProgress == 0 ? null : state;
+            }
+            return state;
+        });
+    }
+
+    /** Releases an admission that never reached stream registration. Idempotent. */
+    public void releaseAdmission(RequestedPathAdmission admission)
+    {
+        release(admission);
+    }
+
+    /** Drops queued admission state after the SSE executor has been stopped. */
+    public void clearPendingAdmissions()
+    {
+        requestedPathStates.clear();
+    }
+
+    int pendingAdmissionPathCount()
+    {
+        return requestedPathStates.size();
+    }
+
+    private static String normalizePath(String requestedPath)
+    {
+        return requestedPath == null || requestedPath.isBlank() ? McpEndpoint.LEGACY_PATH : requestedPath;
+    }
+
+    private static void closeQuietly(OutputStream out)
+    {
+        try
+        {
+            out.close();
+        }
+        catch (IOException ignored)
+        {
+            // A stale queued GET has no registry entry; closing is best effort.
+        }
+    }
+
+    /** Admission token held only while an SSE GET waits for registration. */
+    public static final class RequestedPathAdmission
+    {
+        private final String requestedPath;
+        private final RequestedPathState state;
+        private final long generation;
+        private final AtomicBoolean released = new AtomicBoolean();
+
+        private RequestedPathAdmission(String requestedPath, RequestedPathState state, long generation)
+        {
+            this.requestedPath = requestedPath;
+            this.state = state;
+            this.generation = generation;
+        }
+    }
+
+    private static final class RequestedPathState
+    {
+        final ReentrantLock lock = new ReentrantLock();
+        long generation;
+        int pendingAdmissions;
+        int kicksInProgress;
     }
 
     /**
@@ -275,15 +466,17 @@ public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse s
             return protocolVersion;
         }
 
-        void closeQuietly()
+        public void closeQuietly()
         {
             try
             {
+                // Do not take the write lock here: close must be able to unblock a
+                // network write/flush that is currently stuck while holding it.
                 out.close();
             }
             catch (IOException ignored)
             {
-                // heartbeat loop exits on the next write
+                // The stream has already been removed; other streams still close.
             }
         }
 

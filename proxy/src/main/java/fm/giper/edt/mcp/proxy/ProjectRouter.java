@@ -207,19 +207,20 @@ public final class ProjectRouter
 
     private RouteResult lookup(String project, ProfileEndpoint endpoint)
     {
-        List<Integer> dupPorts = registry.duplicateProjects().get(project);
+        BackendRegistry.RoutingView view = registry.routingView(endpoint);
+        List<Integer> dupPorts = view.duplicatePorts(project);
         if (dupPorts != null)
         {
             return RouteResult.error("Project '" + project + "' is served by more than one EDT instance (ports " //$NON-NLS-1$ //$NON-NLS-2$
                 + joinPorts(dupPorts)
                 + "). Routing is ambiguous - close the project in the duplicate EDT instance, then call router_refresh."); //$NON-NLS-1$
         }
-        Backend owner = registry.byProject(project);
+        Backend owner = view.owner(project);
         if (owner == null)
         {
             return null;
         }
-        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        ProfileGroupSnapshot group = view.group();
         if (group.getDonor() == null)
         {
             return RouteResult.error("Project '" + project + "' cannot be routed: the profile group for " //$NON-NLS-1$ //$NON-NLS-2$

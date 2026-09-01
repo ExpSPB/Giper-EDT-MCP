@@ -30,6 +30,7 @@ public final class ProfileGroupSnapshot
     }
 
     private final ProfileEndpoint endpoint;
+    private final long generation;
     private final String effectiveProfileId;
     private final String fallbackReason;
     private final String fingerprint;
@@ -40,6 +41,13 @@ public final class ProfileGroupSnapshot
     public ProfileGroupSnapshot(ProfileEndpoint endpoint, String effectiveProfileId, String fallbackReason,
         String fingerprint, Backend donor, List<Backend> compatible, List<IncompatibleBackend> incompatible)
     {
+        this(-1L, endpoint, effectiveProfileId, fallbackReason, fingerprint, donor, compatible, incompatible);
+    }
+
+    ProfileGroupSnapshot(long generation, ProfileEndpoint endpoint, String effectiveProfileId, String fallbackReason,
+        String fingerprint, Backend donor, List<Backend> compatible, List<IncompatibleBackend> incompatible)
+    {
+        this.generation = generation;
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint"); //$NON-NLS-1$
         this.effectiveProfileId = effectiveProfileId;
         this.fallbackReason = fallbackReason;
@@ -47,6 +55,11 @@ public final class ProfileGroupSnapshot
         this.donor = donor;
         this.compatible = Collections.unmodifiableList(compatible);
         this.incompatible = Collections.unmodifiableList(incompatible);
+    }
+
+    long getGeneration()
+    {
+        return generation;
     }
 
     public ProfileEndpoint getEndpoint()
@@ -99,7 +112,7 @@ public final class ProfileGroupSnapshot
     {
         String requested = endpoint.getRequestedProfileId();
         String pathTag = isFallback() ? "fallback:" + endpoint.canonicalPath() : endpoint.canonicalPath(); //$NON-NLS-1$
-        return pathTag + "|" + requested + "|" + effectiveProfileId + "|" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return generation + "|" + pathTag + "|" + requested + "|" + effectiveProfileId + "|" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             + (isFallback() ? fallbackReason : "NONE") + "|" + fingerprint; //$NON-NLS-1$ //$NON-NLS-2$
     }
 

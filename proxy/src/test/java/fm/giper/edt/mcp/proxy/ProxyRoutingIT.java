@@ -610,6 +610,7 @@ public class ProxyRoutingIT
         /** Stops the HTTP server. */
         void stop()
         {
+            registry.shutdown();
             server.stop();
         }
 

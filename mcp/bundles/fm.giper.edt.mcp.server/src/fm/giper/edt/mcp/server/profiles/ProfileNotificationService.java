@@ -90,7 +90,6 @@ public final class ProfileNotificationService implements ToolProfileRepository.L
                 paths.add(McpEndpoint.PROFILES_PREFIX + id);
             }
         }
-        boolean defaultSurfaceChanged = false;
         for (String path : paths)
         {
             ProfileResolution before = resolve(path, previous);
@@ -115,15 +114,13 @@ public final class ProfileNotificationService implements ToolProfileRepository.L
                     + after.getRequestedProfileId() + "' is unavailable (" //$NON-NLS-1$
                     + after.getFallbackReason() + ")"); //$NON-NLS-1$
             }
-            kick(path, registry);
             if (McpEndpoint.LEGACY_PATH.equals(path))
             {
-                defaultSurfaceChanged = true;
+                // Close the admission window before the path kick: a sessionless
+                // legacy GET that starts after this point must initialize again.
+                legacySessionRequired.accept(Boolean.TRUE);
             }
-        }
-        if (defaultSurfaceChanged)
-        {
-            legacySessionRequired.accept(Boolean.TRUE);
+            kick(path, registry);
         }
     }
 

@@ -10,6 +10,7 @@ package fm.giper.edt.mcp.server.profiles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,7 @@ public final class ToolProfileSnapshot
                 sorted.put(profile.getId(), profile);
             }
         }
+        listed.sort(Comparator.comparing(ToolProfile::getId));
         return new ToolProfileSnapshot(schemaVersion, documentRevision, List.copyOf(listed),
             Collections.unmodifiableMap(new LinkedHashMap<>(sorted)));
     }

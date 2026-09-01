@@ -13,7 +13,9 @@ modified in any way: the proxy talks to ordinary Giper-EDT-MCP servers over thei
 `/mcp` and `/mcp/profiles/<id>` endpoints using the same MCP Streamable HTTP wire
 contract. Profile routing is fail-closed: backends that do not share the same
 effective profile id, fallback state and tool-list fingerprint are not one
-surface.
+surface. A malformed backend status or `tools/list`, or an empty compatible
+group, leaves only `router_status` and `router_refresh` visible; backend calls
+are neither routed nor fanned out until a group is confirmed.
 
 ## Quick start
 

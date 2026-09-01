@@ -14,6 +14,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
@@ -153,6 +155,109 @@ public class SseStreamRegistryTest
         }
     }
 
+    @Test
+    public void unregisterBySessionClosesAllStreamsAndContinuesAfterCloseFailure()
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        int before = reg.activeStreamCount();
+        CloseTrackingOutputStream first = new CloseTrackingOutputStream();
+        CloseTrackingOutputStream second = new CloseTrackingOutputStream();
+        CloseTrackingOutputStream other = new CloseTrackingOutputStream();
+        SseStreamRegistry.SseStream a = reg.register(first, "close-all-zz", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+        SseStreamRegistry.SseStream b = reg.register(new CloseFailingOutputStream(), "close-all-zz", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+        SseStreamRegistry.SseStream c = reg.register(second, "close-all-zz", "/mcp/profiles/default"); //$NON-NLS-1$ //$NON-NLS-2$
+        SseStreamRegistry.SseStream kept = reg.register(other, "keep-all-zz", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+        try
+        {
+            reg.unregisterBySession("close-all-zz"); //$NON-NLS-1$
+
+            assertEquals(before + 1, reg.activeStreamCount());
+            assertTrue(first.closed);
+            assertTrue(second.closed);
+            assertTrue("another session must remain open", !other.closed); //$NON-NLS-1$
+
+            // Repeated DELETE/session cleanup is intentionally idempotent.
+            reg.unregisterBySession("close-all-zz"); //$NON-NLS-1$
+            assertEquals(before + 1, reg.activeStreamCount());
+        }
+        finally
+        {
+            reg.unregister(a);
+            reg.unregister(b);
+            reg.unregister(c);
+            reg.unregister(kept);
+        }
+    }
+
+    @Test
+    public void sessionCloseUnblocksAWriteHoldingTheStreamLock() throws Exception
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        BlockingUntilClosedOutputStream output = new BlockingUntilClosedOutputStream();
+        SseStreamRegistry.SseStream stream = reg.register(output, "blocked-close-zz", "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+        Thread writer = new Thread(() -> {
+            try
+            {
+                stream.write("blocked"); //$NON-NLS-1$
+            }
+            catch (IOException expected)
+            {
+                // Concurrent close is expected to terminate the blocked write.
+            }
+        });
+        writer.start();
+        try
+        {
+            assertTrue("the write must be blocked before DELETE closes it", //$NON-NLS-1$
+                output.writeStarted.await(1, TimeUnit.SECONDS));
+
+            reg.unregisterBySession("blocked-close-zz"); //$NON-NLS-1$
+
+            assertTrue(output.closed);
+            writer.join(1000L);
+            assertTrue("closing the output must release the blocked writer", !writer.isAlive()); //$NON-NLS-1$
+        }
+        finally
+        {
+            reg.unregister(stream);
+            output.close();
+            writer.join(1000L);
+        }
+    }
+
+    @Test
+    public void queuedRegistrationIsRejectedAfterPathKick()
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        String path = "/mcp/profiles/queued-kick-zz"; //$NON-NLS-1$
+        SseStreamRegistry.RequestedPathAdmission admission = reg.admitRequestedPath(path);
+        reg.closeByRequestedPath(path);
+        CloseTrackingOutputStream output = new CloseTrackingOutputStream();
+
+        SseStreamRegistry.SseStream stale = reg.registerIfCurrent(output, "queued-kick-session-zz", //$NON-NLS-1$
+            path, null, admission);
+
+        assertEquals(null, stale);
+        assertTrue("a queued GET admitted before kick must have its output closed", output.closed); //$NON-NLS-1$
+    }
+
+    @Test
+    public void registrationReturnsNullWhenKickRemovesStreamAfterInsertion()
+    {
+        SseStreamRegistry reg = SseStreamRegistry.getInstance();
+        String path = "/mcp/profiles/insert-race-zz"; //$NON-NLS-1$
+        SseStreamRegistry.RequestedPathAdmission admission = reg.admitRequestedPath(path);
+        CloseTrackingOutputStream output = new CloseTrackingOutputStream();
+
+        SseStreamRegistry.SseStream stale = reg.registerIfCurrent(output, "insert-race-session-zz", //$NON-NLS-1$
+            path, null, admission, () -> reg.closeByRequestedPath(path));
+
+        assertEquals(null, stale);
+        assertTrue(output.closed);
+        assertEquals("completed admissions must not retain path tombstones", //$NON-NLS-1$
+            0, reg.pendingAdmissionPathCount());
+    }
+
     private static final class CloseTrackingOutputStream extends ByteArrayOutputStream
     {
         boolean closed;
@@ -162,6 +267,45 @@ public class SseStreamRegistryTest
         {
             closed = true;
             super.close();
+        }
+    }
+
+    private static final class CloseFailingOutputStream extends ByteArrayOutputStream
+    {
+        @Override
+        public void close() throws IOException
+        {
+            throw new IOException("simulated close failure"); //$NON-NLS-1$
+        }
+    }
+
+    private static final class BlockingUntilClosedOutputStream extends OutputStream
+    {
+        final CountDownLatch writeStarted = new CountDownLatch(1);
+        final CountDownLatch closeSignal = new CountDownLatch(1);
+        volatile boolean closed;
+
+        @Override
+        public void write(int value) throws IOException
+        {
+            writeStarted.countDown();
+            try
+            {
+                closeSignal.await();
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted", e); //$NON-NLS-1$
+            }
+            throw new IOException("closed"); //$NON-NLS-1$
+        }
+
+        @Override
+        public void close()
+        {
+            closed = true;
+            closeSignal.countDown();
         }
     }
 }

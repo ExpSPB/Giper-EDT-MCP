@@ -7,6 +7,7 @@
 
 package fm.giper.edt.mcp.proxy;
 
+import java.time.Duration;
 import java.util.Objects;
 
 /**
@@ -24,13 +25,19 @@ public final class SessionContext
     SessionContext(String sessionId, ProfileEndpoint endpoint, String protocolVersion,
         boolean allowsStructuredContent)
     {
+        this(sessionId, endpoint, protocolVersion, allowsStructuredContent, System.currentTimeMillis());
+    }
+
+    SessionContext(String sessionId, ProfileEndpoint endpoint, String protocolVersion,
+        boolean allowsStructuredContent, long createdAtMillis)
+    {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId"); //$NON-NLS-1$
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint"); //$NON-NLS-1$
         this.protocolVersion = protocolVersion == null || protocolVersion.isBlank()
             ? Backend.PROTOCOL_VERSION
             : protocolVersion;
         this.allowsStructuredContent = allowsStructuredContent;
-        this.lastAccessMillis = System.currentTimeMillis();
+        this.lastAccessMillis = createdAtMillis;
     }
 
     public String getSessionId()
@@ -58,9 +65,15 @@ public final class SessionContext
         return lastAccessMillis;
     }
 
-    void touch()
+    void touch(long nowMillis)
     {
-        lastAccessMillis = System.currentTimeMillis();
+        lastAccessMillis = nowMillis;
+    }
+
+    boolean isExpired(long nowMillis, Duration ttl)
+    {
+        long lastAccess = lastAccessMillis;
+        return nowMillis >= lastAccess && nowMillis - lastAccess >= ttl.toMillis();
     }
 
     boolean matchesPath(String canonicalPath)
