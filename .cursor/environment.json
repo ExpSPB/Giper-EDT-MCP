@@ -1,0 +1,9 @@
+{
+  "name": "Giper-EDT-MCP",
+  "user": "ubuntu",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "install": "bash source/compile.sh --skip-tests && mvn -f proxy/pom.xml -B -ntp -DskipTests package"
+}

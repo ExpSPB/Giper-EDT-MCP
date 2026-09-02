@@ -28,6 +28,16 @@ bash source/compile.sh --skip-tests
 - **The first build is slow**: Tycho pulls the EDT p2 repository (`edt.1c.ru`) + the Eclipse SDK (hundreds of MB). Once the caches are warm (`~/.m2/repository/p2`, `.cache/tycho`) it runs in ~1 minute. If the caches are absent and there's no network, the build legitimately can't run — say so, don't fake "green".
 - **Unit tests need the target platform too** (Mockito/JUnit come from the p2 target, not plain Maven Central) — a green `compile.sh` is the real proof for Java edits; grep only catches anchor/text problems.
 
+## Plugin version (p2 Update)
+
+EDT **Help → Check for Updates** / Install New Software compares OSGi `major.minor.micro`. Maven `1.0.4-SNAPSHOT` becomes `1.0.4.qualifier`; a qualifier-only rebuild is **not** an update. **Always bump the micro** (`1.0.3` → `1.0.4-SNAPSHOT`) when the installed plugin must pick up new bits:
+
+```bash
+mvn -f mcp/pom.xml org.eclipse.tycho:tycho-versions-plugin:set-version -DnewVersion=1.0.4-SNAPSHOT
+```
+
+Then check `mcp/bom/pom.xml` and the `bom` parent version in `mcp/pom.xml` — the Tycho plugin often leaves those at the old value. Do not bump for a docs-only or test-only change that will not be installed into EDT.
+
 ## Live redeploy (Tier 2 — the only proof of runtime behaviour)
 
 A green build proves Java logic; only a redeploy proves a tool's schema, description, response and behaviour. The loop itself (non-elevated EDT copy, `edt-redeploy.ps1`, `MCP server UP on 8765`, exit 1 ≠ failure, anti-stale jar check, kill + `-clean` when EDT wedges) is in `edt-mcp-testing` and `edt-mcp-ready-to-deploy`. The traps that belong to the build:

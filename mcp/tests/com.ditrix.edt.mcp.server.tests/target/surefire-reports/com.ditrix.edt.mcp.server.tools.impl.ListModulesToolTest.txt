@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testBlankProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testResultFileNameUsesLowercasedProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testDescriptionSteersToGuideAndStructure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testResultFileNameFallsBackWhenProjectNameMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testResultFileNameFallsBackOnBlankProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testSchemaEnumListsEveryHandledType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testNullParamsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListModulesToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

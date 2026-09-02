@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testDescriptionMentionsConsumingTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testMissingProjectNameOmitsInheritedFromProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testBlankProjectNameIsAlsoMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testResponseTypeJsonConstantSurface -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testMissingProjectNameIsStructuredErrorEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testInputSchemaMarksProjectNameRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testConnectsToInfobaseIsTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testOutputSchemaDeclaresAllFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetApplicationsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

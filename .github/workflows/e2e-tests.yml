@@ -100,11 +100,21 @@ jobs:
           MAVEN_OPTS: -Xmx2g -XX:+UseParallelGC
         run: bash "$GITHUB_WORKSPACE/.github/scripts/mvn-retry.sh" clean verify --batch-mode --no-transfer-progress -T 1C -DskipTests
 
+      - name: Build the MCP proxy
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/mvn-retry.sh" -f proxy/pom.xml clean package --batch-mode --no-transfer-progress -DskipTests
+
       - name: Upload plugin p2 repository
         uses: actions/upload-artifact@v7
         with:
           name: mcp-plugin-p2
           path: mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository
+          if-no-files-found: error
+
+      - name: Upload proxy jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-proxy-jar
+          path: proxy/target/edt-mcp-proxy-*.jar
           if-no-files-found: error
 
   e2e:
@@ -157,6 +167,7 @@ jobs:
       BSL_EXTENSION_IU: "com._1c.g5.v8.dt.bsl.extension"
       PLUGIN_REPO: "plugin-p2"
       MCP_PORT: "8765"
+      MCP_PROXY_PORT: "8764"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -177,6 +188,12 @@ jobs:
         with:
           name: mcp-plugin-p2
           path: plugin-p2
+
+      - name: Download proxy jar
+        uses: actions/download-artifact@v8
+        with:
+          name: mcp-proxy-jar
+          path: proxy-jar
 
       # Coverage: pull the JaCoCo agent (attached to the EDT JVM below) and the CLI
       # (used to dump the .exec out of the running JVM before EDT is stopped).
@@ -340,6 +357,8 @@ jobs:
           WS="$RUNNER_TEMP/edt-ws"
           LOG="$RUNNER_TEMP/edt.log"
           mkdir -p "$WS"
+          python3 "$GITHUB_WORKSPACE/tests/e2e/fixtures/seed_tool_profiles.py" "$WS"
+          echo "[edt] seeded e2e tool profiles into $WS"
           echo "edt_log=$LOG" >> "$GITHUB_ENV"
           export EDT_MCP_AUTO_START=true
           export EDT_MCP_PORT="$MCP_PORT"
@@ -388,6 +407,24 @@ jobs:
           echo "[edt] ERROR: MCP server did not come up within ~10 min."
           tail -n 200 "$LOG" || true
           exit 1
+
+      - name: Start edt-mcp-proxy on :8764
+        shell: bash
+        run: |
+          set -uo pipefail
+          PROXY_JAR="$(ls proxy-jar/edt-mcp-proxy-*.jar | head -n 1)"
+          java -jar "$PROXY_JAR" serve --port 8764 --scan 8765-8765 >/tmp/edt-mcp-proxy.log 2>&1 &
+          echo "proxy_pid=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            if curl -sf "http://127.0.0.1:8764/health" >/dev/null 2>&1; then
+              echo "[proxy] UP on 8764"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "[proxy] ERROR: did not come up"
+          tail -n 80 /tmp/edt-mcp-proxy.log || true
+          exit 1
       # ── end EDT setup ────────────────────────────────────────────────────────────
 
       - name: Run E2E tests
@@ -415,6 +452,7 @@ jobs:
           # the readiness-wait countdown only appears when the process exits — which looks
           # like a hang during the (long) index wait. -u/PYTHONUNBUFFERED stream it live.
           PYTHONUNBUFFERED: "1"
+          MCP_PROXY_PORT: "8764"
         run: |
           # The divisor comes from strategy.job-total, so the matrix list above is the single
           # place a shard count is written. Report and artifact names carry the shard number
@@ -488,7 +526,9 @@ jobs:
 
       - name: Stop EDT
         if: always()
-        run: kill "${edt_pid:-0}" 2>/dev/null || true
+        run: |
+          kill "${proxy_pid:-0}" 2>/dev/null || true
+          kill "${edt_pid:-0}" 2>/dev/null || true
 
   # ONE check for the whole gate, assembled after every shard has reported. The shards are four
   # jobs, but the question a reader has is one question - "did the e2e suite pass?" - and the

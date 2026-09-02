@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -12,6 +13,21 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
 
@@ -227,5 +243,257 @@ public class SessionManagerTest
         assertNull("a closed session must be reported as unknown, not as permissive", //$NON-NLS-1$
             sessions.capabilityOf(optedOut));
         assertNull("a null id must be reported as unknown", sessions.capabilityOf(null)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSessionIsBoundToTheEndpointPath()
+    {
+        SessionManager sessions = new SessionManager();
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = sessions.create(review, "2025-11-25", true); //$NON-NLS-1$
+
+        assertTrue(sessions.isValid(id, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertFalse("replay on another path must be unknown", sessions.isValid(id, "/mcp")); //$NON-NLS-1$
+        assertNotNull(sessions.lookup(id, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertNull(sessions.lookup(id, "/mcp")); //$NON-NLS-1$
+        assertEquals("review", sessions.lookup(id, null).getEndpoint().getRequestedProfileId()); //$NON-NLS-1$
+        assertEquals("2025-11-25", sessions.lookup(id, null).getProtocolVersion()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testDeleteClosesOnlyTheMatchingSession()
+    {
+        SessionManager sessions = new SessionManager();
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String reviewId = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+        String defaultId = sessions.create();
+
+        assertFalse(sessions.closeOnPath(reviewId, "/mcp")); //$NON-NLS-1$
+        assertTrue(sessions.isValid(reviewId));
+        assertTrue(sessions.closeOnPath(reviewId, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertFalse(sessions.isValid(reviewId));
+        assertTrue(sessions.isValid(defaultId));
+        assertEquals(1, sessions.activeCount());
+    }
+
+    @Test
+    public void testCloseByCanonicalPathLeavesOtherProfiles()
+    {
+        SessionManager sessions = new SessionManager();
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String reviewId = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+        String defaultId = sessions.create();
+
+        assertEquals(1, sessions.closeByCanonicalPath("/mcp/profiles/review")); //$NON-NLS-1$
+        assertFalse(sessions.isValid(reviewId));
+        assertTrue(sessions.isValid(defaultId));
+        assertEquals(0, sessions.closeByCanonicalPath("/mcp/profiles/review")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void concurrentCreateCannotExceedTheHardCap() throws Exception
+    {
+        int cap = 32;
+        int contenders = 64;
+        MutableClock clock = new MutableClock(1_000L);
+        SessionManager sessions = new SessionManager(Duration.ofMinutes(5), clock, cap);
+        ExecutorService workers = Executors.newFixedThreadPool(contenders);
+        CountDownLatch ready = new CountDownLatch(contenders);
+        CountDownLatch start = new CountDownLatch(1);
+        try
+        {
+            List<Future<String>> futures = new ArrayList<>();
+            for (int i = 0; i < contenders; i++)
+            {
+                futures.add(workers.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return sessions.create();
+                }));
+            }
+            ready.await();
+            start.countDown();
+            AtomicInteger created = new AtomicInteger();
+            for (Future<String> future : futures)
+            {
+                if (get(future) != null)
+                {
+                    created.incrementAndGet();
+                }
+            }
+            assertEquals("exactly the configured capacity may be allocated", cap, created.get()); //$NON-NLS-1$
+        }
+        finally
+        {
+            workers.shutdownNow();
+        }
+        assertEquals("concurrent create must never oversubscribe the cap", cap, sessions.activeCount()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void expiredSessionsFreeCapacityWithoutDelete()
+    {
+        MutableClock clock = new MutableClock(10_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock, 2);
+        String first = sessions.create();
+        assertNotNull(sessions.create());
+        assertNull(sessions.create());
+
+        clock.advance(Duration.ofSeconds(10));
+        String replacement = sessions.create();
+
+        assertNotNull("create must lazily reclaim expired capacity", replacement); //$NON-NLS-1$
+        assertFalse(sessions.isValid(first));
+        assertEquals(1, sessions.activeCount());
+    }
+
+    @Test
+    public void expiredLookupAndWrongPathReplayAreUnknown()
+    {
+        MutableClock clock = new MutableClock(20_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock);
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+
+        clock.advance(Duration.ofSeconds(9));
+        assertNull("wrong-path replay must not touch the session", sessions.lookup(id, "/mcp")); //$NON-NLS-1$ //$NON-NLS-2$
+        clock.advance(Duration.ofSeconds(1));
+
+        assertNull("the original path must see an expired session as unknown", //$NON-NLS-1$
+            sessions.lookup(id, "/mcp/profiles/review")); //$NON-NLS-1$
+        assertEquals(0, sessions.activeCount());
+    }
+
+    @Test
+    public void wrongPathDeleteDoesNotExtendSessionTtl()
+    {
+        MutableClock clock = new MutableClock(25_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock);
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        String id = sessions.create(review, Backend.PROTOCOL_VERSION, true);
+
+        clock.advance(Duration.ofSeconds(9));
+        assertEquals(SessionManager.CloseResult.PATH_MISMATCH,
+            sessions.closeForDelete(id, "/mcp")); //$NON-NLS-1$
+        clock.advance(Duration.ofSeconds(1));
+
+        assertFalse("wrong-path DELETE must not touch the valid session", sessions.isValid(id)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void successfulLookupExtendsOnlyTheValidSession()
+    {
+        MutableClock clock = new MutableClock(30_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(10), clock);
+        String touched = sessions.create();
+        String abandoned = sessions.create();
+
+        clock.advance(Duration.ofSeconds(9));
+        assertNotNull(sessions.lookup(touched, "/mcp")); //$NON-NLS-1$
+        clock.advance(Duration.ofSeconds(2));
+
+        assertTrue("successful lookup must extend the idle deadline", sessions.isValid(touched)); //$NON-NLS-1$
+        assertFalse("an untouched peer must expire independently", sessions.isValid(abandoned)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void explicitCleanupRemovesIdleSessions()
+    {
+        MutableClock clock = new MutableClock(40_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(5), clock);
+        sessions.create();
+        sessions.create();
+        clock.advance(Duration.ofSeconds(5));
+
+        assertEquals(2, sessions.cleanupExpired());
+        assertEquals(0, sessions.activeCount());
+    }
+
+    @Test
+    public void shutdownClearsSessionsAndCancelsPeriodicCleanup()
+    {
+        MutableClock clock = new MutableClock(50_000L);
+        SessionManager sessions = new SessionManager(Duration.ofSeconds(5), clock);
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        try
+        {
+            sessions.create();
+            sessions.startPeriodicCleanup(scheduler);
+            assertTrue(sessions.hasCleanupTask());
+
+            sessions.shutdown();
+            sessions.shutdown();
+
+            assertFalse(sessions.hasCleanupTask());
+            assertEquals(0, sessions.activeCount());
+            assertNull("a shut-down manager must not issue new sessions", sessions.create()); //$NON-NLS-1$
+        }
+        finally
+        {
+            scheduler.shutdownNow();
+        }
+    }
+
+    private static String get(Future<String> future) throws Exception
+    {
+        try
+        {
+            return future.get();
+        }
+        catch (ExecutionException e)
+        {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception)
+            {
+                throw (Exception)cause;
+            }
+            throw e;
+        }
+    }
+
+    private static final class MutableClock extends Clock
+    {
+        private volatile long millis;
+        private final ZoneId zone;
+
+        MutableClock(long millis)
+        {
+            this(millis, ZoneOffset.UTC);
+        }
+
+        private MutableClock(long millis, ZoneId zone)
+        {
+            this.millis = millis;
+            this.zone = zone;
+        }
+
+        void advance(Duration duration)
+        {
+            millis += duration.toMillis();
+        }
+
+        @Override
+        public ZoneId getZone()
+        {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId requestedZone)
+        {
+            return new MutableClock(millis, requestedZone);
+        }
+
+        @Override
+        public Instant instant()
+        {
+            return Instant.ofEpochMilli(millis);
+        }
+
+        @Override
+        public long millis()
+        {
+            return millis;
+        }
     }
 }

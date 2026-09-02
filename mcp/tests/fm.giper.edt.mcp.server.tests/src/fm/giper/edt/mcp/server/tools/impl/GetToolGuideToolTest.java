@@ -1,23 +1,33 @@
 /**
  * MCP Server for EDT - Tests
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
 package fm.giper.edt.mcp.server.tools.impl;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.After;
 import org.junit.Test;
 
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.tools.BuiltInToolRegistrar;
+import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 
@@ -135,5 +145,100 @@ public class GetToolGuideToolTest
         assertTrue(md.contains("# get_tool_guide")); //$NON-NLS-1$
         // Its own required toolName parameter must appear in the rendered table.
         assertTrue(md.contains("toolName")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testDoesNotRevealGuideForAToolForbiddenByTheCurrentProfile()
+    {
+        McpToolRegistry.getInstance().register(new NamedGuideProbe("list_projects")); //$NON-NLS-1$
+        McpToolRegistry.getInstance().register(new NamedGuideProbe("write_module_source")); //$NON-NLS-1$
+
+        McpRequestContext review = McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve("review", false, ToolProfileSnapshot.of(1L, List.of( //$NON-NLS-1$
+                DefaultToolProfileFactory.createSafeDefault(),
+                ToolProfile.builder()
+                    .id("review") //$NON-NLS-1$
+                    .displayName("Review") //$NON-NLS-1$
+                    .allowedTools(Set.of("list_projects")) //$NON-NLS-1$
+                    .build()))))
+            .requestedPath("/mcp/review") //$NON-NLS-1$
+            .legacyCompatibilityWrapper(false)
+            .build();
+
+        Map<String, String> forbidden = new HashMap<>();
+        forbidden.put("toolName", "write_module_source"); //$NON-NLS-1$ //$NON-NLS-2$
+        String denied = new GetToolGuideTool().execute(forbidden, review);
+        assertTrue(denied.contains("\"success\":false")); //$NON-NLS-1$
+        assertTrue(denied.contains("write_module_source")); //$NON-NLS-1$
+        assertTrue(denied.contains("review")); //$NON-NLS-1$
+        assertFalse(denied.contains("# write_module_source")); //$NON-NLS-1$
+
+        Map<String, String> allowed = new HashMap<>();
+        allowed.put("toolName", "list_projects"); //$NON-NLS-1$ //$NON-NLS-2$
+        String ok = new GetToolGuideTool().execute(allowed, review);
+        assertTrue(ok.contains("# list_projects")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testDeniesGuideOnLegacyMcpWhenToolIsOutsideTheAllowlist()
+    {
+        McpToolRegistry.getInstance().register(new NamedGuideProbe("list_projects")); //$NON-NLS-1$
+        McpToolRegistry.getInstance().register(new NamedGuideProbe("write_module_source")); //$NON-NLS-1$
+
+        ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(1L, List.of(
+            DefaultToolProfileFactory.createDefault(Set.of("list_projects")))); //$NON-NLS-1$
+        McpRequestContext legacy = McpRequestContext.builder()
+            .resolution(ProfileResolver.resolve("default", true, snapshot)) //$NON-NLS-1$
+            .requestedPath("/mcp") //$NON-NLS-1$
+            .legacyCompatibilityWrapper(true)
+            .build();
+
+        Map<String, String> forbidden = new HashMap<>();
+        forbidden.put("toolName", "write_module_source"); //$NON-NLS-1$ //$NON-NLS-2$
+        String denied = new GetToolGuideTool().execute(forbidden, legacy);
+        assertTrue("legacy /mcp must apply the same allowlist as resources/read", //$NON-NLS-1$
+            denied.contains("\"success\":false")); //$NON-NLS-1$
+        assertTrue(denied.contains("write_module_source")); //$NON-NLS-1$
+        assertFalse(denied.contains("# write_module_source")); //$NON-NLS-1$
+    }
+
+    private static final class NamedGuideProbe implements IMcpTool
+    {
+        private final String name;
+
+        private NamedGuideProbe(String name)
+        {
+            this.name = name;
+        }
+
+        @Override
+        public String getName()
+        {
+            return name;
+        }
+
+        @Override
+        public String getDescription()
+        {
+            return "Guide probe"; //$NON-NLS-1$
+        }
+
+        @Override
+        public String getInputSchema()
+        {
+            return "{\"type\":\"object\",\"properties\":{}}"; //$NON-NLS-1$
+        }
+
+        @Override
+        public String execute(Map<String, String> params)
+        {
+            return ""; //$NON-NLS-1$
+        }
+
+        @Override
+        public ResponseType getResponseType()
+        {
+            return ResponseType.MARKDOWN;
+        }
     }
 }

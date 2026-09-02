@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.135 s -- in com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest
+com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest.finishingOneCallDoesNotClearTheOther -- Time elapsed: 0.009 s
+com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest.concurrentOfferAndConsumeStayOnOwningCall -- Time elapsed: 0.009 s
+com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest.signalOnOneCallIsNotConsumedByNeighbor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest.serverBoundThreadConsumesOnlyItsCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.ActiveToolCallRegistryTest.registerAssignsIdAndKeepsCallsSplit -- Time elapsed: 0 s

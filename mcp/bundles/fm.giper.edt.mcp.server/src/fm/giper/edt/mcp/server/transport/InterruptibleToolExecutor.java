@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -8,7 +9,9 @@ package fm.giper.edt.mcp.server.transport;
 
 import fm.giper.edt.mcp.server.ActiveToolCall;
 import fm.giper.edt.mcp.server.McpServer;
+import fm.giper.edt.mcp.server.history.McpCallHistory;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -47,13 +50,20 @@ public class InterruptibleToolExecutor
      */
     public String execute(HttpExchange exchange, String requestBody) throws Exception // NOSONAR propagates checked exceptions across the reflective boundary by design
     {
+        return execute(exchange, requestBody, McpRequestContext.legacyDefault());
+    }
+
+    public String execute(HttpExchange exchange, String requestBody, McpRequestContext context) throws Exception // NOSONAR propagates checked exceptions across the reflective boundary by design
+    {
         // Extract request ID and tool name for ActiveToolCall via the shared parser.
         JsonRpcRequest request = protocolHandler.parse(requestBody);
         Object requestId = request != null ? McpProtocolHandler.normalizeId(request.getId()) : null;
         String toolName = request != null && request.getToolName() != null ? request.getToolName() : "unknown"; //$NON-NLS-1$
 
         // Create and register active tool call
-        ActiveToolCall activeCall = new ActiveToolCall(exchange, toolName, requestId);
+        McpRequestContext resolved = context == null ? McpRequestContext.legacyDefault() : context;
+        ActiveToolCall activeCall = new ActiveToolCall(exchange, toolName, requestId,
+            server.getActiveToolCallRegistry().newCallId(), resolved.getSessionId());
         server.setActiveToolCall(activeCall);
 
         // Use a container to hold the result from the background thread
@@ -63,9 +73,11 @@ public class InterruptibleToolExecutor
 
         // Run tool execution in background thread
         Thread executionThread = new Thread(() -> {
+            server.bindExecutingCall(activeCall);
+            McpCallHistory.bindRequestMeta(resolved);
             try
             {
-                resultContainer[0] = protocolHandler.processRequest(requestBody);
+                resultContainer[0] = protocolHandler.processRequest(requestBody, resolved);
             }
             catch (Exception e)
             {
@@ -73,6 +85,8 @@ public class InterruptibleToolExecutor
             }
             finally
             {
+                McpCallHistory.clearRequestMeta();
+                server.bindExecutingCall(null);
                 synchronized (completedFlag)
                 {
                     completedFlag[0] = true;
@@ -100,7 +114,7 @@ public class InterruptibleToolExecutor
                     if (activeCall.hasResponded())
                     {
                         // User already sent a response, don't send another
-                        server.clearActiveToolCall();
+                        server.clearActiveToolCall(activeCall);
                         return null;
                     }
                 }
@@ -112,8 +126,7 @@ public class InterruptibleToolExecutor
             }
         }
 
-        // Clear active tool call
-        server.clearActiveToolCall();
+        server.clearActiveToolCall(activeCall);
 
         // Check if response was already sent while we were waiting
         if (activeCall.hasResponded())

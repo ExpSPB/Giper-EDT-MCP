@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testStateNameFallsBackToTheNumberForAStateWstDoesNotDefine -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testTheHeadlineAloneIsNotARefusal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testATransientStateIsReportedAsSuchAndNotAsAStuckServer -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testRefusalIsFoundInsideAChildStatus -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testStateNamesFollowWst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testStopWithoutATargetFailsInsteadOfThrowing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testErrorForTheStuckServerNamesWhatWasDoneAndWhatIsLeft -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testErrorWhenTheServerCouldNotBeStoppedTellsTheUserWhatToDo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testUnreadableStateIsNotInvented -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.StandaloneServerStateRecoveryTest.testRefusalIsFoundThroughTheWholeWrapping -- Time elapsed: 0 s

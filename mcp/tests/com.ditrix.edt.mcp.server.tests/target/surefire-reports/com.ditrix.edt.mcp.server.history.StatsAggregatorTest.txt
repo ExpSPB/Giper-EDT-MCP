@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.history.StatsAggregatorTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.history.StatsAggregatorTest
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testNonToolsCallKeyedByMethod -- Time elapsed: 0.006 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testSummaryTotals -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testContextWeightSortOrderAndTop3 -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testTimeWindowSlice -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testErrorShapeTopLevelJsonRpcError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testSharePercentSumsToAboutHundred -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testErrorShapeResultIsErrorAndSuccessFalse -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testCharAndWordCountsAndContextWeight -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testSuccessNotFlaggedByMereErrorKey -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testEmptyBufferAndNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.history.StatsAggregatorTest.testAvgAndTotalDuration -- Time elapsed: 0 s

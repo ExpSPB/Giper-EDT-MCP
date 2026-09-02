@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testSchemaRequiresProjectNameAndTags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testUnknownProjectWithTagsIsNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testMissingTagsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testBlankTagsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testEmptyJsonArrayTagsIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetObjectsByTagsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

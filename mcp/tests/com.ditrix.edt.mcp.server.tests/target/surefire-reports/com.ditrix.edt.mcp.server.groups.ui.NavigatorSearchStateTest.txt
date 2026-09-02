@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.049 s -- in com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testNonSearchFilterIsIgnored -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testReadNavigatorPatternIgnoresPlainViewers -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testNavigatorPatternMakesItASearch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testEmptyNavigatorPatternIsNotASearch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testReadPatternReadsStateHolder -- Time elapsed: 0.032 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testOpaqueSearchFilterKeepsTheConservativeAnswer -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testNoFiltersMeansNoSearch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testNullFilterEntryIsSkipped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testAttachedNativeFilterWithEmptyPatternIsNotASearch -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testCallingFilterIsSkipped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testPatternIsReadThroughAStateHolder -- Time elapsed: 0.009 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testFilterPatternIsUsedWhenTheNavigatorCannotBeRead -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testReadPatternReturnsNullWhenNothingCanBeAsked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testNavigatorPatternWinsOverAnOpaqueFilter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testWhitespaceOnlyPatternIsASearch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.ui.NavigatorSearchStateTest.testReadPatternReadsDirectAccessor -- Time elapsed: 0 s

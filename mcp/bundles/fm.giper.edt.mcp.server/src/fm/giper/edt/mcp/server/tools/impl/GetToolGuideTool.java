@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -11,7 +12,9 @@ import java.util.Map;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.utils.GuideRenderer;
@@ -76,6 +79,12 @@ public class GetToolGuideTool implements IMcpTool
     @Override
     public String execute(Map<String, String> params)
     {
+        return execute(params, McpRequestContext.legacyDefault());
+    }
+
+    @Override
+    public String execute(Map<String, String> params, McpRequestContext context)
+    {
         String err = JsonUtils.requireArgument(params, KEY_TOOL_NAME);
         if (err != null)
         {
@@ -83,11 +92,22 @@ public class GetToolGuideTool implements IMcpTool
         }
 
         String toolName = params.get(KEY_TOOL_NAME);
-        IMcpTool tool = McpToolRegistry.getInstance().getTool(toolName);
+        McpToolRegistry registry = McpToolRegistry.getInstance();
+        IMcpTool tool = registry.getTool(toolName);
         if (tool == null)
         {
             return ToolResult.error("Unknown tool: " + toolName //$NON-NLS-1$
                 + ". Call tools/list to see available tool names.").toJson(); //$NON-NLS-1$
+        }
+
+        if (context != null && context.getResolution() != null)
+        {
+            ProfileToolPolicy policy = new ProfileToolPolicy(context.getResolution(),
+                registry.getAllTools());
+            if (!policy.isGuideVisible(toolName))
+            {
+                return ToolResult.error(policy.deniedMessage(toolName)).toJson();
+            }
         }
 
         return GuideRenderer.render(tool);

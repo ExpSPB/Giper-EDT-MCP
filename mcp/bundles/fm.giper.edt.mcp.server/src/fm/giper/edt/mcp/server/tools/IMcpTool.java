@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -8,6 +9,7 @@ package fm.giper.edt.mcp.server.tools;
 
 import java.util.Map;
 
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolAnnotations;
 import fm.giper.edt.mcp.server.utils.GuideLoader;
 
@@ -90,6 +92,15 @@ public interface IMcpTool
      * @return result string (format depends on getResponseType())
      */
     String execute(Map<String, String> params);
+
+    /**
+     * Context-aware entry used by the protocol dispatcher. The default keeps existing
+     * implementations binary-compatible by delegating to {@link #execute(Map)}.
+     */
+    default String execute(Map<String, String> params, McpRequestContext context)
+    {
+        return execute(params);
+    }
     
     /**
      * Returns the response content type for this tool.

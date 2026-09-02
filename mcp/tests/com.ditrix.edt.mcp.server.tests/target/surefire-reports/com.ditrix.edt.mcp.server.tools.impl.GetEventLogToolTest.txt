@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testInvalidOrderIsRejectedActionably -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testGuideDocumentsFormatSupportAndPii -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testOutputSchemaDeclaresTheResultEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testOmittedPeriodDoesNotThrow -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testNoParameterIsRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testMalformedPeriodIsRejectedActionably -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testMissingBothProjectAndLogDirIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testInputSchemaDeclaresAllParametersLowerCamelCase -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testOrderIsAClosedEnumInSchema -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetEventLogToolTest.testNonNumericSessionIsRejectedActionably -- Time elapsed: 0 s

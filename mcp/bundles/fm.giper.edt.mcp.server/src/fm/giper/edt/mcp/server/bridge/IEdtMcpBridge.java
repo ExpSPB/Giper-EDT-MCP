@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -10,22 +11,13 @@ package fm.giper.edt.mcp.server.bridge;
  * Stable in-process entry point for other Eclipse bundles that need to discover
  * and call EDT-MCP tools without importing EDT-MCP implementation packages.
  * <p>
- * Consumers may look this service up by this interface's string name and invoke
- * its methods reflectively. Implementations and both methods therefore form a
- * public OSGi-facing contract.
+ * Consumers look this service up by this interface's string name (or the
+ * {@link #SERVICE_PROPERTY} filter) and invoke its methods reflectively.
+ * Implementations and the methods below form a public OSGi-facing contract.
  * <p>
- * The same instance is also published under the JDK function types
- * {@code java.util.function.BiFunction} ({@link #callTool}) and
- * {@code java.util.function.Supplier} ({@link #listTools}), both carrying the
- * service property {@link #SERVICE_PROPERTY} = {@link #SERVICE_PROPERTY_VALUE}.
- * That alias exists so a caller with no access to this package - an AI assistant
- * running a JShell snippet, another plugin, a script - can obtain a typed,
- * reflection-free handle:
- *
- * <pre>
- * var refs = ctx.getServiceReferences(java.util.function.BiFunction.class, "(edt.mcp.bridge=v1)");
- * var out = ctx.getService(refs.iterator().next()).apply("get_edt_version", "{}");
- * </pre>
+ * {@code listTools()} / {@code callTool(name, args)} use the {@code default}
+ * profile. Pass {@code profileId} to stay inside a narrower allowlist. Policy is
+ * re-applied on every call; a name from an earlier list is not enough.
  * <p>
  * This package is deliberately NOT in {@code Export-Package}, and adding it there
  * BREAKS THE BUILD. The test bundle is a FRAGMENT of this host; while the host
@@ -33,9 +25,7 @@ package fm.giper.edt.mcp.server.bridge;
  * as one package is exported Tycho derives the fragment's access rules from that
  * export list and every other host package becomes unresolvable. Nothing needs the
  * export: an OSGi service is found by the string class name whether or not the
- * requesting bundle is wired to the package, and consumers reach it either through
- * the JDK-type alias above or reflectively ({@code svc.getClass().getMethod(...)}),
- * never by compiling against this type.
+ * requesting bundle is wired to the package.
  */
 public interface IEdtMcpBridge
 {
@@ -46,15 +36,24 @@ public interface IEdtMcpBridge
     String SERVICE_PROPERTY_VALUE = "v1"; //$NON-NLS-1$
 
     /**
-     * Lists registered tools as a compact JSON array of name/description objects.
+     * Lists tools published for the {@code default} profile.
      *
      * @return JSON array {@code [{"name":...,"description":...}]}
      */
     String listTools();
 
     /**
+     * Lists tools published for {@code profileId}. Policy is applied on this
+     * call; a previously listed name is not trusted later.
+     *
+     * @param profileId requested profile id; blank means {@code default}
+     * @return JSON array {@code [{"name":...,"description":...}]}
+     */
+    String listTools(String profileId);
+
+    /**
      * Calls a registered tool through the normal MCP {@code tools/call}
-     * dispatcher.
+     * dispatcher under the {@code default} profile.
      *
      * @param toolName exact registered tool name
      * @param argsJson JSON object containing the tool arguments; blank means an
@@ -63,4 +62,15 @@ public interface IEdtMcpBridge
      *         {@code tools/call}
      */
     String callTool(String toolName, String argsJson);
+
+    /**
+     * Calls a tool under {@code profileId}. Policy is re-applied; a name from an
+     * earlier {@link #listTools()} of another profile is not enough.
+     *
+     * @param toolName exact registered tool name
+     * @param argsJson JSON object containing the tool arguments
+     * @param profileId requested profile id; blank means {@code default}
+     * @return the same JSON-RPC response shape produced for MCP {@code tools/call}
+     */
+    String callTool(String toolName, String argsJson, String profileId);
 }

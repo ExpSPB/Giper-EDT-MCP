@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -266,6 +267,33 @@ public class ToolPresetTest
      * means "less than the default", so it cannot be the act that switches on the raw git command
      * tool. {@link ToolPreset#ALL_TOOLS} is the single deliberate exception - its name says so.
      */
+    @Test
+    public void toAllowlistRemovesPresetDisabledToolsFromCatalog()
+    {
+        Set<String> catalog = Set.of("list_projects", "write_module_source", "git"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        Set<String> allowed = ToolPreset.ALL_TOOLS.toAllowlist(catalog);
+        assertEquals(catalog, allowed);
+
+        Set<String> review = ToolPreset.CODE_REVIEW.toAllowlist(Set.of(
+            "list_projects", "write_module_source", "get_server_status")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertTrue(review.contains("list_projects")); //$NON-NLS-1$
+        assertTrue(review.contains("get_server_status")); //$NON-NLS-1$
+        assertFalse(review.contains("write_module_source")); //$NON-NLS-1$
+        assertTrue(ToolPreset.CUSTOM.toAllowlist(catalog).isEmpty());
+    }
+
+    @Test
+    public void matchAllowlistUsesCatalogComplementAndKeepsCustomComputed()
+    {
+        Set<String> catalog = ToolGroup.allToolNames();
+        assertEquals(ToolPreset.ALL_TOOLS,
+            ToolPreset.matchAllowlist(ToolPreset.ALL_TOOLS.toAllowlist(catalog), catalog));
+        assertEquals(ToolPreset.CODE_REVIEW,
+            ToolPreset.matchAllowlist(ToolPreset.CODE_REVIEW.toAllowlist(catalog), catalog));
+        assertEquals(ToolPreset.CUSTOM,
+            ToolPreset.matchAllowlist(Set.of("list_projects"), catalog)); //$NON-NLS-1$
+    }
+
     @Test
     public void testOnlyAllToolsPresetEnablesTheDefaultOffTools()
     {

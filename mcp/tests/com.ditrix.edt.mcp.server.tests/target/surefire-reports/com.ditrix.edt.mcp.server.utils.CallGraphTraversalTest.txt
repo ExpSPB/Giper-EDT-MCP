@@ -1,0 +1,31 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest
+-------------------------------------------------------------------------------
+Tests run: 27, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testAnUnexpandableNodeIsFlaggedAndNeverExpanded -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testNodeBudgetStopsDiscovery -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testSelfRecursiveRootIsReportedOnceLikeASingleHopSearchWould -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testDepthBoundStopsAtRequestedLevel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testBudgetReachedExactlyOnTheLastEdgeIsNotReportedAsATruncation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testDiagnosticsAreAggregatedAcrossLevels -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testNodeBudgetMakesTheResultIncompleteBecauseTheWalkItselfWasCut -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testNodeAtDepthBoundIsFlaggedSoTheAgentKnowsMoreExists -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testACleanWalkIsComplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testDagReconvergenceReportsTheMethodOnceAndCountsTheRepeatEdge -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testNullKeyIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testParentIndexRebuildsTheChainBackToTheRoot -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testNodesLeftUnexpandedByTheBudgetSayWhy -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testAnExpanderThatGivesUpMidLevelMakesTheResultIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testBudgetBelowOneIsRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testTimeBudgetStopsTheWalkAndFlagsWhatWasNotExpanded -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testAnUnverifiedModuleForcesIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testAnUnparsableModuleForcesIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testEveryDiagnosticKindIsCarriedIndependently -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testExhaustingTheGraphBeforeTheDepthBoundLeavesNoFlags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testTwoNodeCycleTerminatesAndReportsEachMethodOnce -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testAnUnreadableFileForcesIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testAFailedEnumerationForcesIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testLongerCycleTerminates -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testReachingTheDepthBoundDoesNotMakeTheResultIncomplete -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testEmissionOrderFollowsTheExpanderSoTheResultIsReproducible -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CallGraphTraversalTest.testDepthBelowOneIsRejected -- Time elapsed: 0 s

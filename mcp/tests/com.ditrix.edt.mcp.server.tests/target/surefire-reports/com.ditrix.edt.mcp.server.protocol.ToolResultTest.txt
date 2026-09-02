@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.ToolResultTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.protocol.ToolResultTest
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testErrorResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testKnownCommitOutranksAnEarlierOrLaterUnknownOutcome -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testReturnChokePointLeavesNonErrorsByteIdentical -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testSuccessResult -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testErrorResultNullMessageStillCarriesErrorField -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testErrorAfterMutationCarriesStructuralMarkerIndependentOfMessage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testToJsonStatic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testPutList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testPutLong -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testOpaqueMutationFailureHasItsOwnStructuralMarker -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testPutBoolean -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testPutString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testExistingPlainErrorCanBeMarkedAtTheReturnChokePoint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testPutInt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.ToolResultTest.testChaining -- Time elapsed: 0 s

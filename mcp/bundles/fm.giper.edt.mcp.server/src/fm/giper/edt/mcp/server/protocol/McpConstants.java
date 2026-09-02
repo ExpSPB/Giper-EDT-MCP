@@ -1,5 +1,6 @@
 /**
  * Copyright (c) 2025 DitriX
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  */
 package fm.giper.edt.mcp.server.protocol;
 
@@ -55,7 +56,7 @@ public final class McpConstants
     public static final String SERVER_NAME = "edt-mcp-server"; //$NON-NLS-1$
     
     /** Plugin author */
-    public static final String AUTHOR = "DitriX, Diversus23, Jimmo910"; //$NON-NLS-1$
+    public static final String AUTHOR = "DitriX, Diversus23, Jimmo910, ExpSPB"; //$NON-NLS-1$
     
     /** Plugin version - read from Bundle-Version at runtime, set by tycho-versions-plugin */
     public static final String PLUGIN_VERSION;

@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testProjectNameIsOptional -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testResultFileNameIsStableAcrossParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testResponseTypeAndFileNameAgreeOnYaml -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testResultFileNameIsYaml -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testResponseTypeYaml -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testGuideNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetConfigurationPropertiesToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -657,9 +658,12 @@ public class McpStatusContribution extends WorkbenchWindowControlContribution
         if (isExecuting)
         {
             // Add MCP: prefix and truncate tool name if too long
-            statusText = currentTool.length() > TOOL_NAME_MAX_LENGTH
-                ? "MCP: " + currentTool.substring(0, TOOL_NAME_MAX_LENGTH - 3) + "..." //$NON-NLS-1$ //$NON-NLS-2$
+            String labeled = currentTool.startsWith("[") //$NON-NLS-1$
+                ? "MCP" + currentTool //$NON-NLS-1$
                 : "MCP: " + currentTool; //$NON-NLS-1$
+            statusText = labeled.length() > TOOL_NAME_MAX_LENGTH + 8
+                ? labeled.substring(0, TOOL_NAME_MAX_LENGTH + 5) + "..." //$NON-NLS-1$
+                : labeled;
         }
         else
         {

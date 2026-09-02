@@ -1,16 +1,21 @@
 # EDT MCP Proxy
 
-A standalone MCP proxy/router for [EDT MCP Server](../README.md) (issue
-[#253](https://github.com/DitriXNew/EDT-MCP/issues/253)).
+A standalone MCP proxy/router for [EDT MCP Server](../EDT-MCP.md) (issue
+[#253](https://github.com/ExpSPB/Giper-EDT-MCP/issues/253)).
 
-When you work on several 1C:EDT instances at once, each instance runs its own EDT-MCP
+When you work on several 1C:EDT instances at once, each instance runs its own Giper-EDT-MCP
 server on its own port (8765, 8766, ...). Instead of reconfiguring the AI client per
 instance, point it at **one** endpoint — the proxy on port **8764** — and the proxy routes
 every `tools/call` to the EDT instance that owns the requested project.
 
 The proxy is a plain Java process (no Eclipse, no OSGi). The EDT plugin is **not**
-modified in any way: the proxy talks to ordinary EDT-MCP servers over their normal
-`/mcp` endpoint using the same MCP Streamable HTTP wire contract.
+modified in any way: the proxy talks to ordinary Giper-EDT-MCP servers over their normal
+`/mcp` and `/mcp/profiles/<id>` endpoints using the same MCP Streamable HTTP wire
+contract. Profile routing is fail-closed: backends that do not share the same
+effective profile id, fallback state and tool-list fingerprint are not one
+surface. A malformed backend status or `tools/list`, or an empty compatible
+group, leaves only `router_status` and `router_refresh` visible; backend calls
+are neither routed nor fanned out until a group is confirmed.
 
 ## Quick start
 
@@ -35,8 +40,8 @@ edt-mcp-proxy listening on :8764, scanning 8765-8774
 ```
 
 Then connect your MCP client (Claude, Copilot, Cursor, ...) to
-`http://127.0.0.1:8764/mcp` — exactly as you would connect it to a single EDT-MCP
-server, just a different port.
+`http://127.0.0.1:8764/mcp` or `http://127.0.0.1:8764/mcp/profiles/<id>` —
+exactly as you would connect it to a single Giper-EDT-MCP server, just a different port.
 
 ## CLI subcommands
 
@@ -114,8 +119,8 @@ cannot be found or read fails startup immediately, naming the path.
 
 ## Security
 
-**The proxy binds loopback (`127.0.0.1`) only by default**, mirroring the EDT-MCP plugin's own
-default: the proxy forwards `tools/call` to EDT-MCP backends whose tool surface includes
+**The proxy binds loopback (`127.0.0.1`) only by default**, mirroring the Giper-EDT-MCP plugin's own
+default: the proxy forwards `tools/call` to Giper-EDT-MCP backends whose tool surface includes
 arbitrary-BSL execution (`evaluate_expression`) and destructive operations, so it must not be
 reachable from the network unless you explicitly opt in.
 
@@ -259,7 +264,7 @@ schtasks /Create /SC ONLOGON /TN edt-mcp-proxy /RL LIMITED /TR "\"C:\Path\To\jdk
 
 ```ini
 [Unit]
-Description=EDT MCP Proxy (router for EDT-MCP instances)
+Description=EDT MCP Proxy (router for Giper-EDT-MCP instances)
 After=default.target
 
 [Service]
@@ -287,18 +292,18 @@ does not start user services without an active login, enable lingering once with
 
 - **Duplicate project names are not auto-resolved.** If two EDT instances both serve a
   project with the same name, a call scoped to that project returns an error naming
-  both ports — close one of the instances or address its EDT-MCP port directly.
+  both ports — close one of the instances or address its Giper-EDT-MCP port directly.
 - **Single-machine discovery only.** Backends are found by a localhost port scan;
   there is no remote-backend support and no config-file backend list.
 - **No lifecycle management.** The proxy never starts or stops EDT instances; the AI
   agent (or you) does that. The proxy only discovers what is already running.
 - **One tool surface.** Tool names are not prefixed per backend; all backends are
-  assumed to expose the same EDT-MCP tool set (`tools/list` is taken from the first
+  assumed to expose the same Giper-EDT-MCP tool set (`tools/list` is taken from the first
   live backend).
 
 ## Development
 
-Sources live under `proxy/src/main/java/com/ditrix/edt/mcp/proxy/`; the only
+Sources live under `proxy/src/main/java/fm/giper/edt/mcp/proxy/`; the only
 dependency is Gson. Unit tests and in-process integration tests (fake backends on
 ephemeral ports — no EDT required) both run with:
 

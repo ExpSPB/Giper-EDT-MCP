@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -14,6 +15,7 @@ public class InitializeResult
     private String protocolVersion;
     private Capabilities capabilities;
     private ServerInfo serverInfo;
+    private String instructions;
     
     public InitializeResult(String protocolVersion, String serverName, String serverVersion, String author)
     {
@@ -36,6 +38,16 @@ public class InitializeResult
     {
         return serverInfo;
     }
+
+    public String getInstructions()
+    {
+        return instructions;
+    }
+
+    public void setInstructions(String instructions)
+    {
+        this.instructions = instructions;
+    }
     
     /**
      * The SERVER's declared capabilities, returned to the client in the
@@ -43,8 +55,7 @@ public class InitializeResult
      * {@code resources} capabilities; it does not yet advertise prompts or other
      * optional features, so those fields are intentionally absent (the shared Gson
      * omits null fields). The CLIENT's capabilities are a separate concern: they
-     * arrive in the initialize REQUEST and are parsed/stored by the protocol
-     * handler (see {@code McpProtocolHandler#getClientCapabilities()}), not
+     * arrive in the initialize REQUEST and live on {@code McpRequestContext}, not
      * modelled here.
      */
     public static class Capabilities

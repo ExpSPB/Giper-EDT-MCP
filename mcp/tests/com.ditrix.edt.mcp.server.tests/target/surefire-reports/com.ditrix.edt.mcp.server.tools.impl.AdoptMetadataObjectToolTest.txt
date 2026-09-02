@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest
+com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest.testRequiredParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest.testInputSchemaContainsAllParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest.testOutputSchemaDeclaresContract -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.AdoptMetadataObjectToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s

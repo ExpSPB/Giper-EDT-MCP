@@ -1,0 +1,45 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest
+-------------------------------------------------------------------------------
+Tests run: 41, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testUnrelatedTypeCatalogWithNoPredefinedItemsRendersNothing -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testCatalogPredefinedItemsRenderedInBasicAndFullMode -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testSinglePredefinedItemFqnRendersThatItem -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testScheduledJobPropertiesRenderedInBasicMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testSinglePredefinedItemFqnOwnerNotFoundReportsFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testChartOfCharacteristicTypesPredefinedItemsRendered -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testGuideNonEmptyAndCarriesMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResolutionFailureReasonNamesTheWrongProjectKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testUnrelatedTypeRendersNothing -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResultFileNameBlankProjectFallsBack -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResolutionFailureReasonForMissingObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testInformationRegisterWithNoDimensionsRendersNothing -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testFormGroupAssignableRendersExtInfoCurrentValue -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testFailuresTableEscapesPipes -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testMissingObjectFqns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testValidationErrorIsStructuredFailureEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testScheduledJobPropertiesRenderedInFullMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testEmptyObjectFqnsArrayIsRequiredError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResultFileNameIncludesLowerCasedProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testScheduledJobBlankStringsRenderAsDash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testCommonModulePropertiesRenderedInBasicMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testRequiredArrayHoldsOnlyProjectNameAndObjectFqns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResultFileNameFallsBackWithoutProject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testConnectsToInfobaseIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testCommonModulePropertiesRenderedInFullMode -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testResolutionFailureReasonForMalformedFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testSchemaDeclaresOptionalParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testBrokenObjectIsMachineDistinguishableNotProse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testOutputSchemaIsNullForMarkdownTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testFormGroupAssignableListsExtInfoLayoutProps -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testProjectNameValidatedBeforeObjectFqns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testSinglePredefinedItemFqnUnsupportedOwnerTypeReportsFailure -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testInformationRegisterDimensionIndexingRenderedInBothModes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMetadataDetailsToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

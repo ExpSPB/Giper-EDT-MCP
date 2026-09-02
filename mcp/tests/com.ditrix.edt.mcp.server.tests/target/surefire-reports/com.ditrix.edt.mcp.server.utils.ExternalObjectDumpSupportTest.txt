@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testResolveDumperIsGracefulHeadless -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testExtensionForExternalDataProcessorIsEpf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testExtensionForNullDefaultsToEpf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testFileNameForExternalReportEndsWithErf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testExtensionForExternalReportIsErf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testOutputFileNameTrimsName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testFileNameForExternalDataProcessorEndsWithEpf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testExtensionForUnrelatedObjectDefaultsToEpf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testOutputFileNameNullEmptySafe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.ExternalObjectDumpSupportTest.testOutputFileNameJoinsNameAndExtension -- Time elapsed: 0 s

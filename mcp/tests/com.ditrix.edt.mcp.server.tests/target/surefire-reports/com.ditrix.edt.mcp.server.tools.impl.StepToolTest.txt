@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.StepToolTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.005 s -- in com.ditrix.edt.mcp.server.tools.impl.StepToolTest
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testMissingThreadId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testClampTimeoutAboveMaxIsCapped -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testTimeoutResponseCarriesApplicationIdAndThreadId -- Time elapsed: 1.005 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testStaleThreadIdWhenNoLiveSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testClampTimeoutNormalValuePassesThrough -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testClampTimeoutBelowOneIsRaisedToOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testMissingKind -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testClampTimeoutAtMaxIsUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StepToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

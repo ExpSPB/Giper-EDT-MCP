@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.renameAndToggleKeepUnknownTools -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.restoreSelectedRevertsDraftAndDropsUnpublished -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.resetSelectedDoesNotRemoveOtherProfiles -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.selectDoesNotSaveOrClearDirty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.applyPresetKeepsUnknownNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.mandatoryStatusToolCannotBeUnchecked -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.conflictKeepsDraftsUntilReload -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.applyPublishesAllDraftsOnce -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.addCreatesImmutableIdAndSelectsDraft -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.duplicateCopiesAllowlistUnderNewId -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolProfilesEditorModelTest.defaultCannotBeDeletedOrDisabled -- Time elapsed: 0 s

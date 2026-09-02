@@ -1,0 +1,7 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsSchemaContentTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.036 s -- in com.ditrix.edt.mcp.server.utils.DcsSchemaContentTest
+com.ditrix.edt.mcp.server.utils.DcsSchemaContentTest.testMainSchemaAccessorSupportsReportAndExternalReportOnly -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.utils.DcsSchemaContentTest.testNullPlatformVersionIsNotReadyAndTellsCallerToRetry -- Time elapsed: 0.019 s
+com.ditrix.edt.mcp.server.utils.DcsSchemaContentTest.testResolvedPlatformVersionIsRetainedByReadyServices -- Time elapsed: 0 s

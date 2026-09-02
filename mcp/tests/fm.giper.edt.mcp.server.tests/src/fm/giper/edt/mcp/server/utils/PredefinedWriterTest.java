@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT - Tests
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 

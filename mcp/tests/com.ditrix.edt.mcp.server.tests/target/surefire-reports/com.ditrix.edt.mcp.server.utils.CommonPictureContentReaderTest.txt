@@ -1,0 +1,28 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.candidateNamesProbesExactThenLowerThenUpper -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.selectReturnsNullForEmptyOrNullInputs -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.rasterBytesToPngReturnsNullForNonImageBytes -- Time elapsed: 0.012 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.candidateNamesReturnsEmptyForNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.isManifestEntryRejectsOthersAndNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.pickDensestReturnsNullForEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.isSvgNameRejectsRasterAndNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.pickDensestReturnsHighestDensityRank -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.isSvgNameDetectsSvgSuffixCaseInsensitively -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.looksLikeSvgRejectsRasterAndCorruptBytes -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.selectExactReturnsTheMatchingEntry -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.selectSvgReturnsTheSvgEntry -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.pickDensestTieBreaksOnLargerSize -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.looksLikeSvgNullOrEmptyIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.rasterBytesToPngDecodesARealPng -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.mapEnumLiteralReturnsDashForNull -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.mapEnumLiteralReturnsNameForValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.selectExactIsCaseSensitiveForEntryNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.looksLikeSvgDetectsSvgBySignature -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.rasterBytesToPngReturnsNullForNullOrEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.selectSvgReturnsNullWhenNoVectorVariant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.isManifestEntryDetectsManifestCaseInsensitively -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.candidateNamesDeduplicatesAlreadyLowercaseName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonPictureContentReaderTest.selectUnknownExactReturnsNull -- Time elapsed: 0 s

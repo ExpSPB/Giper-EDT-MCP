@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ToolGroupTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.preferences.ToolGroupTest
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testNoToolInMultipleGroups -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testAllGroupsHaveDescription -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testToolNamesAreUnmodifiable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testAllGroupsHaveTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testAllGroupsHaveUniqueIds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testGetGroupForToolNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testTotalToolCount -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testGetGroupForToolNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testApplicationsGroupIncludesLaunchConfigTools -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testDebugGroupContents -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testGroupCount -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testCoreGroupContents -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testEveryToolHasReverseLookup -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testApplicationsGroupIncludesTerminateLaunch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testGetGroupForToolFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testRefactoringGroupContents -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolGroupTest.testAllGroupsHaveDisplayName -- Time elapsed: 0 s

@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCodeCellEscapesNewline -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCodeCellEscapesPipeInsideBackticks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCellEscapesNewline -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCodeCellWrapsValueInBackticks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCellPlainValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testOutOfRangeLineColumn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testMissingFilePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCellNullValueRendersEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testCellEscapesPipe -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testNonNumericLineColumn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testInputSchemaContainsParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetSymbolInfoToolTest.testMissingProjectName -- Time elapsed: 0 s

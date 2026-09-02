@@ -1,0 +1,14 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.PersistedContentsTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.utils.PersistedContentsTest
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testNullParentYieldsAFreshEmptyList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testDescendantsExpandANodeOnlyWhenTheWalkReachesIt -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testDescendantsSkipComputedBranchesWithoutReadingThem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testDescendantsAreRestartable -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testDescendantsWalkDepthFirstInMetamodelOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testSkipsADerivedContainmentWithoutReadingIt -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testYieldsPersistedChildrenInMetamodelOrder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testSkipsNonContainmentReferencesWithoutReadingThem -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testDescendantsOfNullIsAnEmptySequence -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PersistedContentsTest.testSkipsATransientContainmentWithoutReadingIt -- Time elapsed: 0 s

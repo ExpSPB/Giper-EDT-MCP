@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -15,7 +16,9 @@ import org.eclipse.core.resources.IProject;
 
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolAnnotations;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
@@ -199,6 +202,13 @@ public class AskWorkmateTool implements IMcpTool
     @Override
     public String execute(Map<String, String> params)
     {
+        return execute(params, McpRequestContext.legacyDefault());
+    }
+
+    @Override
+    public String execute(Map<String, String> params, McpRequestContext context)
+    {
+        McpRequestContext callContext = context == null ? McpRequestContext.legacyDefault() : context;
         Integer waitSeconds = BackgroundJobPolling.readWaitSeconds(params, KEY_WAIT_SECONDS,
             DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS);
         if (waitSeconds == null)
@@ -222,7 +232,7 @@ public class AskWorkmateTool implements IMcpTool
                 .toJson();
         }
 
-        return start(params, waitSeconds.intValue());
+        return start(params, waitSeconds.intValue(), callContext);
     }
 
     /**
@@ -351,6 +361,15 @@ public class AskWorkmateTool implements IMcpTool
      */
     static String mcpBridgePreamble(String projectName)
     {
+        return mcpBridgePreamble(projectName, McpRequestContext.legacyDefault());
+    }
+
+    /**
+     * Profile-bound preamble: always look up {@code IEdtMcpBridge} and pass
+     * {@code profileId}. There is no {@code BiFunction} OSGi alias.
+     */
+    static String mcpBridgePreamble(String projectName, McpRequestContext context)
+    {
         // The example has to RUN as written - the whole point of the preamble is that Workmate
         // may execute it without improvising Java API. With no project named there is nothing
         // truthful to put in projectName, and a placeholder would make the snippet fail with
@@ -359,28 +378,29 @@ public class AskWorkmateTool implements IMcpTool
         //
         // The name lands inside a JSON string inside a Java string literal, so a quote or
         // a backslash in it would otherwise produce a snippet that does not compile.
-        String example = projectName == null
-            ? "mcp.apply(\"list_projects\", \"{}\")" //$NON-NLS-1$
-            : "mcp.apply(\"get_metadata_objects\", " //$NON-NLS-1$
-                + "\"{\\\"projectName\\\":\\\"" //$NON-NLS-1$
+        String profileId = context == null ? "default" : context.effectiveProfileId(); //$NON-NLS-1$
+        String args = projectName == null
+            ? "\"{}\"" //$NON-NLS-1$
+            : "\"{\\\"projectName\\\":\\\"" //$NON-NLS-1$
                 + projectName.replace("\\", "\\\\\\\\").replace("\"", "\\\\\\\"") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-                + "\\\",\\\"metadataType\\\":\\\"Catalog\\\"}\")"; //$NON-NLS-1$
-        return "The EDT-MCP plugin runs in this same EDT and publishes its entry point as an " //$NON-NLS-1$
-            + "ordinary OSGi service under the JDK type " //$NON-NLS-1$
-            + "java.util.function.BiFunction<String,String,String> with the service property " //$NON-NLS-1$
-            + "edt.mcp.bridge=v1. apply(toolName, argumentsJson) returns the MCP tools/call " //$NON-NLS-1$
-            + "response; the Supplier<String> alias with the same property lists every tool. " //$NON-NLS-1$
-            + "Its tools read and change this configuration - metadata, BSL modules, forms, " //$NON-NLS-1$
-            + "markers, Git, tests - so prefer them over guessing whenever the question is " //$NON-NLS-1$
-            + "about what is actually in the project.\n\n" //$NON-NLS-1$
+                + "\\\",\\\"metadataType\\\":\\\"Catalog\\\"}\""; //$NON-NLS-1$
+        String tool = projectName == null ? "list_projects" : "get_metadata_objects"; //$NON-NLS-1$ //$NON-NLS-2$
+        String example = "mcp.getClass().getMethod(\"callTool\", String.class, String.class, String.class)" //$NON-NLS-1$
+            + ".invoke(mcp, \"" + tool + "\", " + args + ", \"" + profileId + "\")"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        String lookup = "The EDT-MCP plugin runs in this same EDT. Look up the OSGi service whose " //$NON-NLS-1$
+            + "class name is fm.giper.edt.mcp.server.bridge.IEdtMcpBridge (or any service " //$NON-NLS-1$
+            + "with property edt.mcp.bridge=v1). Always pass profile '" + profileId //$NON-NLS-1$
+            + "' as the third argument of callTool, and list tools with listTools(\"" //$NON-NLS-1$
+            + profileId + "\"). Policy is re-checked on every call.\n\n"; //$NON-NLS-1$
+        return lookup
             + "Every type below is JDK or standard OSGi API, so no unproven Java API is " //$NON-NLS-1$
             + "involved. Call it with JShellManual (manual_id jshell_edt_canonical_imports), " //$NON-NLS-1$
             + "then JShellSession, then JShell with scope=eclipse and this code:\n\n" //$NON-NLS-1$
             + "{\n" //$NON-NLS-1$
             + "var ctx = org.osgi.framework.FrameworkUtil\n" //$NON-NLS-1$
             + "    .getBundle(org.eclipse.core.runtime.Platform.class).getBundleContext();\n" //$NON-NLS-1$
-            + "var refs = ctx.getServiceReferences(java.util.function.BiFunction.class, " //$NON-NLS-1$
-            + "\"(edt.mcp.bridge=v1)\");\n" //$NON-NLS-1$
+            + "var refs = ctx.getServiceReferences(\n" //$NON-NLS-1$
+            + "    \"fm.giper.edt.mcp.server.bridge.IEdtMcpBridge\", \"(edt.mcp.bridge=v1)\");\n" //$NON-NLS-1$
             + "var mcp = ctx.getService(refs.iterator().next());\n" //$NON-NLS-1$
             + "System.out.println(" + example + ");\n" //$NON-NLS-1$
             + "}\n\n" //$NON-NLS-1$
@@ -391,7 +411,7 @@ public class AskWorkmateTool implements IMcpTool
             + "jobId from its reply and poll it with get_job_status instead of waiting - " //$NON-NLS-1$
             + "and only a few such jobs may run at once, so delegate one level deep, not a " //$NON-NLS-1$
             + "chain.\n\n" //$NON-NLS-1$
-            + toolCatalogue() + "Question:\n"; //$NON-NLS-1$
+            + toolCatalogue(context) + "Question:\n"; //$NON-NLS-1$
     }
 
     /**
@@ -403,29 +423,32 @@ public class AskWorkmateTool implements IMcpTool
      * @return a paragraph ending with a blank line, or an empty string when no tool is
      *         registered (a headless runtime, or before registration)
      */
-    private static String toolCatalogue()
+    private static String toolCatalogue(McpRequestContext context)
     {
         McpToolRegistry registry = McpToolRegistry.getInstance();
-        String names = registry.getAllTools().stream()
+        String names;
+        ProfileToolPolicy policy = new ProfileToolPolicy(
+            context != null ? context.getResolution() : null, registry.getAllTools());
+        names = policy.publishedTools(false).stream()
             .map(IMcpTool::getName)
-            // Only what a bridge call would actually be allowed to run: naming a tool the
-            // user disabled would send Workmate off to call it and get refused.
-            .filter(registry::isToolEnabled)
-            .sorted()
             .collect(Collectors.joining(", ")); //$NON-NLS-1$
         if (names.isEmpty())
         {
             return ""; //$NON-NLS-1$
         }
+        String profileId = context == null ? "default" : context.effectiveProfileId(); //$NON-NLS-1$
+        String guideCall = "mcp.getClass().getMethod(\"callTool\", String.class, String.class, String.class)" //$NON-NLS-1$
+            + ".invoke(mcp, \"get_tool_guide\", \"{\\\"toolName\\\":\\\"find_references\\\"}\", \"" //$NON-NLS-1$
+            + profileId + "\")"; //$NON-NLS-1$
         return "Tools reachable through the bridge right now, by name only: " + names //$NON-NLS-1$
             + ".\n\nThe full description of any one of them - what it does, every parameter " //$NON-NLS-1$
             + "and examples - is returned by a tool of its own, get_tool_guide. Call it " //$NON-NLS-1$
             + "through the same bridge before using a tool you do not know, instead of " //$NON-NLS-1$
             + "guessing its arguments:\n" //$NON-NLS-1$
-            + "mcp.apply(\"get_tool_guide\", \"{\\\"toolName\\\":\\\"find_references\\\"}\")\n\n"; //$NON-NLS-1$
+            + guideCall + "\n\n"; //$NON-NLS-1$
     }
 
-    private String start(Map<String, String> params, int waitSeconds)
+    private String start(Map<String, String> params, int waitSeconds, McpRequestContext context)
     {
         String question = trimToNull(JsonUtils.extractStringArgument(params, KEY_QUESTION));
         if (question == null)
@@ -456,18 +479,18 @@ public class AskWorkmateTool implements IMcpTool
         IProject project = null;
         if (projectName != null)
         {
-            ProjectContext context = ProjectContext.of(projectName);
-            if (!context.exists())
+            ProjectContext projectContext = ProjectContext.of(projectName);
+            if (!projectContext.exists())
             {
                 return ToolResult.error(ProjectContext.notFoundMessage(projectName)).toJson();
             }
-            if (!context.isOpen())
+            if (!projectContext.isOpen())
             {
                 return ToolResult.error("Project '" + projectName //$NON-NLS-1$
                     + "' is closed. Open it in EDT or omit projectName, then retry ask_workmate.") //$NON-NLS-1$
                     .toJson();
             }
-            project = context.project();
+            project = projectContext.project();
         }
 
         String skillName = trimToNull(JsonUtils.extractStringArgument(params, KEY_SKILL_NAME));
@@ -496,7 +519,7 @@ public class AskWorkmateTool implements IMcpTool
         final boolean shareMcpTools =
             JsonUtils.extractBooleanArgument(params, KEY_SHARE_MCP_TOOLS, !chatMode);
         final String jobQuestion =
-            shareMcpTools ? mcpBridgePreamble(projectName) + question : question;
+            shareMcpTools ? mcpBridgePreamble(projectName, context) + question : question;
 
         final IProject jobProject = project;
         final int jobTimeoutSeconds = timeoutSeconds;

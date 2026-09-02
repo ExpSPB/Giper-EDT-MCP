@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.073 s -- in com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testJdkFunctionTypesDelegateToTheContractMethods -- Time elapsed: 0.019 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testStaleDefaultListCannotCallAToolForbiddenOnExplicitProfile -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testOsgiRegistrationIsFilterableUnderTheJdkTypeAlias -- Time elapsed: 0.025 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testInvalidArgsJsonReturnsActionableJsonRpcError -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testDefaultProfileListsEnabledToolsAndExplicitProfileIsNarrower -- Time elapsed: 0.005 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testListToolsThroughStringNamedInterfaceAndReflection -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testCallToolThroughReflectionUsesNormalMcpDispatch -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.bridge.EdtMcpBridgeTest.testDirectCallOnDefaultStillReachesAListedTool -- Time elapsed: 0.006 s

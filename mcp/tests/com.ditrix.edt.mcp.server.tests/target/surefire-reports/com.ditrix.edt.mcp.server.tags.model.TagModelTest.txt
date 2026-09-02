@@ -1,0 +1,53 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tags.model.TagModelTest
+-------------------------------------------------------------------------------
+Tests run: 49, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tags.model.TagModelTest
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRenameObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetObjectTagsNoAssignments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageMoveTagDownNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageSetTagsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetTagIndex -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetTagNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagDefaultConstructor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagTwoArgConstructor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageUnassignTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageAssignTagNonExistent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRemoveTagClearsAssignments -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageUnassignTagRemovesEmptyEntry -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageAddTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetTagNamesNoAssignment -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetTagByNameNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageSetAssignments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagNullNameThrows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageMoveTagUpNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetTagByName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageMoveTagUp -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageDefaultConstructor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagEqualsName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagEqualsSelf -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageMoveTagDown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRemoveTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagNotEqualsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageSetTags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageAssignTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagNullDescriptionDefaults -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagNotEqualsOtherClass -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRemoveObjectNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageMoveTagUpAlreadyAtTop -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetObjectsByTagEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagNotEquals -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagToString -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetObjectsByTag -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageGetObjectTags -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagNullColorDefaults -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageAssignTagDuplicate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRemoveTagNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageAddTagDuplicate -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagThreeArgConstructor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRemoveObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagSingleArgConstructor -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testTagSetters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageUnassignTagNotAssigned -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageRenameObjectNotFound -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageSetAssignmentsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tags.model.TagModelTest.testStorageMoveTagDownAlreadyAtBottom -- Time elapsed: 0 s

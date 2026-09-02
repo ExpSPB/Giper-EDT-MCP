@@ -1,0 +1,28 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.OrphanedJavadocTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.855 s -- in com.ditrix.edt.mcp.server.OrphanedJavadocTest
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.allowListHasNoStaleEntries -- Time elapsed: 0.505 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.pardonsAreSelectedPerFile -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.twoBlocksWithTheSameWordsInOneFileAreTwoSites -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.aVariableNamedRecordDoesNotTurnALambdaIntoATypeBody -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.theDisplayedPrefixHonoursItsAdvertisedLength -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorNeverAccusesWhereNoDeclarationCouldStand -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorNeverAccusesACommentInsideAMethodBody -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.anUnrecognisedConstructIsNotAMemberPosition -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.thePardonIsForOneBLOCK_notForAQUANTITY -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorAcceptsWellFormedJavadoc -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.aBlockAfterANonAnnotationFirstTokenIsADocumentedMiss -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.reportsOrphanedJavadocFoundInThisRepository -- Time elapsed: 0.342 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.aPardonDoesNotTransferToADifferentBlock -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.recordIsATypeOnlyWhenAComponentListFollows -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorAcceptsTextBlocksAndAnnotatedMembers -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorFindsABlockInsideADeclarationPrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.theRefusalNamesBothTheFindingsAndTheBlindSpots -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorStillJudgesARealRecordDeclaration -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.aPardonDoesNotTransferToABlockThatMerelyStartsTheSameWay -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorJudgesATypeWhoseHeadContainsAComma -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorFindsAnOrphanedBlock -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.identityKeepsTheProsesOwnAsterisksAndSlashes -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.detectorNeverAccusesInsideAngleBrackets -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.OrphanedJavadocTest.onePardonCoversOneBlock -- Time elapsed: 0 s

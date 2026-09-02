@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testStringArrayProperty -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testBooleanProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testEnumProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testBuildMapReturnsMap -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testRequiredStringProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testRequiredEnumProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testIntegerProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testEmptyObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testStringProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testNumberProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testObjectArrayProperty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testMultipleProperties -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.JsonSchemaBuilderTest.testObjectProperty -- Time elapsed: 0 s

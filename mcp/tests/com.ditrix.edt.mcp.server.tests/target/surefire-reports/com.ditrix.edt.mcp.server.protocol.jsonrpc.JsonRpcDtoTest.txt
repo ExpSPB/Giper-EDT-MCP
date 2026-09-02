@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testRequestNoParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testSuccessResponse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testSuccessResponseSerialization -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testErrorResponseSerialization -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testErrorResponse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testGetStringParam -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testRequestWithParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.jsonrpc.JsonRpcDtoTest.testRequestDeserialization -- Time elapsed: 0 s

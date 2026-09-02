@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -100,6 +101,18 @@ public final class ProjectRouter
      */
     public RouteResult route(String method, JsonObject requestJson)
     {
+        return route(method, requestJson, ProfileEndpoint.legacyDefault());
+    }
+
+    /**
+     * As {@link #route(String, JsonObject)}, but only backends in the profile compatibility
+     * group for {@code endpoint} may receive routed or unscoped calls.
+     *
+     * @param endpoint the client MCP path
+     * @return the routing decision
+     */
+    public RouteResult route(String method, JsonObject requestJson, ProfileEndpoint endpoint)
+    {
         if (METHOD_TOOLS_CALL.equals(method))
         {
             JsonObject params = requestJson == null ? null : Json.obj(requestJson, "params"); //$NON-NLS-1$
@@ -115,10 +128,10 @@ public final class ProjectRouter
             String project = extractProjectArg(requestJson);
             if (project != null)
             {
-                return routeScoped(project);
+                return routeScoped(project, endpoint);
             }
         }
-        return routeUnscoped();
+        return routeUnscoped(endpoint);
     }
 
     /**
@@ -126,7 +139,12 @@ public final class ProjectRouter
      */
     private RouteResult routeScoped(String project)
     {
-        RouteResult known = lookup(project);
+        return routeScoped(project, ProfileEndpoint.legacyDefault());
+    }
+
+    private RouteResult routeScoped(String project, ProfileEndpoint endpoint)
+    {
+        RouteResult known = lookup(project, endpoint);
         if (known != null)
         {
             return known;
@@ -134,7 +152,7 @@ public final class ProjectRouter
         // On-miss rescan: the AI agent may have just started the EDT instance that
         // serves this project — notice it NOW instead of waiting for the periodic refresh.
         registry.refresh();
-        RouteResult rescanned = lookup(project);
+        RouteResult rescanned = lookup(project, endpoint);
         if (rescanned != null)
         {
             return rescanned;
@@ -184,15 +202,37 @@ public final class ProjectRouter
      */
     private RouteResult lookup(String project)
     {
-        List<Integer> dupPorts = registry.duplicateProjects().get(project);
+        return lookup(project, ProfileEndpoint.legacyDefault());
+    }
+
+    private RouteResult lookup(String project, ProfileEndpoint endpoint)
+    {
+        BackendRegistry.RoutingView view = registry.routingView(endpoint);
+        List<Integer> dupPorts = view.duplicatePorts(project);
         if (dupPorts != null)
         {
             return RouteResult.error("Project '" + project + "' is served by more than one EDT instance (ports " //$NON-NLS-1$ //$NON-NLS-2$
                 + joinPorts(dupPorts)
                 + "). Routing is ambiguous - close the project in the duplicate EDT instance, then call router_refresh."); //$NON-NLS-1$
         }
-        Backend owner = registry.byProject(project);
-        return owner == null ? null : RouteResult.backend(owner);
+        Backend owner = view.owner(project);
+        if (owner == null)
+        {
+            return null;
+        }
+        ProfileGroupSnapshot group = view.group();
+        if (group.getDonor() == null)
+        {
+            return RouteResult.error("Project '" + project + "' cannot be routed: the profile group for " //$NON-NLS-1$ //$NON-NLS-2$
+                + endpoint.canonicalPath() + " is not resolved. " + describeIncompatible(group)); //$NON-NLS-1$
+        }
+        if (!group.contains(owner))
+        {
+            return RouteResult.error("Project '" + project + "' is on backend :" + owner.getPort() //$NON-NLS-1$ //$NON-NLS-2$
+                + " which is not in the compatible profile group for " + endpoint.canonicalPath() //$NON-NLS-1$
+                + ". " + describeIncompatible(group)); //$NON-NLS-1$
+        }
+        return RouteResult.backend(owner);
     }
 
     /**
@@ -201,10 +241,22 @@ public final class ProjectRouter
      */
     private RouteResult routeUnscoped()
     {
+        return routeUnscoped(ProfileEndpoint.legacyDefault());
+    }
+
+    private RouteResult routeUnscoped(ProfileEndpoint endpoint)
+    {
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        if (group.getDonor() != null)
+        {
+            return RouteResult.backend(group.getDonor());
+        }
         List<Backend> live = registry.live();
         if (!live.isEmpty())
         {
-            return RouteResult.backend(live.get(0));
+            return RouteResult.error("Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$
+                + "' is not resolved: live backends have no donor for " //$NON-NLS-1$
+                + endpoint.canonicalPath() + ". " + describeIncompatible(group)); //$NON-NLS-1$
         }
         ProxyConfig cfg = registry.getConfig();
         return RouteResult.error("No running EDT backends. Scanned ports " + cfg.scanFrom + "-" + cfg.scanTo //$NON-NLS-1$ //$NON-NLS-2$
@@ -232,6 +284,20 @@ public final class ProjectRouter
             sb.append(':').append(entry.getKey()).append(" (projects: "); //$NON-NLS-1$
             sb.append(entry.getValue().isEmpty() ? "none" : String.join(", ", entry.getValue())); //$NON-NLS-1$ //$NON-NLS-2$
             sb.append(')');
+        }
+        return sb.toString();
+    }
+
+    private static String describeIncompatible(ProfileGroupSnapshot group)
+    {
+        if (group.getIncompatible().isEmpty())
+        {
+            return "Call router_status for the mismatch details."; //$NON-NLS-1$
+        }
+        StringBuilder sb = new StringBuilder("Incompatible backends: "); //$NON-NLS-1$
+        for (ProfileGroupSnapshot.IncompatibleBackend item : group.getIncompatible())
+        {
+            sb.append(':').append(item.port).append(" (").append(item.reason).append("); "); //$NON-NLS-1$ //$NON-NLS-2$
         }
         return sb.toString();
     }

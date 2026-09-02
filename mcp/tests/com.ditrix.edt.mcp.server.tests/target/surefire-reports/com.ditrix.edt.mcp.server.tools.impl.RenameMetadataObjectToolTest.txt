@@ -1,0 +1,36 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest
+-------------------------------------------------------------------------------
+Tests run: 32, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 26.05 s -- in com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testTheRequestedBoundIsTheOneThatExpires -- Time elapsed: 10.02 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testTimeoutWhileApplyingWarnsThatTheModelMayBePartiallyRenamed -- Time elapsed: 2.018 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testOutOfRangeWireTimeoutIsClampedIntoTheAcceptedRange -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testMissingNewName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testDefaultTimeoutClearsTheWorstMeasuredLegitimateWait -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testWalkLeafChangesNumbersLeavesDepthFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testTimeoutAdviceNamesAnInspectorThatCanSeeTheTarget -- Time elapsed: 6.003 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testTimedOutPreviewIsNotReportedAsARenameThatMayStillApply -- Time elapsed: 2.001 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testMissingObjectFqn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testConfigurableTimeoutMatchesTheToolsOwnBounds -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testNegativeDisableIndexIsRefusedBeforeAnythingRuns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testWireTimeoutIsTheOneThatBoundsTheRename -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testHandOffFailureIsReportedWithItsOwnMessage -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testGuideDocumentsTheTimeoutAndItsConsequences -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testFailureAfterAppliedPhaseCarriesTheStructuralCommitMarker -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testRenameThatNeverStartedSaysTheModelIsUntouched -- Time elapsed: 2.004 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testWalkLeafChangesSingleLeafGetsIndexZero -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testWalkLeafChangesEmptyCompositeCountsNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testWedgedRenameFailsOnItsDeadlineWithAnActionableError -- Time elapsed: 2.001 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testTimeoutWhilePreparingDoesNotClaimTheModelWasRewritten -- Time elapsed: 2.000 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testRenameThatFinishesReturnsItsOwnPayloadUnchanged -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testFormElementRenamePropagatesDependentModelSettleRefusal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testConfirmWithDisableIndicesRequiresExpectedHashBeforeAnythingRuns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testNonNumericDisableIndexIsRefusedBeforeAnythingRuns -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.RenameMetadataObjectToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

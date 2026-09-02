@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.315 s -- in com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testMultipleGroupsRoundTrip -- Time elapsed: 0.286 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testDumpContainsExpectedKeys -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testEmptyChildrenRoundTrip -- Time elapsed: 0.007 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testLoadHandWrittenYaml -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testCyrillicValuesRoundTrip -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testLoadEmptyDocumentReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testDumpKeysAreSortedAlphabetically -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testNestedGroupsRoundTrip -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testNullPathRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testManyChildrenRoundTrip -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testGroupedObjectsQueryAfterRoundTrip -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testSingleGroupRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testAllFieldsRoundTrip -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testFindGroupForObjectAfterRoundTrip -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testEmptyStorageRoundTrip -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.groups.model.GroupYamlSerializationTest.testDefaultOrderIsZeroAfterRoundTrip -- Time elapsed: 0.006 s

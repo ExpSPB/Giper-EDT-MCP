@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -123,10 +124,13 @@ public final class CliCommands
             return thread;
         });
         registry.startPeriodicRefresh(scheduler);
+        sessions.startPeriodicCleanup(scheduler);
 
         Runnable shutdown = () -> {
             LOG.info("Shutting down edt-mcp-proxy"); //$NON-NLS-1$
+            sessions.shutdown();
             scheduler.shutdownNow();
+            registry.shutdown();
             server.stop();
         };
         // POST /admin/shutdown (the 'stop' subcommand's target) and a Ctrl+C/SIGTERM shutdown

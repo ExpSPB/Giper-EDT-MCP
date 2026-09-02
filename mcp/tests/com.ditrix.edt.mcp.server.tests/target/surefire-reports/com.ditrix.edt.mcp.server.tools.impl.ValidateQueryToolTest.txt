@@ -1,0 +1,26 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest
+-------------------------------------------------------------------------------
+Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testExecuteMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testDescriptionNotEmptyAndMentionsQuery -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testExecuteMissingQueryText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testResponseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testOutputSchemaDeclaresResultFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultOffsetZeroIsEmitted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testExecuteBothMissingReportsProjectNameFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testExecuteNullParamsMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testInputSchemaContainsRequiredParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultOmitsNonPositiveLocation -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultCountsInfoSeverity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultEmptyWithDcsModeTrue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultValidWhenNoIssues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultReportsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultCountsMixedSeverities -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testExecuteBlankProjectNameIsError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testBuildResultLineOnlyEmitsLineNotColumnNorOffset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testQueryIssueFieldsArePreserved -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ValidateQueryToolTest.testExecuteMissingProjectNameCarriesDiscoveryHint -- Time elapsed: 0 s

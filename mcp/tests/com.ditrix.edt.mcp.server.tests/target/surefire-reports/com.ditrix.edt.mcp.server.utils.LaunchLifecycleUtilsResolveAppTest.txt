@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testNullIdFallsBackToProjectDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testDefaultLookupThrowsDegradesToOriginal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testNonEmptyIdReturnedUnchangedAndNoLookup -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testEmptyIdNoDefaultReturnsOriginal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testNullAppManagerReturnsOriginal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testNullProjectReturnsOriginal -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsResolveAppTest.testEmptyIdFallsBackToProjectDefault -- Time elapsed: 0 s

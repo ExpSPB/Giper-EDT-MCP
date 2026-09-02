@@ -1,0 +1,39 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest
+-------------------------------------------------------------------------------
+Tests run: 35, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testDescriptionPointsAtGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testQualifierPrefixMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testOutputSchemaDeclaresSuccessEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testReturnedVariableNameFromSimpleReturn -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testOperatorStyleStructureSeedWithArgsFlagsPartial -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testIsInsertRussian -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testReturnedVariableNameNullWhenNoSimpleReturn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testFirstArgVarReturnsLocalVarRef -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testIsInsertCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testCoreHappyPathSingleStructureWithTwoKeys -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testQualifierNoMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testFirstArgVarNullWhenArgIsLiteral -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testIsInsertEnglish -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testAddLiteralKeyCollectsCleanKey -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testFunctionStyleStructureSeedWithArgsFlagsPartial -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testIsInsertRejectsOtherNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testQualifierEqualityCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testAsQualifiedCallNullForStaticAccess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testQualifierNullFilterAcceptsEverything -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testAddLiteralKeyMultiPartFlagsPartialAndSkips -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testAddLiteralKeyNonLiteralFlagsPartial -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testQualifierFilterExcludesNonMatchingCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testAsQualifiedCallForDynamicAccess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testSchemaMarksRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testSingleLiteralCleanKey -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testQualifierNullWithFilterFails -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testMethodNotFoundEnvelopeIsParseableJson -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testFirstArgVarNullWhenNoArguments -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testBareStructureSeedDoesNotFlagPartial -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testMissingModulePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetOutgoingStructuresToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

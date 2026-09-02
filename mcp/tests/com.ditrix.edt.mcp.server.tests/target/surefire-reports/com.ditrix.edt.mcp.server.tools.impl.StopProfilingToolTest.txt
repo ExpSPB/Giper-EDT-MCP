@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testMissingApplicationId -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testStopWhenNotActiveReturnsBenignSuccess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.StopProfilingToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

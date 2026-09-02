@@ -1,0 +1,9 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest
+com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest.legacyEndpointKeepsEnableToolsetWhenAllowed -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest.statusToolIsAlwaysCallableEvenWhenMissingFromAllowlist -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest.guideCannotRevealAForbiddenTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest.explicitProfileHidesEnableToolset -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.profiles.ProfileToolPolicyTest.sameSnapshotYieldsDeterministicSortedPublishedTools -- Time elapsed: 0 s

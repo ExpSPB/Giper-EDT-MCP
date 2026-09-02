@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.projectNameIsTakenFromAPlatformResourcePath -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.aRowFromTheSearchedProjectIsNotQualified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.aRowFromAnotherProjectKeepsThatProjectInItsIdentity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.pathWithoutAProjectSegmentYieldsNoName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.aBslReferenceCarriesItsFullResourceIdentity -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.anUnknownProjectLeavesTheRowUnchanged -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.reference.MetadataReferenceServiceTest.identityFallsBackToTheDisplayedPath -- Time elapsed: 0 s

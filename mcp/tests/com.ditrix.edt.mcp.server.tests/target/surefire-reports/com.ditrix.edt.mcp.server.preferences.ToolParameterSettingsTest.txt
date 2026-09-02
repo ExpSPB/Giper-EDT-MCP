@@ -1,0 +1,17 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest
+-------------------------------------------------------------------------------
+Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testConfigurableToolsExist -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testUnknownToolReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testSingleton -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testBuildKey -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testBuildKeyWithLimit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testAllConfigurableToolsBelongToGroups -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testSearchInCodeHasTwoParams -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testTerminateLaunchExposesTimeoutSecondsParam -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testNonConfigurableToolReturnsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testAllParametersHaveDisplayName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testGetProjectErrorsHasLimitParam -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testAllParametersHaveValidRanges -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.ToolParameterSettingsTest.testAllParametersHaveDescription -- Time elapsed: 0 s

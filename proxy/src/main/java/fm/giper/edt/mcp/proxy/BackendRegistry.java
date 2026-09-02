@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -95,9 +96,12 @@ public final class BackendRegistry
      * calls do not increment it). Package-private for direct assertion in concurrency tests. */
     private final AtomicInteger scanCount = new AtomicInteger(0);
 
-    private volatile Snapshot snapshot = Snapshot.EMPTY;
-    private volatile String cachedToolsList;
+    private final Object stateLock = new Object();
+    private final Object listenerLifecycleLock = new Object();
+    private volatile RegistryState state = new RegistryState(0L, Snapshot.EMPTY, false);
+    private final SseNotificationHub sseHub = new SseNotificationHub();
     private volatile long lastRefreshMillis;
+    private volatile boolean shutdown;
 
     /** Test seam: when set, {@link #refresh()} runs this instead of scanning real ports. */
     private volatile Runnable refreshOverride;
@@ -109,10 +113,22 @@ public final class BackendRegistry
      */
     public BackendRegistry(ProxyConfig cfg)
     {
-        this.cfg = cfg;
-        this.client = HttpClient.newBuilder()
+        this(cfg, HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-            .build();
+            .build());
+    }
+
+    /** Test seam for generation-only tests that never perform backend I/O. */
+    BackendRegistry(ProxyConfig cfg, HttpClient client)
+    {
+        this.cfg = cfg;
+        this.client = client;
+        this.sseHub.setInvalidator(this::invalidateRequestedProfile);
+    }
+
+    public SseNotificationHub sseHub()
+    {
+        return sseHub;
     }
 
     /**
@@ -227,10 +243,27 @@ public final class BackendRegistry
             }
         }
 
-        Snapshot previous = snapshot;
-        snapshot = Snapshot.build(live, holders, unsupported, truncated);
+        Snapshot previous = state.snapshot;
+        publishState(Snapshot.build(live, holders, unsupported, truncated), false);
+        Snapshot current = state.snapshot;
         lastRefreshMillis = System.currentTimeMillis();
-        logChange(previous, snapshot);
+        logChange(previous, current);
+        synchronized (listenerLifecycleLock)
+        {
+            stopRemovedBackendListeners(previous, current);
+            if (shutdown)
+            {
+                for (Backend backend : current.live)
+                {
+                    backend.stopNotificationListeners();
+                }
+                return;
+            }
+            for (Backend backend : current.live)
+            {
+                backend.ensureNotificationListeners(sseHub);
+            }
+        }
     }
 
     /**
@@ -252,7 +285,7 @@ public final class BackendRegistry
      */
     public List<Backend> live()
     {
-        return snapshot.live;
+        return state.snapshot.live;
     }
 
     /**
@@ -265,7 +298,7 @@ public final class BackendRegistry
      */
     public Backend byProject(String projectName)
     {
-        return projectName == null ? null : snapshot.owners.get(projectName);
+        return projectName == null ? null : state.snapshot.owners.get(projectName);
     }
 
     /**
@@ -276,7 +309,7 @@ public final class BackendRegistry
      */
     public Map<String, List<Integer>> duplicateProjects()
     {
-        return snapshot.duplicates;
+        return state.snapshot.duplicates;
     }
 
     /**
@@ -286,7 +319,7 @@ public final class BackendRegistry
      */
     public List<String> knownProjects()
     {
-        return snapshot.knownProjects;
+        return state.snapshot.knownProjects;
     }
 
     /**
@@ -299,7 +332,7 @@ public final class BackendRegistry
      */
     public Map<Integer, List<String>> projectsByPort()
     {
-        return snapshot.projectsByPort;
+        return state.snapshot.projectsByPort;
     }
 
     /**
@@ -311,7 +344,7 @@ public final class BackendRegistry
      */
     public List<Integer> truncatedBackends()
     {
-        return snapshot.truncated;
+        return state.snapshot.truncated;
     }
 
     /**
@@ -325,7 +358,7 @@ public final class BackendRegistry
      */
     public UnroutableBackends unroutableBackends()
     {
-        Snapshot current = snapshot;
+        Snapshot current = state.snapshot;
         return new UnroutableBackends(current.unsupported, current.truncated);
     }
 
@@ -367,7 +400,7 @@ public final class BackendRegistry
      */
     public Backend toolsListDonor()
     {
-        Snapshot current = snapshot;
+        Snapshot current = state.snapshot;
         for (Backend backend : current.live)
         {
             if (!current.unsupported.contains(backend.getPort()))
@@ -388,7 +421,7 @@ public final class BackendRegistry
      */
     public List<Integer> unsupportedBackends()
     {
-        return snapshot.unsupported;
+        return state.snapshot.unsupported;
     }
 
     /**
@@ -399,7 +432,7 @@ public final class BackendRegistry
      */
     public String cachedToolsListResponse()
     {
-        return cachedToolsList;
+        return state.legacyToolsList;
     }
 
     /**
@@ -410,7 +443,360 @@ public final class BackendRegistry
      */
     public void cacheToolsListResponse(String raw)
     {
-        this.cachedToolsList = raw;
+        RegistryState current = state;
+        current.legacyToolsList = raw;
+        ProfileGroupSnapshot group = current.groupsByPath.get(ProfileEndpoint.LEGACY_PATH);
+        if (group != null && !group.isFallback())
+        {
+            current.toolsListByCacheKey.put(group.cacheKey(), raw);
+        }
+    }
+
+    /**
+     * Stores a {@code tools/list} response under the group's cache key. A fallback group
+     * never writes the explicit {@code /mcp} or {@code /mcp/profiles/default} cache slot.
+     *
+     * @param group the routing group
+     * @param raw the injected JSON-RPC response
+     */
+    public void cacheToolsListResponse(ProfileGroupSnapshot group, String raw)
+    {
+        if (group == null || raw == null)
+        {
+            return;
+        }
+        RegistryState current = state;
+        if (group.getGeneration() != current.generation)
+        {
+            return;
+        }
+        current.toolsListByCacheKey.put(group.cacheKey(), raw);
+        if (!group.isFallback() && group.getEndpoint().isExplicitDefaultPath())
+        {
+            current.legacyToolsList = raw;
+        }
+    }
+
+    public String cachedToolsListResponse(ProfileGroupSnapshot group)
+    {
+        if (group == null)
+        {
+            return state.legacyToolsList;
+        }
+        RegistryState current = state;
+        return group.getGeneration() == current.generation
+            ? current.toolsListByCacheKey.get(group.cacheKey()) : null;
+    }
+
+    /**
+     * Drops the cached tools list and group for one requested profile id (list-changed).
+     *
+     * @param requestedProfileId the requested id
+     */
+    public void invalidateRequestedProfile(String requestedProfileId)
+    {
+        if (requestedProfileId == null)
+        {
+            return;
+        }
+        synchronized (stateLock)
+        {
+            RegistryState current = state;
+            RegistryState next = new RegistryState(current.generation + 1L, current.snapshot, current.synthetic);
+            for (Map.Entry<String, ProfileGroupSnapshot> entry : current.groupsByPath.entrySet())
+            {
+                ProfileGroupSnapshot oldGroup = entry.getValue();
+                if (requestedProfileId.equals(oldGroup.getEndpoint().getRequestedProfileId()))
+                {
+                    continue;
+                }
+                ProfileGroupSnapshot copied = copyGroup(oldGroup, next.generation);
+                next.groupsByPath.put(entry.getKey(), copied);
+                String cached = current.toolsListByCacheKey.get(oldGroup.cacheKey());
+                if (cached != null)
+                {
+                    next.toolsListByCacheKey.put(copied.cacheKey(), cached);
+                }
+            }
+            if (!ProfileEndpoint.DEFAULT_PROFILE_ID.equals(requestedProfileId))
+            {
+                next.legacyToolsList = current.legacyToolsList;
+            }
+            state = next;
+        }
+    }
+
+    /**
+     * Fail-closed compatibility group for the client's endpoint. Donor is the lowest-port
+     * backend that produced a resolution; the group is every live backend with the same
+     * effective id, fallback state and fingerprint. Mixed fallback vs present is incompatible.
+     *
+     * @param endpoint the client path
+     * @return a snapshot (donor may be {@code null} when no backend is live)
+     */
+    public ProfileGroupSnapshot groupFor(ProfileEndpoint endpoint)
+    {
+        ProfileEndpoint path = endpoint == null ? ProfileEndpoint.legacyDefault() : endpoint;
+        while (true)
+        {
+            RegistryState current = state;
+            ProfileGroupSnapshot group = groupFor(current, path);
+            if (group != null)
+            {
+                return group;
+            }
+        }
+    }
+
+    /** Captures project ownership, duplicate detection and profile compatibility from one generation. */
+    public RoutingView routingView(ProfileEndpoint endpoint)
+    {
+        ProfileEndpoint path = endpoint == null ? ProfileEndpoint.legacyDefault() : endpoint;
+        while (true)
+        {
+            RegistryState current = state;
+            ProfileGroupSnapshot group = groupFor(current, path);
+            if (group != null && state == current)
+            {
+                return new RoutingView(current.generation, current.snapshot, group);
+            }
+        }
+    }
+
+    /** Resolves several profile groups against exactly one registry generation. */
+    Map<String, ProfileGroupSnapshot> groupsForGeneration(long expectedGeneration,
+        List<ProfileEndpoint> endpoints)
+    {
+        while (true)
+        {
+            RegistryState current = state;
+            if (current.generation != expectedGeneration)
+            {
+                return null;
+            }
+            Map<String, ProfileGroupSnapshot> groups = new LinkedHashMap<>();
+            boolean stale = false;
+            for (ProfileEndpoint endpoint : endpoints)
+            {
+                ProfileEndpoint path = endpoint == null ? ProfileEndpoint.legacyDefault() : endpoint;
+                ProfileGroupSnapshot group = groupFor(current, path);
+                if (group == null)
+                {
+                    stale = true;
+                    break;
+                }
+                groups.put(path.canonicalPath(), group);
+            }
+            if (!stale && state == current && current.generation == expectedGeneration)
+            {
+                return Collections.unmodifiableMap(groups);
+            }
+        }
+    }
+
+    private ProfileGroupSnapshot groupFor(RegistryState current, ProfileEndpoint path)
+    {
+        ProfileGroupSnapshot cached = current.groupsByPath.get(path.canonicalPath());
+        if (cached != null)
+        {
+            return state == current ? cached : null;
+        }
+        ProfileGroupSnapshot computed = computeGroup(current, path);
+        if (state != current)
+        {
+            return null;
+        }
+        ProfileGroupSnapshot winner = current.groupsByPath.putIfAbsent(path.canonicalPath(), computed);
+        return state == current ? (winner == null ? computed : winner) : null;
+    }
+
+    private ProfileGroupSnapshot computeGroup(RegistryState current, ProfileEndpoint path)
+    {
+        List<Backend> live = current.snapshot.live;
+        if (current.synthetic)
+        {
+            Backend donor = live.isEmpty() ? null : live.get(0);
+            return new ProfileGroupSnapshot(current.generation, path, path.getRequestedProfileId(), null, "",
+                donor, new ArrayList<>(live), List.of());
+        }
+        if (live.isEmpty())
+        {
+            return new ProfileGroupSnapshot(current.generation, path, path.getRequestedProfileId(), null, "",
+                null, List.of(), List.of());
+        }
+
+        List<ProfileGroupSnapshot.IncompatibleBackend> incompatible = new ArrayList<>();
+        Backend donor = null;
+        ChannelResolution donorResolution = null;
+        for (Backend backend : live)
+        {
+            try
+            {
+                ChannelResolution resolution = backend.channel(path).refreshResolution();
+                if (donor == null)
+                {
+                    donor = backend;
+                    donorResolution = resolution;
+                }
+                else if (!donorResolution.compatibilityKey().equals(resolution.compatibilityKey()))
+                {
+                    incompatible.add(new ProfileGroupSnapshot.IncompatibleBackend(backend.getPort(),
+                        "effective=" + resolution.getEffectiveProfileId() //$NON-NLS-1$
+                            + " fallback=" + resolution.getFallbackReason() //$NON-NLS-1$
+                            + " fingerprint differs from donor :" + donor.getPort())); //$NON-NLS-1$
+                }
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                incompatible.add(new ProfileGroupSnapshot.IncompatibleBackend(backend.getPort(),
+                    "interrupted while resolving profile")); //$NON-NLS-1$
+            }
+            catch (IOException | RuntimeException e)
+            {
+                incompatible.add(new ProfileGroupSnapshot.IncompatibleBackend(backend.getPort(),
+                    "profile resolution failed: " + e.getMessage())); //$NON-NLS-1$
+            }
+        }
+
+        List<Backend> compatible = new ArrayList<>();
+        if (donor != null)
+        {
+            compatible.add(donor);
+            for (Backend backend : live)
+            {
+                if (backend.getPort() == donor.getPort())
+                {
+                    continue;
+                }
+                boolean listed = false;
+                for (ProfileGroupSnapshot.IncompatibleBackend item : incompatible)
+                {
+                    if (item.port == backend.getPort())
+                    {
+                        listed = true;
+                        break;
+                    }
+                }
+                if (!listed)
+                {
+                    compatible.add(backend);
+                }
+            }
+        }
+
+        return new ProfileGroupSnapshot(current.generation, path,
+            donorResolution == null ? path.getRequestedProfileId() : donorResolution.getEffectiveProfileId(),
+            donorResolution == null ? null : donorResolution.getFallbackReason(),
+            donorResolution == null ? "" : donorResolution.getFingerprint(), //$NON-NLS-1$
+            donor, compatible, incompatible);
+    }
+
+    /**
+     * Profiles present and compatible on every current live backend, with endpoints rewritten
+     * to this proxy.
+     *
+     * @param proxyPort the proxy listen port
+     * @return a JSON array (possibly empty)
+     */
+    public JsonArray availableProfilesForProxy(int proxyPort)
+    {
+        retry:
+        while (true)
+        {
+            JsonArray out = new JsonArray();
+            RegistryState current = state;
+            List<Backend> live = current.snapshot.live;
+            if (live.isEmpty() || current.synthetic)
+            {
+                return out;
+            }
+            java.util.LinkedHashSet<String> intersection = null;
+            for (Backend backend : live)
+            {
+                java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+                try
+                {
+                    ChannelResolution resolution =
+                        backend.channel(ProfileEndpoint.legacyDefault()).refreshResolution();
+                    if (resolution.getAvailableProfiles() == null || resolution.getAvailableProfiles().size() == 0)
+                    {
+                        ids.add(ProfileEndpoint.DEFAULT_PROFILE_ID);
+                    }
+                    else
+                    {
+                        for (JsonElement element : resolution.getAvailableProfiles())
+                        {
+                            if (!element.isJsonObject())
+                            {
+                                continue;
+                            }
+                            String id = Json.str(element.getAsJsonObject(), "id"); //$NON-NLS-1$
+                            if (id != null && !id.isBlank())
+                            {
+                                ids.add(id);
+                            }
+                        }
+                    }
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    return new JsonArray();
+                }
+                catch (IOException | RuntimeException e)
+                {
+                    return new JsonArray();
+                }
+                if (intersection == null)
+                {
+                    intersection = new java.util.LinkedHashSet<>(ids);
+                }
+                else
+                {
+                    intersection.retainAll(ids);
+                }
+            }
+            if (state != current)
+            {
+                continue;
+            }
+            if (intersection == null)
+            {
+                return out;
+            }
+            List<String> sorted = new ArrayList<>(intersection);
+            Collections.sort(sorted);
+            for (String id : sorted)
+            {
+                ProfileEndpoint path = ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id)
+                    ? ProfileEndpoint.legacyDefault()
+                    : new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
+                ProfileGroupSnapshot group = groupFor(current, path);
+                if (group == null)
+                {
+                    continue retry;
+                }
+                if (group.getDonor() == null || !group.getIncompatible().isEmpty()
+                    || group.getCompatible().size() != live.size())
+                {
+                    continue;
+                }
+                JsonObject item = new JsonObject();
+                item.addProperty("id", id); //$NON-NLS-1$
+                item.addProperty("endpoint", "http://127.0.0.1:" + proxyPort + path.canonicalPath()); //$NON-NLS-1$ //$NON-NLS-2$
+                out.add(item);
+            }
+            if (state == current)
+            {
+                return out;
+            }
+        }
+    }
+
+    public BackendProfileChannel channel(Backend backend, ProfileEndpoint endpoint)
+    {
+        return backend.channel(endpoint);
     }
 
     /**
@@ -478,7 +864,75 @@ public final class BackendRegistry
     void installStateForTest(List<Backend> liveBackends, Map<String, List<Backend>> projectHolders,
         List<Integer> unsupportedPorts)
     {
-        snapshot = Snapshot.build(liveBackends, projectHolders, unsupportedPorts);
+        publishState(Snapshot.build(liveBackends, projectHolders, unsupportedPorts), true);
+    }
+
+    /**
+     * Test seam: installs a group after {@link #installStateForTest} without letting
+     * {@link #groupFor} synthesize {@code donor = live.get(0)}.
+     */
+    void putGroupForTest(ProfileGroupSnapshot group)
+    {
+        if (group == null || group.getEndpoint() == null)
+        {
+            return;
+        }
+        RegistryState current = state;
+        ProfileGroupSnapshot installed = new ProfileGroupSnapshot(current.generation, group.getEndpoint(),
+            group.getEffectiveProfileId(), group.getFallbackReason(), group.getFingerprint(), group.getDonor(),
+            group.getCompatible(), group.getIncompatible());
+        current.groupsByPath.put(group.getEndpoint().canonicalPath(), installed);
+    }
+
+    /** Stops all backend profile listeners and prevents an in-flight refresh from restarting them. */
+    public void shutdown()
+    {
+        synchronized (listenerLifecycleLock)
+        {
+            shutdown = true;
+            for (Backend backend : backendsByPort.values())
+            {
+                backend.stopNotificationListeners();
+            }
+            for (Backend backend : state.snapshot.live)
+            {
+                if (!backendsByPort.containsKey(backend.getPort()))
+                {
+                    backend.stopNotificationListeners();
+                }
+            }
+        }
+    }
+
+    private static void stopRemovedBackendListeners(Snapshot previous, Snapshot current)
+    {
+        java.util.Set<Integer> currentPorts = new java.util.HashSet<>();
+        for (Backend backend : current.live)
+        {
+            currentPorts.add(Integer.valueOf(backend.getPort()));
+        }
+        for (Backend backend : previous.live)
+        {
+            if (!currentPorts.contains(Integer.valueOf(backend.getPort())))
+            {
+                backend.stopNotificationListeners();
+            }
+        }
+    }
+
+    private void publishState(Snapshot next, boolean synthetic)
+    {
+        synchronized (stateLock)
+        {
+            state = new RegistryState(state.generation + 1L, next, synthetic);
+        }
+    }
+
+    private static ProfileGroupSnapshot copyGroup(ProfileGroupSnapshot group, long generation)
+    {
+        return new ProfileGroupSnapshot(generation, group.getEndpoint(), group.getEffectiveProfileId(),
+            group.getFallbackReason(), group.getFingerprint(), group.getDonor(), group.getCompatible(),
+            group.getIncompatible());
     }
 
     /**
@@ -793,6 +1247,59 @@ public final class BackendRegistry
             ports.add(backend.getPort());
         }
         return ports;
+    }
+
+    /** One generation-scoped registry state, including every derived group and tools cache. */
+    private static final class RegistryState
+    {
+        final long generation;
+        final Snapshot snapshot;
+        final boolean synthetic;
+        final ConcurrentHashMap<String, ProfileGroupSnapshot> groupsByPath = new ConcurrentHashMap<>();
+        final ConcurrentHashMap<String, String> toolsListByCacheKey = new ConcurrentHashMap<>();
+        volatile String legacyToolsList;
+
+        RegistryState(long generation, Snapshot snapshot, boolean synthetic)
+        {
+            this.generation = generation;
+            this.snapshot = snapshot;
+            this.synthetic = synthetic;
+        }
+    }
+
+    /** Immutable routing data captured from one registry generation. */
+    public static final class RoutingView
+    {
+        private final long generation;
+        private final Snapshot snapshot;
+        private final ProfileGroupSnapshot group;
+
+        private RoutingView(long generation, Snapshot snapshot, ProfileGroupSnapshot group)
+        {
+            this.generation = generation;
+            this.snapshot = snapshot;
+            this.group = group;
+        }
+
+        public List<Integer> duplicatePorts(String projectName)
+        {
+            return projectName == null ? null : snapshot.duplicates.get(projectName);
+        }
+
+        public Backend owner(String projectName)
+        {
+            return projectName == null ? null : snapshot.owners.get(projectName);
+        }
+
+        public ProfileGroupSnapshot group()
+        {
+            return group;
+        }
+
+        long generation()
+        {
+            return generation;
+        }
     }
 
     /**

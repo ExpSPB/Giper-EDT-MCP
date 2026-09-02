@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testUpdatedIsSynced -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testFullRequiredNeedsUpdate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testBeingUpdatedIsInProgress -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testUnknownIsUnknown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testIncrementalRequiredNeedsUpdate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testEveryStateValueIsClassified -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.LaunchLifecycleUtilsSyncCategoryTest.testNullIsUnknownAndNotSynced -- Time elapsed: 0 s

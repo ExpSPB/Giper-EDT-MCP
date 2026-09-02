@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testDescriptionNotEmpty -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testFormPathWithoutProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testResponseTypeImage -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormScreenshotToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

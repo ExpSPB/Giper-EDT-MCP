@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest
+com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest.testNoEnvOverrideDefersToPreference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest.testEnvForcesOnFamilyCaseAndWhitespaceInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest.testEnvForcesOffFamilyCaseAndWhitespaceInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest.testDefaultIsOff -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest.testEnvOnWinsOverPreferenceOff -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.preferences.PiiRedactionSettingsTest.testEnvOffWinsOverPreferenceOn -- Time elapsed: 0 s

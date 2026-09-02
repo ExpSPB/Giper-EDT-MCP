@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<?artifactRepository version='1.1.0'?>
+<artifacts size='1'>
+  <artifact classifier='org.eclipse.update.feature' id='com.ditrix.edt.mcp.server.feature' version='1.0.2.202608292009'>
+    <properties size='10'>
+      <property name='artifact.size' value='1396'/>
+      <property name='download.size' value='1396'/>
+      <property name='download.checksum.sha-512' value='0bc16d4cbb00c2e391f9dfc3b534a64294d299ae82b36c2233b44a3708e075afb532932b4972bc8b3bf35d150534672b0be111949869151da94127cafd68170a'/>
+      <property name='download.checksum.sha-1' value='b71ab7da602cf062b385b309768618ceda6ee4d2'/>
+      <property name='download.checksum.sha-256' value='847e9e05604203b12e73f669cf190252f09ce300b0836623b4b01f4899f42481'/>
+      <property name='maven-groupId' value='com.ditrix.edt.mcp'/>
+      <property name='maven-artifactId' value='com.ditrix.edt.mcp.server.feature'/>
+      <property name='maven-version' value='1.0.2-SNAPSHOT'/>
+      <property name='maven-type' value='eclipse-feature'/>
+      <property name='download.contentType' value='application/zip'/>
+    </properties>
+  </artifact>
+</artifacts>

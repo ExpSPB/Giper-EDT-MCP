@@ -1,0 +1,57 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest
+-------------------------------------------------------------------------------
+Tests run: 53, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDepthAboveOneIsRejectedForOutgoing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDepthAboveOneIsRejectedForCallees -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testIsExtApiIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterHandlesDegenerateInput -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testExtractModuleNameCommonModule -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameBlankDirectionDefaultsToCallers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testQualifierKeyQualifiedModuleCall -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDescriptionWarnsThatDynamicCallsAreInvisible -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testMissingMethodNameCalleesStillErrors -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testSchemaDeclaresDepth -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testIsExtApiDefaultPrefixMatchesCyrillicMember -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testQualifierKeyChainedExpressionCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testExtractModuleNameDegenerate -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testQualifierKeyDynamicWithNoSourceIsExpr -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testFoldCaseAgreesWithEqualsIgnoreCase -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testIsExtApiLocalAndExprTokensAreNeverExtApi -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameDefaultWhenMethodNameEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testIsExtApiWithCustomPrefix -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDescriptionAdvertisesTransitiveDepth -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameOutgoingWithMethod -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testSchemaNoLongerRequiresMethodName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testQualifierKeyUnqualifiedLocalCall -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testFoldCaseHandlesDegenerateInput -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterSplitsOnACharacterBslCannotPutInAnIdentifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameOutgoingWhenMethodNameMissing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testIsExtApiOrdinaryModuleIsNotExtApi -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameDefaultWhenParamsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameWithMethodDefaultsDirectionToCallers -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDepthCeilingIsFive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterSurvivesUnusualSpacingAndLineBreaks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterMatchesAnyOfSeveralNamesInOnePass -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testOutgoingWithoutMethodNameSkipsMethodNameGuard -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testAggregationKeyIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testSchemaDeclaresOutgoingDirectionAndExtApiPrefix -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testExtractModuleNameManagerModule -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterRejectsASubstringOfALongerIdentifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testInvalidDirection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameLowercasesMethodName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDepthClampedBackToOneIsAcceptedForEveryDirection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterMatchesACyrillicIdentifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testDepthAboveMaxIsClampedNotRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testResultFileNameWithMethodAndDirection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testMissingModulePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testPrefilterMatchesAWholeIdentifier -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetMethodCallHierarchyToolTest.testMissingMethodName -- Time elapsed: 0 s

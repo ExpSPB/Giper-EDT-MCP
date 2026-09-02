@@ -1,0 +1,33 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest
+-------------------------------------------------------------------------------
+Tests run: 29, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testModulePathCanonicalKeyIsReadBeforeFilePathAlias -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testInputSchemaDeclaresPaginationAndFilterParameters -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsOffset -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testOutputSchemaIsDeclaredForJsonTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsContainsFilter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testNonNumericColumnIsInvalid -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsNullArrayIsEmptySuccess -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testNegativeLineRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testMissingFilePath -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testResultFileNameDefaultsToToolNameMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testDoubleFormatLineBelowOneRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsSortsForDeterministicPagination -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testEmptyModulePathFallsBackToFilePathAlias -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsNullArrayWithFilterStaysEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testLineColumnMustBePositive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testColumnMustBePositive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testNonNumericLineOrColumn -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testDescriptionPointsToGuide -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsBasic -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testFormatProposalsLimit -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testRequiredParametersInInputSchema -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testMissingProjectName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetContentAssistToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

@@ -1,0 +1,10 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.ToolContractConsistencyTest
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.121 s -- in com.ditrix.edt.mcp.server.ToolContractConsistencyTest
+com.ditrix.edt.mcp.server.ToolContractConsistencyTest.testToolNamesAreSnakeCaseAndUnique -- Time elapsed: 0.014 s
+com.ditrix.edt.mcp.server.ToolContractConsistencyTest.testEveryRequiredParamIsADeclaredProperty -- Time elapsed: 0.017 s
+com.ditrix.edt.mcp.server.ToolContractConsistencyTest.testRegistryIsPopulated -- Time elapsed: 0.034 s
+com.ditrix.edt.mcp.server.ToolContractConsistencyTest.testInputSchemaIsAWellFormedObjectSchema -- Time elapsed: 0.025 s
+com.ditrix.edt.mcp.server.ToolContractConsistencyTest.testEveryPropertyHasValidTypeAndNonEmptyDescription -- Time elapsed: 0.015 s
+com.ditrix.edt.mcp.server.ToolContractConsistencyTest.testEveryToolHasANonEmptyDescription -- Time elapsed: 0.015 s

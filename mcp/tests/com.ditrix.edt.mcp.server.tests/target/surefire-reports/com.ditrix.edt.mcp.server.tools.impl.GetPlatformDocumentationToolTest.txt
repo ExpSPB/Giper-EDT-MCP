@@ -1,0 +1,15 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest
+-------------------------------------------------------------------------------
+Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testGuideDocumentsResponseFormat -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testInvalidMemberTypeRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testMissingTypeName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testSchemaDeclaresResponseFormatEnum -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testGuideHoldsMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testSchemaClosedVocabulariesAreEnums -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetPlatformDocumentationToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

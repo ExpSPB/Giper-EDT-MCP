@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testNumberCodeRejectsJsonString -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testNumberCodeValidStoredAndDisplayed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testNumberCodeTooManyDigitsRejected -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testStringCodeStoredAndDisplayed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testStringCodeTooLongRejectedNeverTruncated -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testBaseRejectedForNonCalcTypesOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testActionPeriodIsBaseFlagStored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testActionPeriodIsBaseRejectedForNonCalcTypesOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testDisplacedRejectedForNonCalcTypesOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testStringCodeRejectsJsonNumber -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testNumberCodeFractionalRejected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testParentRejectedForCalcTypesOwnerFlatModel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testListAllFlatNoNestingIsFolderFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testNumberCodeHugeExponentRejectedWithoutMaterializing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testIsFolderRejectedForCalcTypesOwnerFlatModel -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testLeadingRejectedForNonCalcTypesOwner -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.PredefinedWriterChartOfCalculationTypesTest.testNumberCodeNegativeRejected -- Time elapsed: 0 s

@@ -1,0 +1,37 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest
+-------------------------------------------------------------------------------
+Tests run: 33, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testBannerStatesTheTotalNotJustTheSample -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnUnresolvableStrongCandidateDoesNotSuppressTheTypoFallback -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testTheQueryIsNeverSuggestedBackToTheCaller -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnIncidentalSubstringIsNotOfferedAsACorrection -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnUnusedPrefixBudgetIsInheritedByTheSubstringBucket -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAQueryCannotForgeItsOwnEntryInTheVerifiedList -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testBlankNamesAreIgnored -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAReachabilityFailureOutranksADocumentsNothingVerdict -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAProviderNameThatCannotBePrintedOnOneLineIsDropped -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAFullPrefixBucketDoesNotStopTheWeakerBucketsFromFilling -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testTheHintIsAppendedAsTheNextStep -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testASaturatedPrefixBucketStillReachesAResolvablePrefixMatch -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAMisspellingStillGetsASuggestion -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnUnresolvableSuggestionIsDroppedToo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testTheForgeryGuardCoversEveryTerminatorAReaderHonours -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testTheBudgetSpansThePoolRightAtItsBoundary -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testARepeatedNameIsCountedAndOfferedOnce -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAQualifiedNameIsPointedAtItsBaseType -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnUnreachableTargetIsNotReportedAsDocumentingNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testATypoSuggestionIsOnlyALastResort -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testPrefixMatchesAreOfferedBeforeOtherRelatedNames -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testABrokenPrefixBucketDoesNotStarveTheSubstringBucket -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnUnprintableNameDoesNotSuppressTheRealSuggestion -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnEmptyProviderSaysSoInsteadOfListingNothing -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testADistantNameIsNotOfferedAsATypo -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAKnownButUndocumentedNameGetsItsOwnDiagnosis -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAnExhaustedSampleIsNotReportedAsAnEmptyProvider -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testSuggestionsWorkOnTheRussianName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testANameThatDoesNotResolveIsNeverPrinted -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testBannerIsRecognizedAsASoftNotFoundBanner -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAGoodNameBehindABlockOfBadOnesStillGetsListed -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testAShortQueryIsNotTypoMatched -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.doc.PlatformNameIndexTest.testABadBlockLONGERThanTheAttemptBudgetStillDoesNotBuryTheGoodNames -- Time elapsed: 0 s

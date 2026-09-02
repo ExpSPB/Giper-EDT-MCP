@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest
+-------------------------------------------------------------------------------
+Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testEmptyParamsRejectsOnProjectNameFirst -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testJoinBoundedExactlyAtTheCapReportsNoRemainder -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testInputSchemaDeclaresParametersLowerCamelCaseAndRequired -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testNonexistentProjectIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testOutputSchemaDeclaresTheResultEnvelope -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testJoinBoundedEmptyIsNone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testMissingBranchIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testJoinBoundedCapsAtTwentyAndReportsTheRemainderCount -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testJoinBoundedJoinsAllPathsWhenUnderTheCap -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testMissingProjectNameIsRejectedActionably -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testJoinBoundedNullIsNone -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.SwitchGitBranchToolTest.testDescriptionNotEmptyAndSteersToGuide -- Time elapsed: 0 s

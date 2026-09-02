@@ -1,6 +1,7 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -8,8 +9,6 @@ package fm.giper.edt.mcp.server;
 
 import java.util.Dictionary;
 import java.util.Hashtable;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
@@ -40,6 +39,10 @@ import fm.giper.edt.mcp.server.groups.IGroupService;
 import fm.giper.edt.mcp.server.bridge.EdtMcpBridge;
 import fm.giper.edt.mcp.server.bridge.IEdtMcpBridge;
 import fm.giper.edt.mcp.server.history.McpCallHistoryFileLog;
+import fm.giper.edt.mcp.server.preferences.ToolSettingsService;
+import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
+import fm.giper.edt.mcp.server.profiles.ProfileNotificationService;
+import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
 import fm.giper.edt.mcp.server.utils.BackgroundJobs;
 import fm.giper.edt.mcp.server.utils.Log;
 import com.e1c.g5.dt.applications.IApplicationManager;
@@ -63,6 +66,9 @@ public class Activator extends AbstractUIPlugin
     /** MCP Server instance */
     private McpServer mcpServer;
 
+    /** Published tool-profile snapshot. Runtime still uses {@code ToolSettingsService} until migration. */
+    private ToolProfileRepository toolProfileRepository;
+
     /** In-process bridge exposed to sibling OSGi bundles by string service name. */
     private ServiceRegistration<?> bridgeRegistration;
 
@@ -85,6 +91,18 @@ public class Activator extends AbstractUIPlugin
         super.start(context);
         plugin = this; // NOSONAR Eclipse singleton/Activator init pattern; method cannot be static
         mcpServer = new McpServer();
+        toolProfileRepository = new PreferenceToolProfileRepository(getPreferenceStore());
+        toolProfileRepository.addListener((previous, current, changeSet) -> {
+            if (previous == null || current == null || current.getDefault() == null)
+            {
+                return;
+            }
+            if (previous.getDefault() == null || !previous.getDefault().sameContent(current.getDefault()))
+            {
+                ToolSettingsService.getInstance().mirrorDefaultToLegacy(current.getDefault());
+            }
+        });
+        toolProfileRepository.addListener(new ProfileNotificationService());
 
         boolean headless = isHeadless();
         if (!headless)
@@ -129,11 +147,8 @@ public class Activator extends AbstractUIPlugin
     /**
      * Publishes the stable in-process bridge.
      * <p>
-     * Registered under three names: the interface's STRING name (for consumers that resolve it
-     * reflectively) plus the JDK function types, so a consumer that cannot see the bridge
-     * package - an AI assistant running a JShell snippet, for instance - still gets a typed
-     * handle. The service property tells those JDK-typed lookups apart from any other
-     * BiFunction/Supplier service in the runtime.
+     * Registered under the interface's STRING name so consumers resolve it
+     * reflectively. The service property marks this contract revision.
      *
      * @param context the bundle context to register in
      */
@@ -142,9 +157,7 @@ public class Activator extends AbstractUIPlugin
         Dictionary<String, Object> bridgeProperties = new Hashtable<>();
         bridgeProperties.put(IEdtMcpBridge.SERVICE_PROPERTY, IEdtMcpBridge.SERVICE_PROPERTY_VALUE);
         bridgeRegistration = context.registerService(
-            new String[] { IEdtMcpBridge.class.getName(), BiFunction.class.getName(),
-                Supplier.class.getName() },
-            new EdtMcpBridge(), bridgeProperties);
+            IEdtMcpBridge.class.getName(), new EdtMcpBridge(), bridgeProperties);
     }
 
     @Override
@@ -164,6 +177,7 @@ public class Activator extends AbstractUIPlugin
         {
             mcpServer.stop();
         }
+        toolProfileRepository = null;
 
         // Flush and close the optional history file-log sink (releases its background
         // writer thread + file handle). No-op when the file log is off.
@@ -229,6 +243,15 @@ public class Activator extends AbstractUIPlugin
     public McpServer getMcpServer()
     {
         return mcpServer;
+    }
+
+    /**
+     * Returns the published tool-profile repository, or {@code null} before start / after stop.
+     * Production tool enablement still reads {@code ToolSettingsService} until migration wires this in.
+     */
+    public ToolProfileRepository getToolProfileRepository()
+    {
+        return toolProfileRepository;
     }
     
     /**

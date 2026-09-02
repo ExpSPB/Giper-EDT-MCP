@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testResponseTypeText -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testFormPathWithoutProjectName -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testGuideHasMigratedDetail -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.GetFormLayoutSnapshotToolTest.testSchemaDeclaresParameters -- Time elapsed: 0.001 s

@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -11,6 +12,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Defines logical groups for MCP tools.
@@ -166,5 +168,13 @@ public enum ToolGroup
     public static int getTotalToolCount()
     {
         return TOOL_TO_GROUP.size();
+    }
+
+    /**
+     * All known tool names from every group, sorted.
+     */
+    public static Set<String> allToolNames()
+    {
+        return Set.copyOf(TOOL_TO_GROUP.keySet());
     }
 }

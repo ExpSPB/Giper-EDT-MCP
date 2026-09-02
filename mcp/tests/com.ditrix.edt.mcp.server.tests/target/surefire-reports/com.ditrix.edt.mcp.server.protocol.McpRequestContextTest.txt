@@ -1,0 +1,8 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.protocol.McpRequestContextTest
+-------------------------------------------------------------------------------
+Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.ditrix.edt.mcp.server.protocol.McpRequestContextTest
+com.ditrix.edt.mcp.server.protocol.McpRequestContextTest.httpContextAppliesProfilePolicyWhileLegacyWrapperDoesNot -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.protocol.McpRequestContextTest.explicitFallbackInitializeWarnsAndNamesDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpRequestContextTest.legacyWrapperInitializeHasNoProfileInstructions -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.protocol.McpRequestContextTest.twoContextsDoNotShareCapabilities -- Time elapsed: 0.001 s

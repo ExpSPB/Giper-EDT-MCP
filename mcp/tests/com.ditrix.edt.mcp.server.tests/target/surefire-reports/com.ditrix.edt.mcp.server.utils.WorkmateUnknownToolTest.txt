@@ -1,0 +1,7 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.WorkmateUnknownToolTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.WorkmateUnknownToolTest
+com.ditrix.edt.mcp.server.utils.WorkmateUnknownToolTest.testAToolThatRanIsNotTreatedAsUnknown -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.WorkmateUnknownToolTest.testAWorkmateWithoutThatFieldYieldsNoVerdict -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.WorkmateUnknownToolTest.testARejectedNameIsRetryableAndSaysWhatToFix -- Time elapsed: 0 s

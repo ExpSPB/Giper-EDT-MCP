@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testGuideNeverNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testFormatJsonIsCaseInsensitiveAndTrimmed -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testResponseTypeIsJsonWhenFormatJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testSchemaDeclaresFormatParameter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testResponseTypeMarkdown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testResultFileNameIsMarkdownDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testResponseTypeIsMarkdownByDefault -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testSchemaIsValidObject -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testConnectsToInfobaseIsFalse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testResponseTypeIsMarkdownForExplicitMdAndUnknownValues -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testNoOutputSchemaForContentTool -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.ListProjectsToolTest.testNameConstant -- Time elapsed: 0 s

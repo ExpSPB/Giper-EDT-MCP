@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.DcsHashTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.ditrix.edt.mcp.server.utils.DcsHashTest
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testDynamicListMainTableRemainsIdentityHashed -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testChangedAttributeChangesHash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testReorderedContainmentChangesHash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testDynamicListSettingsContentMovesEveryToolStageHash -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testAddedNodeChangesHash -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testSameModelProducesSameShortHash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.DcsHashTest.testRepointedNonContainmentReferenceChangesHash -- Time elapsed: 0 s

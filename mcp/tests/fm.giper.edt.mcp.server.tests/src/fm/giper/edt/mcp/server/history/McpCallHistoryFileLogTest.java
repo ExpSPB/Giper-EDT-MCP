@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT - Tests
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -92,6 +93,19 @@ public class McpCallHistoryFileLogTest
         JsonObject parsed = GsonProvider.fromJson(line, JsonObject.class);
         assertEquals("get_variables", parsed.get("tool").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
         assertEquals("line1\nline2 with a \" quote", parsed.get("payload").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void toJsonLineIncludesProfileAndSessionFields()
+    {
+        McpCallRecord record = new McpCallRecord(1L, "tools/call", "list_projects", "{}", "{}", 4L, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            2, 2, "review", "review", null, "sess-2"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        String line = McpCallHistoryFileLog.toJsonLine(record);
+        JsonObject parsed = GsonProvider.fromJson(line, JsonObject.class);
+        assertEquals("review", parsed.get("requestedProfileId").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("review", parsed.get("effectiveProfileId").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("sess-2", parsed.get("sessionId").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse(parsed.has("fallbackReason")); //$NON-NLS-1$
     }
 
     @Test

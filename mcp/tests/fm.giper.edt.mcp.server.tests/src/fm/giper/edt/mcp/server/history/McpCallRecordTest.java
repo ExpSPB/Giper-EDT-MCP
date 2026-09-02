@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -74,6 +75,23 @@ public class McpCallRecordTest
             assertTrue("field must be final: " + field.getName(),
                 Modifier.isFinal(field.getModifiers()));
         }
+    }
+
+    @Test
+    public void testProfileAndSessionFieldsRoundTripAndLegacyOverloadIsNull()
+    {
+        McpCallRecord legacy = new McpCallRecord(1L, "tools/call", "t", "{}", "{}", 1L, 2, 2);
+        assertNull(legacy.getRequestedProfileId());
+        assertNull(legacy.getEffectiveProfileId());
+        assertNull(legacy.getFallbackReason());
+        assertNull(legacy.getSessionId());
+
+        McpCallRecord full = new McpCallRecord(1L, "tools/call", "t", "{}", "{}", 1L, 2, 2,
+            "review", "default", "UNKNOWN_PROFILE", "sess-1"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        assertEquals("review", full.getRequestedProfileId()); //$NON-NLS-1$
+        assertEquals("default", full.getEffectiveProfileId()); //$NON-NLS-1$
+        assertEquals("UNKNOWN_PROFILE", full.getFallbackReason()); //$NON-NLS-1$
+        assertEquals("sess-1", full.getSessionId()); //$NON-NLS-1$
     }
 
     @Test

@@ -1,0 +1,11 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testMapUseMapsEachLiteral -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testMapUseRejectsUnknown -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testContentOpDefaultsToAdd -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testRussianOwnerTypeNormalizesToEnglishSingular -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testMapUseDefaultsToUse -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testMapUseIsCaseInsensitive -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.CommonAttributeContentWriterTest.testContentOpNormalizesCase -- Time elapsed: 0 s

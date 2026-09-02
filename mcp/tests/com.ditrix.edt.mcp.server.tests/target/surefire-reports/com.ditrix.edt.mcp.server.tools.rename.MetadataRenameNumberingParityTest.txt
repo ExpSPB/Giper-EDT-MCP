@@ -1,0 +1,23 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest
+-------------------------------------------------------------------------------
+Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testEqualLookingLeavesWithDifferentStableTargetsCannotSwapUndetected -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testEnabledStateFlipChangesContentHash -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testFallbackRowReusesTheLeafIndexAndConsumesOnlyOne -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testConfirmProceedsPastHashGuardWhenExpectedHashMatches -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testConfirmRefusesStaleExpectedHashBeforeApplyingIndices -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testNativeItemCheckedStateFlipChangesContentHash -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testLeafEditRowsAllShareTheLeafIndexAndDoNotAdvanceTheCounter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testPreviewAndExecuteNumberTheSameLeavesIdentically -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testConfirmRefusesMissingExpectedHashWhenIndicesArePresent -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testConfirmDoesNotRequireExpectedHashWithoutDisableIndices -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testConfirmAcceptsStableIndexAndRefusesExactlyTheRequestedOpaqueIndex -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testSameOrderedTreeHashesTheSameAndChangedOrderHashesDifferently -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testPreviewOnlyOldNameAndLocationEnrichmentDoNotChangeContentHash -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testPreviewEmitsStableContentHashOverTheFullListRegardlessOfMaxResults -- Time elapsed: 0.003 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testPreviewIssuesTokenAndMarksOnlyOpaqueRowUnskippable -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testOptionalityFlipChangesContentHash -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testExactMatchRowsAllShareTheLeafIndexAndDoNotAdvanceTheCounter -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testPreviewedIndexDisablesThatSameLeafAcrossAPlainItem -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.rename.MetadataRenameNumberingParityTest.testSyntheticLeavesReallyTakeTheFallbackRow -- Time elapsed: 0 s

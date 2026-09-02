@@ -1,0 +1,18 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testDescriptionNotEmpty -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testBlankExpression -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testStaleFrameRefWhenNoLiveSession -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testDescriptionWarnsAboutArbitraryCodeExecution -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testName -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testMissingFrameRef -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testResponseTypeJson -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testOutputSchemaDeclaresValueFields -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testMissingExpression -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testInputSchemaMarksBothParametersRequired -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testZeroFrameRefIsRequiredError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testNameConstant -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testNegativeFrameRefIsRequiredError -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.tools.impl.EvaluateExpressionToolTest.testSchemaDeclaresParameters -- Time elapsed: 0 s

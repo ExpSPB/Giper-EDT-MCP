@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -12,7 +13,13 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -69,7 +76,20 @@ public final class FakeBackend
 
     private final AtomicInteger sessionGeneration = new AtomicInteger(0);
     private final AtomicInteger initializeCount = new AtomicInteger(0);
+    private final Map<String, AtomicInteger> initializeCountByPath = new ConcurrentHashMap<>();
     private volatile String currentSessionId;
+    private final Map<String, String> sessionByPath = new ConcurrentHashMap<>();
+    private final Map<String, ProfileSpec> profiles = new LinkedHashMap<>();
+    private final Map<String, List<OutputStream>> sseByPath = new ConcurrentHashMap<>();
+    private final Set<String> failedResolutionProfiles = ConcurrentHashMap.newKeySet();
+    private final Set<String> malformedStatusProfiles = ConcurrentHashMap.newKeySet();
+    private final Set<String> malformedToolsProfiles = ConcurrentHashMap.newKeySet();
+    private volatile List<String> defaultToolNames = List.of("fake_tool_one", "echo_port");
+    private volatile boolean plainTextMode;
+    private volatile boolean validateSseSession;
+    private volatile String blockedStatusProfile;
+    private volatile CountDownLatch statusRequestEntered;
+    private volatile CountDownLatch releaseStatusResponse;
 
     /**
      * Creates a fake backend on an OS-chosen free port (port 0).
@@ -198,6 +218,49 @@ public final class FakeBackend
     {
         sessionGeneration.incrementAndGet();
         currentSessionId = null;
+        sessionByPath.clear();
+        for (List<OutputStream> streams : sseByPath.values())
+        {
+            for (OutputStream stream : streams)
+            {
+                try
+                {
+                    stream.close();
+                }
+                catch (IOException ignored)
+                {
+                    // Test fixture cleanup: the listener will observe EOF or a broken stream.
+                }
+            }
+        }
+        sseByPath.clear();
+    }
+
+    /** Invalidates and disconnects only one canonical profile-path session. */
+    public void invalidateSession(String canonicalPath)
+    {
+        sessionGeneration.incrementAndGet();
+        String removed = sessionByPath.remove(canonicalPath);
+        if (removed != null && removed.equals(currentSessionId))
+        {
+            currentSessionId = null;
+        }
+        List<OutputStream> streams = sseByPath.remove(canonicalPath);
+        if (streams == null)
+        {
+            return;
+        }
+        for (OutputStream stream : streams)
+        {
+            try
+            {
+                stream.close();
+            }
+            catch (IOException ignored)
+            {
+                // Test fixture intentionally disconnects the selected channel.
+            }
+        }
     }
 
     /**
@@ -211,6 +274,106 @@ public final class FakeBackend
         return initializeCount.get();
     }
 
+    /** Number of initialize calls received on one canonical profile path. */
+    public int getInitializeCount(String canonicalPath)
+    {
+        AtomicInteger count = initializeCountByPath.get(canonicalPath);
+        return count == null ? 0 : count.get();
+    }
+
+    /** Makes profile resolution fail while ordinary calls on the same profile still work. */
+    public void failResolutionForProfile(String profileId)
+    {
+        failedResolutionProfiles.add(profileId);
+    }
+
+    /** Makes {@code get_server_status} return malformed JSON for one requested profile. */
+    public void returnMalformedStatusForProfile(String profileId)
+    {
+        malformedStatusProfiles.add(profileId);
+    }
+
+    /** Makes {@code tools/list} return a result whose {@code tools} field is not an array. */
+    public void returnMalformedToolsForProfile(String profileId)
+    {
+        malformedToolsProfiles.add(profileId);
+    }
+
+    /** Makes GET/SSE reject missing or stale backend sessions with HTTP 404. */
+    public void validateSseSessions()
+    {
+        validateSseSession = true;
+    }
+
+    /** Blocks one profile status response until the supplied release latch is opened. */
+    public void blockStatusForProfile(String profileId, CountDownLatch entered, CountDownLatch release)
+    {
+        blockedStatusProfile = profileId;
+        statusRequestEntered = entered;
+        releaseStatusResponse = release;
+    }
+
+    /** Number of currently open GET/SSE streams for a canonical path. */
+    public int activeSseStreams(String canonicalPath)
+    {
+        List<OutputStream> streams = sseByPath.get(canonicalPath);
+        return streams == null ? 0 : streams.size();
+    }
+
+    /**
+     * Declares an enabled profile with its own {@code tools/list} names.
+     *
+     * @param id profile id
+     * @param toolNames published tool names
+     */
+    public void putProfile(String id, String... toolNames)
+    {
+        profiles.put(id, new ProfileSpec(id, true, List.of(toolNames)));
+    }
+
+    /**
+     * Marks a profile as disabled (requests fall back to {@code default}).
+     *
+     * @param id profile id
+     */
+    /**
+     * Drops {@code structuredContent} from tool results, matching an EDT backend with
+     * {@code plainTextMode} on. Status JSON (including backend URLs) stays in {@code content}.
+     */
+    public void setPlainTextMode(boolean plainTextMode)
+    {
+        this.plainTextMode = plainTextMode;
+    }
+
+    public void disableProfile(String id)
+    {
+        ProfileSpec previous = profiles.get(id);
+        List<String> tools = previous == null ? defaultToolNames : previous.toolNames;
+        profiles.put(id, new ProfileSpec(id, false, tools));
+    }
+
+    /**
+     * Pushes {@code notifications/tools/list_changed} to GET/SSE clients on {@code path}.
+     *
+     * @param canonicalPath {@code /mcp} or {@code /mcp/profiles/<id>}
+     */
+    public void emitListChanged(String canonicalPath) throws IOException
+    {
+        String frame = "event: message\nid: 2\ndata: "
+            + "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n";
+        byte[] bytes = frame.getBytes(StandardCharsets.UTF_8);
+        List<OutputStream> streams = sseByPath.get(canonicalPath);
+        if (streams == null)
+        {
+            return;
+        }
+        for (OutputStream out : streams)
+        {
+            out.write(bytes);
+            out.flush();
+        }
+    }
+
     private void handleHealth(HttpExchange exchange) throws IOException
     {
         sendPlain(exchange, 200, "application/json", "{\"status\":\"ok\",\"edt_version\":\"fake\"}");
@@ -220,6 +383,24 @@ public final class FakeBackend
     {
         try
         {
+            String rawPath = exchange.getRequestURI().getPath();
+            ProfileEndpoint endpoint;
+            try
+            {
+                endpoint = ProfileEndpointResolver.resolve(rawPath);
+            }
+            catch (InvalidProfileEndpointException e)
+            {
+                sendPlain(exchange, 400, "application/json", "{\"error\":\"" + e.getMessage() + "\"}");
+                return;
+            }
+            String path = endpoint.canonicalPath();
+
+            if ("GET".equals(exchange.getRequestMethod()))
+            {
+                handleSseGet(exchange, path);
+                return;
+            }
             if (!"POST".equals(exchange.getRequestMethod()))
             {
                 sendPlain(exchange, 405, "text/plain", "method not allowed");
@@ -236,17 +417,21 @@ public final class FakeBackend
             if ("initialize".equals(method))
             {
                 initializeCount.incrementAndGet();
-                String issued = issueSessionId();
+                initializeCountByPath.computeIfAbsent(path, ignored -> new AtomicInteger()).incrementAndGet();
+                String issued = issueSessionId(path);
                 exchange.getResponseHeaders().add(HEADER_SESSION_ID, issued);
-                sendFramed(exchange, jsonRpcResponse(id, initializeResult()), acceptsSse);
+                sendFramed(exchange, jsonRpcResponse(id, initializeResult(endpoint)), acceptsSse);
                 return;
             }
 
             String presented = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
-            String issued = currentSessionId;
+            String issued = sessionByPath.get(path);
+            if (issued == null)
+            {
+                issued = currentSessionId;
+            }
             if (issued == null || !issued.equals(presented))
             {
-                // Mirrors the plugin: a call outside a known session is 404.
                 sendPlain(exchange, 404, "text/plain", "session not found");
                 return;
             }
@@ -258,12 +443,19 @@ public final class FakeBackend
             }
             if ("tools/list".equals(method))
             {
-                sendFramed(exchange, jsonRpcResponse(id, toolsListResult()), acceptsSse);
+                if (malformedToolsProfiles.contains(endpoint.getRequestedProfileId()))
+                {
+                    JsonObject malformed = new JsonObject();
+                    malformed.addProperty("tools", "not-an-array"); //$NON-NLS-1$ //$NON-NLS-2$
+                    sendFramed(exchange, jsonRpcResponse(id, malformed), acceptsSse);
+                    return;
+                }
+                sendFramed(exchange, jsonRpcResponse(id, toolsListResult(endpoint)), acceptsSse);
                 return;
             }
             if ("tools/call".equals(method))
             {
-                handleToolCall(exchange, request, id, acceptsSse);
+                handleToolCall(exchange, request, id, acceptsSse, endpoint);
                 return;
             }
             // ping and anything else: an empty result
@@ -275,8 +467,73 @@ public final class FakeBackend
         }
     }
 
-    private void handleToolCall(HttpExchange exchange, JsonObject request, JsonElement id, boolean acceptsSse)
-        throws IOException
+    private void handleSseGet(HttpExchange exchange, String path) throws IOException
+    {
+        if (validateSseSession)
+        {
+            String presented = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
+            String issued = sessionByPath.get(path);
+            if (issued == null)
+            {
+                issued = currentSessionId;
+            }
+            if (issued == null || !issued.equals(presented))
+            {
+                sendPlain(exchange, 404, "text/plain", "session not found"); //$NON-NLS-1$ //$NON-NLS-2$
+                return;
+            }
+        }
+        exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+        exchange.getResponseHeaders().add("Cache-Control", "no-cache");
+        exchange.sendResponseHeaders(200, 0);
+        OutputStream out = exchange.getResponseBody();
+        sseByPath.computeIfAbsent(path, k -> new CopyOnWriteArrayList<>()).add(out);
+        try
+        {
+            byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8); //$NON-NLS-1$
+            while (true)
+            {
+                try
+                {
+                    Thread.sleep(100L);
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                out.write(heartbeat);
+                out.flush();
+            }
+        }
+        catch (IOException ignored)
+        {
+            // Client closed or backend test invalidated this stream.
+        }
+        finally
+        {
+            List<OutputStream> streams = sseByPath.get(path);
+            if (streams != null)
+            {
+                streams.remove(out);
+                if (streams.isEmpty())
+                {
+                    sseByPath.remove(path, streams);
+                }
+            }
+            try
+            {
+                out.close();
+            }
+            catch (IOException ignored)
+            {
+                // already disconnected
+            }
+        }
+    }
+
+    private void handleToolCall(HttpExchange exchange, JsonObject request, JsonElement id, boolean acceptsSse,
+        ProfileEndpoint endpoint) throws IOException
     {
         JsonObject params = request.get("params") != null && request.get("params").isJsonObject()
             ? request.getAsJsonObject("params") : new JsonObject();
@@ -299,6 +556,22 @@ public final class FakeBackend
             sendFramed(exchange, jsonRpcResponse(id, echoPortResult()), acceptsSse);
             return;
         }
+        if ("get_server_status".equals(toolName))
+        {
+            awaitBlockedStatus(endpoint.getRequestedProfileId());
+            if (failedResolutionProfiles.contains(endpoint.getRequestedProfileId()))
+            {
+                exchange.close();
+                return;
+            }
+            if (malformedStatusProfiles.contains(endpoint.getRequestedProfileId()))
+            {
+                sendSseRaw(exchange, "this-is-not-json"); //$NON-NLS-1$
+                return;
+            }
+            sendFramed(exchange, jsonRpcResponse(id, serverStatusResult(endpoint)), acceptsSse);
+            return;
+        }
         sendFramed(exchange, jsonRpcResponse(id, textResult("fake tool '" + toolName + "' executed")), acceptsSse);
     }
 
@@ -318,12 +591,57 @@ public final class FakeBackend
         }
     }
 
+    private void awaitBlockedStatus(String requestedProfileId)
+    {
+        if (!requestedProfileId.equals(blockedStatusProfile))
+        {
+            return;
+        }
+        CountDownLatch entered = statusRequestEntered;
+        CountDownLatch release = releaseStatusResponse;
+        if (entered != null)
+        {
+            entered.countDown();
+        }
+        if (release != null)
+        {
+            try
+            {
+                release.await();
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
     private String issueSessionId()
     {
+        return issueSessionId(ProfileEndpoint.LEGACY_PATH);
+    }
+
+    private String issueSessionId(String path)
+    {
         int generation = sessionGeneration.get();
-        String issued = generation == 0 ? "fake-" + getPort() : "fake-" + getPort() + "-g" + generation;
+        String issued = generation == 0 ? "fake-" + getPort() + path.replace('/', '-')
+            : "fake-" + getPort() + "-g" + generation + path.replace('/', '-');
         currentSessionId = issued;
+        sessionByPath.put(path, issued);
         return issued;
+    }
+
+    private JsonObject initializeResult(ProfileEndpoint endpoint)
+    {
+        JsonObject result = initializeResult();
+        Resolved resolved = resolve(endpoint);
+        if (resolved.fallbackReason != null)
+        {
+            result.addProperty("instructions", "Requested profile '" + endpoint.getRequestedProfileId()
+                + "' is unavailable (" + resolved.fallbackReason
+                + "). Connected to profile 'default' instead. Call get_server_status to confirm.");
+        }
+        return result;
     }
 
     private static JsonObject initializeResult()
@@ -340,14 +658,135 @@ public final class FakeBackend
         return result;
     }
 
-    private static JsonObject toolsListResult()
+    private JsonObject toolsListResult()
     {
+        return toolsListResult(ProfileEndpoint.legacyDefault());
+    }
+
+    private JsonObject toolsListResult(ProfileEndpoint endpoint)
+    {
+        Resolved resolved = resolve(endpoint);
         JsonArray tools = new JsonArray();
-        tools.add(toolDescriptor("fake_tool_one", "First fake tool"));
-        tools.add(toolDescriptor("echo_port", "Echoes the port of the backend that served the call"));
+        for (String name : resolved.toolNames)
+        {
+            tools.add(toolDescriptor(name, "Fake tool " + name));
+        }
         JsonObject result = new JsonObject();
         result.add("tools", tools);
         return result;
+    }
+
+    private JsonObject serverStatusResult(ProfileEndpoint endpoint)
+    {
+        Resolved resolved = resolve(endpoint);
+        JsonObject structured = new JsonObject();
+        structured.addProperty("success", true);
+        JsonObject active = new JsonObject();
+        active.addProperty("requestedProfileId", endpoint.getRequestedProfileId());
+        active.addProperty("id", resolved.effectiveId);
+        active.addProperty("displayName", resolved.effectiveId);
+        active.addProperty("description", "");
+        active.addProperty("revision", 1L);
+        active.addProperty("endpoint",
+            "http://127.0.0.1:" + getPort() + endpoint.canonicalPath());
+        active.addProperty("allowedToolCount", resolved.toolNames.size());
+        active.addProperty("fallbackApplied", resolved.fallbackReason != null);
+        if (resolved.fallbackReason != null)
+        {
+            active.addProperty("fallbackReason", resolved.fallbackReason);
+        }
+        structured.add("activeProfile", active);
+        JsonArray available = new JsonArray();
+        available.add(profileItem(ProfileEndpoint.DEFAULT_PROFILE_ID, "/mcp",
+            toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID).size()));
+        for (ProfileSpec spec : profiles.values())
+        {
+            if (spec.enabled && !ProfileEndpoint.DEFAULT_PROFILE_ID.equals(spec.id))
+            {
+                available.add(profileItem(spec.id, "/mcp/profiles/" + spec.id, spec.toolNames.size()));
+            }
+        }
+        structured.add("availableProfiles", available);
+        if (plainTextMode)
+        {
+            return textResult(structured.toString());
+        }
+        JsonObject result = textResult("status");
+        result.add("structuredContent", structured);
+        return result;
+    }
+
+    private JsonObject profileItem(String id, String path, int allowedToolCount)
+    {
+        JsonObject item = new JsonObject();
+        item.addProperty("id", id);
+        item.addProperty("displayName", id);
+        item.addProperty("description", "");
+        item.addProperty("revision", 1L);
+        item.addProperty("endpoint", "http://127.0.0.1:" + getPort() + path);
+        item.addProperty("allowedToolCount", allowedToolCount);
+        return item;
+    }
+
+    private Resolved resolve(ProfileEndpoint endpoint)
+    {
+        String requested = endpoint.getRequestedProfileId();
+        if (profiles.isEmpty())
+        {
+            return new Resolved(requested, requested, null, defaultToolNames);
+        }
+        if (ProfileEndpoint.DEFAULT_PROFILE_ID.equals(requested))
+        {
+            return new Resolved(requested, requested, null, toolsOf(requested));
+        }
+        ProfileSpec spec = profiles.get(requested);
+        if (spec == null)
+        {
+            return new Resolved(requested, ProfileEndpoint.DEFAULT_PROFILE_ID, "UNKNOWN_PROFILE",
+                toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID));
+        }
+        if (!spec.enabled)
+        {
+            return new Resolved(requested, ProfileEndpoint.DEFAULT_PROFILE_ID, "DISABLED_PROFILE",
+                toolsOf(ProfileEndpoint.DEFAULT_PROFILE_ID));
+        }
+        return new Resolved(requested, spec.id, null, spec.toolNames);
+    }
+
+    private List<String> toolsOf(String profileId)
+    {
+        ProfileSpec spec = profiles.get(profileId);
+        return spec == null ? defaultToolNames : spec.toolNames;
+    }
+
+    private static final class ProfileSpec
+    {
+        final String id;
+        final boolean enabled;
+        final List<String> toolNames;
+
+        ProfileSpec(String id, boolean enabled, List<String> toolNames)
+        {
+            this.id = id;
+            this.enabled = enabled;
+            this.toolNames = toolNames;
+        }
+    }
+
+    private static final class Resolved
+    {
+        final String requestedId;
+        final String effectiveId;
+        final String fallbackReason;
+        final List<String> toolNames;
+
+        Resolved(String requestedId, String effectiveId, String fallbackReason, List<String> toolNames)
+        {
+            this.requestedId = requestedId;
+            this.effectiveId = effectiveId;
+            this.fallbackReason = fallbackReason;
+            this.toolNames = toolNames;
+        }
     }
 
     private static JsonObject toolDescriptor(String name, String description)

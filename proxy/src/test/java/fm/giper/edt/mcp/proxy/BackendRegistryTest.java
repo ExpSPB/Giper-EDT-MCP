@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -74,6 +75,10 @@ public class BackendRegistryTest
         assertEquals(ports[1], registry.byProject("ProjectB").getPort()); //$NON-NLS-1$
         assertEquals(List.of("ProjectA", "ProjectB"), registry.knownProjects()); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("a completed refresh must record a timestamp", registry.lastRefreshMillis() > 0); //$NON-NLS-1$
+        assertEquals("discovery list_projects must use the /mcp channel", 1, backendOne.getInitializeCount()); //$NON-NLS-1$
+        ProfileGroupSnapshot group = registry.groupFor(ProfileEndpoint.legacyDefault());
+        assertEquals(ports[0], group.getDonor().getPort());
+        assertTrue(group.getIncompatible().isEmpty());
     }
 
     // ---- duplicateProjects() with overlapping projects ----
@@ -408,5 +413,53 @@ public class BackendRegistryTest
 
         registry.installStateForTest(List.of(), Map.of(), List.of());
         assertNull("no live backend means no donor", registry.toolsListDonor()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testStaleGroupCannotWriteToolsCacheIntoANewGeneration()
+    {
+        BackendRegistry registry = new BackendRegistry(ProxyConfig.parse(new String[0], Map.of()));
+        Backend first = new Backend(8765, java.net.http.HttpClient.newHttpClient(), 5);
+        Backend second = new Backend(8766, java.net.http.HttpClient.newHttpClient(), 5);
+        ProfileEndpoint endpoint = ProfileEndpoint.legacyDefault();
+
+        registry.installStateForTest(List.of(first), Map.of());
+        ProfileGroupSnapshot stale = registry.groupFor(endpoint);
+        registry.cacheToolsListResponse(stale, "old"); //$NON-NLS-1$
+        assertEquals("old", registry.cachedToolsListResponse(stale)); //$NON-NLS-1$
+
+        registry.installStateForTest(List.of(second), Map.of());
+        ProfileGroupSnapshot current = registry.groupFor(endpoint);
+        registry.cacheToolsListResponse(stale, "stale-write"); //$NON-NLS-1$
+
+        assertNull("a cache write from the previous generation must be discarded", //$NON-NLS-1$
+            registry.cachedToolsListResponse(current));
+        assertNull("a stale group must not read any cache from the current generation", //$NON-NLS-1$
+            registry.cachedToolsListResponse(stale));
+    }
+
+    @Test
+    public void testProfileInvalidationPreservesNeighbourGroupCache()
+    {
+        BackendRegistry registry = new BackendRegistry(ProxyConfig.parse(new String[0], Map.of()));
+        Backend backend = new Backend(8765, java.net.http.HttpClient.newHttpClient(), 5);
+        ProfileEndpoint review = new ProfileEndpoint("/mcp/profiles/review", "review", false); //$NON-NLS-1$ //$NON-NLS-2$
+        ProfileEndpoint prod = new ProfileEndpoint("/mcp/profiles/prod", "prod", false); //$NON-NLS-1$ //$NON-NLS-2$
+        registry.installStateForTest(List.of(backend), Map.of());
+        ProfileGroupSnapshot reviewBefore = registry.groupFor(review);
+        ProfileGroupSnapshot prodBefore = registry.groupFor(prod);
+        registry.cacheToolsListResponse(reviewBefore, "review-tools"); //$NON-NLS-1$
+        registry.cacheToolsListResponse(prodBefore, "prod-tools"); //$NON-NLS-1$
+
+        registry.invalidateRequestedProfile("review"); //$NON-NLS-1$
+
+        ProfileGroupSnapshot reviewAfter = registry.groupFor(review);
+        ProfileGroupSnapshot prodAfter = registry.groupFor(prod);
+        assertNull(registry.cachedToolsListResponse(reviewAfter));
+        assertEquals("prod-tools", registry.cachedToolsListResponse(prodAfter)); //$NON-NLS-1$
+        assertTrue("the invalidated profile must receive a new generation", //$NON-NLS-1$
+            reviewAfter.getGeneration() > reviewBefore.getGeneration());
+        assertTrue("the preserved neighbour is re-stamped into the same current generation", //$NON-NLS-1$
+            prodAfter.getGeneration() > prodBefore.getGeneration());
     }
 }

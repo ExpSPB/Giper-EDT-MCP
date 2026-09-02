@@ -1,0 +1,21 @@
+-------------------------------------------------------------------------------
+Test set: com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest
+-------------------------------------------------------------------------------
+Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.noMatchReturnsSameReference -- Time elapsed: 0.002 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.nullResultReturnsNull -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.nullRuleSetReturnsSameReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.nameScopeReplacesWholeValueWithPseudonym -- Time elapsed: 0.004 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.nonJsonBodyReturnsSameReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.emptyRuleSetReturnsSameReference -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.sameSaltIsStableAcrossEngines -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.blankSaltIsRandomPerPass -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.errorPayloadIsDetected -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.redactCountsEveryMaskedValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.siblingNameClassifiesFreeFormValue -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.redactIfEnabledIsNoOpWhenGateDisabled -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.nonCountableRuleEmitsRepresentationVerbatim -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.invalidRegexRowIsIsolatedNotThrown -- Time elapsed: 0.001 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.truncationSiblingsDroppedWhenValueReplaced -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.specialCategoryNameRuleFullMasks -- Time elapsed: 0 s
+com.ditrix.edt.mcp.server.utils.privacy.PiiRedactorTest.valueScopeReplacesOnlyTheMatchedSpan -- Time elapsed: 0 s
