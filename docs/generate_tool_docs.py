@@ -10,6 +10,8 @@ Outputs:
   docs/tools/<tool>.md     one rendered guide per tool
   docs/tools/README.md     an index grouped by toolset (from list_toolsets), linking
                            to each tool doc
+  EDT-MCP.md               the same index injected between TOOLS-INDEX markers
+                           (the full user guide; the root README.md is the fork landing page)
 
 Usage (needs a live server, e.g. the dev EDT on :8765):
   python docs/generate_tool_docs.py [--host 127.0.0.1] [--port 8765]
@@ -191,9 +193,9 @@ def main():
     with open(os.path.join(OUT_DIR, "README.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(docs_idx))
 
-    # Inject the same index into README.md between the TOOLS-INDEX markers (links from
+    # Inject the same index into EDT-MCP.md between the TOOLS-INDEX markers (links from
     # the repo root). Skipped with a notice if the markers are absent.
-    readme = os.path.join(os.path.dirname(HERE), "README.md")
+    readme = os.path.join(os.path.dirname(HERE), "EDT-MCP.md")
     injected = False
     if os.path.isfile(readme):
         text = open(readme, encoding="utf-8").read()
@@ -210,7 +212,7 @@ def main():
             open(readme, "w", encoding="utf-8", newline="\n").write(text)
             injected = True
 
-    print("Wrote %d tool docs + docs/tools/README.md; README index injected: %s"
+    print("Wrote %d tool docs + docs/tools/README.md; EDT-MCP.md index injected: %s"
           % (written, injected))
 
 

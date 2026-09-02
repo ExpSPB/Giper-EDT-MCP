@@ -1,6 +1,6 @@
 # EDT MCP Proxy
 
-A standalone MCP proxy/router for [EDT MCP Server](../README.md) (issue
+A standalone MCP proxy/router for [EDT MCP Server](../EDT-MCP.md) (issue
 [#253](https://github.com/ExpSPB/Giper-EDT-MCP/issues/253)).
 
 When you work on several 1C:EDT instances at once, each instance runs its own Giper-EDT-MCP
