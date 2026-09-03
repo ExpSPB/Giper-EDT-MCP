@@ -1202,7 +1202,7 @@ def reset_fixture_rel(rel):
 
 def status_porcelain_rel(rel):
     """git status --porcelain scoped to one fixture path (see _status_porcelain)."""
-    return _git_checked("status", "--porcelain", "--", rel).stdout.rstrip("\r\n")
+    return _fixture_status(rel)
 
 
 def assert_no_diff_rel(rel, ctx=""):
@@ -1241,7 +1241,7 @@ def _status_porcelain():
     # first porcelain line (status column "XY" -> " M file" becomes "M file"), which
     # shifts the fixed-width `line[3:]` path slice by one and breaks path parsing in
     # assert_diff_contains / assert_diff_paths. Leading whitespace is significant here.
-    return _git_checked("status", "--porcelain", "--", PROJECT_REL).stdout.rstrip("\r\n")
+    return _fixture_status(PROJECT_REL)
 
 
 def diff():
