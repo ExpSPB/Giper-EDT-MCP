@@ -98,10 +98,21 @@ MODEL_SETTLE_TIMEOUT = int(os.environ.get(
     "E2E_MODEL_SETTLE_TIMEOUT",
     str(max(int(os.environ.get("E2E_PROJECT_READY_TIMEOUT", "180")), 300))))
 
+# A project can report READY while EDT still has a metadata export queued.  The reset must not
+# race that export: if Git reverts first, the late EDT write can put the just-created object back
+# into Configuration.mdo before the disk refresh. Wait for the fixture's on-disk state to remain
+# unchanged for this quiet period before reverting.
+# Keep this short enough for the suite, but configurable for slower local/CI filesystems.
+EXPORT_QUIET_SECONDS = float(os.environ.get("E2E_EXPORT_QUIET_SECONDS", "3"))
+EXPORT_QUIET_TIMEOUT = float(os.environ.get("E2E_EXPORT_QUIET_TIMEOUT", "30"))
+# After Git changes a file underneath an open EDT workspace, give Eclipse's resource layer time
+# to deliver the external-change event before asking revalidate_objects to refresh the model.
+POST_REVERT_REFRESH_SECONDS = float(os.environ.get("E2E_POST_REVERT_REFRESH_SECONDS", "3"))
+
 # reset_model's POST-CONDITION probe: objects the committed fixture always has and no test
 # may leave renamed or deleted (a rename test that targets one must be reverted by the same
-# reset). Resolving them is the only direct evidence that clean_project's re-import actually
-# landed — 'clean_project ok' + 'project ready' can both hold while the model still carries
+# reset). Resolving them is the only direct evidence that revalidate_objects' disk refresh actually
+# landed — a successful revalidation + 'project ready' can both hold while the model still carries
 # the previous test's write (see reset_model).
 #
 # It is a LIST because a change INSIDE one object is all this brace can see, and one object is
@@ -130,7 +141,7 @@ BASELINE_PROBE_FQN = BASELINE_PROBE_FQNS[0]
 # that my probe objects are gone". It is the tool's documented structural marker for the section.
 _DETAILS_ERROR_HEADING = "## Errors"
 
-# How many full revert + clean_project cycles reset_model may spend getting the model back
+# How many full revert + revalidate_objects cycles reset_model may spend getting the model back
 # to the baseline before it gives up and stops the run. >1 because the lost race it recovers
 # from (an async disk export landing after the revert) is one-shot: the second cycle reverts
 # what that export wrote and re-imports it. Not a timeout knob — each cycle re-does the work,
@@ -139,11 +150,11 @@ MODEL_RESET_ATTEMPTS = int(os.environ.get("E2E_MODEL_RESET_ATTEMPTS", "3"))
 
 # Within ONE such cycle, the two ways it can fail have SEPARATE budgets, because they are
 # separate failures with separate diagnoses and separate fixes:
-#   * the project never reports ready, so clean_project would only be refused — waiting is the
+#   * the project never reports ready, so revalidate_objects would only be refused — waiting is the
 #     only remedy, and the fix is a longer E2E_MODEL_SETTLE_TIMEOUT;
-#   * clean_project itself keeps coming back isError — waiting does not help, EDT does.
+#   * revalidate_objects itself keeps coming back isError — waiting does not help, EDT does.
 # Sharing one budget let three failed settles consume the whole allowance and then report
-# "clean_project did not succeed in 3 attempts" — a verdict on a call that had never been made,
+# "revalidate_objects did not succeed in 3 attempts" — a verdict on a call that had never been made,
 # and an abort that had never once tried the thing it was aborting over.
 MODEL_CLEAN_ATTEMPTS = int(os.environ.get("E2E_MODEL_CLEAN_ATTEMPTS", "3"))
 MODEL_SETTLE_ATTEMPTS = int(os.environ.get("E2E_MODEL_SETTLE_ATTEMPTS", "3"))
@@ -169,21 +180,26 @@ _LOGICAL_CALL_CEILING = math.ceil(CALL_TIMEOUT) + BUILDING_RETRY_TIMEOUT + 10
 # the START of each poll, so the poll in flight when the budget runs out still gets its own full
 # ceiling, plus the 2s sleep between polls. Budgeting the settle at MODEL_SETTLE_TIMEOUT alone
 # understates it - and understating it here is not conservative, it is the opposite: the budget
-# would run out early and cut off a clean_project attempt the pre-change code always made.
+# would run out early and cut off a revalidate_objects attempt the pre-change code always made.
 _SETTLE_CEILING = MODEL_SETTLE_TIMEOUT + _LOGICAL_CALL_CEILING + 2
 
-# One settle plus one clean_project: the MCP part of a revert+clean iteration, which is all of it
-# that can plausibly run long. The git revert between them is local and unbounded only in theory.
-_RESET_CYCLE_CEILING = _SETTLE_CEILING + _LOGICAL_CALL_CEILING
+# wait_for_fixture_quiet() is bounded by the configured quiet timeout, plus one final filesystem
+# sample in the same way the settle ceiling accounts for its last in-flight MCP poll.
+_EXPORT_QUIET_CEILING = EXPORT_QUIET_TIMEOUT + POST_REVERT_REFRESH_SECONDS + 2
 
-# Wall-clock budget for ONE revert+clean cycle. It exists for one purpose: to stop the SEPARATE
+# One settle plus one disk-quiet wait plus one revalidation: the MCP part of a
+# revert+revalidate iteration, which is all of it that can plausibly run long. The git revert
+# between them is local and unbounded only in theory.
+_RESET_CYCLE_CEILING = _SETTLE_CEILING + _EXPORT_QUIET_CEILING + _LOGICAL_CALL_CEILING
+
+# Wall-clock budget for ONE revert+revalidate cycle. It exists for one purpose: to stop the SEPARATE
 # attempt counters above from multiplying iterations. By count alone the worst case doubled, from
 # CLEAN iterations to CLEAN+SETTLE ones, which is time the single shared budget never had.
 #
-# Sized at the full CLEAN_ATTEMPTS cycles so that in the ORDINARY failure - clean_project simply
-# being refused, settle after settle succeeding - every configured attempt starts with room to
+# Sized at the full CLEAN_ATTEMPTS cycles so that in the ORDINARY failure - revalidate_objects
+# simply being refused, settle after settle succeeding - every configured attempt starts with room to
 # spare and the budget is never what ends the cycle. It is NOT a promise that the counters always
-# win: interleave a settle failure before each refused clean and the time runs out first (with the
+# win: interleave a settle failure before each refused refresh and the time runs out first (with the
 # defaults, 612+922+612+922 = 3068 against a 2766 budget), which is the trade being made on
 # purpose - the counters alone permit CLEAN+SETTLE iterations, roughly twice what the single shared
 # budget ever had. What must not happen is that the abort then LIES about it, and it does not:
@@ -196,7 +212,7 @@ _RESET_CYCLE_CEILING = _SETTLE_CEILING + _LOGICAL_CALL_CEILING
 # already above run_all's --test-timeout before this branch (on CI one cycle alone can approach
 # 35 minutes); this narrows the regression rather than pretending to close it.
 MODEL_RESET_BUDGET = int(os.environ.get(
-    "E2E_MODEL_RESET_BUDGET", str(MODEL_CLEAN_ATTEMPTS * _RESET_CYCLE_CEILING)))
+    "E2E_MODEL_RESET_BUDGET", str(math.ceil(MODEL_CLEAN_ATTEMPTS * _RESET_CYCLE_CEILING))))
 
 # MCP protocol version this client speaks (sent as the MCP-Protocol-Version header,
 # per the 2025-11-25 Streamable HTTP transport spec).
@@ -1372,9 +1388,9 @@ def _baseline_mismatch():
 
 
 def _revert_and_clean(project, revert):
-    """One revert + clean_project cycle for `project`, with SEPARATE budgets for its two failures.
+    """One revert + disk-refresh cycle for `project`, with SEPARATE budgets for its two failures.
 
-    Settling and cleaning fail for different reasons and are fixed differently (see
+    Settling and disk refresh fail for different reasons and are fixed differently (see
     MODEL_CLEAN_ATTEMPTS / MODEL_SETTLE_ATTEMPTS), so a settle that never reports ready must not
     consume the allowance for a call it prevented from ever being made.
 
@@ -1392,7 +1408,7 @@ def _revert_and_clean(project, revert):
     deadline = time.time() + MODEL_RESET_BUDGET
     while (clean_attempts < MODEL_CLEAN_ATTEMPTS and settle_failures < MODEL_SETTLE_ATTEMPTS
            and time.time() < deadline):
-        # Settle BEFORE the revert: out-wait the recompute (so the clean is accepted) and
+        # Settle BEFORE the revert: out-wait the recompute (so the refresh is accepted) and
         # give any lagging disk export time to land, so the revert below is the last write.
         # A settle that TIMED OUT means the export may still be in flight, so reverting now
         # would not be the last write: retry the whole cycle instead of building on it. The
@@ -1403,14 +1419,44 @@ def _revert_and_clean(project, revert):
             settle_failures += 1
             last_settle_failure = failure_details[0]
             continue
+        # READY only says that EDT's derived-data pipeline has drained.  It does not prove that
+        # every asynchronous metadata export has reached disk. Require a quiet fixture before
+        # the Git revert, otherwise a late write can recreate the test object immediately after
+        # the revert and make the disk refresh import the mutation back in.
+        if not wait_for_fixture_quiet():
+            settle_failures += 1
+            last_settle_failure = (
+                "the fixture did not become quiet for %.1fs within %.1fs; an EDT export may still "
+                "be writing" % (EXPORT_QUIET_SECONDS, EXPORT_QUIET_TIMEOUT))
+            continue
         # Re-revert: undo whatever that late export wrote over the orchestrator's revert.
         # Cheap local git and idempotent, so doing it on the first pass too costs nothing.
         revert()
+        # Git changes the files outside Eclipse.  A short post-revert delay lets the open EDT
+        # workspace consume that resource event before the refresh below; without it EDT 2025.2
+        # can answer revalidate_objects against the pre-reset resource state and recreate a
+        # dangling reference in Configuration.mdo.
+        time.sleep(max(0.1, POST_REVERT_REFRESH_SECONDS))
         # Counted BEFORE the call, so an attempt that dies on the way out still spends its
         # budget - otherwise a repeatable transport failure loops here forever.
         clean_attempts += 1
         try:
-            if not call("clean_project", {"projectName": project}).is_error:
+            # Do not use clean_project here. It stops the EDT project, and EDT 2025.2 can save
+            # the stale in-memory model while stopping — precisely the object we just reverted.
+            # revalidate_objects refreshes the workspace from disk without that stop/save cycle
+            # and was verified to remove E2EUnifiedCatalog from the live model in this workspace.
+            refreshed = call("revalidate_objects", {"projectName": project})
+            if refreshed.is_error:
+                continue
+            # The refresh can expose a missing .mdo as an unresolved Configuration reference.
+            # Remove only those proven dangling references; this is the cleanup counterpart of
+            # the Git reset, not a full model-to-disk export of the test mutation.
+            cleaned = call("resync_to_disk", {
+                "projectName": project,
+                "cleanDanglingReferences": True,
+            })
+            if not cleaned.is_error and isinstance(cleaned.structured, dict) \
+                    and cleaned.structured.get("success") is True:
                 return (True, clean_attempts, settle_failures, last_settle_failure)
         except E2ECallTimeout:
             # The one failure a best-effort catch must NOT swallow: the server is still running
@@ -1434,11 +1480,11 @@ def _clean_failure_cause(clean_attempts, settle_failures, last_settle_failure):
     exhausted = (clean_attempts >= MODEL_CLEAN_ATTEMPTS or settle_failures >= MODEL_SETTLE_ATTEMPTS)
     if clean_attempts == 0:
         return ("%s (%d settle attempts of %ds each%s), so "
-                "clean_project was never even accepted for an attempt"
+                "revalidate_objects was never even accepted for an attempt"
                 % (last_settle_failure or "projects never reported ready",
                    settle_failures, MODEL_SETTLE_TIMEOUT,
                    "" if exhausted else "; the %ds reset budget ran out first" % MODEL_RESET_BUDGET))
-    return ("clean_project was refused in all %d attempts%s%s"
+    return ("revalidate_objects was refused in all %d attempts%s%s"
             % (clean_attempts,
                " (plus %d settle timeouts; %s)" % (settle_failures, last_settle_failure)
                if settle_failures else "",
@@ -1450,29 +1496,28 @@ def reset_model():
 
     Metadata-write tools (create/add/delete/rename metadata) mutate the in-memory BM model
     but do NOT flush every change to disk, so a git reset alone cannot undo them — the model
-    would carry the unsaved change into the next test. clean_project re-imports the clean disk
-    + revalidates, discarding the in-memory change. The orchestrator calls this after each
+    would carry the unsaved change into the next test. revalidate_objects refreshes the model
+    from the clean disk without stopping the project, avoiding EDT 2025.2's stop-time save of
+    the stale in-memory change. The orchestrator calls this after each
     kind='write-metadata' test.
 
     CRITICAL ORDERING (root cause of the rename >300s e2e timeout): a metadata write also
     SCHEDULES a derived-data recompute, so the project is BUILDING right after the test —
-    and clean_project REFUSES a building project. The old code called clean_project FIRST
+    and revalidate_objects REFUSES a building project. The old code called the refresh FIRST
     and swallowed the refusal (it returns an isError result, not an exception), leaving the
     model UN-reset; the next rename then blocked for minutes inside EDT's still-draining
     derived-data pipeline (DerivedDataManager.blockAsyncPipeline), tripping the per-test
     timeout. So: wait for the project to SETTLE first (out-waiting that recompute) so the
-    clean is accepted, THEN clean_project (which itself blocks on its own derived-data
-    rebuild). Retry if a late-starting recompute re-flags BUILDING between the wait and the
-    call.
+    refresh is accepted, THEN revalidate_objects. Retry if a late-starting recompute re-flags
+    BUILDING between the wait and the call.
 
-    A successful clean_project is NOT that guarantee on its own, which is the second race
+    A successful revalidation is NOT that guarantee on its own, which is the second race
     this function has to close. The orchestrator reverts the fixture on disk BEFORE the
     test's model cleanup, but a metadata write's disk export is ASYNC: EDT can flush the
     MUTATED state back out DURING the settle wait, i.e. AFTER that revert — and then
-    clean_project faithfully re-imports the mutated disk and still reports ok. Observed on
-    EDT 2026.2 (a renamed Catalog survived a green clean_project and the next test failed
-    on the baseline FQN). Hence, per attempt: settle FIRST so any lagging export has landed,
-    re-revert the disk, THEN clean, and finally VERIFY the baseline is actually back
+    revalidate_objects faithfully refreshes the mutated disk and still reports ok. Hence,
+    per attempt: settle FIRST so any lagging export has landed, wait for a quiet fixture,
+    re-revert the disk, THEN refresh, and finally VERIFY the baseline is actually back
     (_baseline_mismatch) instead of assuming it. Verification — not a longer timeout — is
     what makes this correct: the failure is a lost write-back race, not slowness.
     """
@@ -1488,7 +1533,7 @@ def reset_model():
                 "%s, so the in-memory model still carries the last test's write. Continuing would "
                 "hand it to the next test."
                 % _clean_failure_cause(clean_attempts, settle_failures, settle_failure))
-        # Final settle: clean_project's revalidation re-triggers derived data; make sure the
+        # Final settle: revalidate_objects re-triggers derived data; make sure the
         # next test starts on a fully-indexed model regardless of which branch above we took.
         # A negative result here is the same hazard as the exhausted-retries branch above (the
         # model is not guaranteed to be back in sync) and must not be swallowed either.
@@ -1496,7 +1541,7 @@ def reset_model():
         if not wait_for_project_ready(timeout=MODEL_SETTLE_TIMEOUT,
                                       failure_details=failure_details):
             raise E2EModelResetFailed(
-                "clean_project succeeded, but %s, so the model is not guaranteed to be back in "
+                "revalidate_objects succeeded, but %s, so the model is not guaranteed to be back in "
                 "sync." % failure_details[0])
         mismatch = _baseline_mismatch()
         if mismatch is None:
@@ -1509,8 +1554,8 @@ def reset_model():
     # would hand the previous test's mutation to the next one (exactly the cascade this reset
     # exists to prevent), and the next failure would be reported against an innocent test.
     raise E2EModelResetFailed(
-        "the model did not come back to the committed fixture after %d revert+clean_project "
-        "cycles, even though every clean_project reported ok and the project reported ready: %s. "
+        "the model did not come back to the committed fixture after %d revert+revalidate_objects "
+        "cycles, even though every revalidate_objects reported ok and the project reported ready: %s. "
         "The next test would read the last test's write."
         % (MODEL_RESET_ATTEMPTS, last_mismatch))
 
@@ -1540,13 +1585,32 @@ def _git_checked(*args):
     return r
 
 
+def _fixture_status(rel):
+    """Return substantive status for one fixture, tolerating EDT's CRLF-only touch.
+
+    EDT 2025.2 can rewrite a tracked ``.mdo`` with different line endings during refresh. Git
+    reports that as modified even though the normalized content is identical to HEAD. Treat only
+    that exact case as clean; untracked/deleted/renamed files and any non-empty HEAD diff remain
+    dirty.
+    """
+    status = _git_checked("status", "--porcelain", "--untracked-files=all", "--", rel).stdout.rstrip("\r\n")
+    if not status:
+        return ""
+    for line in status.splitlines():
+        if "?" in line[:2] or any(code in line[:2] for code in ("A", "D", "R")):
+            return status
+    if _git_checked("diff", "HEAD", "--", rel).stdout.strip():
+        return status
+    return ""
+
+
 def all_fixtures_status():
     """Porcelain status across EVERY fixture path (base + extension). The end-of-run gate
-    uses this so a session that leaves ANY fixture dirty is VISIBLE — 'no diff' then means
-    the run touched nothing it should not have."""
+    uses this so a session that leaves ANY substantive fixture change is VISIBLE. EDT's
+    CRLF-only rewrite of an otherwise identical tracked file is not a substantive change."""
     parts = []
     for rel in ALL_FIXTURE_RELS:
-        s = _git_checked("status", "--porcelain", "--", rel).stdout.rstrip("\r\n")
+        s = _fixture_status(rel)
         if s:
             parts.append(s)
     return "\n".join(parts)
@@ -1556,21 +1620,19 @@ def final_cleanup():
     """Leave the working tree verifiably clean ('no diff' == the session passed and left
     nothing behind).
 
-    Reverts BOTH fixtures on disk, then clean_projects BOTH, with the SAME retry-until-synced
+    Reverts BOTH fixtures on disk, then refreshes BOTH, with the SAME retry-until-synced
     contract as reset_model() - literally the same code, _revert_and_clean: wait for the project
-    to settle, THEN clean_project, each with its own budget. call() only raises on a TIMEOUT, so a
-    clean_project that came back with isError (e.g. the derived-data pipeline outlived
+    to settle, wait for the fixture/export, THEN revalidate_objects and remove dangling references,
+    each with its own budget. call() only raises on a TIMEOUT, so a revalidate_objects call that
+    came back with isError (e.g. the derived-data pipeline outlived
     BUILDING_RETRY_TIMEOUT and the server refused it) must not be swallowed by a bare
     `except Exception: pass` - that silently declares an unsynchronised model clean. The
-    clean_project is the part that defeats the autosave
-    resurrection: it tears down EDT's in-memory model and re-imports it from the now-clean disk
-    (synchronously — the call blocks on the project restart + derived-data rebuild), so a STALE
-    model (e.g. a manual edit made in the EDT editor, or a metadata write whose model change was
-    not flushed) no longer has a pending change to AUTOSAVE back and re-dirty the tree (the
-    Compute/Goods whack-a-mole). If a project still refuses after the retry budget - or the
+    refresh path avoids the stop-time autosave resurrection on EDT 2025.2; a stale model is
+    refreshed from the externally reverted disk and dangling references are removed explicitly.
+    If a project still refuses after the retry budget - or the
     final settle never reports every project ready - that must be EXPLICIT: raises
     E2EModelResetFailed rather than let a run be reported green over a model nobody actually
-    verified is back in sync. The final reset_all_fixtures() only mops up any file clean_project
+    verified is back in sync. The final reset_all_fixtures() only mops up any file refresh
     itself re-touched (e.g. a CRLF/marker touch). Run at startup AND at the end."""
     reset_all_fixtures()
     for proj in (PROJECT, TESTS_PROJECT):
@@ -1585,7 +1647,7 @@ def final_cleanup():
     if not wait_for_project_ready(timeout=MODEL_SETTLE_TIMEOUT,
                                   failure_details=failure_details):
         raise E2EModelResetFailed(
-            "clean_project succeeded for every project, but %s, so the model is not guaranteed "
+            "revalidate_objects succeeded for every project, but %s, so the model is not guaranteed "
             "to be back in sync." % failure_details[0])
     reset_all_fixtures()
     # Deliberately NOT _mark_model_synced() here. This function cleans and settles but never
@@ -1705,6 +1767,34 @@ def tree_snapshot(stable_for=0.75, timeout=8):
             return current
         previous = current
     return previous
+
+
+def wait_for_fixture_quiet(stable_for=None, timeout=None):
+    """Wait until the BASE fixture's on-disk state stops changing.
+
+    ``wait_for_project_ready`` observes EDT's derived-data lifecycle, not every asynchronous
+    resource export.  A metadata write can therefore finish from MCP's point of view while EDT
+    still has a save task that will touch the fixture later.  This waits for two equal scoped Git
+    samples separated by ``stable_for`` seconds, so the reset that follows is less likely to be
+    overwritten by that late export.
+
+    Returns ``False`` if the fixture never becomes quiet within ``timeout``.  In that case the
+    caller must not revert and clean: retrying the whole cycle is safer than making a Git reset
+    while EDT is still writing.
+    """
+    stable_for = max(0.1, float(EXPORT_QUIET_SECONDS if stable_for is None else stable_for))
+    timeout = max(stable_for, float(EXPORT_QUIET_TIMEOUT if timeout is None else timeout))
+    previous = _tree_sample()
+    deadline = time.time() + timeout
+    while True:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return False
+        time.sleep(min(stable_for, remaining))
+        current = _tree_sample()
+        if current == previous:
+            return True
+        previous = current
 
 
 def assert_tree_unchanged(before, ctx=""):
