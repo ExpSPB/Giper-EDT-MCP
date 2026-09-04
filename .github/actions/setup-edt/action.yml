@@ -30,23 +30,23 @@ inputs:
   eclipse-archive:
     description: >
       Eclipse Platform linux-gtk-x86_64 archive URL. MUST match the Eclipse base the
-      EDT under test is built on (EDT 2026.2 ⇒ 4.38 / 2025-12; EDT 2026.1 ⇒ 4.30 / 2023-12).
+      EDT under test is built on (EDT 2025.2 ⇒ 4.30 / 2023-12).
     required: false
-    default: "https://archive.eclipse.org/eclipse/downloads/drops4/R-4.38-202512010920/eclipse-platform-4.38-linux-gtk-x86_64.tar.gz"
+    default: "https://archive.eclipse.org/eclipse/downloads/drops4/R-4.30-202312010400/eclipse-platform-4.30-linux-gtk-x86_64.tar.gz"
   edt-p2:
     description: "1C:EDT public p2 update-site"
     required: false
-    default: "https://edt.1c.ru/downloads/releases/ruby/2026.2/"
+    default: "https://edt.1c.ru/downloads/releases/ruby/2025.2/"
   java-runtime:
     description: >
       The JDK the EDT under test requires at RUNTIME (its p2 requiredJavaVersion):
-      EDT 2026.2 ⇒ 25, EDT 2026.1 ⇒ 17. The caller must have set that JDK up.
+      EDT 2025.2 ⇒ 17. The caller must have set that JDK up.
     required: false
-    default: "25"
+    default: "17"
   eclipse-p2:
     description: "Eclipse release p2 (for the platform closure), matching eclipse-archive"
     required: false
-    default: "https://download.eclipse.org/releases/2025-12/"
+    default: "https://download.eclipse.org/releases/2023-12/"
   orbit-p2:
     description: "Eclipse Orbit p2 (commons-codec etc.)"
     required: false
@@ -54,7 +54,7 @@ inputs:
   orbit-simrel-p2:
     description: "Eclipse Orbit aggregation p2 (Batik / SVG), matching eclipse-archive"
     required: false
-    default: "https://download.eclipse.org/tools/orbit/simrel/orbit-aggregation/release/4.38.0/"
+    default: "https://download.eclipse.org/tools/orbit/simrel/orbit-aggregation/release/4.37.0/"
   platform-support-iu:
     description: >
       EDT platform-support feature to also install (match the test config compat
@@ -247,7 +247,7 @@ runs:
         # EDT uses Apache Ignite (its BM / derived-data store), which must reflect into
         # java.nio / sun.nio.ch (DirectByteBuffer.address) and needs the module system
         # opened up. These --add-modules / --add-opens are exactly what EDT's own 1cedt.ini
-        # ships (unchanged in 2026.2 — only requiredJavaVersion moved 17 → 25); WITHOUT them
+        # ships; WITHOUT them
         # GridUnsafe fails to initialize, the DtProject lifecycle never completes its LINKING
         # phase, and the imported projects stay 'not_available' forever (never index). Passing
         # -vmargs on the command line REPLACES the eclipse.ini -vmargs block, so the required

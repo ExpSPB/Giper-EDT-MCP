@@ -26,7 +26,7 @@
     launch-конфигурации (см. -LaunchConfig). Без флага эти тесты пропускаются (как в CI).
 
 .EXAMPLE
-    pwsh -File scripts/local-edt-e2e.ps1 -EdtExe "D:\EDT\1c-edt-2026.2\1cedt.exe"
+    pwsh -File scripts/local-edt-e2e.ps1 -EdtExe "D:\EDT\1c-edt-2025.2.5\1cedt.exe"
 
 .EXAMPLE
     pwsh -File scripts/local-edt-e2e.ps1 -EdtExe "D:\EDT\...\1cedt.exe" -LiveInfobase -Filter yaxunit

@@ -1,0 +1,24 @@
+name: Conformance 2025.2
+
+# Thin per-version caller of the reusable MCP conformance gate (conformance.yml)
+# for EDT 2025.2 (channel currently serving 2025.2.5).
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    uses: ./.github/workflows/conformance.yml
+    with:
+      edt: "2025.2"
+      java: "17"
+      eclipse-archive: "https://archive.eclipse.org/eclipse/downloads/drops4/R-4.30-202312010400/eclipse-platform-4.30-linux-gtk-x86_64.tar.gz"
+      eclipse-p2: "https://download.eclipse.org/releases/2023-12/"
+      orbit-simrel-p2: "https://download.eclipse.org/tools/orbit/simrel/orbit-aggregation/release/4.37.0/"

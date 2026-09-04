@@ -88,7 +88,7 @@ The kind + modifiers map to ONE canonical 8-flag combination; an illegal mix (e.
 - `targetNamespace`: the package URI namespace. A non-empty namespace is required for the package to be valid; defaults to `http://example.org/<Name>` when omitted. The success payload echoes the written `targetNamespace`.
 
 ### Edition-gated top types
-`Bot`, `WebSocketClient` and `IntegrationService` are created only when the loaded platform version exposes their Configuration collection. On a build that lacks the collection feature the create returns a clear "Could not resolve configuration collection" error rather than crashing (the feature is probed on the live `Configuration` EClass, never assumed). On the 2026.1 target platform all three resolve and create.
+`Bot`, `WebSocketClient` and `IntegrationService` are created only when the loaded platform version exposes their Configuration collection. On a build that lacks the collection feature the create returns a clear "Could not resolve configuration collection" error rather than crashing (the feature is probed on the live `Configuration` EClass, never assumed). On a configuration whose platform exposes those collections they resolve and create.
 
 ## Bilingual (ru/en)
 The synonym EMap is keyed by the language CODE (`ru`/`en`), never the language name. Objects are resolved by programmatic Name; only the type / kind tokens are dialect-aware.

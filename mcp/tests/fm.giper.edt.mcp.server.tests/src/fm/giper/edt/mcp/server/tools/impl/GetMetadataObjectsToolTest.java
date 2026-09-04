@@ -17,7 +17,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.Test;
+import org.mockito.Mockito;
 
+import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
 
 /**
@@ -26,10 +28,11 @@ import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
  * Covers tool metadata (name/constant, response type, description, input schema,
  * output schema, result file name, guide) and the {@code projectName}
  * required-argument validation in {@code execute(Map)} that returns BEFORE the
- * first {@code PlatformUI.getWorkbench().getDisplay()} call. Everything past that
- * call (project/configuration resolution, metadata collection including the
- * "Unknown metadata type" branch, collection and formatting) needs a live EDT
- * workspace and is covered by the E2E suite.
+ * first {@code PlatformUI.getWorkbench().getDisplay()} call. {@code isListable}
+ * is also unit-tested (proxy / detached BM handle / live object) without a
+ * workspace. Everything past Display (project/configuration resolution, metadata
+ * collection including the "Unknown metadata type" branch, collection and
+ * formatting) needs a live EDT workspace and is covered by the E2E suite.
  */
 public class GetMetadataObjectsToolTest
 {
@@ -360,5 +363,48 @@ public class GetMetadataObjectsToolTest
         assertNull(tool.normalizeExternalMetadataType("bogusType_e2e")); //$NON-NLS-1$
         assertNull(tool.normalizeExternalMetadataType(""));  //$NON-NLS-1$
         assertNull(tool.normalizeExternalMetadataType(null));
+    }
+
+    // ==================== detached / proxy handles (no workbench) ====================
+
+    @Test
+    public void testIsListableRejectsNullAndProxy()
+    {
+        assertFalse(GetMetadataObjectsTool.isListable(null));
+        MdObject proxy = Mockito.mock(MdObject.class);
+        Mockito.when(proxy.eIsProxy()).thenReturn(true);
+        assertFalse("a proxy handle must not be listed", GetMetadataObjectsTool.isListable(proxy)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testIsListableAcceptsALiveObject()
+    {
+        MdObject live = Mockito.mock(MdObject.class);
+        Mockito.when(live.eIsProxy()).thenReturn(false);
+        Mockito.when(live.getName()).thenReturn("CascadeEn"); //$NON-NLS-1$
+        assertTrue(GetMetadataObjectsTool.isListable(live));
+    }
+
+    @Test
+    public void testIsListableSkipsDetachedBmHandle()
+    {
+        // After rename_metadata_object the collection can still hold a removed object;
+        // BM throws on getName() and that used to fail the whole get_metadata_objects call.
+        MdObject removed = Mockito.mock(MdObject.class);
+        Mockito.when(removed.eIsProxy()).thenReturn(false);
+        Mockito.when(removed.getName()).thenThrow(new IllegalStateException("Object is removed")); //$NON-NLS-1$
+        assertFalse(GetMetadataObjectsTool.isListable(removed));
+    }
+
+    @Test
+    public void testSnapshotKeepsNameWhenCommentThrows()
+    {
+        // После rename getName() ещё жив, а getComment() уже Object is removed —
+        // строка списка всё равно должна нести Name, иначе Total без | Reckoner.
+        MdObject half = Mockito.mock(MdObject.class);
+        Mockito.when(half.getName()).thenReturn("Reckoner"); //$NON-NLS-1$
+        Mockito.when(half.getComment()).thenThrow(new IllegalStateException("Object is removed")); //$NON-NLS-1$
+        String listed = new GetMetadataObjectsTool().listedDisplayName(half, "CommonModule", false); //$NON-NLS-1$
+        assertEquals("Reckoner", listed); //$NON-NLS-1$
     }
 }

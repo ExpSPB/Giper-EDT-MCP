@@ -7,9 +7,9 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
 
-[![E2E 2026.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2026.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2026.2.yml)
+[![E2E 2025.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2025.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2025.2.yml)
 
-[![Conformance 2026.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2026.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2026.2.yml)
+[![Conformance 2025.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2025.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2025.2.yml)
 
 # Giper-EDT-MCP
 
@@ -18,9 +18,9 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <details>
-<summary><strong>1.0.5</strong></summary>
+<summary><strong>1.0.7</strong></summary>
 
-Plugin OSGi/Tycho version (`1.0.5-SNAPSHOT`). `source/compile.sh` reads this label when `--version` is omitted. p2 Check for Updates compares `major.minor.micro` only — bump the micro before a rebuild that must install as an update.
+Plugin OSGi/Tycho version (`1.0.7-SNAPSHOT`). `source/compile.sh` reads this label when `--version` is omitted. p2 Check for Updates compares `major.minor.micro` only — bump the micro before a rebuild that must install as an update.
 
 </details>
 
@@ -42,7 +42,7 @@ Direct jumps:
 > For 1C business projects see the [agent skills pack](agent/README.md) and the [rules pack](rules/README.md).
 
 > [!IMPORTANT]
-> Supports 1C:EDT **2026.1 and 2026.2** from a single build (compiled against 2026.1 / Java 17; e2e and conformance run on 2026.2 / Java 25).
+> Supports 1C:EDT **2025.2.5** (Ruby). Compiled against the 2025.2 p2 (Java 17 / Eclipse 2023-12). E2E and conformance run on the same line.
 
 ## What this fork adds: tool-set profiles
 
