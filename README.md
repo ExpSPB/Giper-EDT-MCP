@@ -18,6 +18,15 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <details>
+<summary><strong>1.0.8</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.8-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
+
+**Single-profile file exchange** on **Window → Preferences → MCP Server → Tools**: **Export profile…** saves the selected profile; **Import profile…** overlays a file onto the selected profile. Import updates the **draft** only — **Apply** or **OK** publishes; **Cancel** discards. The profile **id in the form stays unchanged** (your `/mcp/profiles/{id}` URL is unchanged).
+
+</details>
+
+<details>
 <summary><strong>1.0.7</strong></summary>
 
 Plugin OSGi/Tycho version (`1.0.7-SNAPSHOT`). `source/compile.sh` reads this label when `--version` is omitted. p2 Check for Updates compares `major.minor.micro` only — bump the micro before a rebuild that must install as an update.
@@ -55,6 +64,8 @@ Upstream EDT-MCP has **one** enabled-tool list for the whole workbench. This for
 | `http://127.0.0.1:8765/mcp/` (trailing slash) or any other `/mcp/...` path | HTTP **400** — not an alias, no fallback |
 
 Create, duplicate, rename, and enable/disable profiles on **Window → Preferences → MCP Server → Tools**. Copy the shown endpoint into the agent's MCP config. Two agents against one EDT: point one at `/mcp` and the other at `/mcp/profiles/review`.
+
+**File exchange (one profile).** On the same Tools tab, **Export profile…** / **Import profile…** move the **currently selected** profile to or from a JSON file — not the whole workspace profile document. Import replaces the selected profile's draft allowlist; other profiles are untouched; the profile id and endpoint URL stay the same until you change them manually. Details: [Profile file exchange](EDT-MCP.md#profile-file-exchange-108).
 
 **Apply does not restart the MCP server.** It closes only the sessions and SSE streams of the **affected URL**. Editing `review` does not drop `/mcp`. Changing **default** also drops fallback clients and sessionless `/mcp`; the next request must `initialize` again. Live `notifications/tools/list_changed` without reconnect is not the Apply contract.
 
