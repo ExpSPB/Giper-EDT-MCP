@@ -18,7 +18,9 @@ import org.eclipse.emf.ecore.EStructuralFeature;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.PlatformUI;
 
+import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.bsl.model.Module;
+import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.ExternalDataProcessor;
 import com._1c.g5.v8.dt.metadata.mdclass.ExternalReport;
@@ -31,6 +33,7 @@ import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.utils.BmTransactions;
 import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils;
 import fm.giper.edt.mcp.server.utils.MarkdownUtils;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
@@ -203,6 +206,14 @@ public class GetMetadataObjectsTool implements IMcpTool
         // project declares no languages; getSynonymForLanguage tolerates that.
         String effectiveLanguage = scope.resolveLanguageCode(language);
 
+        IBmModelManager bmModelManager = Activator.getDefault().getBmModelManager();
+        IBmModel bmModel = bmModelManager != null ? bmModelManager.getModel(project) : null;
+        if (bmModel == null)
+        {
+            return ToolResult.error("BM model is not available for project '" + projectName //$NON-NLS-1$
+                + "'. Open the project in EDT first.").toJson(); //$NON-NLS-1$
+        }
+
         // An EXTERNAL-OBJECTS project answers about its OWN roots. Its "configuration" is the
         // linked BASE one, so listing that here answered with a different project's objects
         // (issue #309): the external data processors / reports the caller asked for were absent
@@ -210,7 +221,7 @@ public class GetMetadataObjectsTool implements IMcpTool
         if (scope.isExternalObjects())
         {
             return externalObjectsOutput(projectName, scope, metadataType, nameFilter, limit,
-                effectiveLanguage);
+                effectiveLanguage, bmModel);
         }
 
         // Normalize the caller's bilingual type spelling to the canonical English FQN token.
@@ -227,24 +238,31 @@ public class GetMetadataObjectsTool implements IMcpTool
 
         // Count every match for the Total line, but copy synonym maps only for rows that
         // can be rendered. Large configurations contain tens of thousands of top objects.
+        // Listing MUST run inside a read boundary: after rename/delete the collection can
+        // still hold a detached handle, and reading it outside a TX throws "Object is removed".
         List<MetadataInfo> objects = new ArrayList<>();
-        int total = 0;
-        if (TYPE_ALL.equals(normalizedType))
+        int[] total = new int[1];
+        final String typeToCollect = normalizedType;
+        BmTransactions.read(bmModel, "GetMetadataObjects", (tx, monitor) -> //$NON-NLS-1$
         {
-            for (MetadataTypeUtils.MetadataTypeInfo info
-                : MetadataTypeUtils.MetadataTypeInfo.values())
+            if (TYPE_ALL.equals(typeToCollect))
             {
-                if (!info.isStandalone())
+                for (MetadataTypeUtils.MetadataTypeInfo info
+                    : MetadataTypeUtils.MetadataTypeInfo.values())
                 {
-                    total += collectMetadataObjects(config, info, objects, nameFilter, limit);
+                    if (!info.isStandalone())
+                    {
+                        total[0] += collectMetadataObjects(config, info, objects, nameFilter, limit);
+                    }
                 }
             }
-        }
-        else
-        {
-            MetadataTypeUtils.MetadataTypeInfo info = MetadataTypeUtils.resolve(normalizedType);
-            total = collectMetadataObjects(config, info, objects, nameFilter, limit);
-        }
+            else
+            {
+                MetadataTypeUtils.MetadataTypeInfo info = MetadataTypeUtils.resolve(typeToCollect);
+                total[0] = collectMetadataObjects(config, info, objects, nameFilter, limit);
+            }
+            return null;
+        });
 
         // An object's ORIGIN (core vs extension-adopted vs extension-own) is only
         // meaningful for an EXTENSION project, where adopted base objects are listed
@@ -253,7 +271,7 @@ public class GetMetadataObjectsTool implements IMcpTool
         boolean isExtensionProject = ExtensionOriginUtils.isExtensionProject(project);
 
         // Show the caller's original filter spelling in the Filter line.
-        return formatOutput(projectName, objects, total, limit, effectiveLanguage, metadataType,
+        return formatOutput(projectName, objects, total[0], limit, effectiveLanguage, metadataType,
             isExtensionProject, false);
     }
 
@@ -273,10 +291,11 @@ public class GetMetadataObjectsTool implements IMcpTool
      * @param nameFilter the caller's case-insensitive Name substring, or {@code null}
      * @param limit max rows
      * @param language the resolved synonym language code (may be {@code null})
+     * @param bmModel the project's BM model (listing runs inside a read boundary)
      * @return the Markdown listing, or a JSON error for a type this project cannot hold
      */
     private String externalObjectsOutput(String projectName, MetadataScope scope, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
-        String metadataType, String nameFilter, int limit, String language)
+        String metadataType, String nameFilter, int limit, String language, IBmModel bmModel)
     {
         String category = normalizeExternalMetadataType(metadataType);
         if (category == null)
@@ -289,19 +308,23 @@ public class GetMetadataObjectsTool implements IMcpTool
         }
 
         List<MetadataInfo> objects = new ArrayList<>();
-        int total = 0;
-        if (TYPE_ALL.equals(category) || TYPE_EXTERNAL_DATA_PROCESSORS.equals(category))
+        int[] total = new int[1];
+        BmTransactions.read(bmModel, "GetMetadataObjects.external", (tx, monitor) -> //$NON-NLS-1$
         {
-            total += collectExternalObjects(scope, TOKEN_EXTERNAL_DATA_PROCESSOR, objects,
-                nameFilter, limit);
-        }
-        if (TYPE_ALL.equals(category) || TYPE_EXTERNAL_REPORTS.equals(category))
-        {
-            total += collectExternalObjects(scope, TOKEN_EXTERNAL_REPORT, objects, nameFilter,
-                limit);
-        }
+            if (TYPE_ALL.equals(category) || TYPE_EXTERNAL_DATA_PROCESSORS.equals(category))
+            {
+                total[0] += collectExternalObjects(scope, TOKEN_EXTERNAL_DATA_PROCESSOR, objects,
+                    nameFilter, limit);
+            }
+            if (TYPE_ALL.equals(category) || TYPE_EXTERNAL_REPORTS.equals(category))
+            {
+                total[0] += collectExternalObjects(scope, TOKEN_EXTERNAL_REPORT, objects, nameFilter,
+                    limit);
+            }
+            return null;
+        });
         // An external-objects project holds no adopted objects, so it has no Origin column.
-        return formatOutput(projectName, objects, total, limit, language, metadataType, false, true);
+        return formatOutput(projectName, objects, total[0], limit, language, metadataType, false, true);
     }
 
     /**
@@ -359,19 +382,7 @@ public class GetMetadataObjectsTool implements IMcpTool
         int total = 0;
         for (MdObject object : found)
         {
-            if (!matchesFilter(object.getName(), filter))
-            {
-                continue;
-            }
-            total++;
-            if (objects.size() >= limit)
-            {
-                continue;
-            }
-            MetadataInfo info = createMetadataInfo(object, typeToken);
-            // An external data processor / report carries an object module and no manager one.
-            info.hasObjectModule = hasModule(externalObjectModule(object));
-            objects.add(info);
+            total += offerListedObject(object, typeToken, filter, objects, limit, true);
         }
         return total;
     }
@@ -572,27 +583,112 @@ public class GetMetadataObjectsTool implements IMcpTool
         int total = 0;
         for (MdObject object : found)
         {
-            if (!matchesFilter(object.getName(), filter))
-            {
-                continue;
-            }
-
-            total++;
-            if (objects.size() >= limit)
-            {
-                continue;
-            }
-
-            MetadataInfo info = createMetadataInfo(object, typeInfo.getEnglishSingular());
-            info.hasObjectModule = hasFeatureValue(object, FEATURE_OBJECT_MODULE)
-                || hasFeatureValue(object, FEATURE_RECORD_SET_MODULE)
-                || hasFeatureValue(object, FEATURE_VALUE_MANAGER_MODULE)
-                || hasFeatureValue(object, FEATURE_MODULE)
-                || hasFeatureValue(object, FEATURE_COMMAND_MODULE);
-            info.hasManagerModule = hasFeatureValue(object, FEATURE_MANAGER_MODULE);
-            objects.add(info);
+            total += offerListedObject(object, typeInfo.getEnglishSingular(), filter, objects, limit,
+                false);
         }
         return total;
+    }
+
+    /**
+     * Одна запись в выдаче. Считаем объект только если Name прочитан. Если синоним /
+     * комментарий / модуль кидают {@code Object is removed} после rename — всё равно
+     * кладём строку с именем (иначе Total=1 при пустой таблице, как в e2e Reckoner).
+     *
+     * @return 1 если объект подходит под фильтр (в т.ч. за limit), иначе 0
+     */
+    private int offerListedObject(MdObject object, String typeToken, String filter,
+        List<MetadataInfo> objects, int limit, boolean external)
+    {
+        if (!isListable(object))
+        {
+            return 0;
+        }
+        String name;
+        try
+        {
+            name = object.getName();
+        }
+        catch (RuntimeException e) // NOSONAR detached between isListable and getName
+        {
+            return 0;
+        }
+        if (!matchesFilter(name, filter))
+        {
+            return 0;
+        }
+        if (objects.size() >= limit)
+        {
+            return 1;
+        }
+        objects.add(snapshotOrNameOnly(object, typeToken, name, external));
+        return 1;
+    }
+
+    /**
+     * Имя, которое попадёт в таблицу (полное чтение или только Name при BM-сбое).
+     * Package-private для юнит-теста.
+     */
+    String listedDisplayName(MdObject object, String typeToken, boolean external)
+    {
+        return snapshotOrNameOnly(object, typeToken, object.getName(), external).name;
+    }
+
+    /**
+     * Полный снимок объекта или, если BM кинул после Name, строка только с именем.
+     * Package-private для юнит-теста «Reckoner остаётся в таблице».
+     */
+    MetadataInfo snapshotOrNameOnly(MdObject object, String typeToken, String name,
+        boolean external)
+    {
+        try
+        {
+            MetadataInfo info = createMetadataInfo(object, typeToken);
+            if (external)
+            {
+                info.hasObjectModule = hasModule(externalObjectModule(object));
+            }
+            else
+            {
+                info.hasObjectModule = hasFeatureValue(object, FEATURE_OBJECT_MODULE)
+                    || hasFeatureValue(object, FEATURE_RECORD_SET_MODULE)
+                    || hasFeatureValue(object, FEATURE_VALUE_MANAGER_MODULE)
+                    || hasFeatureValue(object, FEATURE_MODULE)
+                    || hasFeatureValue(object, FEATURE_COMMAND_MODULE);
+                info.hasManagerModule = hasFeatureValue(object, FEATURE_MANAGER_MODULE);
+            }
+            return info;
+        }
+        catch (RuntimeException e) // NOSONAR synonym/comment/module on a half-detached rename target
+        {
+            MetadataInfo info = new MetadataInfo();
+            info.name = name;
+            info.type = typeToken;
+            return info;
+        }
+    }
+
+    /**
+     * Можно ли включать объект в выдачу. После rename/delete BM-коллекция ещё держит
+     * отсоединённый handle; чтение бросает {@code Object is removed} и раньше валило
+     * весь список (read-back после {@code rename_metadata_object}).
+     *
+     * Package-private, чтобы юнит-тест покрыл пропуск proxy и detached без live EDT.
+     */
+    static boolean isListable(MdObject object)
+    {
+        if (object == null || object.eIsProxy())
+        {
+            return false;
+        }
+        try
+        {
+            object.getName();
+            return true;
+        }
+        catch (RuntimeException e) // NOSONAR BM throws when the handle is detached
+        {
+            return false;
+        }
     }
     
     // ========== Helper methods ==========

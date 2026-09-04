@@ -86,6 +86,10 @@ def test_readiness_gate_examines_every_row_not_just_the_last():
     assert harness._all_edt_projects_ready(closed_heavy, not_ready=blockers), \
         "a project closed on purpose must not block the suite"
     assert blockers == [], "a closed project must not be reported as blocking: %r" % (blockers,)
+    assert not harness._is_edt_project_open("ERP_XML", closed_heavy), \
+        "a closed row must not be treated as revalidate-able"
+    assert harness._is_edt_project_open("TestConfiguration", closed_heavy), \
+        "an open configuration must still be revalidated"
 
     # ...and skipping it must not smuggle a real blocker through: an OPEN project mid-build still
     # blocks while a closed one sits in the same table.

@@ -236,11 +236,9 @@ def test_confirm_renames_catalog_attribute_and_details_readback_shows_new_name()
 # the silent corruption the tool exists to prevent. Verified the card's way —
 # search_in_code old-vs-new — plus a direct read of the rewritten source line.
 #
-# Timing assumption: the rename goes through EDT's LTK engine, which applies the
-# BSL text change SYNCHRONOUSLY inside the tool call (perform() completes before the
-# call returns), and the server is single-threaded, so the very next search/read sees
-# the rewrite without a poll. If a future EDT made that flush async and this flakes,
-# wrap the post-rename reads in a poll_* helper — do NOT weaken these assertions.
+# Timing: LTK mutates the model inside the call, but disk export of the rewritten
+# Module.bsl lags ~1-2s (same as object-rename .mdo). search_in_code reads files, so
+# poll_disk_lacks / poll_disk_contains on CascadeUser MUST run before those searches.
 # ──────────────────────────────────────────────────────────────────────────────
 
 @e2e_test(tool="rename_metadata_object", kind="write-metadata")
@@ -254,6 +252,7 @@ def test_cascade_rewrites_english_named_module_reference_in_bsl():
     assert_ok(base, "baseline search for CascadeEn.Marker")
     assert_contains(base.text, "CommonModules/CascadeUser/Module.bsl",
                     "fixture precondition: CascadeUser references CascadeEn.Marker before the rename")
+    _wait_preview_skippable_bslref("CommonModule.CascadeEn", "Reckoner")
 
     r = call("rename_metadata_object", {
         "projectName": PROJECT,
@@ -263,6 +262,11 @@ def test_cascade_rewrites_english_named_module_reference_in_bsl():
     })
     assert_ok(r, "execute rename CommonModule.CascadeEn -> Reckoner")
     assert_contains(r.text, "action: executed", "the cascade rename must execute")
+
+    poll_disk_lacks("src/CommonModules/CascadeUser/Module.bsl", "CascadeEn.Marker",
+                    timeout=30, ctx="export must drop CascadeEn.Marker from CascadeUser.bsl")
+    poll_disk_contains("src/CommonModules/CascadeUser/Module.bsl", "Reckoner.Marker()",
+                       timeout=30, ctx="export must write Reckoner.Marker() into CascadeUser.bsl")
 
     # CASCADE PROOF #1 (the card's chosen verifier): the OLD token is gone project-wide,
     # the NEW token now appears in the caller.
@@ -297,6 +301,7 @@ def test_cascade_rewrites_russian_named_module_reference_in_bsl():
     assert_ok(base, "baseline search for Вычисление.Маркер")
     assert_contains(base.text, "CommonModules/CascadeUser/Module.bsl",
                     "fixture precondition: CascadeUser references Вычисление.Маркер before the rename")
+    _wait_preview_skippable_bslref("CommonModule.Вычисление", "Вычислитель")
 
     r = call("rename_metadata_object", {
         "projectName": PROJECT,
@@ -306,6 +311,11 @@ def test_cascade_rewrites_russian_named_module_reference_in_bsl():
     })
     assert_ok(r, "execute rename CommonModule.Вычисление -> Вычислитель")
     assert_contains(r.text, "action: executed", "the bilingual cascade rename must execute")
+
+    poll_disk_lacks("src/CommonModules/CascadeUser/Module.bsl", "Вычисление.Маркер",
+                    timeout=30, ctx="export must drop Вычисление.Маркер from CascadeUser.bsl")
+    poll_disk_contains("src/CommonModules/CascadeUser/Module.bsl", "Вычислитель.Маркер()",
+                       timeout=30, ctx="export must write Вычислитель.Маркер() into CascadeUser.bsl")
 
     gone = call("search_in_code", {"projectName": PROJECT,
                                    "query": "Вычисление.Маркер", "outputMode": "count"})
@@ -376,27 +386,42 @@ def _frontmatter_value(markdown, key):
     raise AssertionError("preview front matter has no %s:\n%s" % (key, markdown))
 
 
+def _wait_preview_skippable_bslref(object_fqn, new_name, timeout=90):
+    """Preview until LTK lists exactly one skippable bslRef (BSL index has caught up).
+
+    git-reset перед тестом сбрасывает файлы; индекс ссылок отстаёт. Один preview
+    сразу после ready может видеть только строку rename без bslRef — тогда confirm
+    не переписывает вызовы, и диск остаётся со старым токеном.
+    """
+    deadline = time.time() + timeout
+    last_rows = []
+    last_text = ""
+    while time.time() < deadline:
+        r = call("rename_metadata_object", {
+            "projectName": PROJECT,
+            "objectFqn": object_fqn,
+            "newName": new_name,
+        })
+        assert_ok(r, "preview rename %s -> %s (waiting for BSL index)" % (object_fqn, new_name))
+        last_text = r.text
+        last_rows = _change_points(r.text)
+        skippable = [row for row in last_rows
+                     if row["skippable"] == "yes" and row["type"] == "bslRef"]
+        if len(skippable) == 1:
+            return last_rows, skippable[0]["index"], _frontmatter_value(r.text, "contentHash")
+        time.sleep(1.0)
+    raise AssertionError(
+        "BSL index never listed a skippable bslRef for %s -> %s within %ss (rows=%r)\n%s"
+        % (object_fqn, new_name, timeout, last_rows, last_text[:1500]))
+
+
 def _cascade_preview_and_reference_index():
     """Return preview rows, the BSL-ref index, and their optimistic-lock token.
 
     The fixture gives this rename exactly one SKIPPABLE change point — the reference
     CascadeUser makes to CascadeEn — plus the (non-skippable) object rename itself.
     """
-    r = call("rename_metadata_object", {
-        "projectName": PROJECT,
-        "objectFqn": "CommonModule.CascadeEn",
-        "newName": "Reckoner",
-        # confirm omitted -> preview
-    })
-    assert_ok(r, "preview rename CommonModule.CascadeEn -> Reckoner")
-    rows = _change_points(r.text)
-    skippable = [row for row in rows if row["skippable"] == "yes" and row["type"] == "bslRef"]
-    if len(skippable) != 1:
-        raise AssertionError(
-            "fixture precondition: the CascadeEn rename must preview exactly one skippable "
-            "bslRef change point, got %d (rows=%r)" % (len(skippable), rows))
-    content_hash = _frontmatter_value(r.text, "contentHash")
-    return rows, skippable[0]["index"], content_hash
+    return _wait_preview_skippable_bslref("CommonModule.CascadeEn", "Reckoner")
 
 
 @e2e_test(tool="rename_metadata_object", kind="write-metadata")

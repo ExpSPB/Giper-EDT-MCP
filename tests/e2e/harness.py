@@ -984,6 +984,27 @@ def _all_edt_projects_ready(list_projects_markdown, not_ready=None):
     return not blocking_projects
 
 
+def _is_edt_project_open(project_name, list_projects_markdown=None):
+    """True when list_projects shows this name with Open=Yes.
+
+    A closed extension cannot be revalidated (revalidate_objects is refused). Setup
+    cleanup must skip it; wait_for_project_ready already ignores closed rows.
+    """
+    text = list_projects_markdown
+    if text is None:
+        text = call("list_projects", {}).text or ""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("|") or set(line) <= set("|- "):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 4 or cells[0].lower() == "name":
+            continue
+        if cells[0] == project_name:
+            return cells[3].strip().lower() == "yes"
+    return False
+
+
 def _projects_not_ready_message(timeout, projects):
     states = ", ".join("%s=%s" % (name, state) for name, state in projects)
     return "projects not ready after %ds: %s" % (timeout, states or "states unavailable")
@@ -1620,7 +1641,7 @@ def final_cleanup():
     """Leave the working tree verifiably clean ('no diff' == the session passed and left
     nothing behind).
 
-    Reverts BOTH fixtures on disk, then refreshes BOTH, with the SAME retry-until-synced
+    Reverts BOTH fixtures on disk, then refreshes each OPEN project, with the SAME retry-until-synced
     contract as reset_model() - literally the same code, _revert_and_clean: wait for the project
     to settle, wait for the fixture/export, THEN revalidate_objects and remove dangling references,
     each with its own budget. call() only raises on a TIMEOUT, so a revalidate_objects call that
@@ -1636,6 +1657,8 @@ def final_cleanup():
     itself re-touched (e.g. a CRLF/marker touch). Run at startup AND at the end."""
     reset_all_fixtures()
     for proj in (PROJECT, TESTS_PROJECT):
+        if not _is_edt_project_open(proj):
+            continue
         cleaned, clean_attempts, settle_failures, settle_failure = \
             _revert_and_clean(proj, reset_all_fixtures)
         if not cleaned:
