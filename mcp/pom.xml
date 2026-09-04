@@ -14,11 +14,12 @@
   <parent>
     <groupId>fm.giper.edt.mcp</groupId>
     <artifactId>bom</artifactId>
-    <version>1.0.5-SNAPSHOT</version>
+    <version>1.0.6-SNAPSHOT</version>
     <relativePath>./bom/pom.xml</relativePath>
   </parent>
 
   <artifactId>parent</artifactId>
+  <version>1.0.6-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>EDT MCP Server Plugin</name>
@@ -43,8 +44,7 @@
           <version>5.7.0.6970</version>
         </plugin>
         <!-- Code-coverage agent + report; used by the tests fragment and the bundle.
-             Kept in step with the agent/CLI the e2e gate uses (0.8.15+, required to
-             instrument the Java 25 class files EDT 2026.2 runs on) so the unit and e2e
+             Keep in step with the agent/CLI the e2e gate uses so unit and e2e
              .exec files merge into one report. -->
         <plugin>
           <groupId>org.jacoco</groupId>

@@ -34,28 +34,19 @@ import fm.giper.edt.mcp.server.protocol.McpConstants;
  */
 public final class UpdateChecker // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {
-    /** GitHub API URL for the latest release. */
-    private static final String RELEASES_API_URL =
-        "https://api.github.com/repos/DitriXNew/EDT-MCP/releases/latest"; //$NON-NLS-1$
+    /** GitHub API URL for the latest release (этот форк, не upstream DitriX). */
+    static final String RELEASES_API_URL =
+        "https://api.github.com/repos/ExpSPB/Giper-EDT-MCP/releases/latest"; //$NON-NLS-1$
 
-    /** GitHub Releases page URL opened in a browser on "Download". */
+    /** Страница релизов, открывается по кнопке Download. */
     public static final String RELEASES_PAGE_URL =
-        "https://github.com/DitriXNew/EDT-MCP/releases/latest"; //$NON-NLS-1$
+        "https://github.com/ExpSPB/Giper-EDT-MCP/releases/latest"; //$NON-NLS-1$
 
     /** Initial delay before the very first check (ms). */
     private static final long INITIAL_DELAY_MS = 10_000L;
 
     /** HTTP connect/read timeout (ms). */
     private static final int TIMEOUT_MS = 10_000;
-
-    /**
-     * Temporary: always report "no update" and skip GitHub until the 1.0.x
-     * scheme is published as {@code latest} (or this line is merged to main
-     * with a matching GitHub release). Local 1.0.x vs GitHub v2.15.x would
-     * otherwise flag a false-positive banner. Flip to {@code false} to restore
-     * the real check.
-     */
-    static final boolean SUPPRESS_UPDATE_CHECKS = true;
 
     private static final UpdateChecker INSTANCE = new UpdateChecker();
 
@@ -88,12 +79,6 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
         if (PreferenceConstants.UPDATE_CHECK_NEVER.equals(interval))
         {
             Activator.logInfo("EDT MCP Server update check disabled (preference: never)"); //$NON-NLS-1$
-            return;
-        }
-
-        if (SUPPRESS_UPDATE_CHECKS)
-        {
-            markUpToDateWithoutFetch();
             return;
         }
 
@@ -149,10 +134,6 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
     /** @return {@code true} if a newer release was found on GitHub. */
     public boolean isUpdateAvailable()
     {
-        if (SUPPRESS_UPDATE_CHECKS)
-        {
-            return false;
-        }
         return updateAvailable.get();
     }
 
@@ -185,23 +166,8 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    /** Clears the update flag; sets latest to the installed version (no GitHub). */
-    private void markUpToDateWithoutFetch()
-    {
-        updateAvailable.set(false);
-        latestVersion.set(McpConstants.PLUGIN_VERSION);
-        releaseNotes.set(""); //$NON-NLS-1$
-        releaseUrl.set(RELEASES_PAGE_URL);
-    }
-
     private void performCheck()
     {
-        if (SUPPRESS_UPDATE_CHECKS)
-        {
-            markUpToDateWithoutFetch();
-            return;
-        }
-
         Activator.logInfo("EDT MCP Server update check started (current: " + McpConstants.PLUGIN_VERSION + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         try
         {

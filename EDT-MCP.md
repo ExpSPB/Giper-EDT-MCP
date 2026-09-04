@@ -9,11 +9,11 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=coverage)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
 
-[![E2E 2026.2](https://github.com/DitriXNew/EDT-MCP/actions/workflows/e2e-2026.2.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/e2e-2026.2.yml)
+[![E2E 2025.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2025.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2025.2.yml)
 
-[![Conformance 2026.2](https://github.com/DitriXNew/EDT-MCP/actions/workflows/conformance-2026.2.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/conformance-2026.2.yml)
+[![Conformance 2025.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2025.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2025.2.yml)
 
-> **Build & Unit Tests**, **E2E**, and **MCP Conformance** all run on stock GitHub-hosted runners (cloud CI) — no docker image, no self-hosted runner. E2E and Conformance run against **EDT 2026.2** (build 2026.2, Eclipse 4.38 / Java 25): the setup step installs a headless EDT of that version on the runner via `p2 director`. E2E additionally imports the test fixtures into an empty workspace via the plugin's headless bootstrap (`EDT_MCP_IMPORT_PROJECTS`) and skips the live-infobase tools, so no 1C platform is needed. Each badge reflects its latest run.
+> **Build & Unit Tests**, **E2E**, and **MCP Conformance** all run on stock GitHub-hosted runners (cloud CI). E2E and Conformance run against **EDT 2025.2** (point release 2025.2.5, Eclipse 4.30 / Java 17): the setup step installs a headless EDT of that version on the runner via `p2 director`.
 
 # EDT MCP Server
 
@@ -31,10 +31,9 @@ MCP (Model Context Protocol) server plugin for 1C:EDT, enabling AI assistants (C
 
 > [!IMPORTANT]
 > **EDT version compatibility:**
-> Supports 1C:EDT **2026.1 and 2026.2** (Ruby) from a single build. The plugin is
-> COMPILED against the 2026.1 target platform (the oldest supported EDT — Eclipse 4.30 /
-> Java 17) so one artifact resolves on both, and the e2e + protocol-conformance gates run
-> it on **2026.2** (Eclipse 4.38 / Java 25), the newest.
+> Supports 1C:EDT **2025.2.5** (Ruby). The plugin is compiled against the 2025.2
+> target platform (Eclipse 4.30 / Java 17). E2E and protocol-conformance run on the
+> same line.
 
 ## Features
 
@@ -1130,7 +1129,7 @@ bash source/compile.sh
 
 ### Notes
 
-- A full first build pulls the EDT 2026.1 p2 repository (`mcp/targets/default/default.target`) and the Eclipse 2023-12 release — expect several minutes. Subsequent builds run in ~1 minute thanks to the local p2 cache.
+- A full first build pulls the EDT 2025.2 p2 repository (`mcp/targets/default/default.target`) and the Eclipse 2023-12 release — expect several minutes. Subsequent builds run in ~1 minute thanks to the local p2 cache.
 - The output zip uses forward-slash entries (produced by `jar` when `zip` is unavailable) so it installs cleanly on both Windows and Linux EDT instances.
 - `source/dist/` is gitignored; only the script itself is tracked.
 
@@ -1163,8 +1162,8 @@ Use it for substantial whole-task work — a feature, a non-trivial bug, or a ne
 
 ## Requirements
 
-- 1C:EDT 2026.1 or 2026.2 (Ruby)
-- Java 17+ (EDT 2026.2 itself runs on Java 25 — it ships its own JRE)
+- 1C:EDT 2025.2.5 (Ruby)
+- Java 17
 
 ## License
 # Copyright (C) 2026 DitriX
