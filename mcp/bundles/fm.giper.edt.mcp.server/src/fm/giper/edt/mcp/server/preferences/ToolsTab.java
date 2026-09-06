@@ -7,17 +7,12 @@
 
 package fm.giper.edt.mcp.server.preferences;
 
-import java.io.File;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
-
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.resource.ImageDescriptor;
@@ -50,7 +45,6 @@ import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
-import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Spinner;
@@ -60,10 +54,8 @@ import org.eclipse.ui.plugin.AbstractUIPlugin;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.preferences.ToolParameterSettings.ParameterDef;
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
-import fm.giper.edt.mcp.server.profiles.FileOpResult;
-import fm.giper.edt.mcp.server.profiles.ToolProfileExportPaths;
-import fm.giper.edt.mcp.server.profiles.ToolProfileFileService;
 import fm.giper.edt.mcp.server.profiles.ReplaceResult;
+import fm.giper.edt.mcp.server.profiles.ToolProfileExchangeController;
 import fm.giper.edt.mcp.server.profiles.ToolProfile;
 import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
 import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
@@ -81,6 +73,7 @@ public class ToolsTab
 {
     private final Composite composite;
     private final ToolProfilesEditorModel model;
+    private final ToolProfileExchangeController exchange = new ToolProfileExchangeController();
     private CheckboxTreeViewer treeViewer;
     private Combo profileCombo;
     private Combo presetCombo;
@@ -549,117 +542,24 @@ public class ToolsTab
     private void exportProfile()
     {
         flushProfileFields();
-        ToolProfile selected = model.getSelected();
-        if (selected == null)
-        {
-            return;
-        }
-        FileDialog dialog = new FileDialog(composite.getShell(), SWT.SAVE);
-        dialog.setText(Messages.ToolsTab_ExportDialogTitle);
-        dialog.setFilterNames(new String[]{Messages.ToolsTab_JsonFilter});
-        dialog.setFilterExtensions(new String[]{"*.json"}); //$NON-NLS-1$
-        dialog.setFileName("edt-mcp-profile-" + selected.getId() + ".json"); //$NON-NLS-1$ //$NON-NLS-2$
-        dialog.setFilterPath(new File(System.getProperty("user.home")).getAbsolutePath()); //$NON-NLS-1$
-        dialog.setOverwrite(true);
-        String chosenPath = dialog.open();
-        if (chosenPath == null)
-        {
-            return;
-        }
-        Path exportPath = ToolProfileExportPaths.resolve(chosenPath);
-        if (ToolProfileExportPaths.needsOverwriteConfirm(chosenPath, exportPath)
-            && !MessageDialog.openQuestion(composite.getShell(), Messages.ToolsTab_ExportOverwriteTitle,
-                NLS.bind(Messages.ToolsTab_ExportOverwriteMessage, exportPath.toString())))
-        {
-            return;
-        }
-        FileOpResult result = ToolProfileFileService.exportProfile(exportPath, selected);
-        if (!result.isOk())
-        {
-            String detail = result.getMessage() != null ? result.getMessage() : result.getStatus().name();
-            Activator.logError("Profile export failed: " + detail, null); //$NON-NLS-1$
-            MessageDialog.openError(composite.getShell(), Messages.ToolsTab_ExportFailedTitle,
-                NLS.bind(Messages.ToolsTab_ExportFailedMessage, detail));
-        }
+        exchange.exportSelected(
+            new EditorModelDraftSink(model),
+            new SwtProfileFileChooser(composite.getShell()),
+            new SwtUserNotifier(composite.getShell()));
     }
 
     private void importProfile()
     {
         flushProfileFields();
-        ToolProfile current = model.getSelected();
-        if (current == null)
+        ToolProfileExchangeController.Outcome outcome = exchange.importSelected(
+            new EditorModelDraftSink(model),
+            new SwtProfileFileChooser(composite.getShell()),
+            new SwtImportConfirmation(composite.getShell()),
+            new SwtUserNotifier(composite.getShell()));
+        if (outcome == ToolProfileExchangeController.Outcome.COMPLETED)
         {
-            return;
+            refreshProfileUi();
         }
-        FileDialog dialog = new FileDialog(composite.getShell(), SWT.OPEN);
-        dialog.setText(Messages.ToolsTab_ImportDialogTitle);
-        dialog.setFilterNames(new String[]{Messages.ToolsTab_JsonFilter});
-        dialog.setFilterExtensions(new String[]{"*.json"}); //$NON-NLS-1$
-        dialog.setFilterPath(new File(System.getProperty("user.home")).getAbsolutePath()); //$NON-NLS-1$
-        String chosenPath = dialog.open();
-        if (chosenPath == null)
-        {
-            return;
-        }
-        FileOpResult fileResult = ToolProfileFileService.importProfile(Paths.get(chosenPath));
-        if (!fileResult.isOk())
-        {
-            String detail = fileResult.getMessage() != null ? fileResult.getMessage() : fileResult.getStatus().name();
-            Activator.logError("Profile import failed: " + detail, null); //$NON-NLS-1$
-            MessageDialog.openError(composite.getShell(), Messages.ToolsTab_ImportFailedTitle,
-                NLS.bind(Messages.ToolsTab_ImportFailedMessage, detail));
-            return;
-        }
-        ToolProfile imported = fileResult.getProfile();
-        if (!confirmImport(current, imported))
-        {
-            return;
-        }
-        ToolProfilesEditorModel.OperationResult applyResult = model.applyImportedProfileToSelected(imported);
-        if (!applyResult.isOk())
-        {
-            MessageDialog.openError(composite.getShell(), Messages.ToolsTab_ImportFailedTitle,
-                NLS.bind(Messages.ToolsTab_ImportFailedMessage, applyResult.getMessage()));
-            return;
-        }
-        refreshProfileUi();
-        showUnknownToolsIfAny();
-    }
-
-    private boolean confirmImport(ToolProfile current, ToolProfile imported)
-    {
-        String message = NLS.bind(Messages.ToolsTab_ImportConfirm, new Object[]{
-            current.getId(),
-            current.getDisplayName(),
-            imported.getDisplayName(),
-            enabledStateLabel(current.isEnabled()),
-            enabledStateLabel(imported.isEnabled()),
-            Integer.toString(current.getAllowedTools().size()),
-            Integer.toString(imported.getAllowedTools().size())
-        });
-        if (!current.getId().equals(imported.getId()))
-        {
-            message += System.lineSeparator() + System.lineSeparator()
-                + NLS.bind(Messages.ToolsTab_ImportConfirmFileId, imported.getId());
-        }
-        return MessageDialog.openQuestion(composite.getShell(), Messages.ToolsTab_ImportConfirmTitle, message);
-    }
-
-    private static String enabledStateLabel(boolean enabled)
-    {
-        return enabled ? Messages.ToolsTab_Enable : Messages.ToolsTab_Disable;
-    }
-
-    private void showUnknownToolsIfAny()
-    {
-        Set<String> unknown = model.unknownAllowedTools();
-        if (unknown.isEmpty())
-        {
-            return;
-        }
-        String names = unknown.stream().sorted().collect(Collectors.joining(", ")); //$NON-NLS-1$
-        MessageDialog.openInformation(composite.getShell(), Messages.ToolsTab_UnknownToolsTitle,
-            NLS.bind(Messages.ToolsTab_UnknownToolsMessage, names));
     }
 
     private void showIfFailed(ToolProfilesEditorModel.OperationResult result)
