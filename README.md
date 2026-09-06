@@ -94,7 +94,7 @@ Example — two agents, one EDT (do not treat the profile id as a credential):
 }
 ```
 
-Original (single-list) tool groups, presets, and parameter defaults: [Tool Management](EDT-MCP.md#tool-management). Spec: [docs/multi-profile-tool-surfaces.md](docs/multi-profile-tool-surfaces.md).
+Original (single-list) tool groups, presets, and parameter defaults: [Tool Management](EDT-MCP.md#tool-management).
 
 ## Install (this fork)
 

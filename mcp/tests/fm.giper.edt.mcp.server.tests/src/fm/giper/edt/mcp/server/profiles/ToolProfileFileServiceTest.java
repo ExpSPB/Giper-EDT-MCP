@@ -225,6 +225,59 @@ public class ToolProfileFileServiceTest
         assertEquals(FileOpResult.Status.FORMAT, result.getStatus());
     }
 
+    @Test
+    public void windows1251CyrillicInDisplayNameReturnsFormatError() throws Exception
+    {
+        String prefix = "{\"schemaVersion\":1,\"profile\":{\"id\":\"review\",\"displayName\":\""; //$NON-NLS-1$
+        String suffix = "\",\"description\":\"\",\"enabled\":true,\"allowedTools\":[],\"revision\":1}}"; //$NON-NLS-1$
+        // Windows-1251 bytes for \u041a\u043e\u0434-\u0440\u0435\u0432\u044c\u044e — invalid UTF-8.
+        byte[] cyrillicWin1251 = {
+            (byte)0xCA, (byte)0xEE, (byte)0xE4, (byte)0x2D,
+            (byte)0xF0, (byte)0xE5, (byte)0xE2, (byte)0xFC, (byte)0xFE
+        };
+        byte[] fileBytes = concat(
+            prefix.getBytes(StandardCharsets.US_ASCII),
+            cyrillicWin1251,
+            suffix.getBytes(StandardCharsets.US_ASCII));
+        Path file = tmp.resolve("win1251-display-name.json"); //$NON-NLS-1$
+        Files.write(file, fileBytes);
+
+        FileOpResult result = ToolProfileFileService.importProfile(file);
+        assertFalse(result.isOk());
+        assertEquals(FileOpResult.Status.FORMAT, result.getStatus());
+        assertNull(result.getProfile());
+        assertNotNull(result.getMessage());
+        assertTrue(result.getMessage().toLowerCase().contains("utf-8")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void illegalUtf8ByteSequenceReturnsFormatError() throws Exception
+    {
+        byte[] prefix = "{\"schemaVersion\":1}".getBytes(StandardCharsets.US_ASCII); //$NON-NLS-1$
+        byte[] withBad = new byte[prefix.length + 2];
+        System.arraycopy(prefix, 0, withBad, 0, prefix.length);
+        withBad[prefix.length] = (byte)0xC0;
+        withBad[prefix.length + 1] = (byte)0x80;
+        Path file = tmp.resolve("illegal-utf8.json"); //$NON-NLS-1$
+        Files.write(file, withBad);
+
+        FileOpResult result = ToolProfileFileService.importProfile(file);
+        assertFalse(result.isOk());
+        assertEquals(FileOpResult.Status.FORMAT, result.getStatus());
+        assertNull(result.getProfile());
+        assertNotNull(result.getMessage());
+        assertTrue(result.getMessage().toLowerCase().contains("encoding")); //$NON-NLS-1$
+    }
+
+    private static byte[] concat(byte[] first, byte[] second, byte[] third)
+    {
+        byte[] result = new byte[first.length + second.length + third.length];
+        System.arraycopy(first, 0, result, 0, first.length);
+        System.arraycopy(second, 0, result, first.length, second.length);
+        System.arraycopy(third, 0, result, first.length + second.length, third.length);
+        return result;
+    }
+
     private static boolean hasUtf8Bom(byte[] bytes)
     {
         return bytes.length >= UTF8_BOM.length
