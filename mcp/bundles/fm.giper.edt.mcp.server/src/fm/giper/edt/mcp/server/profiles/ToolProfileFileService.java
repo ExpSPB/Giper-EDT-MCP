@@ -8,6 +8,9 @@
 package fm.giper.edt.mcp.server.profiles;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -85,6 +88,10 @@ public final class ToolProfileFileService
             ToolProfile profile = ToolProfileCodec.decodeSingleProfile(json);
             return FileOpResult.successImport(profile, path);
         }
+        catch (CharacterCodingException e)
+        {
+            return FileOpResult.formatError("Profile file is not valid UTF-8 encoding"); //$NON-NLS-1$
+        }
         catch (ToolProfileDocumentException e)
         {
             return FileOpResult.formatError(e.getMessage());
@@ -106,7 +113,11 @@ public final class ToolProfileFileService
         {
             offset = UTF8_BOM.length;
         }
-        String text = new String(bytes, offset, bytes.length - offset, StandardCharsets.UTF_8);
+        String text = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes, offset, bytes.length - offset))
+            .toString();
         if (!text.isEmpty() && text.charAt(0) == '\uFEFF')
         {
             return text.substring(1);

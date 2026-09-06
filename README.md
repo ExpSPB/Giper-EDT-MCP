@@ -18,6 +18,15 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <details>
+<summary><strong>1.0.9</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.9-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
+
+**Profile exchange test seam:** export/import orchestration is `ToolProfileExchangeController` (headless). Optional SWTBot module `mcp/tests/fm.giper.edt.mcp.server.ui.tests` is not in the default reactor.
+
+</details>
+
+<details>
 <summary><strong>1.0.8</strong></summary>
 
 Plugin OSGi/Tycho version (`1.0.8-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
@@ -94,7 +103,7 @@ Example — two agents, one EDT (do not treat the profile id as a credential):
 }
 ```
 
-Original (single-list) tool groups, presets, and parameter defaults: [Tool Management](EDT-MCP.md#tool-management). Spec: [docs/multi-profile-tool-surfaces.md](docs/multi-profile-tool-surfaces.md).
+Original (single-list) tool groups, presets, and parameter defaults: [Tool Management](EDT-MCP.md#tool-management).
 
 ## Install (this fork)
 

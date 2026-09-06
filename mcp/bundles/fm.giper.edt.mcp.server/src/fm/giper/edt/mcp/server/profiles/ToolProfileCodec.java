@@ -7,6 +7,7 @@
 
 package fm.giper.edt.mcp.server.profiles;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -278,7 +279,39 @@ public final class ToolProfileCodec
         {
             throw new MalformedToolProfileDocumentException("Field '" + key + "' must be a number"); //$NON-NLS-1$ //$NON-NLS-2$
         }
-        return value.getAsLong();
+        BigDecimal decimal;
+        try
+        {
+            decimal = value.getAsJsonPrimitive().getAsBigDecimal();
+        }
+        catch (NumberFormatException e)
+        {
+            throw new MalformedToolProfileDocumentException(
+                "Field '" + key + "' is not a valid number", e); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (!isIntegral(decimal))
+        {
+            throw new MalformedToolProfileDocumentException("Field '" + key + "' must be an integer"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        try
+        {
+            return decimal.longValueExact();
+        }
+        catch (ArithmeticException e)
+        {
+            throw new MalformedToolProfileDocumentException(
+                "Field '" + key + "' is outside the long range", e); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+    }
+
+    private static boolean isIntegral(BigDecimal decimal)
+    {
+        if (decimal.scale() <= 0)
+        {
+            return true;
+        }
+        // scale > 0 only: stripTrailingZeros on scale<=0 huge exponents can throw (see PredefinedWriter).
+        return decimal.stripTrailingZeros().scale() <= 0;
     }
 
     private static JsonArray requireArray(JsonObject object, String key)
