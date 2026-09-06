@@ -14,12 +14,12 @@
   <parent>
     <groupId>fm.giper.edt.mcp</groupId>
     <artifactId>bom</artifactId>
-    <version>1.0.7-SNAPSHOT</version>
+    <version>1.0.9-SNAPSHOT</version>
     <relativePath>./bom/pom.xml</relativePath>
   </parent>
 
   <artifactId>parent</artifactId>
-  <version>1.0.7-SNAPSHOT</version>
+  <version>1.0.9-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>EDT MCP Server Plugin</name>

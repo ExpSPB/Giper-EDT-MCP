@@ -8,6 +8,7 @@
 package fm.giper.edt.mcp.server.profiles;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -91,6 +92,64 @@ public class ToolProfileCodecTest
     {
         String json = "{\"schemaVersion\":" + Long.MAX_VALUE //$NON-NLS-1$
             + ",\"documentRevision\":1,\"profiles\":[]}"; //$NON-NLS-1$
+        expectMalformedNotUnchecked(json);
+    }
+
+    @Test
+    public void fractionalSchemaVersionIsMalformedNotTruncated()
+    {
+        expectMalformedNotUnchecked("{\"schemaVersion\":1.5,\"documentRevision\":1,\"profiles\":[]}"); //$NON-NLS-1$
+    }
+
+    @Test
+    public void numericFieldBeyondLongRangeIsMalformedNotUnchecked()
+    {
+        expectMalformedNotUnchecked("{\"schemaVersion\":1,\"documentRevision\":" //$NON-NLS-1$
+            + "9223372036854775808,\"profiles\":[]}"); //$NON-NLS-1$
+    }
+
+    @Test
+    public void exponentialNumericFieldIsMalformedNotUnchecked()
+    {
+        // Gson getAsLong() throws NumberFormatException on extreme exponents; must not escape decode.
+        expectMalformedNotUnchecked("{\"schemaVersion\":1,\"documentRevision\":1," //$NON-NLS-1$
+            + "\"profiles\":[{\"id\":\"default\",\"displayName\":\"Default\",\"description\":\"\"," //$NON-NLS-1$
+            + "\"enabled\":true,\"allowedTools\":[],\"revision\":1e999999999}]}"); //$NON-NLS-1$
+    }
+
+    @Test
+    public void integralOnePointZeroIsAccepted()
+    {
+        try
+        {
+            ToolProfileCodec.decode("{\"schemaVersion\":1.0,\"documentRevision\":1," //$NON-NLS-1$
+                + "\"profiles\":[{\"id\":\"default\",\"displayName\":\"Default\",\"description\":\"\"," //$NON-NLS-1$
+                + "\"enabled\":true,\"allowedTools\":[],\"revision\":1}]}"); //$NON-NLS-1$
+        }
+        catch (MalformedToolProfileDocumentException e)
+        {
+            fail("schemaVersion 1.0 must be accepted as integer 1: " + e.getMessage()); //$NON-NLS-1$
+        }
+        catch (ToolProfileDocumentException e)
+        {
+            fail("unexpected: " + e); //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            fail("schemaVersion 1.0 must not throw unchecked: " + e.getClass().getName()); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void singleProfileFractionalSchemaVersionIsMalformedNotUnchecked()
+    {
+        expectSingleMalformedNotUnchecked("{\"schemaVersion\":1.5,\"profile\":" //$NON-NLS-1$
+            + "{\"id\":\"review\",\"displayName\":\"Review\",\"description\":\"\"," //$NON-NLS-1$
+            + "\"enabled\":true,\"allowedTools\":[],\"revision\":1}}"); //$NON-NLS-1$
+    }
+
+    private static void expectMalformedNotUnchecked(String json)
+    {
         try
         {
             ToolProfileCodec.decode(json);
@@ -106,8 +165,28 @@ public class ToolProfileCodecTest
         }
         catch (RuntimeException e)
         {
-            fail("schemaVersion outside int range must be malformed, not " //$NON-NLS-1$
-                + e.getClass().getName());
+            fail("expected malformed, not unchecked " + e.getClass().getName()); //$NON-NLS-1$
+        }
+    }
+
+    private static void expectSingleMalformedNotUnchecked(String json)
+    {
+        try
+        {
+            ToolProfileCodec.decodeSingleProfile(json);
+            fail("expected malformed single-profile document"); //$NON-NLS-1$
+        }
+        catch (MalformedToolProfileDocumentException expected)
+        {
+            assertTrue(expected.getMessage(), expected.getMessage().length() > 0);
+        }
+        catch (ToolProfileDocumentException e)
+        {
+            fail("expected malformed, got " + e.getClass().getSimpleName()); //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            fail("expected malformed, not unchecked " + e.getClass().getName()); //$NON-NLS-1$
         }
     }
 
@@ -139,5 +218,87 @@ public class ToolProfileCodecTest
             canonical.asList(), reversed.asList());
         assertEquals("canonical JSON must not depend on collection insertion order", //$NON-NLS-1$
             ToolProfileCodec.encode(canonical), ToolProfileCodec.encode(reversed));
+    }
+
+    @Test
+    public void singleProfileRoundTripIsDeterministic() throws Exception
+    {
+        ToolProfile profile = ToolProfile.builder()
+            .id("review") //$NON-NLS-1$
+            .displayName("Review") //$NON-NLS-1$
+            .description("Read-only review") //$NON-NLS-1$
+            .allowedTools(Set.of("get_server_status", "list_projects")) //$NON-NLS-1$ //$NON-NLS-2$
+            .revision(2L)
+            .build();
+
+        String first = ToolProfileCodec.encodeSingleProfile(profile);
+        ToolProfile decoded = ToolProfileCodec.decodeSingleProfile(first);
+        String second = ToolProfileCodec.encodeSingleProfile(decoded);
+        assertEquals(first, second);
+        assertTrue(first.contains("\"profile\"")); //$NON-NLS-1$
+        assertFalse(first.contains("\"profiles\"")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void singleProfileRejectsWorkspaceDocument() throws Exception
+    {
+        try
+        {
+            ToolProfileCodec.decodeSingleProfile(
+                "{\"schemaVersion\":1,\"documentRevision\":1,\"profiles\":[]}"); //$NON-NLS-1$
+            fail("expected malformed single-profile document"); //$NON-NLS-1$
+        }
+        catch (MalformedToolProfileDocumentException expected)
+        {
+            assertTrue(expected.getMessage().contains("single-profile file")); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void singleProfileRequiresSchemaVersionIdAndRevision()
+    {
+        expectSingleMalformed("{\"profile\":{\"id\":\"review\",\"displayName\":\"Review\"," //$NON-NLS-1$
+            + "\"description\":\"\",\"enabled\":true,\"allowedTools\":[],\"revision\":1}}"); //$NON-NLS-1$
+        expectSingleMalformed("{\"schemaVersion\":1,\"profile\":{\"displayName\":\"Review\"," //$NON-NLS-1$
+            + "\"description\":\"\",\"enabled\":true,\"allowedTools\":[],\"revision\":1}}"); //$NON-NLS-1$
+        expectSingleMalformed("{\"schemaVersion\":1,\"profile\":{\"id\":\"review\"," //$NON-NLS-1$
+            + "\"displayName\":\"Review\",\"description\":\"\",\"enabled\":true,\"allowedTools\":[]}}"); //$NON-NLS-1$
+    }
+
+    private static void expectSingleMalformed(String json)
+    {
+        try
+        {
+            ToolProfileCodec.decodeSingleProfile(json);
+            fail("expected malformed single-profile document"); //$NON-NLS-1$
+        }
+        catch (MalformedToolProfileDocumentException expected)
+        {
+            assertTrue(expected.getMessage(), expected.getMessage().length() > 0);
+        }
+        catch (ToolProfileDocumentException e)
+        {
+            fail("expected malformed, got " + e.getClass().getSimpleName()); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void singleProfileFutureSchemaIsUnsupportedNotMalformed()
+    {
+        try
+        {
+            ToolProfileCodec.decodeSingleProfile("{\"schemaVersion\":99,\"profile\":" //$NON-NLS-1$
+                + "{\"id\":\"review\",\"displayName\":\"Review\",\"description\":\"\"," //$NON-NLS-1$
+                + "\"enabled\":true,\"allowedTools\":[],\"revision\":1}}"); //$NON-NLS-1$
+            fail("expected unsupported schema"); //$NON-NLS-1$
+        }
+        catch (UnsupportedToolProfileSchemaException expected)
+        {
+            assertEquals(99, expected.getSchemaVersion());
+        }
+        catch (ToolProfileDocumentException e)
+        {
+            fail("future schema must not be reported as malformed: " + e); //$NON-NLS-1$
+        }
     }
 }

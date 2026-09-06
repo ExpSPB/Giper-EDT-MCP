@@ -18,6 +18,24 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <details>
+<summary><strong>1.0.9</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.9-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
+
+**Profile exchange test seam:** export/import orchestration is `ToolProfileExchangeController` (headless). Optional SWTBot module `mcp/tests/fm.giper.edt.mcp.server.ui.tests` is not in the default reactor.
+
+</details>
+
+<details>
+<summary><strong>1.0.8</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.8-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
+
+**Single-profile file exchange** on **Window → Preferences → MCP Server → Tools**: **Export profile…** saves the selected profile; **Import profile…** overlays a file onto the selected profile. Import updates the **draft** only — **Apply** or **OK** publishes; **Cancel** discards. The profile **id in the form stays unchanged** (your `/mcp/profiles/{id}` URL is unchanged).
+
+</details>
+
+<details>
 <summary><strong>1.0.7</strong></summary>
 
 Plugin OSGi/Tycho version (`1.0.7-SNAPSHOT`). `source/compile.sh` reads this label when `--version` is omitted. p2 Check for Updates compares `major.minor.micro` only — bump the micro before a rebuild that must install as an update.
@@ -56,6 +74,8 @@ Upstream EDT-MCP has **one** enabled-tool list for the whole workbench. This for
 
 Create, duplicate, rename, and enable/disable profiles on **Window → Preferences → MCP Server → Tools**. Copy the shown endpoint into the agent's MCP config. Two agents against one EDT: point one at `/mcp` and the other at `/mcp/profiles/review`.
 
+**File exchange (one profile).** On the same Tools tab, **Export profile…** / **Import profile…** move the **currently selected** profile to or from a JSON file — not the whole workspace profile document. Import replaces the selected profile's draft allowlist; other profiles are untouched; the profile id and endpoint URL stay the same until you change them manually. Details: [Profile file exchange](EDT-MCP.md#profile-file-exchange-108).
+
 **Apply does not restart the MCP server.** It closes only the sessions and SSE streams of the **affected URL**. Editing `review` does not drop `/mcp`. Changing **default** also drops fallback clients and sessionless `/mcp`; the next request must `initialize` again. Live `notifications/tools/list_changed` without reconnect is not the Apply contract.
 
 **Fallback.** An unknown or disabled profile ID still accepts the connection, but the effective surface is **default**. `initialize` and `get_server_status` (`includeProfiles: true`) report it (`activeProfile.fallbackApplied`, `fallbackReason`). Trust `activeProfile.id`, not the path segment. Each fallback at initialize is written to the EDT log. A malformed path is HTTP 400, not fallback.
@@ -83,7 +103,7 @@ Example — two agents, one EDT (do not treat the profile id as a credential):
 }
 ```
 
-Original (single-list) tool groups, presets, and parameter defaults: [Tool Management](EDT-MCP.md#tool-management). Spec: [docs/multi-profile-tool-surfaces.md](docs/multi-profile-tool-surfaces.md).
+Original (single-list) tool groups, presets, and parameter defaults: [Tool Management](EDT-MCP.md#tool-management).
 
 ## Install (this fork)
 

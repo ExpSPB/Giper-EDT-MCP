@@ -237,6 +237,36 @@ Quickly switch between common tool configurations using presets:
 
 Select a preset from the dropdown in the Tools tab. The preset auto-detects based on the current enabled/disabled state and shows "Custom" when the configuration doesn't match any built-in preset.
 
+### Profile file exchange (1.0.8)
+
+On **Window → Preferences → MCP Server → Tools**, **Export profile…** and **Import profile…** exchange **one** profile — not the workspace profile document stored in preferences.
+
+- **Export** writes the **currently selected** profile (its current draft, including unapplied edits).
+- **Import** overlays the file onto the **currently selected** profile. Other profiles are not changed. The profile **id in the form does not change** — only `displayName`, `description`, `enabled`, and `allowedTools` come from the file. The file's `id` and `revision` fields are informational only.
+- Import updates the **draft** only. **Apply** or **OK** publishes to the repository; **Cancel** discards the import along with other draft edits. MCP clients keep the old surface until Apply.
+
+**File format** — single-profile envelope (not the workspace document):
+
+```json
+{
+  "schemaVersion": 1,
+  "profile": {
+    "id": "review",
+    "displayName": "Code Review",
+    "description": "Read-only profile",
+    "enabled": true,
+    "allowedTools": ["get_server_status", "list_projects"],
+    "revision": 2
+  }
+}
+```
+
+Opening a **workspace document** (`schemaVersion` + `documentRevision` + `profiles[]`) with Import profile… returns a clear error — use a single-profile file instead.
+
+The file contains **no** auth token, destructive consent, PII, transport settings, or per-tool parameter defaults. The profile **id in the file is not a secret** — it is for human reference when the file's id differs from the selected profile.
+
+Import **replaces** the selected profile's allowlist (not a merge). You cannot create a new profile from a file — only overlay an existing selected profile. **Whole-set** workspace document exchange (all profiles at once) is not implemented yet.
+
 ### Per-Tool Parameter Defaults
 
 Some tools have configurable default values for parameters like result limits. These defaults are used when the AI client doesn't specify the parameter explicitly:

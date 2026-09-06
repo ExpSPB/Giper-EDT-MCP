@@ -13,7 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.resource.ImageDescriptor;
@@ -41,6 +40,7 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
@@ -55,6 +55,7 @@ import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.preferences.ToolParameterSettings.ParameterDef;
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
 import fm.giper.edt.mcp.server.profiles.ReplaceResult;
+import fm.giper.edt.mcp.server.profiles.ToolProfileExchangeController;
 import fm.giper.edt.mcp.server.profiles.ToolProfile;
 import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
 import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
@@ -72,6 +73,7 @@ public class ToolsTab
 {
     private final Composite composite;
     private final ToolProfilesEditorModel model;
+    private final ToolProfileExchangeController exchange = new ToolProfileExchangeController();
     private CheckboxTreeViewer treeViewer;
     private Combo profileCombo;
     private Combo presetCombo;
@@ -83,6 +85,16 @@ public class ToolsTab
     private Button enableButton;
     private Button deleteButton;
     private Composite detailPanel;
+    private Group profileGroup;
+    private Composite profileButtons;
+
+    /** Mid wrap: two rows of four. Narrower uses RowLayout wrap. */
+    private static final int PROFILE_BUTTONS_PER_ROW = 4;
+    private static final int PROFILE_BUTTON_SPACING = 5;
+    private static final int BUTTON_BAR_ONE_ROW = 8;
+    private static final int BUTTON_BAR_TWO_ROWS = 4;
+    private static final int BUTTON_BAR_WRAP = 0;
+    private int profileButtonBarMode = -1;
 
     /** Local copy of destructive-allowed tools for editing (committed on performOk) */
     private final Set<String> destructiveAllowedTools;
@@ -170,12 +182,16 @@ public class ToolsTab
     private void createProfileBar(Composite parent)
     {
         Group group = new Group(parent, SWT.NONE);
+        profileGroup = group;
         group.setText(Messages.ToolsTab_Profile);
         group.setLayout(new GridLayout(2, false));
         group.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
 
         profileCombo = new Combo(group, SWT.DROP_DOWN | SWT.READ_ONLY);
-        profileCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        GridData comboGd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        comboGd.horizontalSpan = 2;
+        comboGd.widthHint = 1;
+        profileCombo.setLayoutData(comboGd);
         profileCombo.addSelectionListener(new SelectionAdapter()
         {
             @Override
@@ -196,21 +212,28 @@ public class ToolsTab
         });
 
         Composite buttons = new Composite(group, SWT.NONE);
-        GridLayout buttonsLayout = new GridLayout(6, false);
-        buttonsLayout.marginWidth = 0;
-        buttonsLayout.marginHeight = 0;
-        buttons.setLayout(buttonsLayout);
+        profileButtons = buttons;
+        applyButtonBarLayout(buttons, BUTTON_BAR_ONE_ROW);
+        GridData buttonsGd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        buttonsGd.horizontalSpan = 2;
+        buttonsGd.widthHint = 1;
+        buttons.setLayoutData(buttonsGd);
         addActionButton(buttons, Messages.ToolsTab_Add, this::addProfile);
         addActionButton(buttons, Messages.ToolsTab_Duplicate, this::duplicateProfile);
         addActionButton(buttons, Messages.ToolsTab_Rename, this::renameProfile);
         enableButton = addActionButton(buttons, Messages.ToolsTab_Disable, this::toggleEnabled);
         deleteButton = addActionButton(buttons, Messages.ToolsTab_Delete, this::deleteProfile);
         addActionButton(buttons, Messages.ToolsTab_RestoreSelected, this::restoreSelected);
+        addActionButton(buttons, Messages.ToolsTab_ExportProfile, this::exportProfile);
+        addActionButton(buttons, Messages.ToolsTab_ImportProfile, this::importProfile);
+        bindButtonBarToVisibleWidth(group, buttons);
 
         Label nameLabel = new Label(group, SWT.NONE);
         nameLabel.setText(Messages.ToolsTab_DisplayName);
         displayNameText = new Text(group, SWT.BORDER);
-        displayNameText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        GridData nameGd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        nameGd.widthHint = 1;
+        displayNameText.setLayoutData(nameGd);
         displayNameText.addModifyListener(profileFieldListener(true));
 
         Label descLabel = new Label(group, SWT.NONE);
@@ -253,6 +276,151 @@ public class ToolsTab
         fallbackWarning.setLayoutData(warnGd);
 
         refreshProfileFields();
+    }
+
+    /**
+     * RowLayout wrap cannot keep 4+4 when later labels are wider (4+3+1).
+     * Wide: 8-column grid. Mid: 4-column grid. Narrow: wrap to visible width.
+     */
+    private void bindButtonBarToVisibleWidth(Group group, Composite buttons)
+    {
+        Composite visibleHost = composite.getParent() != null ? composite.getParent() : composite;
+        visibleHost.addListener(SWT.Resize, event -> relayoutButtonBar(group, buttons, visibleHost));
+        composite.addListener(SWT.Resize, event -> relayoutButtonBar(group, buttons, visibleHost));
+    }
+
+    private void relayoutButtonBar(Group group, Composite buttons, Composite visibleHost)
+    {
+        if (group.isDisposed() || buttons.isDisposed() || visibleHost.isDisposed())
+        {
+            return;
+        }
+        GridLayout groupLayout = (GridLayout) group.getLayout();
+        int margins = group.computeTrim(0, 0, 0, 0).width
+            + groupLayout.marginWidth * 2
+            + groupLayout.marginLeft
+            + groupLayout.marginRight;
+        int fromFolder = visibleHost.getClientArea().width - margins;
+        int fromGroup = group.getClientArea().width
+            - groupLayout.marginWidth * 2
+            - groupLayout.marginLeft
+            - groupLayout.marginRight;
+        int visibleInner = fromFolder;
+        if (fromGroup > 1)
+        {
+            visibleInner = Math.min(fromFolder, fromGroup);
+        }
+        if (visibleInner < 1)
+        {
+            visibleInner = 1;
+        }
+        Control[] children = buttons.getChildren();
+        int eightWide = preferredRowWidth(children, 0, children.length);
+        int fourWide = Math.max(
+            preferredRowWidth(children, 0, PROFILE_BUTTONS_PER_ROW),
+            preferredRowWidth(children, PROFILE_BUTTONS_PER_ROW, PROFILE_BUTTONS_PER_ROW));
+        int mode;
+        int inner;
+        int alignment;
+        if (visibleInner >= eightWide)
+        {
+            mode = BUTTON_BAR_ONE_ROW;
+            inner = visibleInner;
+            alignment = SWT.FILL;
+        }
+        else if (visibleInner >= fourWide)
+        {
+            mode = BUTTON_BAR_TWO_ROWS;
+            inner = fourWide;
+            alignment = SWT.LEFT;
+        }
+        else if (visibleInner >= minimumWrapWidth(children))
+        {
+            mode = BUTTON_BAR_WRAP;
+            inner = visibleInner;
+            alignment = SWT.FILL;
+        }
+        else
+        {
+            // Folder not sized yet: keep two rows so computeSize is not 8 stacked buttons.
+            mode = BUTTON_BAR_TWO_ROWS;
+            inner = fourWide;
+            alignment = SWT.LEFT;
+        }
+        GridData buttonsGd = (GridData) buttons.getLayoutData();
+        if (profileButtonBarMode == mode
+            && buttonsGd.widthHint == inner
+            && buttonsGd.horizontalAlignment == alignment)
+        {
+            return;
+        }
+        applyButtonBarLayout(buttons, mode);
+        profileButtonBarMode = mode;
+        buttonsGd.widthHint = inner;
+        buttonsGd.horizontalAlignment = alignment;
+        group.layout(true, true);
+    }
+
+    private static void applyButtonBarLayout(Composite buttons, int mode)
+    {
+        for (Control child : buttons.getChildren())
+        {
+            child.setLayoutData(null);
+        }
+        if (mode == BUTTON_BAR_WRAP)
+        {
+            RowLayout rowLayout = new RowLayout(SWT.HORIZONTAL);
+            rowLayout.wrap = true;
+            rowLayout.marginWidth = 0;
+            rowLayout.marginHeight = 0;
+            rowLayout.marginLeft = 0;
+            rowLayout.marginTop = 0;
+            rowLayout.marginRight = 0;
+            rowLayout.marginBottom = 0;
+            rowLayout.spacing = PROFILE_BUTTON_SPACING;
+            buttons.setLayout(rowLayout);
+            return;
+        }
+        int columns = mode == BUTTON_BAR_TWO_ROWS ? PROFILE_BUTTONS_PER_ROW : BUTTON_BAR_ONE_ROW;
+        GridLayout grid = new GridLayout(columns, false);
+        grid.marginWidth = 0;
+        grid.marginHeight = 0;
+        grid.horizontalSpacing = PROFILE_BUTTON_SPACING;
+        grid.verticalSpacing = PROFILE_BUTTON_SPACING;
+        buttons.setLayout(grid);
+        for (Control child : buttons.getChildren())
+        {
+            child.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, false, false));
+        }
+    }
+
+    private static int minimumWrapWidth(Control[] children)
+    {
+        int widest = 1;
+        for (Control child : children)
+        {
+            widest = Math.max(widest, child.computeSize(SWT.DEFAULT, SWT.DEFAULT).x);
+        }
+        return widest;
+    }
+
+    private static int preferredRowWidth(Control[] children, int from, int count)
+    {
+        if (from >= children.length || count <= 0)
+        {
+            return 1;
+        }
+        int n = Math.min(count, children.length - from);
+        int width = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (i > 0)
+            {
+                width += PROFILE_BUTTON_SPACING;
+            }
+            width += children[from + i].computeSize(SWT.DEFAULT, SWT.DEFAULT).x;
+        }
+        return Math.max(1, width);
     }
 
     private Button addActionButton(Composite parent, String text, Runnable action)
@@ -371,6 +539,29 @@ public class ToolsTab
         refreshProfileUi();
     }
 
+    private void exportProfile()
+    {
+        flushProfileFields();
+        exchange.exportSelected(
+            new EditorModelDraftSink(model),
+            new SwtProfileFileChooser(composite.getShell()),
+            new SwtUserNotifier(composite.getShell()));
+    }
+
+    private void importProfile()
+    {
+        flushProfileFields();
+        ToolProfileExchangeController.Outcome outcome = exchange.importSelected(
+            new EditorModelDraftSink(model),
+            new SwtProfileFileChooser(composite.getShell()),
+            new SwtImportConfirmation(composite.getShell()),
+            new SwtUserNotifier(composite.getShell()));
+        if (outcome == ToolProfileExchangeController.Outcome.COMPLETED)
+        {
+            refreshProfileUi();
+        }
+    }
+
     private void showIfFailed(ToolProfilesEditorModel.OperationResult result)
     {
         if (!result.isOk())
@@ -461,6 +652,11 @@ public class ToolsTab
             deleteButton.setEnabled(canMutate);
             enableButton.setText(current != null && !current.isEnabled()
                 ? Messages.ToolsTab_Enable : Messages.ToolsTab_Disable);
+            if (profileGroup != null && profileButtons != null)
+            {
+                Composite host = composite.getParent() != null ? composite.getParent() : composite;
+                relayoutButtonBar(profileGroup, profileButtons, host);
+            }
         }
         finally
         {

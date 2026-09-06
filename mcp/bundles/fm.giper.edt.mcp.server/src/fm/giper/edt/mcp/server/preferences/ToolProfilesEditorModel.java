@@ -385,6 +385,42 @@ public final class ToolProfilesEditorModel
         return OperationResult.ok();
     }
 
+    /**
+     * Overlays file-imported fields onto the selected draft only. Current profile
+     * {@code id} and draft {@code revision} are preserved; {@code originalRevision}
+     * is unchanged. Other drafts are left untouched. Does not publish.
+     */
+    public OperationResult applyImportedProfileToSelected(ToolProfile imported)
+    {
+        if (imported == null)
+        {
+            return OperationResult.failed("Imported profile is required"); //$NON-NLS-1$
+        }
+        ToolProfile selected = getSelected();
+        if (selected == null)
+        {
+            return OperationResult.failed("No profile is selected"); //$NON-NLS-1$
+        }
+        if (selected.isDefault() && !imported.isEnabled())
+        {
+            return OperationResult.failed("Profile 'default' cannot be disabled"); //$NON-NLS-1$
+        }
+        ToolProfile next = selected.toBuilder()
+            .displayName(imported.getDisplayName())
+            .description(imported.getDescription())
+            .enabled(imported.isEnabled())
+            .allowedTools(imported.getAllowedTools())
+            .build();
+        ToolProfileValidator.ValidationResult validation = ToolProfileValidator.validate(next);
+        if (!validation.isValid())
+        {
+            return OperationResult.failed(validation.firstError());
+        }
+        drafts.put(next.getId(), next);
+        dirty = !sameAsOriginals();
+        return OperationResult.ok();
+    }
+
     public ToolPreset matchPreset()
     {
         ToolProfile selected = getSelected();

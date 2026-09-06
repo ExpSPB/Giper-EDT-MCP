@@ -7,6 +7,7 @@
 
 package fm.giper.edt.mcp.server.profiles;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +26,7 @@ public final class ToolProfileCodec
 {
     static final String KEY_SCHEMA_VERSION = "schemaVersion"; //$NON-NLS-1$
     static final String KEY_DOCUMENT_REVISION = "documentRevision"; //$NON-NLS-1$
+    static final String KEY_PROFILE = "profile"; //$NON-NLS-1$
     static final String KEY_PROFILES = "profiles"; //$NON-NLS-1$
     static final String KEY_ID = "id"; //$NON-NLS-1$
     static final String KEY_DISPLAY_NAME = "displayName"; //$NON-NLS-1$
@@ -111,7 +113,69 @@ public final class ToolProfileCodec
         return snapshot;
     }
 
-    private static JsonObject encodeProfile(ToolProfile profile)
+    /**
+     * Encodes one profile in the single-profile exchange envelope ({@code schemaVersion} +
+     * {@code profile}). Callers must supply a non-null profile.
+     */
+    public static String encodeSingleProfile(ToolProfile profile)
+    {
+        if (profile == null)
+        {
+            throw new IllegalArgumentException("profile is required"); //$NON-NLS-1$
+        }
+        JsonObject root = new JsonObject();
+        root.addProperty(KEY_SCHEMA_VERSION, ToolProfileSnapshot.CURRENT_SCHEMA_VERSION);
+        root.add(KEY_PROFILE, encodeProfile(profile));
+        return GsonProvider.get().toJson(root);
+    }
+
+    /**
+     * Strict decode of the single-profile exchange envelope. Does not accept a workspace
+     * snapshot ({@code profiles} array). Extra JSON keys are ignored.
+     */
+    public static ToolProfile decodeSingleProfile(String json) throws ToolProfileDocumentException
+    {
+        if (json == null || json.isBlank())
+        {
+            throw new MalformedToolProfileDocumentException("Profile file is empty"); //$NON-NLS-1$
+        }
+        JsonElement root;
+        try
+        {
+            root = JsonParser.parseString(json);
+        }
+        catch (JsonSyntaxException e)
+        {
+            throw new MalformedToolProfileDocumentException("Profile file is not valid JSON", e); //$NON-NLS-1$
+        }
+        if (root == null || !root.isJsonObject())
+        {
+            throw new MalformedToolProfileDocumentException("Profile file must be a JSON object"); //$NON-NLS-1$
+        }
+        JsonObject object = root.getAsJsonObject();
+        if (object.has(KEY_PROFILES) && object.get(KEY_PROFILES).isJsonArray())
+        {
+            throw new MalformedToolProfileDocumentException(
+                "This is a full workspace profile document; a single-profile file is required"); //$NON-NLS-1$
+        }
+        int schemaVersion = requireInt(object, KEY_SCHEMA_VERSION);
+        if (schemaVersion > ToolProfileSnapshot.CURRENT_SCHEMA_VERSION)
+        {
+            throw new UnsupportedToolProfileSchemaException(schemaVersion);
+        }
+        if (schemaVersion < 1)
+        {
+            throw new MalformedToolProfileDocumentException("schemaVersion must be >= 1"); //$NON-NLS-1$
+        }
+        JsonElement profileElement = object.get(KEY_PROFILE);
+        if (profileElement == null || !profileElement.isJsonObject())
+        {
+            throw new MalformedToolProfileDocumentException("Missing profile object"); //$NON-NLS-1$
+        }
+        return decodeProfile(profileElement.getAsJsonObject());
+    }
+
+    static JsonObject encodeProfile(ToolProfile profile)
     {
         JsonObject object = new JsonObject();
         object.addProperty(KEY_ID, profile.getId());
@@ -128,7 +192,7 @@ public final class ToolProfileCodec
         return object;
     }
 
-    private static ToolProfile decodeProfile(JsonObject object) throws MalformedToolProfileDocumentException
+    static ToolProfile decodeProfile(JsonObject object) throws MalformedToolProfileDocumentException
     {
         String id = requireString(object, KEY_ID);
         String displayName = requireString(object, KEY_DISPLAY_NAME);
@@ -215,7 +279,39 @@ public final class ToolProfileCodec
         {
             throw new MalformedToolProfileDocumentException("Field '" + key + "' must be a number"); //$NON-NLS-1$ //$NON-NLS-2$
         }
-        return value.getAsLong();
+        BigDecimal decimal;
+        try
+        {
+            decimal = value.getAsJsonPrimitive().getAsBigDecimal();
+        }
+        catch (NumberFormatException e)
+        {
+            throw new MalformedToolProfileDocumentException(
+                "Field '" + key + "' is not a valid number", e); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (!isIntegral(decimal))
+        {
+            throw new MalformedToolProfileDocumentException("Field '" + key + "' must be an integer"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        try
+        {
+            return decimal.longValueExact();
+        }
+        catch (ArithmeticException e)
+        {
+            throw new MalformedToolProfileDocumentException(
+                "Field '" + key + "' is outside the long range", e); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+    }
+
+    private static boolean isIntegral(BigDecimal decimal)
+    {
+        if (decimal.scale() <= 0)
+        {
+            return true;
+        }
+        // scale > 0 only: stripTrailingZeros on scale<=0 huge exponents can throw (see PredefinedWriter).
+        return decimal.stripTrailingZeros().scale() <= 0;
     }
 
     private static JsonArray requireArray(JsonObject object, String key)
