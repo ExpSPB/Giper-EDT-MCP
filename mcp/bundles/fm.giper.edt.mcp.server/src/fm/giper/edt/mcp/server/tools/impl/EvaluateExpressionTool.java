@@ -27,7 +27,9 @@ import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.utils.ConsentPreview;
 import fm.giper.edt.mcp.server.utils.DebugSessionRegistry;
+import fm.giper.edt.mcp.server.utils.DestructiveConsentGate;
 import fm.giper.edt.mcp.server.utils.VariableSerializer;
 
 /**
@@ -121,6 +123,27 @@ public class EvaluateExpressionTool implements IMcpTool
         if (frame == null)
         {
             return ToolResult.error("stale frameRef — call wait_for_break again").toJson(); //$NON-NLS-1$
+        }
+
+        // The confirm-point: the frame is resolved, nothing has run yet. An expression is
+        // arbitrary BSL in the running application - it can call anything the 1C session can,
+        // so unlike every other gated tool no preview can enumerate what it will touch, and the
+        // expression ITSELF is the only honest preview. The gate is free for unattended runs
+        // (EDT_MCP_DESTRUCTIVE_CONSENT=allow) and costs one "Allow for session" click otherwise.
+        //
+        // The expression is shown to a human and NOT written to the log: a human deciding needs
+        // to read it, while an expression can carry a password or a token and the audit line
+        // lands in a file that outlives the run and travels with bug reports.
+        ConsentPreview preview = ConsentPreview.withUnloggableNames(
+            "Evaluate a BSL expression", //$NON-NLS-1$
+            "This runs the expression in the paused application; it can change state, not just " //$NON-NLS-1$
+                + "read it.", //$NON-NLS-1$
+            1, java.util.Collections.singletonList(expression));
+        DestructiveConsentGate.ConsentDecision consentDecision =
+            DestructiveConsentGate.getInstance().requireConsent(NAME, preview);
+        if (consentDecision != DestructiveConsentGate.ConsentDecision.ALLOW)
+        {
+            return ToolResult.error(DestructiveConsentGate.consentDeniedMessage(consentDecision, NAME)).toJson();
         }
 
         try

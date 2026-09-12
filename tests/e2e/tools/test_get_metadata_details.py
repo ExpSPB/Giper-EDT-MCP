@@ -1,4 +1,4 @@
-"""
+﻿"""
 e2e tests for get_metadata_details (kind: read).
 
 The tool resolves an array of FQNs against a project's configuration and renders
@@ -34,15 +34,14 @@ from harness import (
     assert_not_contains,
     assert_no_diff,
     wait_for_project_ready,
-    fixture_form_has_auto_command_bar,
     e2e_test,
     PROJECT,
 )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # Happy paths
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="read")
 def test_basic_details_for_catalog_and_no_mutation():
@@ -89,13 +88,13 @@ def test_full_mode_emits_more_than_basic():
 
 @e2e_test(tool="get_metadata_details", kind="read")
 def test_russian_type_token_resolves_to_same_object():
-    # The FQN type token is bilingual: "Справочник" (Russian for Catalog) must
+    # The FQN type token is bilingual: "╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║" (Russian for Catalog) must
     # resolve to the SAME object as "Catalog" (the object Name itself is never
     # translated -- it stays "Catalog"). MetadataTypeUtils.toEnglishSingular maps
-    # the Russian type token before lookup. Справочник = "Справочник".
+    # the Russian type token before lookup. ╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║ = "╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║".
     r = call("get_metadata_details", {
         "projectName": PROJECT,
-        "objectFqns": ["Справочник.Catalog"],
+        "objectFqns": ["╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.Catalog"],
     })
     assert_ok(r, "get_metadata_details with Russian type token")
     # Renders as the English type + the (untranslated) Name -> "Catalog: Catalog".
@@ -123,9 +122,9 @@ def test_multiple_fqns_one_valid_one_missing_split_into_two_channels():
     assert_no_diff("read with a partial miss must not change the project")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # In-band per-object failure channel (call SUCCEEDS, failure reported as data)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="read")
 def test_nonexistent_object_reported_in_errors_table_not_as_whole_call_error():
@@ -160,9 +159,9 @@ def test_malformed_fqn_without_dot_reported_with_format_hint():
     assert_no_diff("a malformed FQN must not change the project")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # Whole-call error matrix (server sets isError)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="read")
 def test_missing_project_name_is_error():
@@ -220,12 +219,12 @@ def test_nonexistent_project_is_error():
     assert_no_diff("a rejected call must not change the project")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# FORM structure — a form FQN renders the form's ENRICHED structure
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# FORM structure тАФ a form FQN renders the form's ENRICHED structure
 # (folds get_form_structure; FormStructureReader.render adds visibility / dataPath /
 # per-kind extras to the items outline, Main / SavedData flags to the Attributes table,
 # and a new Event handlers section)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="write-metadata")
 def test_form_fqn_renders_structure():
@@ -275,13 +274,63 @@ def test_common_form_fqn_renders_structure():
     assert_contains(r.text, "Event handlers", "the enriched structure must add an Event handlers section")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# FORM-MEMBER assignable schema — a form GROUP FQN (assignable:true) lists the
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# FORM-ROOT assignable schema тАФ the editable form:Form object's own properties
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+
+@e2e_test(tool="get_metadata_details", kind="read")
+def test_assignable_on_form_root_lists_root_properties():
+    fqn = "Catalog.Catalog.Form.ItemForm"
+    r = call("get_metadata_details", {
+        "projectName": PROJECT,
+        "objectFqns": [fqn],
+        "assignable": True,
+    })
+    assert_ok(r, "assignable schema for the managed-form model root")
+    assert_not_contains(r.text, "## Errors",
+                        "a valid form root must not fall through to mdclass resolution")
+    assert_contains(r.text, "## Assignable properties: " + fqn,
+                    "assignable mode must render the form-root schema heading")
+    for property_name in ("title", "autoTitle", "windowOpeningMode",
+                          "saveDataInSettings", "autoSaveDataInSettings"):
+        assert_contains(r.text, "| %s |" % property_name,
+                        "the form root must expose %s" % property_name)
+    assert_no_diff("reading a form root's assignable schema must not touch Form.form")
+
+
+@e2e_test(tool="get_metadata_details", kind="read")
+def test_assignable_on_common_form_keeps_mdclass_and_adds_content_root():
+    fqn = "CommonForm.Form"
+    r = call("get_metadata_details", {
+        "projectName": PROJECT,
+        "objectFqns": [fqn],
+        "assignable": True,
+    })
+    assert_ok(r, "additive assignable schema for a common form")
+    mdclass_heading = "## Assignable properties: " + fqn
+    content_heading = "## Form content root assignable properties: " + fqn
+    assert_contains(r.text, mdclass_heading,
+                    "the common form must retain its mdclass assignable table")
+    assert_contains(r.text, "| usePurposes | MANY_ENUM |",
+                    "the mdclass table must retain the issue #510 many-enum property")
+    assert_contains(r.text, "PersonalComputer, MobileDevice",
+                    "the mdclass table must retain every usePurposes literal")
+    assert_contains(r.text, content_heading,
+                    "the form content root must be added under a distinct heading")
+    assert_contains(r.text, "| autoTitle |",
+                    "the additive content-root table must expose root properties")
+    assert r.text.index(mdclass_heading) < r.text.index(content_heading), \
+        "the mdclass table must precede the additive content-root table"
+    assert_no_diff("reading a common form's two assignable surfaces must be side-effect free")
+
+
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# FORM-MEMBER assignable schema тАФ a form GROUP FQN (assignable:true) lists the
 # layout props nested in <extInfo> (issue #235). A form member is NOT an mdclass
 # node, so the assignable view used to fail with "Object not found"; it now routes
 # the FQN through modify_metadata's form resolver and renders the element's own
 # features UNION its extInfo's layout props (the general reflective extInfo path).
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="write-metadata")
 def test_assignable_on_form_group_lists_extinfo_layout_props():
@@ -403,21 +452,14 @@ def test_assignable_reaches_a_designer_child_by_its_inherited_kind_only():
     # but a token addresses its EClass AND its subclasses - an AutoCommandBar IS a Group. So the
     # form-root command bar keeps exactly ONE supported address, and a foreign token is refused
     # ("no token denotes it" must not degrade into "every token fits").
-    has_bar = fixture_form_has_auto_command_bar()
     r = call("get_metadata_details", {
         "projectName": PROJECT,
         "objectFqns": ["Catalog.Catalog.Form.ItemForm.Group.FormCommandBar"],
         "assignable": True,
     })
     assert_ok(r, "assignable schema for the auto command bar via its inherited kind 'Group'")
-    if has_bar:
-        assert_contains(r.text, "Assignable properties",
-            "the auto command bar must stay readable via 'Group'")
-    else:
-        assert_not_contains(r.text, "Assignable properties",
-            "8.3.27 without autoCommandBar must not invent assignable props for FormCommandBar")
-        assert_contains(r.text, "could not be resolved",
-            "the miss must show up in the per-object Errors table")
+    assert_contains(r.text, "Assignable properties",
+        "the auto command bar must stay readable via 'Group'")
 
     for kind in ("Field", "Button", "Decoration", "Table", "Grroup"):
         r = call("get_metadata_details", {
@@ -431,21 +473,21 @@ def test_assignable_reaches_a_designer_child_by_its_inherited_kind_only():
     assert_no_diff("an assignable read must not touch the project on disk")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# TEMPLATE Data Composition Schema (СКД) structure — a template FQN whose content is a
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# TEMPLATE Data Composition Schema (╨б╨Ъ╨Ф) structure тАФ a template FQN whose content is a
 # DataCompositionSchema renders the schema's STRUCTURE (issue #267): data sources, data sets
 # (with the FULL query text in a fenced block + a fields table), calculated fields, parameters,
 # and (not needed by this scenario) the default settings variant.
 # A template whose content is NOT a DataCompositionSchema (a SpreadsheetDocument print form) is
 # UNCHANGED: it still renders the generic object's basic info, never the DCS structure.
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="write-metadata")
 def test_dcs_template_fqn_renders_schema_structure():
     # Seed a fresh Report (the fixture ships none) and author its Data Composition Schema via the
-    # dedicated `dcs` tool — a query data set with an explicit query text + field, a calculated
+    # dedicated `dcs` tool тАФ a query data set with an explicit query text + field, a calculated
     # field, and an untyped parameter. The first write find-or-creates the report's main DCS
-    # template under the platform-default name (ОсновнаяСхемаКомпоновкиДанных).
+    # template under the platform-default name (╨Ю╤Б╨╜╨╛╨▓╨╜╨░╤П╨б╤Е╨╡╨╝╨░╨Ъ╨╛╨╝╨┐╨╛╨╜╨╛╨▓╨║╨╕╨Ф╨░╨╜╨╜╤Л╤Е).
     report = "GMDDcsReport"
     fqn = "Report." + report
     r0 = call("create_metadata", {"projectName": PROJECT, "fqn": fqn})
@@ -481,8 +523,8 @@ def test_dcs_template_fqn_renders_schema_structure():
 
     # The Cyrillic default DCS template name the platform pre-fills for a report's main schema
     # (matches EDT's own designer default).
-    template_name = "ОсновнаяСхема" \
-        "КомпоновкиДанных"
+    template_name = "╨Ю╤Б╨╜╨╛╨▓╨╜╨░╤П╨б╤Е╨╡╨╝╨░" \
+        "╨Ъ╨╛╨╝╨┐╨╛╨╜╨╛╨▓╨║╨╕╨Ф╨░╨╜╨╜╤Л╤Е"
     template_fqn = fqn + ".Template." + template_name
 
     r2 = call("get_metadata_details", {
@@ -505,7 +547,7 @@ def test_dcs_template_fqn_renders_schema_structure():
     assert_contains(r2.text, "## Parameters", "must render the Parameters section")
     assert_contains(r2.text, parameter, "the schema parameter's name must be listed")
     # (No assert_no_diff: the test intentionally seeds a Report and authors its DCS content, so the
-    # tree is dirty by design — kind="write-metadata" resets it after the test.)
+    # tree is dirty by design тАФ kind="write-metadata" resets it after the test.)
 
 
 @e2e_test(tool="get_metadata_details", kind="read")
@@ -527,8 +569,8 @@ def test_non_dcs_template_fqn_renders_basic_info_unchanged():
     assert_no_diff("a non-DCS template read must not change the project")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# TYPE-SPECIFIC PROPERTIES (issue #288) — a ScheduledJob / CommonModule / an
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# TYPE-SPECIFIC PROPERTIES (issue #288) тАФ a ScheduledJob / CommonModule / an
 # InformationRegister dimension's Indexing render in the DEFAULT (non-full) view.
 # modify_metadata already WRITES these; before this fix, get_metadata_details rendered
 # only Name/Synonym for the first two and never showed a dimension's Indexing at all -
@@ -537,7 +579,7 @@ def test_non_dcs_template_fqn_renders_basic_info_unchanged():
 # e2e tests, so - mirroring the DCS-template test's "seed a FRESH object rather than
 # perturb a shared fixture" pattern - each test here seeds its OWN top object via
 # create_metadata (kind="write-metadata" resets the tree afterward).
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="write-metadata")
 def test_scheduled_job_properties_rendered_in_basic_view():
@@ -682,11 +724,11 @@ def test_information_register_dimension_indexing_rendered():
     assert_contains(r_full.text, dim, "the seeded dimension must be listed in full mode too")
 
 
-# XDTO PACKAGE structure (issue #183 stream 1) — a package FQN renders its
+# XDTO PACKAGE structure (issue #183 stream 1) тАФ a package FQN renders its
 # ObjectTypes + their nested Properties (XdtoStructureReader, folded into the
 # generic render as a "## XDTO content" section, alongside the Basic Properties
 # section every top object gets). The fixture ships no XDTOPackage, so seed one.
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="get_metadata_details", kind="write-metadata")
 def test_get_metadata_details_renders_xdto_structure():

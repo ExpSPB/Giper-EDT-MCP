@@ -1,4 +1,4 @@
-"""
+﻿"""
 e2e tests for set_breakpoint (kind: read).
 
 What the tool does
@@ -15,12 +15,12 @@ set_breakpoint does NOT require an active debug session or a running infobase.
 A breakpoint is a workspace-level Eclipse artifact: it is registered on the
 IBreakpointManager and its backing IMarker lives on the workspace resource, NOT
 in the git-tracked TestConfiguration source tree. So against this EDT (no debug
-session, no launched application) set_breakpoint genuinely SUCCEEDS — and the
+session, no launched application) set_breakpoint genuinely SUCCEEDS тАФ and the
 project working tree must stay clean. That is the realistic happy contract here,
 so we exercise the real success path against the fixture's Calc module.
 
 The breakpoint MAY come back "degraded" (marker-only) if the EDT BSL breakpoint
-class is not on the runtime classpath — BreakpointUtils falls back through EDT
+class is not on the runtime classpath тАФ BreakpointUtils falls back through EDT
 marker types to a generic Eclipse marker and sets degraded=true + a warning. Both
 the native and the degraded outcome are correct *successes*; we assert the parts
 of the contract that hold in either case (success + echoed coordinates + a real
@@ -49,7 +49,7 @@ Real execute() error paths (SetBreakpointTool.java, all via ToolResult.error):
 
 Fixture inventory used (TestConfiguration, English Names):
   CommonModule.Calc -> src/CommonModules/Calc/Module.bsl, with
-    Function Add  on lines 1-3 (line 2 = "Возврат A + B;", a real executable line)
+    Function Add  on lines 1-3 (line 2 = "╨Т╨╛╨╖╨▓╤А╨░╤В A + B;", a real executable line)
     Procedure Test on lines 5-7
   This file is committed; line 2 is a deterministic, valid breakpoint target.
 
@@ -63,6 +63,7 @@ deterministic. assert_no_diff() still proves the project source was untouched.
 from harness import (
     call,
     assert_ok,
+    E2ESkip,
     assert_error,
     assert_error_quality,
     assert_contains,
@@ -72,28 +73,51 @@ from harness import (
 )
 
 CALC_MODULE = "CommonModules/Calc/Module.bsl"
+CALC_LINE = 2
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+def _require_free_probe():
+    """Raises E2ESkip when the coordinate this test writes to already holds a breakpoint.
+
+    set_breakpoint RECONFIGURES what is already there rather than creating a second breakpoint,
+    and this test cleans up by the returned id - so in a reused workspace it would rewrite a
+    breakpoint it does not own, then delete it. The same precondition guards the probe in
+    test_list_breakpoints.py.
+    """
+    existing = call("list_breakpoints", {"projectName": PROJECT})
+    assert_ok(existing, "precondition: list_breakpoints must answer before the breakpoint is set")
+    for entry in (existing.structured or {}).get("breakpoints", []):
+        # The line DTO carries its path as "file" (a workspace path), not "modulePath".
+        if entry.get("kind") == "line" and entry.get("lineNumber") == CALC_LINE \
+                and str(entry.get("file") or "").replace(chr(92), "/").endswith(CALC_MODULE):
+            raise E2ESkip(
+                "%s:%d already holds a breakpoint (%r); this test would reconfigure and then "
+                "delete it" % (CALC_MODULE, CALC_LINE, entry)
+            )
+
+
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # HAPPY PATH (set_breakpoint works WITHOUT a debug session; breakpoints are a
 # workspace artifact, so the project tree must stay clean)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 @e2e_test(tool="set_breakpoint", kind="read")
 def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
     """Set a breakpoint at the fixture's Calc module, line 2 (a real executable
     line inside Function Add). The tool must SUCCEED even with no debug session,
     echo the exact coordinates, resolve to the real Calc module file, and return a
-    numeric breakpointId — while leaving the git-tracked project source untouched
+    numeric breakpointId тАФ while leaving the git-tracked project source untouched
     (a breakpoint lives in the workspace, not the project tree).
 
     Mutation sensitivity: a broken tool that no-ops, resolves the wrong file,
     drops the line number, or returns no id would FAIL one of these asserts. A
     tool that secretly wrote into the project tree would FAIL assert_no_diff().
     """
+    _require_free_probe()
     r = call("set_breakpoint", {
         "projectName": PROJECT,
         "modulePath": CALC_MODULE,
         "lineNumber": 2,
+        "condition": "A > 0",
     })
     assert_ok(r, "set_breakpoint on Calc module line 2")
 
@@ -125,14 +149,20 @@ def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
         "breakpointId must be a positive marker id (a real breakpoint was created); got %r" % bp_id
 
     # If the EDT BSL breakpoint class was unavailable, the tool degrades to a
-    # marker-only breakpoint — that is still a success, but it MUST announce itself
+    # marker-only breakpoint тАФ that is still a success, but it MUST announce itself
     # with an actionable warning (so a silent degradation cannot pass unnoticed).
-    if sc.get("degraded"):
+    degraded = bool(sc.get("degraded"))
+    if degraded:
         warning = str(sc.get("warning") or "")
         assert_contains(warning, "marker-only",
                         "a degraded breakpoint must say it is marker-only")
         assert_contains(warning, "Breakpoints view",
                         "the degraded warning must tell the user how to verify (Breakpoints view)")
+        # The fallback deliberately does not carry a BSL condition, so the tool must SAY the
+        # condition did not land rather than let the caller assume a live one.
+        assert sc.get("conditionApplied") is False, \
+            "a degraded breakpoint must report conditionApplied=false; got %r" \
+            % sc.get("conditionApplied")
 
     # Read it back through the sibling list tool: the breakpoint we just set must be
     # enumerable by breakpointId, on the requested project + line. This proves the
@@ -147,8 +177,54 @@ def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
         % (bp_id, [b.get("breakpointId") for b in bps])
     assert mine[0].get("lineNumber") == 2, \
         "the listed breakpoint must report line 2; got %r" % mine[0].get("lineNumber")
+    # Native only: configureLineBreakpoint deliberately writes no condition onto the marker-only
+    # fallback, so demanding the round-trip here would fail in exactly the degraded environment
+    # this test declares a valid success above.
+    if not degraded:
+        assert mine[0].get("condition") == "A > 0", \
+            "the real BSL condition must round-trip through list_breakpoints; got %r" \
+            % mine[0].get("condition")
 
-    # The whole sequence must NOT have modified the git-tracked project source —
+    # The same coordinates must UPDATE the existing breakpoint, not create a
+    # second independently firing marker. Also exercise all extended settings.
+    updated = call("set_breakpoint", {
+        "projectName": PROJECT,
+        "modulePath": CALC_MODULE,
+        "lineNumber": 2,
+        "condition": "B > 0",
+        "hitCount": 2,
+        "hitCondition": "EQUAL_OR_HIGHER",
+    })
+    assert_ok(updated, "update the existing conditioned breakpoint")
+    usc = updated.structured or {}
+    assert usc.get("action") == "updated", \
+        "same-coordinate set must report action=updated; got %r" % usc
+    assert usc.get("breakpointId") == bp_id, \
+        "updating must preserve the existing marker id; got %r then %r" \
+        % (bp_id, usc.get("breakpointId"))
+
+    relisted = call("list_breakpoints", {"projectName": PROJECT})
+    assert_ok(relisted, "list_breakpoints after in-place update")
+    same_position = [b for b in (relisted.structured or {}).get("breakpoints", [])
+                     if b.get("project") == PROJECT
+                     and b.get("lineNumber") == 2
+                     and "Calc" in str(b.get("file") or "")]
+    assert len(same_position) == 1, \
+        "updating one source position must leave exactly one breakpoint; got %r" % same_position
+    if not degraded:
+        assert same_position[0].get("condition") == "B > 0", \
+            "updated condition must be visible; got %r" % same_position[0]
+        assert same_position[0].get("hitCount") == 2, \
+            "configured hitCount must be visible; got %r" % same_position[0]
+        assert same_position[0].get("hitCondition") == "EQUAL_OR_HIGHER", \
+            "configured hitCondition must be visible; got %r" % same_position[0]
+    else:
+        # Degraded: the settings could not be applied, so the SECOND call must own up to that
+        # too - a silent second success would be the very hiding this test exists to prevent.
+        assert usc.get("conditionApplied") is False and usc.get("hitCountApplied") is False, \
+            "a degraded update must report neither setting as applied; got %r" % usc
+
+    # The whole sequence must NOT have modified the git-tracked project source тАФ
     # breakpoints are a workspace artifact, never a project-tree edit.
     assert_no_diff("setting a breakpoint must not touch the project source tree")
 
@@ -162,9 +238,9 @@ def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
         "cleanup remove_breakpoint must report removed=true for our own breakpoint id"
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # NEGATIVE MATRIX (mandatory: missing required, bad values, bad combinations)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 @e2e_test(tool="set_breakpoint", kind="read")
 def test_missing_module_path_errors_clearly():
     """modulePath/module omitted -> the first guard fires -> "modulePath is
@@ -223,6 +299,40 @@ def test_negative_line_number_rejected():
 
 
 @e2e_test(tool="set_breakpoint", kind="read")
+def test_extended_breakpoint_validation_refusals_are_actionable():
+    """Negative hit counts, orphan hit conditions, and unknown enum literals
+    are rejected before any workspace lookup or mutation."""
+    negative = call("set_breakpoint", {
+        "projectName": PROJECT, "modulePath": CALC_MODULE, "lineNumber": 2,
+        "hitCount": -2,
+    })
+    error = assert_error(negative, "negative hitCount")
+    assert_error_quality(error, names=["hitCount", "-2"],
+                         suggests=["positive", "0"],
+                         ctx="negative hitCount names the value and clearing rule")
+
+    orphan = call("set_breakpoint", {
+        "projectName": PROJECT, "modulePath": CALC_MODULE, "lineNumber": 2,
+        "hitCondition": "MULTIPLIER",
+    })
+    error = assert_error(orphan, "hitCondition without hitCount")
+    assert_error_quality(error, names=["hitCondition", "MULTIPLIER", "hitCount"],
+                         suggests=["positive", "omit"],
+                         ctx="orphan hitCondition explains the required companion")
+
+    unknown = call("set_breakpoint", {
+        "projectName": PROJECT, "modulePath": CALC_MODULE, "lineNumber": 2,
+        "hitCount": 2, "hitCondition": "AFTER",
+    })
+    error = assert_error(unknown, "unknown hitCondition")
+    assert_error_quality(error, names=["hitCondition", "AFTER"],
+                         suggests=["EQUALS", "EQUAL_OR_LESS",
+                                   "EQUAL_OR_HIGHER", "MULTIPLIER"],
+                         ctx="unknown hitCondition names all exact platform literals")
+    assert_no_diff("extended-option refusals must not touch project source")
+
+
+@e2e_test(tool="set_breakpoint", kind="read")
 def test_module_relative_path_without_project_errors_actionably():
     """A module-RELATIVE path needs a project to resolve against. Omitting
     projectName (with a non-absolute modulePath) -> the dedicated guard:
@@ -255,7 +365,7 @@ def test_nonexistent_project_errors():
     })
     e = assert_error(r, "non-existent project")
     # The downstream not-found branch names BOTH the module and the bad project.
-    # suggests=[] — the list_projects discovery tail is a separate change.
+    # suggests=[] тАФ the list_projects discovery tail is a separate change.
     assert_error_quality(e, names=[CALC_MODULE, bad], suggests=[],
                          ctx="non-existent project falls through to module-not-found, naming the project")
     assert_no_diff("an invalid call must not touch the project on disk")
@@ -287,7 +397,7 @@ def test_nonexistent_absolute_path_errors_and_names_value():
     straight to file resolution. A non-existent absolute .bsl path -> "Module file
     not found: <module>" (no " in project ..." suffix, since absolute resolution
     is by location, not by project). Exercises the absolute-path branch of the
-    modulePath-style detection — distinct from the module-relative branch above."""
+    modulePath-style detection тАФ distinct from the module-relative branch above."""
     bad_abs = "C:/no/such/dir/NoSuchModule_e2e.bsl"
     r = call("set_breakpoint", {"modulePath": bad_abs, "lineNumber": 2})
     e = assert_error(r, "non-existent absolute path")

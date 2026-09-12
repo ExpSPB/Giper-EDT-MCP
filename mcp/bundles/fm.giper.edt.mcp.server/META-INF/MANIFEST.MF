@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: %pluginName
 Bundle-Vendor: %providerName
-Bundle-Version: 1.0.9.qualifier
+Bundle-Version: 1.0.10.qualifier
 Bundle-SymbolicName: fm.giper.edt.mcp.server;singleton:=true
 Bundle-Activator: fm.giper.edt.mcp.server.Activator
 Bundle-ActivationPolicy: lazy
@@ -34,7 +34,13 @@ Import-Package: com._1c.g5.v8.bm.common.collections,
  com._1c.g5.v8.dt.bsl.model,
  com._1c.g5.v8.dt.bsl.model.util,
  com._1c.g5.v8.dt.bsl.util,
+ com._1c.g5.v8.dt.bsl.compare;version="12.0.0",
  com._1c.g5.v8.dt.common;version="6.0.0",
+ com._1c.g5.v8.dt.compare.core;version="22.1.0",
+ com._1c.g5.v8.dt.compare.datasource;version="13.1.0",
+ com._1c.g5.v8.dt.compare.matching;version="10.0.0",
+ com._1c.g5.v8.dt.compare.model;version="14.0.0",
+ com._1c.g5.v8.dt.compare.settings.model;version="4.0.0",
  com._1c.g5.v8.dt.core.event,
  com._1c.g5.v8.dt.core.model,
  com._1c.g5.v8.dt.core.lifecycle;version="10.0.0",
@@ -44,6 +50,7 @@ Import-Package: com._1c.g5.v8.bm.common.collections,
  com._1c.g5.v8.dt.debug.model.base.data,
  com._1c.g5.v8.dt.export,
  com._1c.g5.v8.dt.form.layout.service,
+ com._1c.g5.v8.dt.form.compare;version="6.1.1100",
  com._1c.g5.v8.dt.form.refactoring,
  com._1c.g5.v8.dt.form.ui.editor,
  com._1c.g5.v8.dt.md.ui.presentation,
@@ -78,6 +85,7 @@ Import-Package: com._1c.g5.v8.bm.common.collections,
  com._1c.g5.v8.dt.platform.version,
  com._1c.g5.v8.dt.md.refactoring.core,
  com._1c.g5.v8.dt.md.extension.adopt,
+ com._1c.g5.v8.dt.md.compare;version="11.0.0",
  com._1c.g5.v8.dt.refactoring.core,
  org.eclipse.ltk.core.refactoring,
  org.eclipse.text.edits,

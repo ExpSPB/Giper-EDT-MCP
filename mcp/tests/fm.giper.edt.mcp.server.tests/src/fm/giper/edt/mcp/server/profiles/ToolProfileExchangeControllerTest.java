@@ -40,7 +40,7 @@ public class ToolProfileExchangeControllerTest
         "list_projects", //$NON-NLS-1$
         "write_module_source", //$NON-NLS-1$
         "get_server_status", //$NON-NLS-1$
-        "debug_launch"); //$NON-NLS-1$
+        "launch"); //$NON-NLS-1$
 
     private final ToolProfileExchangeController controller = new ToolProfileExchangeController();
 

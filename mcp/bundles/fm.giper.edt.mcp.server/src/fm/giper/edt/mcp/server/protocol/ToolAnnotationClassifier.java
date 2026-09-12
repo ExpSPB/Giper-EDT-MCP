@@ -55,7 +55,9 @@ public final class ToolAnnotationClassifier
         "delete_project", //$NON-NLS-1$
         "delete_launch_config", //$NON-NLS-1$
         "delete_infobase", //$NON-NLS-1$
-        "cancel_job" //$NON-NLS-1$
+        "cancel_job", //$NON-NLS-1$
+        "merge_rules", //$NON-NLS-1$
+        "evaluate_expression" //$NON-NLS-1$
     );
 
     private ToolAnnotationClassifier()

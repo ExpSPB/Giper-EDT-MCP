@@ -15,12 +15,18 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import fm.giper.edt.mcp.server.Activator;
 
+import static java.util.Map.entry;
+
 /**
  * Registry for MCP tools.
  * Manages registration and lookup of tools by name.
  */
 public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {
+    /** Legacy call names accepted by {@link #getTool(String)} but never advertised. */
+    private static final Map<String, String> LEGACY_TOOL_NAMES = Map.ofEntries(
+        entry("debug_launch", "launch")); //$NON-NLS-1$ //$NON-NLS-2$
+
     private static final McpToolRegistry INSTANCE = new McpToolRegistry();
 
     /**
@@ -105,7 +111,27 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      */
     public IMcpTool getTool(String name)
     {
-        return tools.get(name);
+        IMcpTool tool = tools.get(name);
+        if (tool != null)
+        {
+            return tool;
+        }
+        String currentName = LEGACY_TOOL_NAMES.get(name);
+        return currentName == null ? null : tools.get(currentName);
+    }
+
+    /**
+     * Resolves a tool name to its canonical registered name ({@code launch} for
+     * {@code debug_launch}, otherwise the name itself).
+     */
+    public static String canonicalToolName(String name)
+    {
+        if (name == null)
+        {
+            return null;
+        }
+        String mapped = LEGACY_TOOL_NAMES.get(name);
+        return mapped == null ? name : mapped;
     }
     
     /**

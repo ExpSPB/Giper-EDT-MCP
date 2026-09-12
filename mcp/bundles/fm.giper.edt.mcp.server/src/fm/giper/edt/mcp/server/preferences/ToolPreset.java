@@ -181,6 +181,8 @@ public enum ToolPreset
         disabled.add("export_configuration_to_xml"); //$NON-NLS-1$
         disabled.add("import_configuration_from_xml"); //$NON-NLS-1$
         disabled.add("apply_quick_fix"); //$NON-NLS-1$
+        disabled.add("merge_rules"); //$NON-NLS-1$
+        disabled.add("delete_project"); //$NON-NLS-1$
         return Collections.unmodifiableSet(disabled);
     }
 
@@ -203,6 +205,8 @@ public enum ToolPreset
         disabled.add("export_configuration_to_xml"); //$NON-NLS-1$
         disabled.add("import_configuration_from_xml"); //$NON-NLS-1$
         disabled.add("apply_quick_fix"); //$NON-NLS-1$
+        disabled.add("merge_rules"); //$NON-NLS-1$
+        disabled.add("delete_project"); //$NON-NLS-1$
         return Collections.unmodifiableSet(disabled);
     }
 }

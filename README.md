@@ -18,6 +18,15 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <details>
+<summary><strong>1.0.10</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.10-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
+
+Port of upstream EDT-MCP `master` onto EDT **2025.2** (not 2026.2). Giper keepers (multi-profile, export/import, branding) stay. New tools: `validate_form_model`, `compare_configurations`, `get_comparison_node`, `merge_rules`, `set_error_breakpoint`; `debug_launch` is a legacy alias of `launch` (`mode=debug|run`). Compare vendor-support state is empty on 2025.2.
+
+</details>
+
+<details>
 <summary><strong>1.0.9</strong></summary>
 
 Plugin OSGi/Tycho version (`1.0.9-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.

@@ -7,6 +7,7 @@
 
 package fm.giper.edt.mcp.server.utils;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -36,12 +37,16 @@ import fm.giper.edt.mcp.server.ui.DestructiveConsentDialog;
  *   <li><b>env {@code EDT_MCP_DESTRUCTIVE_CONSENT}</b> ({@code allow}/{@code ask},
  *       case-insensitive, read like {@code Toolsets.ENV_PROGRESSIVE_DISCLOSURE}) —
  *       {@code allow} WINS and returns {@link ConsentDecision#ALLOW} without any UI.
- *       This is the automated-run bypass the destructive e2e suite relies on.</li>
+ *       This is the automated-run bypass the destructive e2e suite relies on, and the
+ *       ONLY way a destructive operation proceeds with nobody watching; each such allow
+ *       logs an audit line naming the tool and its preview.</li>
  *   <li><b>Headless</b>: if there is no live workbench display or no active shell
  *       (via {@link LaunchLifecycleUtils#workbenchDisplayOrNull()} /
- *       {@link LaunchLifecycleUtils#grabActiveShell()}) → {@link ConsentDecision#ALLOW}
- *       plus a logged info line. NEVER {@code syncExec} against a null/disposed
- *       display; NEVER block.</li>
+ *       {@link LaunchLifecycleUtils#grabActiveShellWithin(long)}) →
+ *       {@link ConsentDecision#UNATTENDED} plus a logged info line. NEVER
+ *       {@code syncExec} against a null/disposed display; NEVER block. This step
+ *       REFUSES: with no human to ask, consent for an unattended run is the operator's
+ *       to grant at launch (step 1), not the missing display's to grant for them.</li>
  *   <li><b>In-memory session-allow</b>: a per-tool {@link Set} populated by the
  *       dialog's "Allow for session" button. A gated tool the user allowed for the
  *       session this EDT run proceeds without a dialog.</li>
@@ -70,13 +75,20 @@ import fm.giper.edt.mcp.server.ui.DestructiveConsentDialog;
  *       shell is closed (best-effort) so it does not linger.</li>
  * </ol>
  *
- * <p><b>Invariant:</b> the gate NEVER blocks indefinitely in EITHER dialog path — it
- * waits at most {@link #CONSENT_PROMPT_TIMEOUT_SECONDS} (issue #277); it NEVER blocks
- * at all in a headless / env-bypass / non-ASK (level-2/session/per-tool-allowed)
- * path; it does not deadlock when already on the UI thread; and a non-
- * {@link ConsentDecision#ALLOW} verdict ({@link ConsentDecision#REJECT} or
- * {@link ConsentDecision#TIMEOUT}) mutates nothing (it only returns the decision, and
- * the caller turns it into an error via {@link #consentDeniedMessage(ConsentDecision, String)}).
+ * <p><b>Invariant:</b> every path is bounded, and the shell probe is what any of them can wait
+ * on. Two never wait, whichever thread asks: the env bypass (step 1) and a display-less EDT (the
+ * probe answers NO_SHELL at once when there is no display). On a live workbench the probe comes
+ * first, and its cost depends on the CALLER's thread. Asked ON the UI thread it reads the shell
+ * inline and waits for nothing — so a non-ASK path (level-2 / session / per-tool-allowed)
+ * returns immediately, and nothing can deadlock. Asked from a worker it posts the question and
+ * waits at most {@link #SHELL_PROBE_TIMEOUT_MS} ms — the non-ASK paths included, because the
+ * probe deliberately precedes the policy (see step 2). Beyond the probe the dialog paths wait at
+ * most {@link #CONSENT_PROMPT_TIMEOUT_SECONDS}; and a non-
+ * {@link ConsentDecision#ALLOW} verdict ({@link ConsentDecision#REJECT},
+ * {@link ConsentDecision#TIMEOUT}, {@link ConsentDecision#UNATTENDED} or
+ * {@link ConsentDecision#UI_UNRESPONSIVE}) mutates nothing
+ * (it only returns the decision, and the caller turns it into an error via
+ * {@link #consentDeniedMessage(ConsentDecision, String)}).
  */
 public final class DestructiveConsentGate // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {
@@ -114,15 +126,20 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
 
     /**
      * The frozen set of destructive tool NAMEs the gate protects: the five
-     * always-destructive tools plus {@code modify_metadata} and {@code dcs} (gated only for a
-     * destructive retype — each tool decides when to call, the gate does not).
+     * always-destructive tools plus the conditionally destructive ones —
+     * {@code modify_metadata} and {@code dcs} (gated only for a destructive retype),
+     * {@code git} (gated per write-capable subcommand) and {@code evaluate_expression}
+     * (gated always, because arbitrary BSL cannot be classified). Each tool decides
+     * when to call, the gate does not.
      *
      * <p>Related to but deliberately NOT equal to
      * {@code ToolAnnotationClassifier.DESTRUCTIVE_TOOLS}: that MCP-hint list carries
      * {@code delete_launch_config} (which is cheap/recoverable and NOT gated) and
-     * omits {@code modify_metadata} (whose destructiveness is conditional). The exact
-     * relationship is asserted by {@code DestructiveConsentGateTest} so the two lists
-     * never silently drift.
+     * omits the conditional four, whose TYPICAL call is not destructive and whose hint
+     * therefore stays {@code false} — one hint per tool cannot say "this depends on the
+     * arguments", and marking a mostly-read tool destructive would steer clients away
+     * from it. The exact relationship is asserted by {@code DestructiveConsentGateTest}
+     * so the two lists never silently drift.
      */
     public static final Set<String> GATED_TOOLS = Set.of(
         "delete_metadata", //$NON-NLS-1$
@@ -136,8 +153,31 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
         // subcommands (everything but status/diff/log/show/blame/ls-files/rev-parse/describe), since
         // whether one destroys work depends on git's per-subcommand option grammar - see
         // GitTool.destructiveForm.
-        "git" //$NON-NLS-1$
+        "git", //$NON-NLS-1$
+        // Gated for the same-path rewrite only: the one write that replaces a file; a write to a
+        // free path asks nothing — see MergeRulesTool#writeUnderMutex.
+        "merge_rules", //$NON-NLS-1$
+        // Arbitrary BSL in the running application: its own description says so ("executes
+        // arbitrary code in the running application - it can change state, not just read it"),
+        // and unlike every other entry here the damage is unbounded and undeclarable - the
+        // expression can call anything the 1C session can, so no preview can enumerate what it
+        // will touch. set_variable is deliberately NOT gated beside it: it assigns one named
+        // variable in one suspended frame, which IS bounded and IS shown to the caller.
+        "evaluate_expression" //$NON-NLS-1$
     );
+
+    /**
+     * How long the headless probe waits for the UI thread before giving up on it.
+     * <p>
+     * Short on purpose. This is not the human's thinking time - that is
+     * {@link #CONSENT_PROMPT_TIMEOUT_SECONDS}, and it starts later. This is only "is there a
+     * workbench able to answer at all", a question a healthy UI thread answers in microseconds.
+     * A wedged one never answers, and the wait for it used to be unbounded: the gate is called
+     * from a worker thread that holds the caller's lock, so every later call for the same
+     * resource queued behind a wait with no end.
+     * </p>
+     */
+    static final long SHELL_PROBE_TIMEOUT_MS = 5_000L;
 
     private static final DestructiveConsentGate INSTANCE = new DestructiveConsentGate();
 
@@ -175,7 +215,32 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
          * {@link DestructiveConsentGate#consentDeniedMessage(ConsentDecision, String)},
          * distinct from a human's explicit {@link #REJECT}.
          */
-        TIMEOUT
+        TIMEOUT,
+        /**
+         * There was nobody to ask: no live workbench display or shell (a headless EDT), or
+         * the display went away between the probe and the prompt. A REJECT-like verdict with
+         * its own actionable text naming the two ways to opt in.
+         *
+         * <p>This used to be an ALLOW. The gate exists to stop an agent destroying something
+         * without a human, and "no human is present" is the case it was least entitled to
+         * decide by itself: an agent that can start EDT headless removed the gate by doing so.
+         * Consent for an unattended run is now something the OPERATOR grants at launch
+         * ({@link DestructiveConsentGate#ENV_DESTRUCTIVE_CONSENT}{@code =allow}, step 1) rather
+         * than something the absence of a display grants on their behalf.</p>
+         */
+        UNATTENDED,
+        /**
+         * The workbench exists but its UI thread did not answer the bounded shell probe within
+         * {@link DestructiveConsentGate#SHELL_PROBE_TIMEOUT_MS} — so no dialog was ever shown.
+         *
+         * <p>Separate from {@link #TIMEOUT} because the remedies differ: that verdict means a
+         * dialog WAS shown and nobody answered it within
+         * {@link DestructiveConsentGate#CONSENT_PROMPT_TIMEOUT_SECONDS}, so "answer it promptly"
+         * and "allow the tool in Preferences" are the right advice. Here they are not: the probe
+         * runs BEFORE the policy is read, so a preference allowance cannot get through a wedged
+         * UI either — only freeing the UI thread, or the launch-time bypass, does.</p>
+         */
+        UI_UNRESPONSIVE
     }
 
     /**
@@ -206,20 +271,50 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
      */
     public ConsentDecision requireConsent(String toolName, ConsentPreview preview)
     {
-        // Step 1 — env bypass WINS (the automated-run / e2e path).
+        // Step 1 — env bypass WINS (the automated-run / e2e path). It leaves an audit line
+        // naming the tool and what it was about to do: this is the one path where a
+        // destructive operation proceeds with nobody watching, so the run must at least be
+        // readable afterwards in the EDT log.
         if (isEnvAllow())
         {
+            Activator.logInfo("Destructive-consent gate: " + ENV_DESTRUCTIVE_CONSENT //$NON-NLS-1$
+                + "=allow bypassed the prompt for '" + toolName + "' — " + describe(preview)); //$NON-NLS-1$ //$NON-NLS-2$
             return ConsentDecision.ALLOW;
         }
 
-        // Step 2 — headless probe: never syncExec / block without a live display+shell.
+        // Step 2 — headless probe: never block forever, and never grant consent because no UI
+        // answered. With no human to ask, the answer is NO; consent for an unattended run comes
+        // from the operator at launch (step 1), not from the absence of a display.
+        //
+        // The probe is BOUNDED. It used to ask the UI thread with an unbounded syncExec, so on a
+        // workbench whose UI thread is wedged this call never returned - and it is reached from a
+        // worker thread that is holding the caller's lock (merge_rules holds its path mutex),
+        // so every later call for the same resource queued behind a wait that could not end.
+        //
+        // The ORDER is deliberately unchanged. Reading the policy first would answer ALLOW on a
+        // display-less EDT for ALLOW_ALL, for a per-tool allowance and for a session allowance -
+        // exactly where unattended runs must be refused - so the reorder that was tried once had
+        // to be reverted. The fix here is the WAIT, not the sequence.
         Display display = LaunchLifecycleUtils.workbenchDisplayOrNull();
-        Shell shell = display != null ? LaunchLifecycleUtils.grabActiveShell() : null;
+        LaunchLifecycleUtils.ShellProbe probe =
+            LaunchLifecycleUtils.grabActiveShellWithin(SHELL_PROBE_TIMEOUT_MS);
+        if (probe.outcome() == LaunchLifecycleUtils.ShellProbeOutcome.TIMED_OUT)
+        {
+            // NOT reported as headless: this workbench exists and simply did not answer, so the
+            // remedy is to free the UI thread. TIMEOUT already says that in words, and says it
+            // without claiming the operator is running without a display.
+            Activator.logInfo("Destructive-consent gate: the UI thread did not answer within " //$NON-NLS-1$
+                + SHELL_PROBE_TIMEOUT_MS + "ms — refusing '" + toolName //$NON-NLS-1$
+                + "' rather than waiting on it."); //$NON-NLS-1$
+            return ConsentDecision.UI_UNRESPONSIVE;
+        }
+        Shell shell = probe.shell();
         if (display == null || display.isDisposed() || shell == null)
         {
-            Activator.logInfo("Destructive-consent gate: no active UI session — allowing '" //$NON-NLS-1$
-                + toolName + "' without a prompt (headless/unattended)."); //$NON-NLS-1$
-            return ConsentDecision.ALLOW;
+            Activator.logInfo("Destructive-consent gate: no active UI session — refusing '" //$NON-NLS-1$
+                + toolName + "' (headless/unattended; set " + ENV_DESTRUCTIVE_CONSENT //$NON-NLS-1$
+                + "=allow at launch to permit it)."); //$NON-NLS-1$
+            return ConsentDecision.UNATTENDED;
         }
 
         // Steps 3-5 — pure decision from the resolved sources.
@@ -238,7 +333,9 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
     /**
      * Builds the {@link ToolResult#error(String)} text for a non-{@link ConsentDecision#ALLOW}
      * verdict from {@link #requireConsent}. Called at each gated tool's confirm-point in
-     * place of the previously-inlined literal, so both texts live in one place:
+     * place of the previously-inlined literal, so all texts live in one place:
+     * {@link ConsentDecision#UNATTENDED} names the launch bypass that would have let the
+     * call through and the workbench that could confirm it;
      * {@link ConsentDecision#REJECT} keeps the original, unchanged
      * {@code "Operation declined by user"} text; {@link ConsentDecision#TIMEOUT} gets
      * its own actionable text naming the tool, the {@link #CONSENT_PROMPT_TIMEOUT_SECONDS}
@@ -254,6 +351,27 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
      */
     public static String consentDeniedMessage(ConsentDecision decision, String toolName)
     {
+        if (decision == ConsentDecision.UNATTENDED)
+        {
+            return "Destructive operation '" + toolName + "' needs a human to confirm it, and this " //$NON-NLS-1$ //$NON-NLS-2$
+                + "EDT has no UI session to ask (headless or shutting down), so it was refused and " //$NON-NLS-1$
+                + "nothing was changed. To run it unattended, set " + ENV_DESTRUCTIVE_CONSENT //$NON-NLS-1$
+                + "=allow on the EDT process at launch; otherwise re-run it on an EDT workbench " //$NON-NLS-1$
+                + "with a window open and answer the confirmation dialog."; //$NON-NLS-1$
+        }
+        if (decision == ConsentDecision.UI_UNRESPONSIVE)
+        {
+            // No dialog was ever shown, and the wait was the probe's, not the prompt's: naming the
+            // prompt budget or the Preferences allowance here would send the operator after a
+            // dialog that does not exist and a setting the wedged probe never reaches.
+            return "Destructive operation '" + toolName + "' was refused because the EDT workbench " //$NON-NLS-1$ //$NON-NLS-2$
+                + "did not answer within " + SHELL_PROBE_TIMEOUT_MS + " ms: its UI thread is busy " //$NON-NLS-1$ //$NON-NLS-2$
+                + "or wedged, so no confirmation dialog could be shown and nothing was changed. " //$NON-NLS-1$
+                + "Free the UI thread (finish or cancel what the workbench is doing, or restart " //$NON-NLS-1$
+                + "it) and re-run; for an unattended run set " + ENV_DESTRUCTIVE_CONSENT //$NON-NLS-1$
+                + "=allow on the EDT process at launch. A Preferences allowance does NOT help " //$NON-NLS-1$
+                + "here - the gate asks for the workbench before it reads the policy."; //$NON-NLS-1$
+        }
         if (decision == ConsentDecision.TIMEOUT)
         {
             return "Destructive operation '" + toolName + "' was not confirmed within " //$NON-NLS-1$ //$NON-NLS-2$
@@ -350,11 +468,10 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
 
         // Shutdown race: the display was live when requireConsent checked it, but the workbench can
         // close before asyncExec runs. A disposed display makes asyncExec throw SWTException; rather
-        // than fail a destructive tool with that, fall back to the documented headless ALLOW (mirrors
-        // the neighbouring SWT auto-confirmer). See #222 review.
+        // than fail a destructive tool with that, refuse as unattended (nothing was confirmed).
         if (display.isDisposed())
         {
-            return allowOnDisposedDisplay(toolName);
+            return refuseOnDisposedDisplay(toolName);
         }
         return promptWithTimeout(toolName, preview, display, shell);
     }
@@ -447,9 +564,9 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
         {
             display.asyncExec(openDialog);
         }
-        catch (SWTException e) // NOSONAR display disposed in the gap between the check above and this call -> allow (headless fallback)
+        catch (SWTException e) // NOSONAR display disposed in the gap between the check above and this call -> refuse
         {
-            return allowOnDisposedDisplay(toolName);
+            return refuseOnDisposedDisplay(toolName);
         }
 
         boolean decidedInTime;
@@ -580,17 +697,104 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
 
     /**
      * The disposed-display fallback: the workbench closed between the live-display check in
-     * {@link #requireConsent} and the prompt, so there is no UI to ask — allow (the same policy as
-     * the headless / no-shell path), logging it, never failing the destructive tool. See #222.
+     * {@link #requireConsent} and the prompt, so there is no UI to ask — refuse, logging it,
+     * never mutating without a human confirmation.
      *
      * @param toolName the tool being gated
-     * @return {@link ConsentDecision#ALLOW}
+     * @return {@link ConsentDecision#UNATTENDED}
      */
-    private static ConsentDecision allowOnDisposedDisplay(String toolName)
+    private static ConsentDecision refuseOnDisposedDisplay(String toolName)
     {
         Activator.logInfo("Destructive-consent gate: display disposed before/while prompting for '" //$NON-NLS-1$
-            + toolName + "'; allowing (headless fallback)."); //$NON-NLS-1$
-        return ConsentDecision.ALLOW;
+            + toolName + "'; refusing (nothing was confirmed)."); //$NON-NLS-1$
+        return ConsentDecision.UNATTENDED;
+    }
+
+    /** Names listed in the audit line before it says "and N more". */
+    private static final int AUDIT_MAX_NAMES = 5;
+
+    /** Longest a single audited value may be before it is elided. */
+    private static final int AUDIT_MAX_NAME_CHARS = 120;
+
+    /**
+     * A one-line, bounded rendering of a {@link ConsentPreview} for the env-bypass audit line.
+     *
+     * @param preview the preview the gated tool computed, or {@code null}
+     * @return a single-line audit summary
+     */
+    static String describe(ConsentPreview preview)
+    {
+        if (preview == null)
+        {
+            return "no preview supplied"; //$NON-NLS-1$
+        }
+        StringBuilder sb = new StringBuilder();
+        if (preview.getTitle() != null)
+        {
+            sb.append(auditSafe(preview.getTitle()));
+        }
+        if (preview.getSubtitle() != null)
+        {
+            sb.append(sb.length() > 0 ? ": " : "").append(auditSafe(preview.getSubtitle())); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        sb.append(sb.length() > 0 ? " " : "").append('(').append(preview.getTotalCount()) //$NON-NLS-1$ //$NON-NLS-2$
+            .append(" item(s)"); //$NON-NLS-1$
+        List<String> names = preview.getTopNames();
+        if (!names.isEmpty())
+        {
+            sb.append(": "); //$NON-NLS-1$
+            if (preview.areNamesLoggable())
+            {
+                int listed = Math.min(names.size(), AUDIT_MAX_NAMES);
+                for (int i = 0; i < listed; i++)
+                {
+                    sb.append(i > 0 ? ", " : "").append(auditSafe(names.get(i))); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (names.size() > listed)
+                {
+                    sb.append(", and ").append(names.size() - listed).append(" more"); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+            }
+            else
+            {
+                int chars = 0;
+                for (String name : names)
+                {
+                    chars += name == null ? 0 : name.length();
+                }
+                sb.append("content not logged, ").append(chars).append(" chars"); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+        }
+        sb.append(')');
+        return sb.toString();
+    }
+
+    /**
+     * Renders one caller-supplied value for the audit line: control characters (newline included)
+     * become a space, and anything past {@link #AUDIT_MAX_NAME_CHARS} is replaced by an explicit
+     * elision that keeps the original length visible.
+     *
+     * @param value the value to render; may be {@code null}
+     * @return a single-line, length-bounded rendering
+     */
+    static String auditSafe(String value)
+    {
+        if (value == null)
+        {
+            return ""; //$NON-NLS-1$
+        }
+        StringBuilder out = new StringBuilder(Math.min(value.length(), AUDIT_MAX_NAME_CHARS));
+        int kept = Math.min(value.length(), AUDIT_MAX_NAME_CHARS);
+        for (int i = 0; i < kept; i++)
+        {
+            char c = value.charAt(i);
+            out.append(Character.isISOControl(c) ? ' ' : c);
+        }
+        if (value.length() > kept)
+        {
+            out.append("\u2026 (").append(value.length()).append(" chars)"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return out.toString();
     }
 
     /**

@@ -39,7 +39,7 @@ import com.google.gson.JsonParser;
  * <p>Everything asserted here is reachable headlessly: the emptiness contract, the two refusals
  * that precede any model access, and — the one that matters most — that applying an override
  * stamps a WORKING COPY and never saves it. Resolving the external object itself needs a live
- * workspace and is covered by {@code test_debug_launch.py}.</p>
+ * workspace and is covered by {@code test_launch.py}.</p>
  */
 public class LaunchOverridesTest
 {

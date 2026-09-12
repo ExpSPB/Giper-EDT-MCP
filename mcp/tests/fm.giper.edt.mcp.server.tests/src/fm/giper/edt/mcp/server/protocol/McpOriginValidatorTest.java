@@ -43,22 +43,22 @@ public class McpOriginValidatorTest
     }
 
     @Test
-    public void testFileOriginAllowed()
+    public void testFileOriginRejected()
     {
-        assertTrue(McpOriginValidator.isValidOrigin("file:///C:/page.html"));
+        assertFalse(McpOriginValidator.isValidOrigin("file:///C:/page.html"));
     }
 
     @Test
-    public void testNullLiteralAllowed()
+    public void testNullLiteralRejected()
     {
-        // Local HTML files send the literal string "null" as Origin
-        assertTrue(McpOriginValidator.isValidOrigin("null"));
+        // Sandbox iframes, data: URLs and cross-origin redirects send the literal "null" Origin
+        assertFalse(McpOriginValidator.isValidOrigin("null"));
     }
 
     @Test
-    public void testVscodeWebviewAllowed()
+    public void testVscodeWebviewRejected()
     {
-        assertTrue(McpOriginValidator.isValidOrigin("vscode-webview://abc123"));
+        assertFalse(McpOriginValidator.isValidOrigin("vscode-webview://abc123"));
     }
 
     // === Rejected origins ===

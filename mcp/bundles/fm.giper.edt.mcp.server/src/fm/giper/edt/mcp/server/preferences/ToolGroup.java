@@ -48,13 +48,14 @@ public enum ToolGroup
         "Application and infobase management, external-object builds, launch, testing, " //$NON-NLS-1$
             + "background jobs, and Workmate", //$NON-NLS-1$
         "get_applications", "list_configurations", "create_launch_config", "delete_launch_config", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-        "create_infobase", "delete_infobase", "update_database", "debug_launch", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        "create_infobase", "delete_infobase", "update_database", "launch", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
         "terminate_launch", "run_yaxunit_tests", "ask_workmate", "get_job_status", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
         "cancel_job", "build_external_objects", "set_infobase_credentials"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
     DEBUG("debug", "Debugging", //$NON-NLS-1$ //$NON-NLS-2$
         "Breakpoints, stepping, variables, expression evaluation, and profiling", //$NON-NLS-1$
-        "set_breakpoint", "remove_breakpoint", "list_breakpoints", "wait_for_break", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        "set_breakpoint", "set_error_breakpoint", "remove_breakpoint", "list_breakpoints", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        "wait_for_break", //$NON-NLS-1$
         "get_variables", "set_variable", "step", "resume", "evaluate_expression", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
         "debug_yaxunit_tests", "debug_status", "start_profiling", "stop_profiling", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
         "get_profiling_results"), //$NON-NLS-1$
@@ -65,7 +66,8 @@ public enum ToolGroup
         "search_in_code", "read_method_source", "get_method_call_hierarchy", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         "get_outgoing_structures", "go_to_definition", "get_symbol_info", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         "get_form_layout_snapshot", //$NON-NLS-1$
-        "get_form_screenshot", "get_template_screenshot", "validate_query"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        "get_form_screenshot", "get_template_screenshot", "validate_form_model", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        "validate_query"), //$NON-NLS-1$
 
     REFACTORING("refactoring", "Refactoring", //$NON-NLS-1$ //$NON-NLS-2$
         "Metadata and DCS create, inspect, rename, adopt, delete, and property management", //$NON-NLS-1$
@@ -76,6 +78,11 @@ public enum ToolGroup
         "LanguageTool: translation strings generation, configuration sync, project info", //$NON-NLS-1$
         "generate_translation_strings", "translate_configuration", //$NON-NLS-1$ //$NON-NLS-2$
         "get_translation_project_info"), //$NON-NLS-1$
+
+    COMPARISON("comparison", "Comparison", //$NON-NLS-1$ //$NON-NLS-2$
+        "Three-way configuration comparison: start one against two git revisions, expand a node," //$NON-NLS-1$
+            + " and read or author the merge-rules file", //$NON-NLS-1$
+        "compare_configurations", "get_comparison_node", "merge_rules"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
     /**
      * Git tools. The {@code git} command tool ships DISABLED by default, and this tree is the UI its

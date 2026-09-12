@@ -716,6 +716,38 @@ public final class MetadataTypeUtils
     }
 
     /**
+     * Canonicalizes a full FQN to its ALL-ENGLISH form, translating <b>every</b> structural
+     * segment while copying every programmatic Name - and the case of both - verbatim.
+     * <p>
+     * This is the address shape the comparison engine matches against: a comparison-scope symlink
+     * is an EDT qualified name whose structural tokens are the English literals, and the engine has
+     * no bilingual branch anywhere, so a Russian address must arrive already translated or it
+     * matches nothing at all - silently, because a scope that selects no object is still a legal
+     * scope.
+     * <p>
+     * It exists beside its two neighbours because neither can serve that use:
+     * <ul>
+     *   <li>{@link #normalizeFqn(String)} translates the LEADING token only, so
+     *       {@code Справочник.Товары.Форма.ФормаЭлемента} keeps its Russian {@code Форма};</li>
+     *   <li>{@link #getAllFqnVariants(String)} does translate every segment, but LOWERCASES what it
+     *       returns - right for matching markers case-insensitively, wrong for a symlink, which is
+     *       compared verbatim.</li>
+     * </ul>
+     *
+     * @param fqn a full dot-separated FQN; {@code null}, empty, a single token or a leading-dot
+     *     string is returned unchanged - there is no {@code Type.Name} shape to translate
+     * @return the all-English FQN with the case of every programmatic Name preserved
+     */
+    public static String toCanonicalEnglishFqn(String fqn)
+    {
+        if (fqn == null || fqn.indexOf('.') <= 0)
+        {
+            return fqn;
+        }
+        return translateStructuralSegments(fqn.split("\\.", -1), true, 0); //$NON-NLS-1$
+    }
+
+    /**
      * Returns the collection of metadata objects from Configuration for the given type name.
      * Uses EMF reflection to find the collection by its reference name.
      *

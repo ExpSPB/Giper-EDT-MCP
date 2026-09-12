@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -35,6 +36,8 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.transport.McpEndpoint;
+import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe;
+import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe.NativeRenderMode;
 
 /**
  * Self-diagnosis tool: returns the running MCP server's introspection snapshot
@@ -144,7 +147,11 @@ public class GetServerStatusTool implements IMcpTool
             .booleanProperty("plainTextMode", "Whether JSON responses are forced to plain text") //$NON-NLS-1$ //$NON-NLS-2$
             .booleanProperty("checksFolderConfigured", "Whether a checks folder path is configured") //$NON-NLS-1$ //$NON-NLS-2$
             .booleanProperty("authEnabled", "Whether bearer-token authentication is enabled") //$NON-NLS-1$ //$NON-NLS-2$
-            .objectProperty("formRenderFlags", "Form-render JVM flag states keyed by flag name") //$NON-NLS-1$ //$NON-NLS-2$
+            .objectProperty("formRenderFlags", //$NON-NLS-1$
+                "atStartup is the mode when this plugin activated; requested is the current " //$NON-NLS-1$
+                    + "system property; forcedAtRuntime marks a later live-mode change, which " //$NON-NLS-1$
+                    + "reaches the renderer only if it preceded EDT's layout-service init - not " //$NON-NLS-1$
+                    + "observable from here, so none of the three states the effective mode") //$NON-NLS-1$
             .objectProperty("activeProfile", //$NON-NLS-1$
                 "Requested vs effective profile, revision, canonical endpoint, allowedToolCount, fallback flags") //$NON-NLS-1$
             .objectArrayProperty("availableProfiles", //$NON-NLS-1$
@@ -231,13 +238,17 @@ public class GetServerStatusTool implements IMcpTool
             result.put("checksFolderConfigured", checksFolderConfigured); //$NON-NLS-1$
             result.put("authEnabled", authEnabled); //$NON-NLS-1$
 
-            // Form-render JVM flags (System properties), the diagnostic for a
-            // blank get_form_screenshot / get_form_layout_snapshot.
+            // EDT-startup render modes, current live modes and raw requested System properties:
+            // the diagnostic for a blank get_form_screenshot / get_form_layout_snapshot.
             Map<String, Object> formRenderFlags = new LinkedHashMap<>();
-            formRenderFlags.put(FLAG_BUFFERED_LAYOUT_RENDER,
-                Boolean.parseBoolean(System.getProperty(FLAG_BUFFERED_LAYOUT_RENDER)));
             formRenderFlags.put(FLAG_NATIVE_LAYOUT_RENDER,
-                Boolean.parseBoolean(System.getProperty(FLAG_NATIVE_LAYOUT_RENDER)));
+                createRenderFlagState(NativeRenderModeProbe.getStartupNativeRenderMode(),
+                    NativeRenderModeProbe.getNativeRenderMode(),
+                    System.getProperty(FLAG_NATIVE_LAYOUT_RENDER)));
+            formRenderFlags.put(FLAG_BUFFERED_LAYOUT_RENDER,
+                createRenderFlagState(NativeRenderModeProbe.getStartupBufferedRenderMode(),
+                    NativeRenderModeProbe.getBufferedRenderMode(),
+                    System.getProperty(FLAG_BUFFERED_LAYOUT_RENDER)));
             result.put("formRenderFlags", formRenderFlags); //$NON-NLS-1$
 
             McpRequestContext requestContext = context != null ? context : McpRequestContext.legacyDefault();
@@ -358,5 +369,36 @@ public class GetServerStatusTool implements IMcpTool
     {
         return "Requested profile '" + requestedProfileId + "' is unavailable (" + reason //$NON-NLS-1$ //$NON-NLS-2$
             + "). Connected to profile 'default' instead. Treat activeProfile.id as the source of truth."; //$NON-NLS-1$
+    }
+
+    /**
+     * Builds one render-flag state: the mode at plugin activation, the raw requested system
+     * property, and whether the live mode has since been forced away from it.
+     *
+     * <p>Deliberately NOT called "effective". EDT binds buffered render ONCE: {@code
+     * HippoLayoutService.INSTANCE} is a static final singleton whose constructor creates its
+     * {@code offscreenHandler} if and only if {@code NativeRenderService.isBufferedRender()} held
+     * at that moment, and every later render branches on that field rather than re-reading the
+     * flag. So a runtime force reaches the renderer only when it precedes that class
+     * initialisation - and this tool cannot find out which happened, because reading the
+     * singleton to ask would itself initialise the class and decide the answer. Reporting the
+     * two states we can actually observe, plus the fact that a force happened, is the whole of
+     * what is provable here.</p>
+     */
+    private static Map<String, Object> createRenderFlagState(NativeRenderMode startupMode,
+        NativeRenderMode liveMode, String requested)
+    {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("atStartup", startupMode.name().toLowerCase(Locale.ROOT)); //$NON-NLS-1$
+        if (requested != null)
+        {
+            state.put("requested", requested); //$NON-NLS-1$
+        }
+        if (startupMode != NativeRenderMode.UNKNOWN && liveMode != NativeRenderMode.UNKNOWN
+            && startupMode != liveMode)
+        {
+            state.put("forcedAtRuntime", true); //$NON-NLS-1$
+        }
+        return state;
     }
 }

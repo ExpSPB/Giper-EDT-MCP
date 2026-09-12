@@ -113,13 +113,13 @@ public final class WriteScope
     private final Set<String> cascadedInto = new LinkedHashSet<>();
 
     /** A mutation boundary returned successfully, even if its project is not known here. */
-    private boolean mutationCommitted;
+    private volatile boolean mutationCommitted;
 
     private boolean queuedNothing;
 
     private String undeterminableReason;
 
-    private List<String> undeterminableFallback;
+    private volatile List<String> undeterminableFallback;
 
     /**
      * Runs {@code work} with {@code scope} bound to the current thread, and gives the previous

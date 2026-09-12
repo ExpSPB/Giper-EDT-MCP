@@ -41,7 +41,7 @@ public class DestructiveConsentGateTest
     @After
     public void tearDown()
     {
-        // Keep the singleton's in-memory session-allow set clean between tests.
+        // Keep the singleton in-memory session-allow set clean between tests.
         DestructiveConsentGate.getInstance().clearSessionAllow();
     }
 
@@ -74,20 +74,18 @@ public class DestructiveConsentGateTest
     }
 
     // =====================================================================
-    // Step 2 — headless: no active UI session -> ALLOW (never blocks)
+    // Step 2 — headless: no active UI session -> UNATTENDED (never blocks)
     // =====================================================================
 
     @Test
     public void headlessAllowsWithoutPrompt()
     {
         // In the headless unit-test JVM there is no workbench display / active shell,
-        // so requireConsent must take the headless path and ALLOW without any SWT.
-        // (The e2e-launch env is set on the EDT process, not on this test run, so
-        // step 1 does not mask this — but either way the verdict is ALLOW.)
+        // so requireConsent must refuse without blocking on SWT.
         ConsentDecision decision =
             DestructiveConsentGate.getInstance().requireConsent(TOOL, null);
-        assertEquals("Headless / unattended must ALLOW, never block", //$NON-NLS-1$
-            ConsentDecision.ALLOW, decision);
+        assertEquals("Headless / unattended must refuse, never block or auto-allow", //$NON-NLS-1$
+            ConsentDecision.UNATTENDED, decision);
     }
 
     // =====================================================================
@@ -168,7 +166,8 @@ public class DestructiveConsentGateTest
     {
         assertEquals("GATED_TOOLS must be exactly the frozen set", //$NON-NLS-1$
             Set.of("delete_metadata", "rename_metadata_object", "delete_project", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                "delete_infobase", "update_database", "modify_metadata", "dcs", "git"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+                "delete_infobase", "update_database", "modify_metadata", "dcs", "git", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+                "merge_rules", "evaluate_expression"), //$NON-NLS-1$ //$NON-NLS-2$
             DestructiveConsentGate.GATED_TOOLS);
     }
 
@@ -258,7 +257,7 @@ public class DestructiveConsentGateTest
     {
         DestructiveConsentGate gate = DestructiveConsentGate.getInstance();
         ConsentArbiter arbiter = new ConsentArbiter();
-        // The worker's timeout already won the race before the human's answer arrives.
+        // The worker timeout already won the race before the human answer arrives.
         assertTrue(arbiter.tryDecide(ConsentDecision.TIMEOUT));
 
         gate.recordDialogAnswer(arbiter, TOOL, DestructiveConsentGate.ALLOW_FOR_SESSION_ID);
@@ -332,7 +331,7 @@ public class DestructiveConsentGateTest
         gate.recordDialogAnswer(arbiter, TOOL, IDialogConstants.CANCEL_ID);
 
         assertEquals(ConsentDecision.REJECT, arbiter.peek());
-        assertFalse("a late timer closer must lose to the human's answer", //$NON-NLS-1$
+        assertFalse("a late timer closer must lose to the human answer", //$NON-NLS-1$
             arbiter.tryDecide(ConsentDecision.TIMEOUT));
         assertEquals("REJECT must stick, not the late TIMEOUT", //$NON-NLS-1$
             ConsentDecision.REJECT, arbiter.peek());

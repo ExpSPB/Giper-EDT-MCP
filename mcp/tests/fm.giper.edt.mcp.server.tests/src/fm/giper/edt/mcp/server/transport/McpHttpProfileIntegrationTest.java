@@ -53,7 +53,7 @@ public class McpHttpProfileIntegrationTest
         McpProtocolHandler protocolHandler = new McpProtocolHandler();
         InterruptibleToolExecutor executor = new InterruptibleToolExecutor(mcp, protocolHandler);
         http = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-        http.createContext("/mcp", new McpHttpHandler(mcp, protocolHandler, executor)); //$NON-NLS-1$
+        http.createContext("/mcp", new McpHttpHandler(mcp, protocolHandler, executor, false)); //$NON-NLS-1$
         http.start();
         port = http.getAddress().getPort();
     }
