@@ -17,6 +17,7 @@ import java.util.TreeSet;
 import java.util.Set;
 
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.ToolsetState;
 import fm.giper.edt.mcp.server.tools.Toolsets;
 
@@ -98,7 +99,17 @@ public final class ProfileToolPolicy
 
     public boolean isCallable(String toolName)
     {
-        return toolName != null && effectiveToolNames().contains(toolName);
+        if (toolName == null)
+        {
+            return false;
+        }
+        Set<String> allowed = effectiveToolNames();
+        if (allowed.contains(toolName))
+        {
+            return true;
+        }
+        String canonical = McpToolRegistry.canonicalToolName(toolName);
+        return canonical != null && allowed.contains(canonical);
     }
 
     public boolean isGuideVisible(String toolName)

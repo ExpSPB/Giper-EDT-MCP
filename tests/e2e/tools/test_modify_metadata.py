@@ -1,7 +1,7 @@
-"""
+﻿"""
 e2e tests for modify_metadata (kind: write-metadata).
 
-modify_metadata sets properties of a metadata node (object or member) addressed by a
+modify_metadata sets properties of a metadata node (object, member, or managed-form root) addressed by a
 1C full-name FQN, as properties=[{name, value, language?}]. It folds the former
 set_metadata_property and adds VALIDATION: a non-assignable property is rejected WITH
 the list of assignable properties; an out-of-range enum value is rejected WITH the
@@ -37,7 +37,6 @@ from harness import (
     poll_diff_contains,
     tree_snapshot,
     wait_for_project_ready,
-    fixture_form_has_auto_command_bar,
     diff,
     poll_disk_contains,
     read_disk,
@@ -81,6 +80,7 @@ def test_report_main_data_composition_schema_accepts_owned_template_member_refer
 
 # The fixture form every form-member test writes to.
 _ITEM_FORM = "src/Catalogs/Catalog/Forms/ItemForm/Form.form"
+_COMMON_FORM_MDO = "src/CommonForms/Form/Form.mdo"
 
 
 def _assignable_text(fqn):
@@ -97,7 +97,7 @@ def _first_enum_with_value(fqn):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         # cells: [Property, Kind, Current, Allowed values]
-        if len(cells) >= 4 and cells[1] == "ENUM" and cells[3] and cells[3] != "—":
+        if len(cells) >= 4 and cells[1] == "ENUM" and cells[3] and cells[3] != "тАФ":
             allowed = [a.strip() for a in cells[3].split(",") if a.strip()]
             if allowed:
                 return cells[0], allowed[0]
@@ -174,9 +174,9 @@ def _seed_xdto_package(stem):
     return fqn
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy — set scalar/synonym (verified by structured echo + disk)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ set scalar/synonym (verified by structured echo + disk)
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_set_comment_persists():
@@ -202,16 +202,16 @@ def test_set_synonym_with_language():
     poll_diff_contains("E2ESynonymMod", ctx="the synonym must land on disk")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ё->е normalization — localized-string / free-text values are normalized at parse
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ╤С->╨╡ normalization тАФ localized-string / free-text values are normalized at parse
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_normalizes_yo_in_synonym_and_comment_by_default():
-    # Default normalizeYo=true: the synonym + comment values are rewritten 'ё'->'е' at the parse step,
+    # Default normalizeYo=true: the synonym + comment values are rewritten '╤С'->'╨╡' at the parse step,
     # so they are stored compliant with mdo-ru-name-unallowed-letter.
-    syn_yo, syn_ye = "Серёжки", "Сережки"        # synonym with ё / expected
-    com_yo, com_ye = "Полётный журнал", "Полетный журнал"  # comment with ё / expected
+    syn_yo, syn_ye = "╨б╨╡╤А╤С╨╢╨║╨╕", "╨б╨╡╤А╨╡╨╢╨║╨╕"        # synonym with ╤С / expected
+    com_yo, com_ye = "╨Я╨╛╨╗╤С╤В╨╜╤Л╨╣ ╨╢╤Г╤А╨╜╨░╨╗", "╨Я╨╛╨╗╨╡╤В╨╜╤Л╨╣ ╨╢╤Г╤А╨╜╨░╨╗"  # comment with ╤С / expected
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog",
         "properties": [
@@ -220,28 +220,28 @@ def test_modify_normalizes_yo_in_synonym_and_comment_by_default():
             {"name": "comment", "value": com_yo},
         ],
     })
-    assert_ok(r, "set synonym + comment carrying ё on Catalog.Catalog (default normalizeYo)")
+    assert_ok(r, "set synonym + comment carrying ╤С on Catalog.Catalog (default normalizeYo)")
     normalized = r.structured.get("normalized") or []
     assert "synonym" in normalized and "comment" in normalized, \
         "the normalization report must list synonym + comment: %r" % (r.structured,)
-    poll_diff_contains(syn_ye, ctx="the synonym must be stored in its normalized (е-form) on disk")
-    assert_contains(diff(), com_ye, "the comment must be stored in its normalized (е-form) on disk")
-    assert_not_contains(diff(), syn_yo, "the ё-form synonym must NOT appear on disk under default normalize")
+    poll_diff_contains(syn_ye, ctx="the synonym must be stored in its normalized (╨╡-form) on disk")
+    assert_contains(diff(), com_ye, "the comment must be stored in its normalized (╨╡-form) on disk")
+    assert_not_contains(diff(), syn_yo, "the ╤С-form synonym must NOT appear on disk under default normalize")
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_preserves_yo_when_normalize_disabled():
-    # normalizeYo=false: the comment keeps its 'ё' exactly as supplied.
-    com_yo = "Расчёт стоимости"  # contains ё
+    # normalizeYo=false: the comment keeps its '╤С' exactly as supplied.
+    com_yo = "╨а╨░╤Б╤З╤С╤В ╤Б╤В╨╛╨╕╨╝╨╛╤Б╤В╨╕"  # contains ╤С
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog",
         "normalizeYo": False,
         "properties": [{"name": "comment", "value": com_yo}],
     })
-    assert_ok(r, "set a comment carrying ё with normalizeYo=false")
+    assert_ok(r, "set a comment carrying ╤С with normalizeYo=false")
     assert not (r.structured.get("normalized") or []), \
         "no normalization must be reported when disabled: %r" % (r.structured,)
-    poll_diff_contains(com_yo, ctx="the ё-form comment must be stored verbatim when normalizeYo=false")
+    poll_diff_contains(com_yo, ctx="the ╤С-form comment must be stored verbatim when normalizeYo=false")
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -264,9 +264,9 @@ def test_set_enum_on_attribute_discovered_value():
     assert prop in (r.structured.get("applied") or []), "%s must be applied: %r" % (prop, r.structured)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # Discovery view
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="read")
 def test_get_metadata_details_assignable_lists_enum_allowed_values():
@@ -276,9 +276,9 @@ def test_get_metadata_details_assignable_lists_enum_allowed_values():
     assert "| ENUM |" in text, "an attribute must list at least one ENUM property: %r" % (text[:400],)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Contained mcore values — Picture (#497), QName and Value list (#450)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Contained mcore values тАФ Picture (#497), QName and Value list (#450)
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_set_form_field_header_picture_round_trips_symbolic_name():
@@ -344,7 +344,7 @@ def test_standard_prefix_cannot_resolve_extended_only_picture_and_changes_nothin
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_russian_extended_picture_name_round_trips_canonical_english_name():
     fqn = "Catalog.Catalog.Form.ItemForm.Field.Description"
-    russian_value = "StdExtPicture.Копировать"
+    russian_value = "StdExtPicture.╨Ъ╨╛╨┐╨╕╤А╨╛╨▓╨░╤В╤М"
     canonical_value = "StdExtPicture.CopyToClipboard"
     r = call("modify_metadata", {
         "projectName": PROJECT,
@@ -518,6 +518,79 @@ def test_set_web_service_xdto_packages_mixes_reference_and_namespace_on_disk():
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_common_form_use_purposes_array_and_scalar_replace_the_whole_list():
+    fqn = "CommonForm.Form"
+    array_value = ["MobileDevice"]
+
+    array_result = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": fqn,
+        "properties": [{"name": "usePurposes", "value": array_value}],
+    })
+    assert_ok(array_result, "replace CommonForm.usePurposes from a JSON array")
+    assert "usePurposes" in (array_result.structured.get("applied") or []), \
+        "the many-enum property must be reported as applied: %r" % (array_result.structured,)
+
+    # DISK FIRST: the fixture starts with both literals, so seeing exactly one proves replacement.
+    root = ET.fromstring(read_disk(_COMMON_FORM_MDO))
+    stored = [element.text for element in root.iter()
+              if element.tag.rsplit("}", 1)[-1] == "usePurposes"]
+    assert stored == array_value, \
+        "the array form must replace the persisted usePurposes list: %r" % (stored,)
+
+    row = _assignable_row(fqn, "usePurposes")
+    assert row is not None, "usePurposes must be listed by assignable:true after the array write"
+    assert_contains(row, "MANY_ENUM", "usePurposes must expose the many-enum value kind")
+    assert_contains(row, '["MobileDevice"]',
+                    "get_metadata_details must read back the array replacement")
+    assert_contains(row, "PersonalComputer, MobileDevice",
+                    "get_metadata_details must list every allowed enum literal")
+
+    scalar_value = "PersonalComputer"
+    scalar_result = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": fqn,
+        "properties": [{"name": "usePurposes", "value": scalar_value}],
+    })
+    # Before #510 this exact scalar call leaked a raw ClassCastException from EMF.
+    assert_ok(scalar_result, "replace CommonForm.usePurposes from the scalar shorthand")
+    assert_not_contains(scalar_result.text, "ClassCastException",
+                        "the former raw EMF failure must not reach the caller")
+    assert "usePurposes" in (scalar_result.structured.get("applied") or []), \
+        "the scalar shorthand must be reported as applied: %r" % (scalar_result.structured,)
+
+    root = ET.fromstring(read_disk(_COMMON_FORM_MDO))
+    stored = [element.text for element in root.iter()
+              if element.tag.rsplit("}", 1)[-1] == "usePurposes"]
+    assert stored == [scalar_value], \
+        "the scalar shorthand must replace, not append to, the persisted list: %r" % (stored,)
+
+    row = _assignable_row(fqn, "usePurposes")
+    assert row is not None, "usePurposes must be listed by assignable:true after the scalar write"
+    assert_contains(row, '["PersonalComputer"]',
+                    "get_metadata_details must show only the scalar replacement")
+    assert_not_contains(row, '["MobileDevice"]',
+                        "the earlier value must not survive as an appended entry")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_common_form_root_fallback_unknown_property_names_both_surfaces():
+    bad = "usePurpose"
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": "CommonForm.Form",
+        "properties": [{"name": bad, "value": "MobileDevice"}],
+    })
+    e = assert_error(r, "property absent from both common-form surfaces")
+    assert_error_quality(e, names=[bad],
+                         suggests=["not assignable", "Assignable properties", "autoTitle",
+                                   "common form's own metadata properties",
+                                   "get_metadata_details", "same FQN"],
+                         ctx="the fallback refusal must identify both assignable surfaces")
+    assert_no_diff("a property rejected by both common-form surfaces must change nothing")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_bad_web_service_xdto_package_entry_is_actionable_and_atomic():
     service_fqn, _ = _seed_web_service("E2EXdtoPackagesBad")
     before = tree_snapshot()
@@ -536,9 +609,9 @@ def test_bad_web_service_xdto_package_entry_is_actionable_and_atomic():
                           "a rejected xdtoPackages replacement must leave the seeded tree unchanged")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Validation matrix (the requirement) — every reject is actionable + changes nothing
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Validation matrix (the requirement) тАФ every reject is actionable + changes nothing
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_unknown_property_lists_assignable():
@@ -651,6 +724,145 @@ def test_set_typed_ref_shorthand():
     _seed_attr_and_set_type("E2ETypeRefShAttr", {"types": [{"kind": "CatalogRef", "ref": "Catalog"}]})
     poll_diff_contains("CatalogRef.Catalog",
                        ctx="the CatalogRef shorthand must resolve to the catalog ref on disk")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_event_subscription_source_accepts_concrete_document_object():
+    document_name = "E2EProducedSourceDocument"
+    subscription_name = "E2EProducedSourceSubscription"
+    subscription_fqn = "EventSubscription." + subscription_name
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": "Document." + document_name,
+    }), "seed the Document whose produced Object type will be assigned")
+    wait_for_project_ready()
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": subscription_fqn,
+    }), "seed the EventSubscription")
+    wait_for_project_ready()
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": subscription_fqn,
+        "properties": [{
+            "name": "source",
+            "value": {"types": [{"kind": "DocumentObject", "ref": document_name}]},
+        }],
+    })
+    assert_ok(r, "set EventSubscription.source to a concrete DocumentObject")
+    assert "source" in (r.structured.get("applied") or []), \
+        "source must be reported as applied: %r" % (r.structured,)
+
+    # DISK FIRST: compare the isolated <source>/<types> element by exact value. A substring check
+    # would accept a malformed token with an extra prefix/suffix, which is the regression this case
+    # must catch.
+    relative_path = "src/EventSubscriptions/%s/%s.mdo" % (
+        subscription_name, subscription_name)
+    root = ET.fromstring(read_disk(relative_path))
+    source_elements = [element for element in root.iter()
+                       if element.tag.rsplit("}", 1)[-1] == "source"]
+    assert len(source_elements) == 1, \
+        "the EventSubscription .mdo must contain exactly one <source>: %r" % source_elements
+    type_elements = [element for element in source_elements[0].iter()
+                     if element.tag.rsplit("}", 1)[-1] == "types"]
+    assert len(type_elements) == 1, \
+        "EventSubscription.source must contain exactly one <types>: %r" % type_elements
+    type_element = type_elements[0]
+    assert not type_element.attrib and len(type_element) == 0, \
+        "EventSubscription.source <types> must be a plain text element: %s" % \
+        ET.tostring(type_element, encoding="unicode")
+    expected_element = "<types>DocumentObject.%s</types>" % document_name
+    serialized_element = "<types>%s</types>" % (type_element.text or "")
+    assert serialized_element == expected_element, \
+        "EventSubscription.source must serialize exactly as %s, got %s" % (
+            expected_element, serialized_element)
+
+    row = _assignable_row(subscription_fqn, "source")
+    assert row is not None, "EventSubscription.source must remain readable through assignable:true"
+    assert_contains(row, "DocumentObject." + document_name,
+                    "MODEL read-back must expose the concrete produced type")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_event_subscription_source_accepts_abstract_nested_produced_type():
+    subscription_name = "E2ENestedProducedSourceSubscription"
+    subscription_fqn = "EventSubscription." + subscription_name
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": subscription_fqn,
+    }), "seed the EventSubscription")
+    wait_for_project_ready()
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": subscription_fqn,
+        "properties": [{
+            "name": "source",
+            "value": {"types": [
+                {"kind": "InformationRegisterRecordSet"},
+                {"kind": "RecalculationRecordSet"},
+            ]},
+        }],
+    })
+    assert_ok(r, "set EventSubscription.source to top-level and nested abstract RecordSets")
+    assert "source" in (r.structured.get("applied") or []), \
+        "source must be reported as applied: %r" % (r.structured,)
+
+    relative_path = "src/EventSubscriptions/%s/%s.mdo" % (
+        subscription_name, subscription_name)
+    root = ET.fromstring(read_disk(relative_path))
+    source_elements = [element for element in root.iter()
+                       if element.tag.rsplit("}", 1)[-1] == "source"]
+    assert len(source_elements) == 1, \
+        "the EventSubscription .mdo must contain exactly one <source>: %r" % source_elements
+    type_elements = [element for element in source_elements[0].iter()
+                     if element.tag.rsplit("}", 1)[-1] == "types"]
+    assert len(type_elements) == 2, \
+        "EventSubscription.source must contain exactly two <types>: %r" % type_elements
+    expected_types = {"InformationRegisterRecordSet", "RecalculationRecordSet"}
+    actual_types = {element.text or "" for element in type_elements}
+    assert actual_types == expected_types, \
+        "EventSubscription.source types must be %r, got %r" % (expected_types, actual_types)
+
+    row = _assignable_row(subscription_fqn, "source")
+    assert row is not None, "EventSubscription.source must remain readable through assignable:true"
+    assert_contains(row, "InformationRegisterRecordSet",
+                    "MODEL read-back must expose the top-level abstract produced type")
+    assert_contains(row, "RecalculationRecordSet",
+                    "MODEL read-back must expose the nested abstract produced type")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_persisted_catalog_attribute_refuses_concrete_document_object():
+    document_name = "E2EProducedStoredDocument"
+    attribute_name = "E2EProducedStoredAttribute"
+    attribute_fqn = "Catalog.Catalog.Attribute." + attribute_name
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": "Document." + document_name,
+    }), "seed the Document whose runtime Object type will be refused")
+    wait_for_project_ready()
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": attribute_fqn,
+    }), "seed the persisted Catalog attribute")
+    wait_for_project_ready()
+    before = tree_snapshot()
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": attribute_fqn,
+        "properties": [{
+            "name": "type",
+            "value": {"types": [{"kind": "DocumentObject", "ref": document_name}]},
+        }],
+    })
+    e = assert_error(r, "a runtime DocumentObject on a persisted Catalog attribute")
+    assert_error_quality(e, names=["DocumentObject"],
+                         suggests=["runtime object type", "event subscription", "source", "Ref"],
+                         ctx="the refusal must name the legal runtime and persisted alternatives")
+    assert_tree_unchanged(before, "a rejected produced type must not touch the persisted attribute")
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -795,9 +1007,9 @@ def test_set_type_on_nested_tabular_section_attribute():
                        ctx="the nested attribute's Number type must land in the owner Catalog.Catalog.mdo")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy — object reference properties (single + many), set by FQN
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ object reference properties (single + many), set by FQN
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_set_many_reference_subsystem_content():
@@ -911,10 +1123,78 @@ def test_set_type_malformed_spec_is_error():
                          ctx="a non-structured type value is rejected with the expected shape")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy — FORM members (the cross-model hop: modify an item / attribute / command)
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ FORM MODEL ROOT (the form:Form object serialized in Form.form)
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_modify_form_root_auto_title_persists_and_reads_back():
+    fqn = "Catalog.Catalog.Form.ItemForm"
+    root_title = "E2E managed form root"
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": fqn,
+        "properties": [
+            {"name": "autoTitle", "value": False},
+            {"name": "title", "value": root_title, "language": "en"},
+        ],
+    })
+    assert_ok(r, "set autoTitle on the managed-form model root")
+    assert r.structured.get("action") == "modified", \
+        "the root write must use the ordinary modified result shape: %r" % (r.structured,)
+    assert r.structured.get("fqn") == fqn, \
+        "the root write must echo its normalized FQN: %r" % (r.structured,)
+    assert "autoTitle" in (r.structured.get("applied") or []), \
+        "autoTitle must be reported as applied: %r" % (r.structured,)
+    assert "title" in (r.structured.get("applied") or []), \
+        "the localized root title must be reported as applied: %r" % (r.structured,)
+    assert r.structured.get("language") == "en", \
+        "the root title must report the language CODE used: %r" % (r.structured,)
+    assert r.structured.get("localesMissing") == [], \
+        "the fixture's only in-use locale was filled by this root-title write: %r" % (r.structured,)
+
+    # DISK FIRST: modify_metadata submits and drains this exact Form.form export. Turning autoTitle
+    # OFF is visible as the REMOVAL of the fixture's <autoTitle>true</autoTitle>, not as an added
+    # <autoTitle>false</autoTitle>: autoTitle is a primitive boolean whose metamodel default is
+    # false, and EMF does not serialize a default-valued attribute. Asserting the added element
+    # would assert a shape the serializer cannot produce.
+    poll_diff_contains("autoTitle",
+                       ctx="the root autoTitle change must reach Form.form before read-back")
+    assert "<autoTitle>" not in read_disk(_ITEM_FORM), \
+        "turning the root autoTitle off must remove the element from Form.form"
+    assert_diff_contains(root_title,
+                         ctx="the localized root title must reach Form.form before read-back")
+
+    row = _assignable_row(fqn, "autoTitle")
+    assert row is not None, "the form-root assignable view must list autoTitle"
+    assert_contains(row, "| BOOLEAN | false |",
+                    "get_metadata_details(assignable) must read the changed root value back")
+    title_row = _assignable_row(fqn, "title")
+    assert title_row is not None, "the form-root assignable view must list title"
+    assert_contains(title_row, root_title,
+                    "get_metadata_details(assignable) must read the localized root title back")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_modify_form_root_unknown_property_lists_assignable_root_properties():
+    bad = "definitelyNotARootProp_zz549"
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": "Catalog.Catalog.Form.ItemForm",
+        "properties": [{"name": bad, "value": True}],
+    })
+    e = assert_error(r, "unknown managed-form root property")
+    assert_error_quality(e, names=[bad],
+                         suggests=["not assignable", "Assignable properties",
+                                   "autoTitle", "assignable:true"],
+                         ctx="an unknown root property must name the real form-root surface")
+    assert_no_diff("a rejected form-root property must not touch Form.form")
+
+
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ FORM members (the cross-model hop: modify an item / attribute / command)
 # Fixture: Catalog.Catalog has a managed form "ItemForm".
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 def _seed_form_attribute(attr):
     r = call("create_metadata", {
@@ -1209,9 +1489,26 @@ def test_modify_form_attribute_type():
                        ctx="the form attribute's Number(10,2) type must land in the .form on disk")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_modify_form_attribute_concrete_produced_type():
+    attr = "MFProducedCatalogObject"
+    _seed_form_attribute(attr)
+    r = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": "Catalog.Catalog.Form.ItemForm.Attribute." + attr,
+        "properties": [{"name": "type", "value": {
+            "types": [{"kind": "CatalogObject", "ref": "Catalog"}]}}],
+    })
+    assert_ok(r, "set a form attribute's type to a concrete CatalogObject")
+    assert "valueType" in (r.structured.get("applied") or []), \
+        "the type alias must apply the concrete produced type to valueType: %r" % (r.structured,)
+    poll_diff_contains("<types>CatalogObject.Catalog</types>",
+                       ctx="the concrete produced type must land in the form's .form on disk")
+
+
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 # In-memory collection types on a FORM attribute, and their refusal elsewhere (issue #295)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 ITEM_FORM_FILE = "src/Catalogs/Catalog/Forms/ItemForm/Form.form"
 
@@ -1235,7 +1532,7 @@ def test_set_form_attribute_valuetree_russian_token():
     _seed_form_attribute("MFValueTree")
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Attribute.MFValueTree",
-        "properties": [{"name": "type", "value": {"types": [{"kind": "ДеревоЗначений"}]}}],
+        "properties": [{"name": "type", "value": {"types": [{"kind": "╨Ф╨╡╤А╨╡╨▓╨╛╨Ч╨╜╨░╤З╨╡╨╜╨╕╨╣"}]}}],
     })
     assert_ok(r, "set a form attribute's type to ValueTree via the Russian token")
     poll_disk_contains(ITEM_FORM_FILE, "<types>ValueTree</types>",
@@ -1504,7 +1801,6 @@ def test_move_form_button_into_auto_command_bar():
     # Reparent an EXISTING button into the form's command bar via the 'parent' property - the move
     # half of the #138 reporter's manual XML edits (new buttons can be parented at creation; this
     # covers buttons that already exist at the form root).
-    has_bar = fixture_form_has_auto_command_bar()
     cmd, btn = "MoveCmd", "MoveBtn"
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1518,11 +1814,6 @@ def test_move_form_button_into_auto_command_bar():
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "parent", "value": "AutoCommandBar"}]})
-    if not has_bar:
-        e = assert_error(r, "move into AutoCommandBar when the form has no persisted bar")
-        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
-                             ctx="8.3.27 without autoCommandBar must refuse the move parent")
-        return
     assert_ok(r, "move the button into the AutoCommandBar")
     assert "parent" in (r.structured.get("applied") or []), (
         "the move must report parent as applied: %r" % (r.structured,))
@@ -1558,7 +1849,7 @@ def test_move_form_button_unknown_parent_is_error():
                          ctx="a missing move target must advertise the AutoCommandBar token")
 
 
-# ── Negative (form members) ─────────────────────────────────────────────────
+# тФАтФА Negative (form members) тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_form_unknown_property_lists_assignable():
@@ -1798,11 +2089,11 @@ def test_nonexistent_node_is_error():
     assert_no_diff("a rejected modify must change nothing")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy / negative — MOVE / REORDER a form item: the 'parent' / 'position'
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy / negative тАФ MOVE / REORDER a form item: the 'parent' / 'position'
 # move properties re-parent / reorder an item in the form's items tree.
 # Fixture: Catalog.Catalog has a managed form "ItemForm".
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 def _seed_form_group(grp):
     r = call("create_metadata", {
@@ -1987,12 +2278,12 @@ def test_move_on_form_attribute_is_rejected():
                          ctx="a form attribute cannot be positioned")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy / negative — REBIND a form event handler's procedure and re-point a
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy / negative тАФ REBIND a form event handler's procedure and re-point a
 # button at another form command. Binding the handler / creating the button is
 # create_metadata's job; modify_metadata only REBINDS the existing link.
 # Fixture: Catalog.Catalog has a managed form "ItemForm".
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_rebind_item_level_handler_procedure_roundtrip():
@@ -2103,15 +2394,15 @@ def test_rebind_button_command_mixed_with_other_property_rejected():
     assert_tree_unchanged(before, "a rejected mixed rebind must change nothing")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# XDTO PACKAGE MEMBER editing (issue #183 stream 1) — an ObjectType-nested Property
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# XDTO PACKAGE MEMBER editing (issue #183 stream 1) тАФ an ObjectType-nested Property
 # is addressed by 'XDTOPackage.<P>.ObjectType.<T>.Property.<N>' and takes the
 # XDTO-specific vocabulary (type/lowerBound/upperBound/nillable/fixed/default) via
 # XdtoWriter, not the generic mdclass reflection path. On disk the change lands in
 # the package's own Package.xdto (confirmed live: <property name="Amount"
 # type="xs:decimal" lowerBound="0" nillable="true"/>), sibling to the
 # XDTOPackage's own .mdo (which carries only <namespace>).
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_xdto_object_type_property():
@@ -2182,14 +2473,14 @@ def test_modify_xdto_object_type_property():
     assert_tree_unchanged(before_bad, "a rejected type set must change nothing")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy — form GROUP layout props that live under <extInfo> (UsualGroupExtInfo):
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ form GROUP layout props that live under <extInfo> (UsualGroupExtInfo):
 # the grouping `group` enum + the `united` flag are NOT on the group element but
 # on its nested UsualGroupExtInfo. modify_metadata resolves / creates that extInfo
 # holder reflectively and routes the eSet there (issue #235). A mixed direct +
 # extInfo batch routes each property to its correct holder in one transaction.
 # Fixture: Catalog.Catalog has a managed form "ItemForm".
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_form_group_extinfo_layout_props():
@@ -2243,7 +2534,7 @@ def test_modify_form_group_mixed_direct_and_extinfo_batch():
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_form_group_unknown_extinfo_property_lists_assignable():
-    # An unknown property on a group is rejected with the now-EXTENDED assignable set (member ∪ extInfo),
+    # An unknown property on a group is rejected with the now-EXTENDED assignable set (member тИк extInfo),
     # so the error steers the caller to the real layout props that live under <extInfo>.
     _seed_form_group("BadExtGrp")
     r = call("modify_metadata", {
@@ -2256,14 +2547,14 @@ def test_modify_form_group_unknown_extinfo_property_lists_assignable():
                          ctx="an unknown group property lists the assignable set incl. the extInfo props")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy / negative — MEMBER references: a DataProcessor's `defaultForm` (issue #262 P2b) and a
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy / negative тАФ MEMBER references: a DataProcessor's `defaultForm` (issue #262 P2b) and a
 # Command's `group` (issue #262 P3). Both were previously unsettable via modify_metadata:
 #   - defaultForm resolved as REFERENCE|BasicForm but the resolver only walked mdclass TOP objects /
 #     children (no "Form" token), so ANY defaultForm value failed with "was not found".
 #   - group was excluded from the assignable set entirely (BasicCommand.group is declared against
 #     the mcore CommandGroup interface, which the generic MdObject-subtype filter missed).
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_set_default_form_by_full_member_fqn():
@@ -2417,15 +2708,15 @@ def test_set_command_group_to_nonexistent_group_is_error():
     assert_tree_unchanged(before, "a rejected group set must change nothing")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# UX — extension-adopt hint on an unresolved reference (issue #262 "Мелочь")
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# UX тАФ extension-adopt hint on an unresolved reference (issue #262 "╨Ь╨╡╨╗╨╛╤З╤М")
 #
 # Inside an EXTENSION project, a reference to a BASE-configuration object that has NOT been
 # adopted correctly fails to resolve (the extension's own model does not see it) - but the plain
 # "Cannot resolve the reference target" error gave no clue an adopt might fix it. Seed a fresh BASE
 # catalog (never adopted by TESTS_PROJECT), then reference it from a `type` property set on the
 # EXTENSION project: the error must keep the sentinel substring AND append the adopt hint.
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_extension_unresolved_ref_gets_adopt_hint():
@@ -2461,15 +2752,15 @@ def test_extension_unresolved_ref_gets_adopt_hint():
     assert_tree_unchanged(before, "a rejected type set must change nothing on the base project")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Method-reference guard — a ScheduledJob.methodName / an EventSubscription.handler must
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Method-reference guard тАФ a ScheduledJob.methodName / an EventSubscription.handler must
 # reference an EXISTING, Exported, Server-side CommonModule method (maintainer report on PR
 # #292: an AI bound a job's methodName at a function it had not created yet; EDT accepted it
 # silently and update_database later failed with an opaque "no such function"). Fixture
-# CommonModule.Calc.Add ("Функция Add(A, B) Экспорт" in a <server>true</server> module) is the
+# CommonModule.Calc.Add ("╨д╤Г╨╜╨║╤Ж╨╕╤П Add(A, B) ╨н╨║╤Б╨┐╨╛╤А╤В" in a <server>true</server> module) is the
 # live-verified happy-path target; each negative test seeds its own fresh module/job/subscription
 # so it never perturbs the shared Calc/OK/Error fixtures other tests depend on.
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_scheduled_job_method_name_accepts_existing_exported_server_method():
@@ -2486,7 +2777,14 @@ def test_scheduled_job_method_name_accepts_existing_exported_server_method():
     assert r.structured.get("action") == "modified", "must report modified: %r" % (r.structured,)
     assert "methodName" in (r.structured.get("applied") or []), \
         "methodName must be applied: %r" % (r.structured,)
-    poll_diff_contains("Calc.Add", ctx="the methodName must land in the ScheduledJob .mdo on disk")
+    # The EXACT stored form, not a substring of it. A bare "Calc.Add" is accepted as INPUT and
+    # normalized to the platform's three-segment form; the short form serialized verbatim is what
+    # made an extension unloadable ("reference to an unknown method"). Asserting the substring
+    # "Calc.Add" is what let that ship - it matches both spellings.
+    poll_diff_contains("<methodName>CommonModule.Calc.Add</methodName>",
+                       ctx="the methodName must land in the .mdo in the platform's stored form")
+    assert "<methodName>Calc.Add</methodName>" not in diff(), \
+        "the short form must never reach the .mdo: %s" % diff()[:500]
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -2784,9 +3082,9 @@ def test_xdto_namespace_change_cascades_into_referencing_package():
         raise AssertionError("P own self-reference must be rewritten too: %r" % p_text)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Localized properties must name a DECLARED locale — issue #298.
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Localized properties must name a DECLARED locale тАФ issue #298.
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_modify_rejects_a_localized_property_in_an_undeclared_locale():
@@ -3043,7 +3341,7 @@ def test_modify_form_member_reports_the_locale_used_and_the_ones_still_untransla
 def test_modify_form_member_rejects_a_title_in_an_undeclared_locale():
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Field.Description",
-        "properties": [{"name": "title", "value": "Libellé", "language": "fr_CA"}],
+        "properties": [{"name": "title", "value": "Libell├й", "language": "fr_CA"}],
     })
     e = assert_error(r, "a form-member title in an undeclared locale must be refused")
     assert_error_quality(e, names=["fr_CA"], suggests=["en"],

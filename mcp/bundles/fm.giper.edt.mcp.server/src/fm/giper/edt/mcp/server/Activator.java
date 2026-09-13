@@ -45,6 +45,7 @@ import fm.giper.edt.mcp.server.profiles.ProfileNotificationService;
 import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
 import fm.giper.edt.mcp.server.utils.BackgroundJobs;
 import fm.giper.edt.mcp.server.utils.Log;
+import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe;
 import com.e1c.g5.dt.applications.IApplicationManager;
 import com.e1c.g5.v8.dt.check.ICheckScheduler;
 import com.e1c.g5.v8.dt.check.qfix.IFixManager;
@@ -89,6 +90,7 @@ public class Activator extends AbstractUIPlugin
     public void start(BundleContext context) throws Exception
     {
         super.start(context);
+        NativeRenderModeProbe.captureStartupModes();
         plugin = this; // NOSONAR Eclipse singleton/Activator init pattern; method cannot be static
         mcpServer = new McpServer();
         toolProfileRepository = new PreferenceToolProfileRepository(getPreferenceStore());

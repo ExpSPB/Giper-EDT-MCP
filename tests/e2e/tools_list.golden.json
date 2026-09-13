@@ -143,7 +143,7 @@
           "type": "string"
         },
         "recordBuildTime": {
-          "description": "Optional, default true. When true, the build time is written into each built object's Comment property (\"Время сборки: <yyyy-MM-dd HH:mm:ss>\") and the .mdo is flushed to disk, so the object records when it was last built. Set false to build without modifying the object (no Comment change, no .mdo diff); the build time is still reported in the response message either way.",
+          "description": "Optional, default true. When true, the build time is written into each built object's Comment property (\"╨Т╤А╨╡╨╝╤П ╤Б╨▒╨╛╤А╨║╨╕: <yyyy-MM-dd HH:mm:ss>\") and the .mdo is flushed to disk, so the object records when it was last built. Set false to build without modifying the object (no Comment change, no .mdo diff); the build time is still reported in the response message either way.",
           "type": "boolean"
         }
       },
@@ -263,6 +263,53 @@
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Compare a project's working tree against two git revisions (three-way) and report which top objects differ. Read-only: it never merges and never writes the project. Returns a jobId immediately - the comparison runs in background; poll it with get_job_status and stop it with cancel_job. EDT runs ONE comparison at a time, so a second call while one is live is refused, naming the live comparison, and is never queued. Omitting scope compares the WHOLE configuration. Expand one object with get_comparison_node. A FINISHED comparison stays open and keeps the slot - cancel_job cannot end it then; free it by calling this tool with releaseComparisonId alone. Full parameters and examples: call get_tool_guide('compare_configurations').",
+    "inputSchema": {
+      "properties": {
+        "ancestorRevision": {
+          "type": "string"
+        },
+        "changedOnly": {
+          "type": "boolean"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "mergeRulesFile": {
+          "type": "string"
+        },
+        "otherRevision": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "releaseComparisonId": {
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "waitSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "compare_configurations",
+    "outputSchema": null
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": false
     },
@@ -376,7 +423,7 @@
           "type": "boolean"
         },
         "user": {
-          "description": "Infobase connection user to store so update_database / debug_launch can authenticate the update agent (issue #194). Selects an EXISTING user; most useful with mode='register' (the existing base already has users). Omit to store no credentials. Accepted for applicationKind='infobase', and for applicationKind='standaloneServer' with mode='register'; rejected for a newly created standalone server (mode='create').",
+          "description": "Infobase connection user to store so update_database / launch can authenticate the update agent (issue #194). Selects an EXISTING user; most useful with mode='register' (the existing base already has users). Omit to store no credentials. Accepted for applicationKind='infobase', and for applicationKind='standaloneServer' with mode='register'; rejected for a newly created standalone server (mode='create').",
           "type": "string"
         }
       },
@@ -540,7 +587,7 @@
           "type": "boolean"
         },
         "normalizeYo": {
-          "description": "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in the new node's NAME (the trailing FQN segment) and in any synonym / comment / predefined-item description value (default true). 'ё' in a Name is flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. Set false to keep 'ё' exactly as supplied.",
+          "description": "Normalize the Russian letter '╤С'->'╨╡' / '╨Б'->'╨Х' in the new node's NAME (the trailing FQN segment) and in any synonym / comment / predefined-item description value (default true). '╤С' in a Name is flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. Set false to keep '╤С' exactly as supplied.",
           "type": "boolean"
         },
         "objectFields": {
@@ -694,8 +741,16 @@
         "compatibilityMode": {
           "type": "string"
         },
+        "externalObject": {
+          "description": "Optional root to seed for projectKind=externalObjects: 'ExternalDataProcessor.<Name>' or 'ExternalReport.<Name>'; the TYPE token may be English or Russian and is not normalized; Name is a programmatic identifier whose 'ё'/'Ё' is normalized by default according to normalizeYo. Omit for an empty project; REJECTED for other project kinds.",
+          "type": "string"
+        },
         "name": {
           "type": "string"
+        },
+        "normalizeYo": {
+          "description": "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in the seeded externalObject root NAME (default true). 'ё' in a Name is flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. Set false to keep 'ё' exactly as supplied. The TYPE token is never normalized.",
+          "type": "boolean"
         },
         "prefix": {
           "type": "string"
@@ -720,7 +775,7 @@
           "type": "string"
         },
         "scriptVariant": {
-          "description": "Script variant (Russian or English). configuration: sets the Configuration scriptVariant and default Language code (default Russian). externalObjects: applied post-create via setScriptVariant (non-fatal on failure). extension: REJECTED — scriptVariant is always inherited from the base configuration.",
+          "description": "Script variant (Russian or English). configuration: sets the Configuration scriptVariant and default Language code (default Russian). externalObjects: applied post-create via setScriptVariant (non-fatal on failure). extension: REJECTED тАФ scriptVariant is always inherited from the base configuration.",
           "enum": [
             "Russian",
             "English"
@@ -734,7 +789,7 @@
           "type": "string"
         },
         "version": {
-          "description": "Platform version string, e.g. '8.3.27' (configuration and externalObjects only; for extension: REJECTED — version is always inherited from the base configuration). Default: Version.LATEST when omitted.",
+          "description": "Platform version string, e.g. '8.3.27' (configuration and externalObjects only; for extension: REJECTED тАФ version is always inherited from the base configuration). Default: Version.LATEST when omitted.",
           "type": "string"
         }
       },
@@ -756,11 +811,23 @@
         "codestyle": {
           "type": "object"
         },
+        "externalObject": {
+          "type": "string"
+        },
+        "externalObjectConfirmed": {
+          "type": "boolean"
+        },
         "message": {
           "type": "string"
         },
         "name": {
           "type": "string"
+        },
+        "normalized": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "prefix": {
           "type": "string"
@@ -892,102 +959,6 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Run a 1C application under EDT debugging. An already-running session is NOT relaunched - the call short-circuits with alreadyRunning:true; restartIfRunning=true instead TERMINATES that live session first. Parameters and examples: get_tool_guide('debug_launch').",
-    "inputSchema": {
-      "properties": {
-        "applicationId": {
-          "type": "string"
-        },
-        "externalInfobaseChanges": {
-          "description": "How to answer EDT's blocking 'Infobase configuration changes' modal when the infobase was changed outside EDT (Designer, ibcmd, a CLI pipeline) since the last EDT interaction: 'override' (default) keeps the project configuration and overwrites the infobase, 'import' pulls the external changes into the PROJECT sources, 'cancel' aborts the update with an error. Omitted, the modal is still answered (with 'override'), so an unattended call never blocks on it.",
-          "type": "string"
-        },
-        "externalObjectName": {
-          "type": "string"
-        },
-        "externalObjectProjectName": {
-          "type": "string"
-        },
-        "launchConfigurationName": {
-          "type": "string"
-        },
-        "projectName": {
-          "type": "string"
-        },
-        "restartIfRunning": {
-          "description": "Default false: if a matching session is already running, short-circuit with alreadyRunning:true and do NOT relaunch (call terminate_launch to restart). true: non-interactively terminate the existing session, then relaunch — no 'Debug session already exists' modal blocks the call.",
-          "type": "boolean"
-        },
-        "standaloneServerPortConflict": {
-          "description": "Answer to EDT's standalone-server port-conflict prompt: cancel (default) = fail and name the busy ports; reassign = let EDT move the server to free ports (rewrites its configuration).",
-          "type": "string"
-        },
-        "startupOption": {
-          "type": "string"
-        },
-        "updateBeforeLaunch": {
-          "description": "Default true: silently apply the configuration->DB update before launching so no 'Update database?' modal blocks the call (even on a Russian-locale EDT the dialog is auto-confirmed); false skips the update and the platform may then show that modal. Ignored for Attach.",
-          "type": "boolean"
-        }
-      },
-      "required": [],
-      "type": "object"
-    },
-    "name": "debug_launch",
-    "outputSchema": {
-      "properties": {
-        "alreadyRunning": {
-          "type": "boolean"
-        },
-        "applicationId": {
-          "type": "string"
-        },
-        "attach": {
-          "type": "boolean"
-        },
-        "configurationType": {
-          "type": "string"
-        },
-        "externalObjectName": {
-          "type": "string"
-        },
-        "externalObjectProjectName": {
-          "type": "string"
-        },
-        "launchConfiguration": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "mode": {
-          "type": "string"
-        },
-        "project": {
-          "type": "string"
-        },
-        "startupOption": {
-          "type": "string"
-        },
-        "status": {
-          "type": "string"
-        },
-        "success": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "openWorldHint": false,
-      "readOnlyHint": false
-    },
     "description": "Check which EDT debug sessions are running or paused. Parameters and examples: get_tool_guide('debug_status').",
     "inputSchema": {
       "properties": {
@@ -1092,7 +1063,7 @@
           "type": "integer"
         },
         "updateBeforeLaunch": {
-          "description": "Default true: terminate any live client and run a silent DB update first so no modal 'Update database?' dialog blocks the call; false keeps legacy delegate behaviour — no client sweep, no auto-confirmed update dialog; platform dialogs may appear.",
+          "description": "Default true: terminate any live client and run a silent DB update first so no modal 'Update database?' dialog blocks the call; false keeps legacy delegate behaviour тАФ no client sweep, no auto-confirmed update dialog; platform dialogs may appear.",
           "type": "boolean"
         },
         "updateScope": {
@@ -1121,7 +1092,7 @@
           "type": "boolean"
         },
         "deleteDatabaseFiles": {
-          "description": "true = ALSO delete the infobase database files/directory from disk (the 1Cv8.1CD directory) — IRREVERSIBLE. Default false = keep the database files on disk (the registration is removed but the data stays). Works for both a file infobase and a standalone server (deletes the served database directory).",
+          "description": "true = ALSO delete the infobase database files/directory from disk (the 1Cv8.1CD directory) тАФ IRREVERSIBLE. Default false = keep the database files on disk (the registration is removed but the data stays). Works for both a file infobase and a standalone server (deletes the served database directory).",
           "type": "boolean"
         },
         "deleteRegistration": {
@@ -1252,6 +1223,9 @@
         },
         "projectName": {
           "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
         }
       },
       "required": [
@@ -1735,6 +1709,50 @@
       "type": "object"
     },
     "name": "get_check_description",
+    "outputSchema": null
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Expand one node of a comparison started by compare_configurations: three-way property table, form structure, module sections, support state and potential problems. Address the node by objectFqn (Russian or English type tokens both work) or by the nodeId from the comparison report. The tree is built lazily, so an unfinished subtree is reported as unfinished, never as 'no differences'. Read-only: it never merges. Parameters and examples: get_tool_guide('get_comparison_node').",
+    "inputSchema": {
+      "properties": {
+        "comparisonId": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "integer"
+        },
+        "objectFqn": {
+          "type": "string"
+        },
+        "side": {
+          "enum": [
+            "main",
+            "other",
+            "ancestor"
+          ],
+          "type": "string"
+        },
+        "waitSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "comparisonId"
+      ],
+      "type": "object"
+    },
+    "name": "get_comparison_node",
     "outputSchema": null
   },
   {
@@ -2239,9 +2257,14 @@
           "type": "string"
         },
         "nameFilter": {
+          "description": "Case-insensitive substring matched against Name only (not Synonym)",
           "type": "string"
         },
         "projectName": {
+          "type": "string"
+        },
+        "textFilter": {
+          "description": "Case-insensitive substring matched against Name or Synonym selected by language; mutually exclusive with nameFilter",
           "type": "string"
         }
       },
@@ -2967,11 +2990,115 @@
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Start a 1C application in EDT debug (default) or run mode. An already-running session is NOT relaunched - the call short-circuits with alreadyRunning:true; restartIfRunning=true instead TERMINATES that live session first. Parameters and examples: get_tool_guide('launch').",
+    "inputSchema": {
+      "properties": {
+        "applicationId": {
+          "type": "string"
+        },
+        "externalInfobaseChanges": {
+          "description": "How to answer EDT's blocking 'Infobase configuration changes' modal when the infobase was changed outside EDT (Designer, ibcmd, a CLI pipeline) since the last EDT interaction: 'override' (default) keeps the project configuration and overwrites the infobase, 'import' pulls the external changes into the PROJECT sources, 'cancel' aborts the update with an error. Omitted, the modal is still answered (with 'override'), so an unattended call never blocks on it.",
+          "type": "string"
+        },
+        "externalObjectName": {
+          "type": "string"
+        },
+        "externalObjectProjectName": {
+          "type": "string"
+        },
+        "launchConfigurationName": {
+          "type": "string"
+        },
+        "mode": {
+          "description": "Launch mode: debug (default) or run. Attach configurations support debug only.",
+          "enum": [
+            "debug",
+            "run"
+          ],
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "restartIfRunning": {
+          "description": "Default false: if a matching session is already running, short-circuit with alreadyRunning:true and do NOT relaunch (call terminate_launch to restart). true: non-interactively terminate the existing session, then relaunch — no 'Debug session already exists' modal blocks the call.",
+          "type": "boolean"
+        },
+        "standaloneServerPortConflict": {
+          "description": "Answer to EDT's standalone-server port-conflict prompt: cancel (default) = fail and name the busy ports; reassign = let EDT move the server to free ports (rewrites its configuration).",
+          "type": "string"
+        },
+        "startupOption": {
+          "type": "string"
+        },
+        "updateBeforeLaunch": {
+          "description": "Default true: silently apply the configuration->DB update before launching so no 'Update database?' modal blocks the call (even on a Russian-locale EDT the dialog is auto-confirmed); false skips the update and the platform may then show that modal. Ignored for Attach.",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "launch",
+    "outputSchema": {
+      "properties": {
+        "alreadyRunning": {
+          "type": "boolean"
+        },
+        "applicationId": {
+          "type": "string"
+        },
+        "attach": {
+          "type": "boolean"
+        },
+        "configurationType": {
+          "type": "string"
+        },
+        "externalObjectName": {
+          "type": "string"
+        },
+        "externalObjectProjectName": {
+          "type": "string"
+        },
+        "launchConfiguration": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "startupOption": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Review breakpoints currently set in BSL source code. Parameters and examples: get_tool_guide('list_breakpoints').",
+    "description": "Review configured BSL line breakpoints and workspace-wide break-on-error state. Full parameters and examples: call get_tool_guide('list_breakpoints').",
     "inputSchema": {
       "properties": {
         "projectName": {
@@ -3246,6 +3373,52 @@
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Read or author EDT's merge-rules file - the per-node decisions a configuration comparison saves and re-applies when it is launched. Which container to write is chosen by filePath: '.xml' needs NO running comparison but is read by EDT 2026.1 only, while the '.zip' both versions read carries an entry named after the comparison's three project names, so it needs a live comparison and is refused without one. Validation has THREE outcomes: a comparison whose tree is FINISHED checks every rule against what its node allows and refuses an illegal one; a comparison that answers but whose tree cannot be read yet names a zip's entry without checking anything, reported NOT VALIDATED - or refused outright when you passed comparisonId; with no comparison at all the file is authored from names, also NOT VALIDATED. Never merges anything - running the merge stays a human action in the comparison window. Parameters and examples: get_tool_guide('merge_rules').",
+    "inputSchema": {
+      "properties": {
+        "basedOn": {
+          "type": "string"
+        },
+        "comparisonId": {
+          "type": "string"
+        },
+        "decisions": {
+          "description": "write: the decisions to record, as [{path, rule}]. 'path' is the key chain below the root - [] = the whole configuration, ['commonModules'] = a whole collection (the EMF feature name; a metadata type token in either language, 'Catalog' or 'Catalogs' or the Russian form, is translated to it), ['commonModules','Main:Main:Main'] = one object, keyed by its name on the main, other and ancestor sides joined by ':' with 'NONE' for a side that has no such object. 'rule' is one of GetFromOther, DoNotMerge, MergePrioritizingMain, MergePrioritizingOther.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "filePath": {
+          "description": "Absolute path of the merge-rules file (required). read: the file to parse, '.xml' or the '.zip' a comparison saves - the extension's CASE does not matter, '.ZIP' is read. write: this is what picks the container, and here the extension must be spelled in LOWER CASE, because EDT's own reader compares it exactly and would refuse the file inside the launch. '.zip' is read by every supported EDT and holds an entry named after the comparison's three PROJECT names, so it needs a live comparison and is refused without one; '.xml' needs none and is read by EDT 2026.1 only. An existing file is OVERWRITTEN only when 'basedOn' names that SAME file, whose decisions are carried into the file that REPLACES it; any other write over an existing file is refused so decisions are never silently discarded.",
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "read",
+            "write"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "filePath"
+      ],
+      "type": "object"
+    },
+    "name": "merge_rules",
+    "outputSchema": null
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": false
@@ -3254,7 +3427,7 @@
     "inputSchema": {
       "properties": {
         "content": {
-          "description": "Members to attach / detach in a structured membership list, dispatched by the FQN's kind (a COMMON ATTRIBUTE's owners, an EXCHANGE PLAN's content objects, a CATALOG's owners, a DOCUMENT's register records, a SUBSYSTEM's content objects), as [{op?, metadata, use?, autoRecord?}]. 'op' is 'add' (default) / 'remove'; 'metadata' is the member object FQN (e.g. 'Catalog.Products' or the Russian 'Справочник.Товары' - only the type token is bilingual). 'use' (CommonAttribute only, add only, default 'Use') is 'Use' / 'DontUse' / 'Auto'; 'autoRecord' (ExchangePlan only, add only) is 'Allow' / 'Deny' (omit to keep the platform default). A Catalog owner, a Document register record and a Subsystem content object are plain references (no flag). Adding is idempotent (a re-added CommonAttribute owner has its 'use' updated, a re-added ExchangePlan object its 'autoRecord'; a re-added plain reference is a no-op). Valid only for a CommonAttribute / ExchangePlan / Catalog / Document / Subsystem FQN (a Subsystem FQN may be nested); cannot be combined with 'properties'.",
+          "description": "Members to attach / detach in a structured membership list, dispatched by the FQN's kind (a COMMON ATTRIBUTE's owners, an EXCHANGE PLAN's content objects, a CATALOG's owners, a DOCUMENT's register records, a SUBSYSTEM's content objects), as [{op?, metadata, use?, autoRecord?}]. 'op' is 'add' (default) / 'remove'; 'metadata' is the member object FQN (e.g. 'Catalog.Products' or the Russian '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л' - only the type token is bilingual). 'use' (CommonAttribute only, add only, default 'Use') is 'Use' / 'DontUse' / 'Auto'; 'autoRecord' (ExchangePlan only, add only) is 'Allow' / 'Deny' (omit to keep the platform default). A Catalog owner, a Document register record and a Subsystem content object are plain references (no flag). Adding is idempotent (a re-added CommonAttribute owner has its 'use' updated, a re-added ExchangePlan object its 'autoRecord'; a re-added plain reference is a no-op). Valid only for a CommonAttribute / ExchangePlan / Catalog / Document / Subsystem FQN (a Subsystem FQN may be nested); cannot be combined with 'properties'.",
           "items": {
             "type": "object"
           },
@@ -3264,7 +3437,7 @@
           "type": "string"
         },
         "normalizeYo": {
-          "description": "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in localized-string values (synonym / title) and in the 'comment' property (default true). Matches the 1C standard mdo-ru-name-unallowed-letter. Other free-text strings can be identifier-like (e.g. XDTOPackage.namespace is a URI) and always keep the supplied value. Set false to keep 'ё' exactly as supplied everywhere.",
+          "description": "Normalize the Russian letter '╤С'->'╨╡' / '╨Б'->'╨Х' in localized-string values (synonym / title) and in the 'comment' property (default true). Matches the 1C standard mdo-ru-name-unallowed-letter. Other free-text strings can be identifier-like (e.g. XDTOPackage.namespace is a URI) and always keep the supplied value. Set false to keep '╤С' exactly as supplied everywhere.",
           "type": "boolean"
         },
         "projectName": {
@@ -3278,7 +3451,7 @@
           "type": "array"
         },
         "rights": {
-          "description": "ROLE only: per-object access rights to set, as [{object, right, value?, rls?, rlsFields?}]. 'object' is a metadata FQN (e.g. 'Catalog.Products' or the Russian 'Справочник.Товары'); 'right' is a bilingual right name (e.g. 'Read'/'Чтение', 'Update'/'Изменение'); 'value' is 'set' (allowed, default) / 'unset' (denied) / 'provided' (default/inherited), or a boolean (true=set, false=unset). 'rls' is an optional Row-Level-Security restriction condition (1C query text); 'rlsFields' is an optional array of field names the RLS applies to (omit / empty = whole-object restriction).",
+          "description": "ROLE only: per-object access rights to set, as [{object, right, value?, rls?, rlsFields?}]. 'object' is a metadata FQN (e.g. 'Catalog.Products' or the Russian '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л'); 'right' is a bilingual right name (e.g. 'Read'/'╨з╤В╨╡╨╜╨╕╨╡', 'Update'/'╨Ш╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╡'); 'value' is 'set' (allowed, default) / 'unset' (denied) / 'provided' (default/inherited), or a boolean (true=set, false=unset). 'rls' is an optional Row-Level-Security restriction condition (1C query text); 'rlsFields' is an optional array of field names the RLS applies to (omit / empty = whole-object restriction).",
           "items": {
             "type": "object"
           },
@@ -3289,7 +3462,7 @@
           "type": "object"
         },
         "template": {
-          "description": "SpreadsheetDocument (print form / макет) TEMPLATE FQN only: the spreadsheet content to author, instead of 'properties'. An object with any of: 'cells' [{row, col (both 0-based, required), text? OR parameter? (a print-time parameter name), bold?, fontSize?, hAlign? ('Left'/'Center'/'Right'/'Auto'/'Width'), vAlign? ('Top'/'Center'/'Bottom'), wrap? (true word-wraps the cell text)}]; 'merges' [{fromRow, fromCol, toRow, toCol}] merged cell ranges; 'areas' [{name, fromRow, fromCol, toRow, toCol}] named areas (for ПолучитьОбласть / Вывести output); 'columnWidths' [{col, width}] and 'rowHeights' [{row, height}] column / row sizes. Setting a cell overwrites that (row, col); the rest of the content is kept. Valid only for a SpreadsheetDocument template FQN; cannot be combined with 'properties' / 'content' / a Role payload.",
+          "description": "SpreadsheetDocument (print form / ╨╝╨░╨║╨╡╤В) TEMPLATE FQN only: the spreadsheet content to author, instead of 'properties'. An object with any of: 'cells' [{row, col (both 0-based, required), text? OR parameter? (a print-time parameter name), bold?, fontSize?, hAlign? ('Left'/'Center'/'Right'/'Auto'/'Width'), vAlign? ('Top'/'Center'/'Bottom'), wrap? (true word-wraps the cell text)}]; 'merges' [{fromRow, fromCol, toRow, toCol}] merged cell ranges; 'areas' [{name, fromRow, fromCol, toRow, toCol}] named areas (for ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨Ю╨▒╨╗╨░╤Б╤В╤М / ╨Т╤Л╨▓╨╡╤Б╤В╨╕ output); 'columnWidths' [{col, width}] and 'rowHeights' [{row, height}] column / row sizes. Setting a cell overwrites that (row, col); the rest of the content is kept. Valid only for a SpreadsheetDocument template FQN; cannot be combined with 'properties' / 'content' / a Role payload.",
           "type": "object"
         },
         "templates": {
@@ -3777,7 +3950,7 @@
           "type": "integer"
         },
         "updateBeforeLaunch": {
-          "description": "Auto-chain (default: true): recompute only the projects whose sources changed (the configuration is not exempt), terminate a live client and run a silent DB update first, so a freshly edited extension runs fresh (not stale), auto-answering the platform's update dialogs. This makes a blocking dialog unlikely, NOT impossible: a dialog EDT raises outside the tool's own windows still waits for a human, and the tool reports it as a Pending whose phase stops changing. false: legacy delegate behaviour — no client sweep, no auto-confirmed update dialog; platform dialogs may appear and block. Results are retained by jobId until registry eviction, while a new start after completion always executes a fresh run regardless of this flag.",
+          "description": "Auto-chain (default: true): recompute only the projects whose sources changed (the configuration is not exempt), terminate a live client and run a silent DB update first, so a freshly edited extension runs fresh (not stale), auto-answering the platform's update dialogs. This makes a blocking dialog unlikely, NOT impossible: a dialog EDT raises outside the tool's own windows still waits for a human, and the tool reports it as a Pending whose phase stops changing. false: legacy delegate behaviour тАФ no client sweep, no auto-confirmed update dialog; platform dialogs may appear and block. Results are retained by jobId until registry eviction, while a new start after completion always executes a fresh run regardless of this flag.",
           "type": "boolean"
         },
         "updateScope": {
@@ -3911,9 +4084,24 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Pause BSL execution at a selected source line during debugging. Parameters and examples: get_tool_guide('set_breakpoint').",
+    "description": "Pause BSL execution at a selected source line during debugging, optionally only while a condition holds or after a number of hits. Parameters and examples: get_tool_guide('set_breakpoint').",
     "inputSchema": {
       "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "hitCondition": {
+          "enum": [
+            "EQUALS",
+            "EQUAL_OR_LESS",
+            "EQUAL_OR_HIGHER",
+            "MULTIPLIER"
+          ],
+          "type": "string"
+        },
+        "hitCount": {
+          "type": "integer"
+        },
         "lineNumber": {
           "type": "integer"
         },
@@ -3937,10 +4125,37 @@
     "name": "set_breakpoint",
     "outputSchema": {
       "properties": {
+        "action": {
+          "type": "string"
+        },
         "breakpointId": {
           "type": "integer"
         },
+        "breakpointIds": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "conditionApplied": {
+          "type": "boolean"
+        },
+        "configurationFallback": {
+          "type": "string"
+        },
         "degraded": {
+          "type": "boolean"
+        },
+        "hitCondition": {
+          "type": "string"
+        },
+        "hitCount": {
+          "type": "integer"
+        },
+        "hitCountApplied": {
           "type": "boolean"
         },
         "lineNumber": {
@@ -3951,6 +4166,9 @@
         },
         "modulePath": {
           "type": "string"
+        },
+        "reconciledBreakpoints": {
+          "type": "integer"
         },
         "resolvedFile": {
           "type": "string"
@@ -3974,7 +4192,74 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "STORE infobase credentials (user/password) in EDT settings so update_database and debug_launch can authenticate. The secret PERSISTS beyond this call, and addressing a launch configuration also rewrites that configuration's client authentication. Parameters and examples: get_tool_guide('set_infobase_credentials').",
+    "description": "Create, update, enable, or disable the workspace-wide BSL break-on-error breakpoint. Full parameters and examples: call get_tool_guide('set_error_breakpoint').",
+    "inputSchema": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "exceptionMessage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "name": "set_error_breakpoint",
+    "outputSchema": {
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "breakpointId": {
+          "type": "integer"
+        },
+        "breakpointIds": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "catchAllExceptions": {
+          "type": "boolean"
+        },
+        "configuredCount": {
+          "type": "integer"
+        },
+        "disabledCount": {
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "exceptionMessage": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        },
+        "workspaceWide": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "STORE infobase credentials (user/password) in EDT settings so update_database and launch can authenticate. The secret PERSISTS beyond this call, and addressing a launch configuration also rewrites that configuration's client authentication. Parameters and examples: get_tool_guide('set_infobase_credentials').",
     "inputSchema": {
       "properties": {
         "access": {
@@ -4059,7 +4344,7 @@
           "type": "integer"
         },
         "value": {
-          "description": "New value as a BSL literal/expression (e.g. 42, \"text\", True, Дата(2025,1,1))",
+          "description": "New value as a BSL literal/expression (e.g. 42, \"text\", True, ╨Ф╨░╤В╨░(2025,1,1))",
           "type": "string"
         },
         "variableName": {
@@ -4403,7 +4688,7 @@
           "type": "string"
         },
         "terminateRunningClients": {
-          "description": "Before applying, terminate any 1C client THIS EDT launched on the target infobase to free the exclusive lock (default true). false keeps a running client — the update then fails if that client holds the infobase exclusively.",
+          "description": "Before applying, terminate any 1C client THIS EDT launched on the target infobase to free the exclusive lock (default true). false keeps a running client тАФ the update then fails if that client holds the infobase exclusively.",
           "type": "boolean"
         }
       },
@@ -4451,6 +4736,59 @@
         },
         "willTerminateRunningClients": {
           "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Check ONE managed form for structural defects computed from the model NOW. Parameters and examples: get_tool_guide('validate_form_model').",
+    "inputSchema": {
+      "properties": {
+        "formFqn": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectName",
+        "formFqn"
+      ],
+      "type": "object"
+    },
+    "name": "validate_form_model",
+    "outputSchema": {
+      "properties": {
+        "errors": {
+          "type": "integer"
+        },
+        "findings": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "formPath": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "valid": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
         }
       },
       "required": [

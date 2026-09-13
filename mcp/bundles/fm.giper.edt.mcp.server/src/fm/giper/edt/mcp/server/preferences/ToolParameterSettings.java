@@ -146,6 +146,14 @@ public final class ToolParameterSettings // NOSONAR intentional singleton (Eclip
                     + "while EDT still applies it", //$NON-NLS-1$
                 420, 60, 3600)));
 
+        map.put("delete_metadata", Collections.singletonList( //$NON-NLS-1$
+            new ParameterDef("timeout", "Delete timeout (sec)", //$NON-NLS-1$ //$NON-NLS-2$
+                "How long to wait for the UI-thread delete work before failing with a timeout " //$NON-NLS-1$
+                    + "instead of holding the call open. The default clears the worst measured " //$NON-NLS-1$
+                    + "legitimate wait (301s); lowering it risks reporting a delete as failed " //$NON-NLS-1$
+                    + "while EDT still applies it", //$NON-NLS-1$
+                420, 60, 3600)));
+
         TOOL_PARAMETERS = Collections.unmodifiableMap(map);
     }
 

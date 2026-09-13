@@ -1,4 +1,4 @@
-"""
+﻿"""
 e2e tests for modify_metadata giving a form list attribute a custom DynamicList query.
 
 A list / choice form shows its rows through a dynamic-list form attribute. create_metadata makes a
@@ -13,12 +13,16 @@ reset: kind="write-metadata" -> reset_model() after each test. Each seeding test
 catalog name (a created top object is not guaranteed to be reverted, like the StyleItem e2e tests).
 """
 
+import xml.etree.ElementTree as ET
+
 from harness import (
     call,
     assert_ok,
     assert_error,
     assert_error_quality,
     assert_contains,
+    poll_diff_contains,
+    read_disk,
     wait_for_project_ready,
     e2e_test,
     PROJECT,
@@ -49,10 +53,10 @@ def _seed_catalog_form_attribute(suffix):
     return base, list_form, list_attr
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy — set a custom query (turns the plain attribute into a dynamic list), then
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ set a custom query (turns the plain attribute into a dynamic list), then
 #         toggle the custom query off (keeps the dynamic list, no re-creation)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_set_custom_query_then_toggle_off():
@@ -91,9 +95,9 @@ def test_set_custom_query_then_toggle_off():
         "toggling an existing dynamic list must apply ONLY customQuery: %r" % (off_applied,)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Happy — set the main table, then output a column bound to a query field
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Happy тАФ set the main table, then output a column bound to a query field
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_set_main_table_and_output_column():
@@ -127,6 +131,25 @@ def test_set_main_table_and_output_column():
     bad = [ln for ln in errs.text.splitlines() if "form-data-path" in ln and "ListForm" in ln]
     assert not bad, "the dynamic-list column must resolve (no form-data-path):\n%s" % "\n".join(bad)
 
+    # ON DISK: the column must also carry the dynamic list's UseAlways registration (issue #551).
+    # Asserted in Form.form and not through the tool's own answer, because the whole defect was the
+    # tool answering success + valid while the file the PLATFORM reads was missing this element:
+    # without it the .epf build fails with '╨Э╨╡╨▓╨╡╤А╨╜╤Л╨╣ ╨┐╤Г╤В╤М ╨║ ╨┤╨░╨╜╨╜╤Л╨╝: "List.Ref"'. EDT's own standard
+    # check form-list-ref-use-always-flag-disabled demands the same entry for a list's Ref field.
+    # The export is async, so poll the working-tree diff rather than reading the file once.
+    poll_diff_contains("<notDefaultUseAlwaysAttributes",
+                       ctx="the dynamic-list attribute must register the column's path")
+    form_xml = read_disk("src/Catalogs/" + base.split(".")[1] + "/Forms/ListForm/Form.form")
+    root = ET.fromstring(form_xml)
+    registered = [
+        ".".join(segment.text or "" for segment in element
+                 if segment.tag.rsplit("}", 1)[-1] == "segments")
+        for element in root.iter()
+        if element.tag.rsplit("}", 1)[-1] == "notDefaultUseAlwaysAttributes"
+    ]
+    assert registered == ["List.Ref"], \
+        "exactly the column's path must be registered, once: %r" % (registered,)
+
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_unresolvable_main_table_is_error():
@@ -143,9 +166,9 @@ def test_unresolvable_main_table_is_error():
                          ctx="an unresolvable main table is a clean error")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Negative — the query targets an attribute that does not exist yet
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Negative тАФ the query targets an attribute that does not exist yet
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_query_on_missing_attribute_is_error():
@@ -173,10 +196,10 @@ def test_custom_query_flag_alone_on_plain_attribute_is_error():
                          ctx="creating a dynamic list requires a queryText")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Negative — malformed inputs are clean, actionable errors (no model access needed:
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# Negative тАФ malformed inputs are clean, actionable errors (no model access needed:
 #            the inputs are rejected before the form is even opened, so no seeding)
-# ──────────────────────────────────────────────────────────────────────────────
+# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
 
 @e2e_test(tool="modify_metadata", kind="read")
 def test_empty_query_text_is_error():

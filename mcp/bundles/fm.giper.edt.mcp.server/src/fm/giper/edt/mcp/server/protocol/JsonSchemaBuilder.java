@@ -154,6 +154,44 @@ public class JsonSchemaBuilder
         }
         return this;
     }
+
+    /**
+     * Adds an array property with integer items to the schema.
+     *
+     * @param name property name
+     * @param description property description
+     * @return this builder
+     */
+    public JsonSchemaBuilder integerArrayProperty(String name, String description)
+    {
+        return integerArrayProperty(name, description, false);
+    }
+
+    /**
+     * Adds an array property with integer items to the schema.
+     *
+     * @param name property name
+     * @param description property description
+     * @param required whether property is required
+     * @return this builder
+     */
+    public JsonSchemaBuilder integerArrayProperty(String name, String description, boolean required)
+    {
+        Map<String, Object> items = new LinkedHashMap<>();
+        items.put("type", "integer"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        Map<String, Object> prop = new LinkedHashMap<>();
+        prop.put("type", "array"); //$NON-NLS-1$ //$NON-NLS-2$
+        prop.put("items", items); //$NON-NLS-1$
+        prop.put(KEY_DESCRIPTION, description);
+        properties.put(name, prop);
+
+        if (required)
+        {
+            this.required.add(name);
+        }
+        return this;
+    }
     
     /**
      * Adds a boolean property to the schema.

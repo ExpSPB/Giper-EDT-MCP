@@ -1,7 +1,6 @@
-/**
+﻿/**
  * MCP Server for EDT - Tests
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
- * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -18,6 +17,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -37,17 +37,21 @@ import org.junit.Test;
 
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
 import fm.giper.edt.mcp.server.tools.impl.UpdateDatabaseTool.ApplicationFallback; // same package: explicit for the nested seam type
+import fm.giper.edt.mcp.server.utils.ExternalInfobaseChangesPolicy;
 import fm.giper.edt.mcp.server.utils.LaunchConfigUtils;
+import fm.giper.edt.mcp.server.utils.LaunchUpdateDialogAutoConfirmer;
 import com.e1c.g5.dt.applications.ApplicationException;
 import com.e1c.g5.dt.applications.IApplication;
 import com.e1c.g5.dt.applications.IApplicationManager;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 /**
  * Tests for {@link UpdateDatabaseTool}.
  * <p>
  * Covers tool metadata, the input schema, and the projectName/applicationId
  * required-argument validation in the "no launchConfigurationName" branch, which
- * returns before any live launch-manager access. This is a destructive tool —
+ * returns before any live launch-manager access. This is a destructive tool тАФ
  * the tests only exercise the argument-validation sentinels (which return before
  * any database update); the actual update is covered by the E2E suite.
  * <p>
@@ -60,9 +64,9 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  * failure that is not an {@code ApplicationException}: it must describe the platform failure
  * instead of concatenating a {@code null} message, name the next step for a tool that changed an
  * infobase irreversibly, and keep the port-reassignment note and the {@code terminatedClient}
- * flag it already carried. Its pins are deliberately one literal per {@code @Test} — JUnit stops
+ * flag it already carried. Its pins are deliberately one literal per {@code @Test} тАФ JUnit stops
  * a method at its first failed assertion, so a method holding several would only ever exercise
- * the first — and they pin the ABSENCE of each optional field on the false side of its condition,
+ * the first тАФ and they pin the ABSENCE of each optional field on the false side of its condition,
  * because a presence-only pin passes just as happily against an unconditional write.
  * <p>
  * Issue #379 added four package-private seams, all reachable without a live EDT:
@@ -70,7 +74,7 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  * decision, against a mocked {@code ILaunchConfiguration}),
  * {@link UpdateDatabaseTool#effectiveApplicationId} (the config-vs-caller merge rule),
  * {@link UpdateDatabaseTool#resolveSoleApplicationId} (the narrowed default-application
- * fallback for a configuration with no application binding — substitute only when the
+ * fallback for a configuration with no application binding тАФ substitute only when the
  * project has EXACTLY ONE application, refuse otherwise) and
  * {@link UpdateDatabaseTool#describeLaunchIdentifierHint} (the diagnosis for the synthetic
  * {@code launch:}/{@code attach:} identifiers {@code list_configurations} publishes under
@@ -79,7 +83,7 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  * <b>What these seams do NOT pin</b>, deliberately: the two lines of {@code execute} that look
  * the configuration up by name ({@code DebugPlugin.getDefault().getLaunchManager()}) and then
  * call the fallback when the merged id came back empty. Both need a live launch manager and an
- * EDT-contributed launch type, which this bundle's unit runtime does not have — the same reason
+ * EDT-contributed launch type, which this bundle's unit runtime does not have тАФ the same reason
  * the pre-existing tests here stop at argument validation. Everything either side of those two
  * lines is covered above.
  */
@@ -106,7 +110,7 @@ public class UpdateDatabaseToolTest
     @Test
     public void testConnectsToInfobaseIsTrue()
     {
-        // #270: update_database opens a live connection to run the update — it must arm
+        // #270: update_database opens a live connection to run the update тАФ it must arm
         // the auth-dialog suppressor's activity window.
         assertTrue(new UpdateDatabaseTool().connectsToInfobase());
     }
@@ -133,7 +137,7 @@ public class UpdateDatabaseToolTest
             schema.contains("\"terminateRunningClients\"")); //$NON-NLS-1$
         // autoRestructure was removed: the EDT update API (IApplicationManager.update /
         // ExecutionContext) has no per-call restructure-confirmation switch, so the parameter
-        // could never influence the update — advertising it misled unattended clients.
+        // could never influence the update тАФ advertising it misled unattended clients.
         assertFalse("autoRestructure must not reappear without being wired into the EDT call", //$NON-NLS-1$
             schema.contains("\"autoRestructure\"")); //$NON-NLS-1$
     }
@@ -313,7 +317,7 @@ public class UpdateDatabaseToolTest
     {
         // The real Russian EDT message reported in #258.
         Throwable cause = new RuntimeException(
-            "Отсутствует внутренняя информация (узел InternalInfo) для объекта Configuration"); //$NON-NLS-1$
+            "╨Ю╤В╤Б╤Г╤В╤Б╤В╨▓╤Г╨╡╤В ╨▓╨╜╤Г╤В╤А╨╡╨╜╨╜╤П╤П ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤П (╤Г╨╖╨╡╨╗ InternalInfo) ╨┤╨╗╤П ╨╛╨▒╤К╨╡╨║╤В╨░ Configuration"); //$NON-NLS-1$
         ApplicationException e = new ApplicationException("Failed to load configuration", cause); //$NON-NLS-1$
 
         String hint = UpdateDatabaseTool.describeInternalInfoHint(e);
@@ -416,6 +420,181 @@ public class UpdateDatabaseToolTest
 
         assertTrue("result must still carry the credentials hint when InternalInfo does not match", //$NON-NLS-1$
             result.contains("set_infobase_credentials")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGenericFailureAddsTerminalCauseWithoutChangingSpecificRefusals() throws Exception
+    {
+        ApplicationException generic = new ApplicationException(
+            "Infobase connection runtime session open error", //$NON-NLS-1$
+            new RuntimeException("Infobase authentication error", //$NON-NLS-1$
+                new IllegalStateException("Auth fail"))); //$NON-NLS-1$
+        String genericError = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            generic, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+        // Punctuated, because this is the message the caller reads at its most confused moment. The
+        // platform headline ends without a period and the credentials hint that follows is its own
+        // sentence, so an unterminated clause yields "... open error Caused by: ... Auth fail If the
+        // infobase requires ..." - three sentences run into one.
+        assertTrue("the generic path must compose the selected headline with the terminal cause", //$NON-NLS-1$
+            genericError.contains("Database update failed: Infobase connection runtime session " //$NON-NLS-1$
+                + "open error. Caused by: java.lang.IllegalStateException: Auth fail.")); //$NON-NLS-1$
+        assertFalse("the clause must not run into the headline: " + genericError, //$NON-NLS-1$
+            genericError.contains("open error Caused by")); //$NON-NLS-1$
+
+        // A failure with nothing deeper to say must read EXACTLY as it did before the cause chain
+        // was surfaced - the composition may add a clause, never punctuation of its own.
+        String soleMessage = "Infobase connection runtime session open error"; //$NON-NLS-1$
+        String withoutCause = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(soleMessage), "ProjectB", "app-b", false)) //$NON-NLS-1$ //$NON-NLS-2$
+            .getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+        assertTrue("a single-message failure must gain no Caused by clause: " + withoutCause, //$NON-NLS-1$
+            withoutCause.startsWith("Database update failed: " + soleMessage) //$NON-NLS-1$
+                && !withoutCause.contains("Caused by")); //$NON-NLS-1$
+
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch portWatch =
+            LaunchUpdateDialogAutoConfirmer.beginConflictWatch(null);
+        try
+        {
+            Method recordPortConflict = portWatch.getClass().getDeclaredMethod(
+                "recordPortConflict", String.class, String.class); //$NON-NLS-1$
+            recordPortConflict.setAccessible(true);
+            recordPortConflict.invoke(portWatch, "port 8429 is already in use", //$NON-NLS-1$
+                LaunchUpdateDialogAutoConfirmer.PORT_REASON_POLICY);
+            Method formatPortConflict = UpdateDatabaseTool.class.getDeclaredMethod(
+                "portConflictError", portWatch.getClass(), String.class, String.class, //$NON-NLS-1$
+                boolean.class);
+            formatPortConflict.setAccessible(true);
+            JsonObject portResult = JsonParser.parseString((String)formatPortConflict.invoke(null,
+                portWatch, "ProjectB", "app-b", false)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+            String expectedPortError = "Database update failed: " //$NON-NLS-1$
+                + LaunchUpdateDialogAutoConfirmer.portConflictError(
+                    "port 8429 is already in use", //$NON-NLS-1$
+                    LaunchUpdateDialogAutoConfirmer.PORT_REASON_POLICY)
+                + " The infobase was NOT changed."; //$NON-NLS-1$
+            assertEquals("the specific port-conflict path must remain byte-for-byte unchanged", //$NON-NLS-1$
+                expectedPortError, portResult.get("error").getAsString()); //$NON-NLS-1$
+        }
+        finally
+        {
+            portWatch.close();
+        }
+
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch cancelWatch =
+            LaunchUpdateDialogAutoConfirmer.beginConflictWatch(null);
+        try
+        {
+            Method recordCancel = cancelWatch.getClass().getDeclaredMethod("record", String.class); //$NON-NLS-1$
+            recordCancel.setAccessible(true);
+            recordCancel.invoke(cancelWatch, LaunchUpdateDialogAutoConfirmer.CANCEL_REASON_POLICY);
+            Method formatCancellation = UpdateDatabaseTool.class.getDeclaredMethod(
+                "declinedUpdateResult", cancelWatch.getClass(), //$NON-NLS-1$
+                ExternalInfobaseChangesPolicy.class);
+            formatCancellation.setAccessible(true);
+            JsonObject cancelResult = JsonParser.parseString((String)formatCancellation.invoke(null,
+                cancelWatch, ExternalInfobaseChangesPolicy.OVERRIDE)).getAsJsonObject();
+            assertEquals("the specific cancellation path must remain byte-for-byte unchanged", //$NON-NLS-1$
+                ExternalInfobaseChangesPolicy.declinedUpdateError(
+                    ExternalInfobaseChangesPolicy.OVERRIDE,
+                    LaunchUpdateDialogAutoConfirmer.CANCEL_REASON_POLICY),
+                cancelResult.get("error").getAsString()); //$NON-NLS-1$
+        }
+        finally
+        {
+            cancelWatch.close();
+        }
+    }
+
+    @Test
+    public void testApplicationFailureIncludesExceptionFreeStatusDetailBelowCauseHop()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0,
+            "Infobase authentication error", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "Auth fail")); //$NON-NLS-1$
+        ApplicationException failure = new ApplicationException(
+            "Infobase connection runtime session open error", new CoreException(status)); //$NON-NLS-1$
+
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the exception-free child below the established cause hop must reach the caller: "
+            + error, error.contains("Infobase connection runtime session open error. " //$NON-NLS-1$
+                + "Caused by: Auth fail.")); //$NON-NLS-1$
+        assertFalse("the copied MultiStatus headline is not the actionable cause: " + error,
+            error.contains("Caused by: Infobase authentication error")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureDoesNotUseInformationalStatusChildAsCause()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0, "", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "")); //$NON-NLS-1$
+        status.add(new Status(IStatus.CANCEL, STATUS_PLUGIN_ID, "")); //$NON-NLS-1$
+        status.add(new Status(IStatus.INFO, STATUS_PLUGIN_ID, "Cleanup completed")); //$NON-NLS-1$
+        ApplicationException failure = new ApplicationException(
+            "Infobase connection runtime session open error", new CoreException(status)); //$NON-NLS-1$
+
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertFalse("an informational sibling is not a cause: " + error, //$NON-NLS-1$
+            error.contains("Cleanup completed")); //$NON-NLS-1$
+        assertFalse("blank failing children establish no cause clause: " + error, //$NON-NLS-1$
+            error.contains("Caused by")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureStillUsesCausalHopsOwnStatusMessage()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0, "Connection refused", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "")); //$NON-NLS-1$
+        status.add(new Status(IStatus.INFO, STATUS_PLUGIN_ID, "Cleanup completed")); //$NON-NLS-1$
+        ApplicationException failure = new ApplicationException(
+            "Infobase connection runtime session open error", new CoreException(status)); //$NON-NLS-1$
+
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the causal hop's own statement remains eligible: " + error, //$NON-NLS-1$
+            error.contains("Caused by: Connection refused.")); //$NON-NLS-1$
+        assertFalse("an informational sibling must not displace the hop's own statement: " + error, //$NON-NLS-1$
+            error.contains("Cleanup completed")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureDoesNotRepeatFormattedHeadlineAsCause()
+    {
+        ApplicationException failure =
+            new ApplicationException(new IllegalStateException("Auth fail")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the selected headline must still be present: " + error, //$NON-NLS-1$
+            error.startsWith("Database update failed: java.lang.IllegalStateException: Auth fail")); //$NON-NLS-1$
+        assertFalse("the formatted headline must not be repeated in a Caused by clause: " + error, //$NON-NLS-1$
+            error.contains("Caused by")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureDoesNotReverseMultiStatusParentAndChild()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0,
+            "Database update failed", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "Auth fail")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(status), "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the child remains the selected headline: " + error, //$NON-NLS-1$
+            error.startsWith("Database update failed: Auth fail")); //$NON-NLS-1$
+        assertFalse("the parent must never be presented as the child's cause: " + error, //$NON-NLS-1$
+            error.contains("Caused by: Database update failed")); //$NON-NLS-1$
+        assertFalse("there is no proven deeper diagnosis, so there must be no cause clause: " //$NON-NLS-1$
+            + error, error.contains("Caused by")); //$NON-NLS-1$
     }
 
     // ============ Unexpected (non-ApplicationException) failures, #453 ============
@@ -793,7 +972,7 @@ public class UpdateDatabaseToolTest
     @Test
     public void testCallersApplicationIdSurvivesAnUnboundConfiguration()
     {
-        // The caller named the target themselves — refusing them (old behaviour) or overwriting
+        // The caller named the target themselves тАФ refusing them (old behaviour) or overwriting
         // their value with the configuration's EMPTY attribute would both be wrong, and the
         // project-derived fallback must not be consulted at all in this case.
         assertEquals("an explicit id must survive an unbound configuration", //$NON-NLS-1$
@@ -830,7 +1009,7 @@ public class UpdateDatabaseToolTest
     public void testSoleApplicationSubstitutedWhenNoDefaultIsRecorded() throws ApplicationException
     {
         // A project can have exactly one application and no recorded default; that is not a
-        // disagreement — with one candidate the answer is still unambiguous.
+        // disagreement тАФ with one candidate the answer is still unambiguous.
         IProject project = mock(IProject.class);
         IApplication only = app("app-only", "The only infobase"); //$NON-NLS-1$ //$NON-NLS-2$
         IApplicationManager mgr = mock(IApplicationManager.class);
@@ -848,7 +1027,7 @@ public class UpdateDatabaseToolTest
     public void testSeveralApplicationsAreRefusedAndCandidatesNamed() throws ApplicationException
     {
         // THE point of the narrowed fallback: this tool WRITES to a database, so an ambiguous
-        // project must produce a refusal that lets the caller choose — never a silent guess.
+        // project must produce a refusal that lets the caller choose тАФ never a silent guess.
         IProject project = mock(IProject.class);
         IApplicationManager mgr = mock(IApplicationManager.class);
         // Build the applications BEFORE opening the outer stubbing: app() stubs its own mock,
@@ -1040,7 +1219,7 @@ public class UpdateDatabaseToolTest
     public void testServerApplicationIdGetsNoLaunchIdentifierDiagnosis()
     {
         // ServerApplication. is the prefix REAL 1C standalone-server applications carry in
-        // their own IApplication.getId() — LaunchConfigUtils.isSyntheticApplicationId matches it
+        // their own IApplication.getId() тАФ LaunchConfigUtils.isSyntheticApplicationId matches it
         // too, which is exactly why this diagnosis must not be built on that predicate. A
         // missing/stale server application must NOT be told it is "not an application id".
         assertEquals("", UpdateDatabaseTool.describeLaunchIdentifierHint( //$NON-NLS-1$

@@ -1,7 +1,6 @@
-/**
+﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
- * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -12,8 +11,10 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
@@ -23,6 +24,7 @@ import org.eclipse.debug.core.ILaunchConfiguration;
 import org.eclipse.debug.core.ILaunchManager;
 
 import com._1c.g5.v8.dt.platform.services.model.InfobaseAccess;
+import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpKeys;
@@ -31,6 +33,7 @@ import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.ApplicationSupport;
 import fm.giper.edt.mcp.server.utils.InfobaseAccessSupport;
 import fm.giper.edt.mcp.server.utils.LaunchConfigUtils;
+import fm.giper.edt.mcp.server.utils.LaunchLifecycleUtils;
 import fm.giper.edt.mcp.server.utils.McpJobs;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
 import com.e1c.g5.dt.applications.IApplication;
@@ -39,8 +42,8 @@ import com.e1c.g5.dt.applications.IApplicationManager;
 /**
  * Stores the <em>infobase connection credentials</em> (user/password) EDT uses
  * to authenticate the designer agent for {@code update_database} and
- * {@code debug_launch} against an infobase that requires user authentication
- * (issue #194) — including a standalone-server ({@code wst-server}) application
+ * {@code launch} against an infobase that requires user authentication
+ * (issue #194) тАФ including a standalone-server ({@code wst-server}) application
  * wrapping an already-registered infobase (issue #275).
  *
  * <p>Without stored credentials the update agent is started without the infobase
@@ -48,31 +51,31 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  * Settings" dialog that hangs the unattended call. After this tool the headless
  * update authenticates as the given user.
  *
- * <p>These credentials select an <b>existing</b> infobase user — they do NOT
+ * <p>These credentials select an <b>existing</b> infobase user тАФ they do NOT
  * create users. Demo bases typically have a user with an empty password, so an
  * empty {@code password} is valid.
  *
  * <p><strong>Two consumers, two stores (issue #359).</strong> The infobase access
  * settings above are read by the designer AGENT. The 1C CLIENT a launch starts is a
  * different process and reads its user from the launch configuration's own attributes,
- * so a target given as {@code launchConfigurationName} configures BOTH — see
+ * so a target given as {@code launchConfigurationName} configures BOTH тАФ see
  * {@link #configureClient}. A target given as {@code projectName} + {@code applicationId}
  * names no launch configuration, so only the agent is configured and the success message
  * says so: otherwise a caller reads {@code success:true} and is surprised by the
- * platform's login dialog on the next {@code run_yaxunit_tests} / {@code debug_launch}.
+ * platform's login dialog on the next {@code run_yaxunit_tests} / {@code launch}.
  *
  * <p><strong>Unattended-safety:</strong> the model work (resolve application -&gt;
  * {@link InfobaseAccessSupport#storeCredentials(IApplication, String, String, InfobaseAccess)}
  * -&gt; {@code IInfobaseAccessManager.updateSettings} -&gt; read-back display name) runs in a
  * bounded background Eclipse Job joined with a short {@link #CREDENTIALS_TIMEOUT_SECONDS}-second
- * timeout — never on the UI thread. Resolving an application can provoke EDT's background
+ * timeout тАФ never on the UI thread. Resolving an application can provoke EDT's background
  * application-update-state recompute, which can loop for a long time on an unbounded worker
  * thread; the bounded Job guarantees the call returns. The credentials are recorded as a success
  * the instant {@code updateSettings} commits (before the cosmetic name read-back), so a timeout
  * AFTER the commit still reports success.
  *
  * <p>A Job that outran the deadline is cancelled, but cancellation is cooperative and this one has
- * no monitor poll to honour it, so it keeps running. It therefore checks — on the writing side —
+ * no monitor poll to honour it, so it keeps running. It therefore checks тАФ on the writing side тАФ
  * whether the caller has already been answered before it touches the launch configuration: a call
  * that reported a failure must not leave a user and a password behind it.
  */
@@ -109,7 +112,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     /**
      * Reason recorded when the client half is skipped because the caller has already been answered.
      * It is what keeps a call that reported a failure from mutating a launch configuration behind
-     * the caller's back — see {@link #configureClient}.
+     * the caller's back тАФ see {@link #configureClient}.
      */
     private static final String CLIENT_WRITE_ABANDONED =
         "the call had already returned, so the launch configuration was left untouched"; //$NON-NLS-1$
@@ -124,7 +127,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     public String getDescription()
     {
         return "STORE infobase credentials (user/password) in EDT settings so update_database and " //$NON-NLS-1$
-            + "debug_launch can authenticate. The secret PERSISTS beyond this call, and addressing a " //$NON-NLS-1$
+            + "launch can authenticate. The secret PERSISTS beyond this call, and addressing a " //$NON-NLS-1$
             + "launch configuration also rewrites that configuration's client authentication. " //$NON-NLS-1$
             + "Parameters and examples: get_tool_guide('set_infobase_credentials')."; //$NON-NLS-1$
     }
@@ -191,7 +194,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         String access = JsonUtils.extractStringArgument(params, KEY_ACCESS);
 
         // Reject an out-of-enum access value (the schema declares a closed enum, but a client need
-        // not validate against it before sending) — a typo must not silently store a different mode.
+        // not validate against it before sending) тАФ a typo must not silently store a different mode.
         String accessError = InfobaseAccessSupport.accessError(access);
         if (accessError != null)
         {
@@ -200,8 +203,9 @@ public class SetInfobaseCredentialsTool implements IMcpTool
 
         boolean hasName = configName != null && !configName.isEmpty();
         // Stays null for a projectName + applicationId target: there is then no launch
-        // configuration in play, which is an ANSWER configureClient returns — not a skipped step.
+        // configuration in play, which is an ANSWER configureClient returns тАФ not a skipped step.
         ILaunchConfiguration clientConfig = null;
+        boolean derivedApplicationId = false;
         if (hasName)
         {
             // Resolve the project + applicationId from the launch configuration when a name was given.
@@ -213,6 +217,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
             projectName = resolved.projectName();
             applicationId = resolved.applicationId();
             clientConfig = resolved.config();
+            derivedApplicationId = resolved.derivedApplicationId();
         }
         else
         {
@@ -230,16 +235,16 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         }
 
         return store(projectName, applicationId, user, password, access,
-            hasName ? configName : null, clientConfig);
+            hasName ? configName : null, clientConfig, derivedApplicationId);
     }
 
     /**
-     * Configures the launched CLIENT — when there is a launch configuration to configure.
+     * Configures the launched CLIENT тАФ when there is a launch configuration to configure.
      *
      * <p>The credentials {@link #store} writes below are the <em>infobase access settings</em>, and
      * those are read by the designer AGENT. The client 1C launches is a different process and takes
      * its user from the launch configuration's own attributes, so writing only the former leaves the
-     * client popping the platform's "Infobase access" dialog at every launch — a call that reported
+     * client popping the platform's "Infobase access" dialog at every launch тАФ a call that reported
      * {@code success:true} while the very next {@code run_yaxunit_tests} still blocked on a login
      * prompt (issue #359).
      *
@@ -248,14 +253,14 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      * decides whether the client is configured is testable for both answers.
      *
      * <p>It runs only AFTER the agent's credentials have committed. There is no transaction across
-     * EDT's secure storage and a launch configuration, so one of the two writes is always second —
+     * EDT's secure storage and a launch configuration, so one of the two writes is always second тАФ
      * but this way the second one's failure is REPORTED ({@code clientConfigured:false} plus the
      * reason), whereas the reverse order would leave a launch configuration silently rewritten by a
      * call that answered {@code success:false}.
      *
      * <p><strong>It also runs only while the caller is still waiting.</strong> The store Job is
      * joined with a bounded timeout; when that deadline elapses the caller is answered and
-     * {@link #awaitStoreJob} cancels the Job — but cancellation is COOPERATIVE and cannot stop a
+     * {@link #awaitStoreJob} cancels the Job тАФ but cancellation is COOPERATIVE and cannot stop a
      * Job that is inside {@code getApplication}/{@code storeCredentials}. The Job therefore reaches
      * this point regardless, which is why the check lives HERE, on the side that writes: an answered
      * call must not go on to put a user and a password into a launch configuration behind the
@@ -273,7 +278,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      * @param user the infobase user the client connects as (may be {@code null}/empty for OS auth)
      * @param password the user's password (may be {@code null}; an empty password is legitimate)
      * @param osAuth {@code true} to select OS authentication instead of an explicit user
-     * @return {@code null} when nothing failed — including the case where no launch configuration
+     * @return {@code null} when nothing failed тАФ including the case where no launch configuration
      *     was named and nothing was written; otherwise the reason the write failed
      */
     static String configureClient(AtomicBoolean callerAnswered, String configName,
@@ -333,21 +338,112 @@ public class SetInfobaseCredentialsTool implements IMcpTool
                 + "'. Use list_configurations to see what's available.").toJson()); //$NON-NLS-1$
         }
         // findLaunchConfigByName also matches Attach/debug configs, not just runtime-client ones.
-        // Credentials target a runtime-client config — the same guard update_database applies — and
+        // Credentials target a runtime-client config тАФ the same guard update_database applies тАФ and
         // an attach config has no project or applicationId to derive from.
         if (!LaunchConfigUtils.LAUNCH_CONFIG_TYPE_ID.equals(LaunchConfigUtils.getConfigTypeId(cfg)))
         {
             return TargetResolution.error(ToolResult.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' is not a runtime-client config — set_infobase_credentials requires one.").toJson()); //$NON-NLS-1$
+                + "' is not a runtime-client config тАФ set_infobase_credentials requires one.").toJson()); //$NON-NLS-1$
         }
-        String cfgProject = LaunchConfigUtils.readAttribute(cfg, LaunchConfigUtils.ATTR_PROJECT_NAME, ""); //$NON-NLS-1$
-        String cfgAppId = LaunchConfigUtils.readAttribute(cfg, LaunchConfigUtils.ATTR_APPLICATION_ID, ""); //$NON-NLS-1$
-        if (cfgProject.isEmpty() || cfgAppId.isEmpty())
+        return resolveLaunchConfigTarget(cfg, LaunchLifecycleUtils::resolveDelegateApplicationId);
+    }
+
+    /**
+     * Resolves the two target attributes of a runtime-client configuration, deriving the
+     * application exactly as EDT's launch delegate does when only the project was persisted.
+     *
+     * <p>The resolver is an argument solely to keep this decision headless-testable. Production
+     * passes {@link LaunchLifecycleUtils#resolveDelegateApplicationId(ILaunchConfiguration, String)};
+     * no target-resolution logic is duplicated here.
+     *
+     * @param cfg the configuration to inspect
+     * @param applicationIdResolver the existing EDT-delegate application resolver
+     * @return a resolved target or a truthful refusal naming the exact missing attribute
+     */
+    static TargetResolution resolveLaunchConfigTarget(ILaunchConfiguration cfg,
+            BiFunction<ILaunchConfiguration, String, String> applicationIdResolver)
+    {
+        String cfgProject;
+        try
+        {
+            cfgProject = cfg.getAttribute(LaunchConfigUtils.ATTR_PROJECT_NAME, ""); //$NON-NLS-1$
+        }
+        catch (CoreException e)
+        {
+            return TargetResolution.error(ToolResult.error("The project binding could not be " //$NON-NLS-1$
+                + "read from launch configuration '" + cfg.getName() //$NON-NLS-1$
+                + "' тАФ refusing to derive a credential target. Fix the configuration, or pass " //$NON-NLS-1$
+                + "projectName + applicationId explicitly.").toJson()); //$NON-NLS-1$
+        }
+        String cfgAppId;
+        try
+        {
+            // This path selects where a SECRET is written. LaunchConfigUtils.readAttribute is
+            // intentionally lenient and conflates a failed read with an absent attribute, so use
+            // the platform accessor directly here and preserve that distinction.
+            cfgAppId = cfg.getAttribute(LaunchConfigUtils.ATTR_APPLICATION_ID, ""); //$NON-NLS-1$
+        }
+        catch (CoreException e)
+        {
+            return TargetResolution.error(ToolResult.error("The application binding could not be " //$NON-NLS-1$
+                + "read from launch configuration '" + cfg.getName() //$NON-NLS-1$
+                + "' тАФ refusing to derive a credential target. Fix the configuration, or pass " //$NON-NLS-1$
+                + "projectName + applicationId explicitly.").toJson()); //$NON-NLS-1$
+        }
+        if (cfgProject.isEmpty())
         {
             return TargetResolution.error(ToolResult.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' has no project or applicationId attribute — cannot derive the target.").toJson()); //$NON-NLS-1$
+                + "' is missing ATTR_PROJECT_NAME (read project='', applicationId='" + cfgAppId //$NON-NLS-1$
+                + "') тАФ cannot derive the target. Bind it to a project in EDT, or pass " //$NON-NLS-1$
+                + "projectName + applicationId explicitly.").toJson()); //$NON-NLS-1$
         }
-        return TargetResolution.resolved(cfgProject, cfgAppId, cfg);
+        if (!cfgAppId.isEmpty())
+        {
+            return TargetResolution.resolved(cfgProject, cfgAppId, cfg, false);
+        }
+        String derived = null;
+        try
+        {
+            derived = applicationIdResolver.apply(cfg, cfgProject);
+        }
+        catch (Exception e) // NOSONAR resolution failure becomes the refusal below
+        {
+            // The resolver already owns platform access. Do not replace its decision with a
+            // hand-rolled fallback, and do not let an unchecked platform failure escape the tool.
+            // But do not swallow it in SILENCE either: this whole issue (#545) is about a caller
+            // being told one thing while the log says another, and a bare catch here would leave a
+            // platform API change looking exactly like a configuration that has no application -
+            // with nothing anywhere to tell the two apart. WARNING, not ERROR: the caller's own
+            // answer below is a legitimate refusal, not a server fault.
+            Activator.logWarning("Could not derive the application id for launch configuration '" //$NON-NLS-1$
+                + cfg.getName() + "' of project '" + cfgProject + "': " //$NON-NLS-1$ //$NON-NLS-2$
+                + e.getClass().getName() + ": " + e.getMessage()); //$NON-NLS-1$
+        }
+        if (!isApplicationManagerId(derived))
+        {
+            String returned = derived == null || derived.isEmpty()
+                // Name what the id IS, not who produced it: EDT answers a synthetic
+                // "launch:<config name>" for a configuration that carries no application, and no
+                // application manager resolves that. Reporting it as a target would hand the caller
+                // an id that fails one call later - the exact shape of failure this issue is about.
+                ? "" : " EDT derived only the placeholder id '" + derived //$NON-NLS-1$ //$NON-NLS-2$
+                    + "', which names no application."; //$NON-NLS-1$
+            return TargetResolution.error(ToolResult.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
+                + "' is missing ATTR_APPLICATION_ID (read project='" + cfgProject //$NON-NLS-1$
+                + "', applicationId=''); EDT could not derive a project-default application " //$NON-NLS-1$
+                + "from that project." + returned + " Cannot derive the target. Bind the " //$NON-NLS-1$ //$NON-NLS-2$
+                + "configuration to an application in EDT, or pass projectName + applicationId " //$NON-NLS-1$
+                + "explicitly.").toJson()); //$NON-NLS-1$
+        }
+        return TargetResolution.resolved(cfgProject, derived, cfg, true);
+    }
+
+    /** Whether a derived id can be handed to {@code IApplicationManager.getApplication}. */
+    private static boolean isApplicationManagerId(String applicationId)
+    {
+        return applicationId != null && !applicationId.isEmpty()
+            && !applicationId.startsWith(LaunchConfigUtils.LAUNCH_APP_ID_PREFIX)
+            && !applicationId.startsWith(LaunchConfigUtils.ATTACH_APP_ID_PREFIX);
     }
 
     /**
@@ -361,19 +457,24 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         private final String error;
         /** The resolved configuration itself - the CLIENT's credentials are written onto it. */
         private final ILaunchConfiguration config;
+        /** Whether EDT's project-default application supplied the id. */
+        private final boolean derivedApplicationId;
 
         private TargetResolution(String projectName, String applicationId, String error,
-            ILaunchConfiguration config)
+            ILaunchConfiguration config, boolean derivedApplicationId)
         {
             this.projectName = projectName;
             this.applicationId = applicationId;
             this.error = error;
             this.config = config;
+            this.derivedApplicationId = derivedApplicationId;
         }
 
-        static TargetResolution resolved(String projectName, String applicationId, ILaunchConfiguration config)
+        static TargetResolution resolved(String projectName, String applicationId,
+                ILaunchConfiguration config, boolean derivedApplicationId)
         {
-            return new TargetResolution(projectName, applicationId, null, config);
+            return new TargetResolution(projectName, applicationId, null, config,
+                derivedApplicationId);
         }
 
         ILaunchConfiguration config()
@@ -383,7 +484,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
 
         static TargetResolution error(String error)
         {
-            return new TargetResolution(null, null, error, null);
+            return new TargetResolution(null, null, error, null, false);
         }
 
         String projectName()
@@ -400,10 +501,16 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         {
             return error;
         }
+
+        boolean derivedApplicationId()
+        {
+            return derivedApplicationId;
+        }
     }
 
     private String store(String projectName, String applicationId, String user, String password,
-            String access, String clientConfigName, ILaunchConfiguration clientConfig)
+            String access, String clientConfigName, ILaunchConfiguration clientConfig,
+            boolean derivedApplicationId)
     {
         // Prelude on the calling thread: resolving the IApplicationManager is a cheap service lookup.
         ApplicationSupport.ManagerResult mr = ApplicationSupport.resolveManager(projectName);
@@ -420,6 +527,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         final String finalAccess = access;
         final String finalClientConfigName = clientConfigName;
         final ILaunchConfiguration finalClientConfig = clientConfig;
+        final boolean finalDerivedApplicationId = derivedApplicationId;
 
         // The model work (getApplication -> storeCredentials -> getName) runs in a bounded background
         // Job. Resolving an application can provoke EDT's background application-update-state recompute,
@@ -442,7 +550,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
                 {
                     appOpt = appManager.getApplication(project, finalApplicationId);
                 }
-                catch (Exception e) // NOSONAR EDT application lookup — surface as an actionable error
+                catch (Exception e) // NOSONAR EDT application lookup тАФ surface as an actionable error
                 {
                     jobResult.set(ToolResult.error("Error resolving application '" + finalApplicationId //$NON-NLS-1$
                         + "': " + e.getMessage()).toJson()); //$NON-NLS-1$
@@ -471,16 +579,18 @@ public class SetInfobaseCredentialsTool implements IMcpTool
                 // so this provisional record says so rather than claiming a configured client.
                 boolean passwordSet = finalPassword != null && !finalPassword.isEmpty();
                 String storedUser = finalUser == null ? "" : finalUser; //$NON-NLS-1$
-                jobResult.set(buildSuccess(finalProjectName, finalApplicationId, finalApplicationId,
+                jobResult.set(buildSuccess(finalProjectName, finalApplicationId,
+                    finalDerivedApplicationId, finalApplicationId,
                     storedUser, passwordSet, accessKind, finalClientConfigName, CLIENT_WRITE_UNFINISHED));
 
-                // The agent half has committed, so now — and only now — the CLIENT half. Writing it
+                // The agent half has committed, so now тАФ and only now тАФ the CLIENT half. Writing it
                 // after the commit means a failure of the agent half leaves the launch configuration
                 // untouched instead of silently rewritten by a call that answered success:false.
                 String clientError = configureClient(callerAnswered, finalClientConfigName,
                     finalClientConfig, finalUser, finalPassword,
                     InfobaseAccessSupport.isOsAccess(finalAccess));
-                jobResult.set(buildSuccess(finalProjectName, finalApplicationId, finalApplicationId,
+                jobResult.set(buildSuccess(finalProjectName, finalApplicationId,
+                    finalDerivedApplicationId, finalApplicationId,
                     storedUser, passwordSet, accessKind, finalClientConfigName, clientError));
 
                 // Best-effort enrich: replace the applicationId-named success with the real display name.
@@ -489,11 +599,12 @@ public class SetInfobaseCredentialsTool implements IMcpTool
                     String name = application.getName();
                     if (name != null && !name.isEmpty())
                     {
-                        jobResult.set(buildSuccess(finalProjectName, finalApplicationId, name, storedUser,
-                            passwordSet, accessKind, finalClientConfigName, clientError));
+                        jobResult.set(buildSuccess(finalProjectName, finalApplicationId,
+                            finalDerivedApplicationId, name, storedUser, passwordSet, accessKind,
+                            finalClientConfigName, clientError));
                     }
                 }
-                catch (Exception e) // NOSONAR cosmetic read-back — keep the applicationId-named success
+                catch (Exception e) // NOSONAR cosmetic read-back тАФ keep the applicationId-named success
                 {
                     // The credentials are already stored; keep the success recorded above.
                 }
@@ -517,7 +628,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      *
      * <p>It reports what THIS call did, not what a launch will do. A launch configuration nobody
      * touched here may already carry a user somebody set by hand, and one this call did write can
-     * still fail at connect on a user that does not exist or a wrong password — so the wording says
+     * still fail at connect on a user that does not exist or a wrong password тАФ so the wording says
      * "not configured by this call", never "will fail".
      *
      * @param clientConfigName the launch configuration that was updated, or {@code null} when the
@@ -557,6 +668,19 @@ public class SetInfobaseCredentialsTool implements IMcpTool
             String storedUser, boolean passwordSet, InfobaseAccess accessKind, String clientConfigName,
             String clientError)
     {
+        return buildSuccess(projectName, applicationId, false, displayName, storedUser,
+            passwordSet, accessKind, clientConfigName, clientError);
+    }
+
+    /** Same success payload, explicitly reporting a project-default application derivation. */
+    static String buildSuccess(String projectName, String applicationId,
+            boolean derivedApplicationId, String displayName, String storedUser, boolean passwordSet,
+            InfobaseAccess accessKind, String clientConfigName, String clientError)
+    {
+        String derivedNote = derivedApplicationId
+            ? " The launch configuration had no applicationId attribute, so EDT's project-default " //$NON-NLS-1$
+                + "application '" + applicationId + "' was derived for project '" + projectName + "'." //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            : ""; //$NON-NLS-1$
         return ToolResult.success()
             .put(KEY_CLIENT_CONFIGURED, clientConfigName != null && clientError == null)
             .put(McpKeys.PROJECT, projectName)
@@ -567,8 +691,9 @@ public class SetInfobaseCredentialsTool implements IMcpTool
             .put(KEY_PASSWORD_SET, passwordSet)
             .put(McpKeys.MESSAGE, "Stored infobase access credentials for application '" //$NON-NLS-1$
                 + displayName + "' (user '" + storedUser + "', access " //$NON-NLS-1$ //$NON-NLS-2$
-                + accessKind.getName() + "). The update agent used by update_database / " //$NON-NLS-1$
-                + "debug_launch will now authenticate with them. " //$NON-NLS-1$
+                + accessKind.getName() + ")." + derivedNote //$NON-NLS-1$
+                + " The update agent used by update_database / " //$NON-NLS-1$
+                + "launch will now authenticate with them. " //$NON-NLS-1$
                 + clientNote(clientConfigName, clientError))
             .toJson();
     }
@@ -581,8 +706,8 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      * graceful interrupted error.
      *
      * <p>Every exit raises {@code callerAnswered} FIRST, before the answer is even built. A Job that
-     * outran the deadline keeps running — {@link Job#cancel()} only asks it to stop, and this one has
-     * no monitor poll to honour it — so the flag is the one thing that stops it from writing a launch
+     * outran the deadline keeps running тАФ {@link Job#cancel()} only asks it to stop, and this one has
+     * no monitor poll to honour it тАФ so the flag is the one thing that stops it from writing a launch
      * configuration for a call that has already reported a failure (see {@link #configureClient}).
      *
      * @param job the scheduled store Job
@@ -639,7 +764,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
 
     /**
      * Pure, headless-testable seam mapping the bounded-Job outcome to the tool-result JSON. When the
-     * Job recorded a result it is returned verbatim — this covers both a clean finish AND the
+     * Job recorded a result it is returned verbatim тАФ this covers both a clean finish AND the
      * persist-first timeout case where the credentials already committed before the deadline. Otherwise
      * a graceful error is produced: a timeout message when the Job did not finish, or a "no result"
      * message when it finished without recording anything.

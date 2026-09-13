@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP Server UI Tests
 Bundle-SymbolicName: fm.giper.edt.mcp.server.ui.tests;singleton:=true
-Bundle-Version: 1.0.9.qualifier
+Bundle-Version: 1.0.10.qualifier
 Bundle-Vendor: ExpSPB
 Require-Bundle: fm.giper.edt.mcp.server,
  org.eclipse.ui,

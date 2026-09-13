@@ -7,9 +7,7 @@
 
 package fm.giper.edt.mcp.server.transport;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
@@ -57,6 +55,40 @@ public class McpHttpHandler implements HttpHandler
     private static final String CONNECTION = "Connection"; //$NON-NLS-1$
     private static final String KEEP_ALIVE = "keep-alive"; //$NON-NLS-1$
 
+    /**
+     * The path a POST body takes through this transport, decided by the PARSED method.
+     * <p>
+     * It used to be decided by a substring probe of the raw body, which reported "initialize" for
+     * any {@code tools/call} whose payload merely CONTAINED the quoted word - an argument whose
+     * value is that word, such as a search for {@code initialize} - and that answer carried a
+     * stray {@code Mcp-Session-Id} header on both the JSON and the SSE path. The real method is
+     * parsed either way, so nothing is paid for reading it instead of guessing.
+     */
+    enum Route
+    {
+        INITIALIZE,
+        TOOL_CALL,
+        OTHER;
+
+        /**
+         * @param request the parsed request, or {@code null} on a JSON syntax error
+         * @return the route this request takes; {@link #OTHER} for anything unparsed or unknown
+         */
+        static Route of(JsonRpcRequest request)
+        {
+            String method = request != null ? request.getMethod() : null;
+            if (McpConstants.METHOD_INITIALIZE.equals(method))
+            {
+                return INITIALIZE;
+            }
+            if (McpConstants.METHOD_TOOLS_CALL.equals(method))
+            {
+                return TOOL_CALL;
+            }
+            return OTHER;
+        }
+    }
+
     /** Event ID counter for SSE - AtomicLong for thread safety across concurrent SSE streams */
     private final AtomicLong eventIdCounter = new AtomicLong(0);
 
@@ -64,12 +96,21 @@ public class McpHttpHandler implements HttpHandler
     private final McpProtocolHandler protocolHandler;
     private final InterruptibleToolExecutor interruptibleExecutor;
 
+    /**
+     * Whether the listener THIS handler serves accepts connections from other hosts. It is a
+     * final snapshot rather than a lookup on the server, and that is the point: a handler exists
+     * for exactly as long as the context it was created for, so no start or stop can leave it
+     * describing a different socket than the one the request arrived on.
+     */
+    private final boolean boundRemotely;
+
     public McpHttpHandler(McpServer server, McpProtocolHandler protocolHandler,
-        InterruptibleToolExecutor interruptibleExecutor)
+        InterruptibleToolExecutor interruptibleExecutor, boolean boundRemotely)
     {
         this.server = server;
         this.protocolHandler = protocolHandler;
         this.interruptibleExecutor = interruptibleExecutor;
+        this.boundRemotely = boundRemotely;
     }
 
     @Override
@@ -79,9 +120,12 @@ public class McpHttpHandler implements HttpHandler
         // occupy threads in the main request pool or block the dispatcher.
         String method = exchange.getRequestMethod();
 
-        // Optional shared-token auth — applies to every method, including SSE GET.
-        // No-op when PREF_AUTH_TOKEN is empty (default), preserving prior behavior.
-        if (!HttpTransport.isAuthorized(exchange))
+        // Optional shared-token auth — applies to every method except the CORS preflight,
+        // including SSE GET (see HttpTransport.requiresAuthorization for why OPTIONS is exempt).
+        // No-op when PREF_AUTH_TOKEN is empty on the default loopback bind; on a listener bound
+        // to every interface an empty token refuses instead, because that listener was only
+        // allowed to open because a token was set.
+        if (HttpTransport.requiresAuthorization(method) && !HttpTransport.isAuthorized(exchange, boundRemotely))
         {
             try
             {
@@ -307,29 +351,29 @@ public class McpHttpHandler implements HttpHandler
         String requestBody;
         try
         {
-            StringBuilder body = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8)))
-            {
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    body.append(line);
-                }
-            }
-            requestBody = body.toString();
+            requestBody = HttpTransport.readBody(exchange);
         }
         catch (IOException e)
         {
             Activator.logInfo("Connection lost while reading request body: " + e.getMessage()); //$NON-NLS-1$
             return;
         }
+        if (requestBody == null)
+        {
+            Activator.logInfo("Request body over the " + HttpTransport.MAX_BODY_BYTES //$NON-NLS-1$
+                + "-byte limit rejected with 413"); //$NON-NLS-1$
+            HttpTransport.sendResponse(exchange, 413, JsonUtils.buildJsonRpcError(
+                McpConstants.ERROR_INVALID_REQUEST, "Request body exceeds the " //$NON-NLS-1$
+                    + HttpTransport.MAX_BODY_BYTES + "-byte limit", null)); //$NON-NLS-1$
+            return;
+        }
 
         Activator.logDebug("MCP request body: " + requestBody); //$NON-NLS-1$
 
         JsonRpcRequest parsed = protocolHandler.parse(requestBody);
-        boolean isInitialize = parsed != null && McpConstants.METHOD_INITIALIZE.equals(parsed.getMethod());
-        boolean isToolCall = parsed != null && McpConstants.METHOD_TOOLS_CALL.equals(parsed.getMethod());
+        Route route = Route.of(parsed);
+        boolean isInitialize = route == Route.INITIALIZE;
+        boolean isToolCall = route == Route.TOOL_CALL;
         if (parsed != null && !isInitialize)
         {
             context = bindSession(exchange, context);

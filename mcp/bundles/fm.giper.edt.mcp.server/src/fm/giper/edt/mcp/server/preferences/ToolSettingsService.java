@@ -50,6 +50,10 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
     private static final Set<String> DEVELOPMENT_V4_ADDITIONS = Set.of(
         "stop_profiling"); //$NON-NLS-1$
 
+    private static final Set<String> READ_ONLY_V5_ADDITIONS = Set.of(
+        "merge_rules", //$NON-NLS-1$
+        "delete_project"); //$NON-NLS-1$
+
     /*
      * Frozen recognition shapes: what any historical stored profile of this preset must contain.
      * Never derive them from the live preset, which has grown over time. A shape is only ever
@@ -60,7 +64,7 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
      * so version 4 still recognizes a read-only store whose user deliberately re-enabled it.
      */
     static final Set<String> ANALYSIS_ONLY_RECOGNITION_SHAPE = Set.of(
-        "debug_launch", //$NON-NLS-1$
+        "launch", //$NON-NLS-1$
         "debug_status", //$NON-NLS-1$
         "debug_yaxunit_tests", //$NON-NLS-1$
         "evaluate_expression", //$NON-NLS-1$
@@ -90,7 +94,7 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         "write_module_source"); //$NON-NLS-1$
 
     static final Set<String> CODE_REVIEW_RECOGNITION_SHAPE = Set.of(
-        "debug_launch", //$NON-NLS-1$
+        "launch", //$NON-NLS-1$
         "debug_status", //$NON-NLS-1$
         "debug_yaxunit_tests", //$NON-NLS-1$
         "evaluate_expression", //$NON-NLS-1$
@@ -239,6 +243,15 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
             // re-run an EARLIER one an installation already passed through.
             // The tool names are used as literals here on purpose: the preferences layer must not
             // depend on tools/impl (see the architecture rules).
+            // FIRST, before any shape-based step: the rename debug_launch -> launch. Every stored
+            // list predating this build spells the tool the old way, while the frozen recognition
+            // shapes below and every later lookup spell it the new way, so renaming here is what
+            // keeps both a deliberate disable AND preset recognition working across the rename.
+            if (storedVersion < 6 && disabled.remove("debug_launch")) //$NON-NLS-1$
+            {
+                disabled.add("launch"); //$NON-NLS-1$
+                changed = true;
+            }
             if (storedVersion < 1)
             {
                 changed |= disabled.add("git"); //$NON-NLS-1$
@@ -259,6 +272,10 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
                 // The v4 shapes intentionally omit apply_quick_fix, so this step recognizes a store
                 // whose user deliberately re-enabled it after version 2 without adding it back.
                 changed |= migrateRegroupedToolsIntoPresets(disabled);
+            }
+            if (storedVersion < 5)
+            {
+                changed |= migrateDestructiveToolsIntoReadOnlyPresets(disabled);
             }
             if (changed)
             {
@@ -336,6 +353,16 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         return false;
     }
 
+    private static boolean migrateDestructiveToolsIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+            || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(READ_ONLY_V5_ADDITIONS);
+        }
+        return false;
+    }
+
     /**
      * Saves the set of disabled tool names to preferences.
      */
@@ -383,7 +410,9 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
      */
     public boolean isToolEnabled(String toolName)
     {
-        return !getDisabledTools().contains(toolName);
+        String canonical = fm.giper.edt.mcp.server.tools.McpToolRegistry.canonicalToolName(toolName);
+        Set<String> disabled = getDisabledTools();
+        return !disabled.contains(canonical) && !disabled.contains(toolName);
     }
 
     /**

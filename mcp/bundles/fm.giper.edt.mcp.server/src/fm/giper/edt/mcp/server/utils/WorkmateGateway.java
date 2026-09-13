@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
@@ -11,6 +11,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -36,7 +37,7 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.FrameworkUtil;
 
 /**
- * Version-localized reflective adapter for 1C:Workmate 1.0.5.
+ * Reflective adapter for the 1C:Workmate 1.0.5 and 1.0.7 API shapes.
  * <p>
  * Workmate is deliberately absent from EDT-MCP's target platform. Every class,
  * constructor, field and method belonging to Workmate is therefore named and
@@ -46,6 +47,12 @@ import org.osgi.framework.FrameworkUtil;
  * point. Since there is no public injector/facade getter, this adapter reads the
  * single private {@code injectorRef} field and asks the live Guice injector for
  * the facade instance.
+ * <p>
+ * Workmate 1.0.5 wraps the EDT project in {@code ProjectId} and exposes a
+ * two-argument {@code ConversationFacade.sendAsync}; 1.0.7 takes {@link IProject}
+ * directly and adds a third progress-listener argument to {@code sendAsync}. The
+ * adapter selects between those layouts by probing the installed public
+ * constructors and methods, never by interpreting a bundle version string.
  */
 public class WorkmateGateway
 {
@@ -59,6 +66,7 @@ public class WorkmateGateway
     private static final String AI_BUNDLE = "com.e1c.edt.ai"; //$NON-NLS-1$
     private static final String UI_COMMON_BUNDLE = "com.e1c.edt.ai.ui.common"; //$NON-NLS-1$
     private static final String UI_BUNDLE = "com.e1c.edt.ai.ui"; //$NON-NLS-1$
+    private static final String CONTEXT_BUNDLE = "com.e1c.edt.ai.context"; //$NON-NLS-1$
 
     private static final String BASE_ACTIVATOR = "com.e1c.edt.ai.ui.BaseActivator"; //$NON-NLS-1$
     private static final String CONVERSATION_FACADE = "com.e1c.edt.ai.ConversationFacade"; //$NON-NLS-1$
@@ -87,11 +95,11 @@ public class WorkmateGateway
 
     /**
      * The nudge sent as the continuation message. It is Russian because it is addressed to
-     * Workmate's model, whose conversation runs in the IDE language — it is data for that model,
+     * Workmate's model, whose conversation runs in the IDE language тАФ it is data for that model,
      * not surface text. Same intent as {@code DevAutopilot}'s own continuation prompt (answer with
      * the result, not with a plan), with one deliberate difference: it does NOT order a tool call.
-     * Measured live, "continue with tools" kept a model that wanted a documentation search — a
-     * tool this toolset does not have — announcing that search five times over. Naming the escape
+     * Measured live, "continue with tools" kept a model that wanted a documentation search тАФ a
+     * tool this toolset does not have тАФ announcing that search five times over. Naming the escape
      * hatch instead ("if the tool you need is unavailable, answer from your own knowledge") is
      * what turns the last continuation into an answer.
      */
@@ -110,7 +118,7 @@ public class WorkmateGateway
 
     /**
      * First-person announcements of intent, lowercase. A SHORT answer containing one of these is
-     * Workmate saying what it is about to do — the exact shape issue #427 reported ("For a full
+     * Workmate saying what it is about to do тАФ the exact shape issue #427 reported ("For a full
      * reference ... I will use the 1C documentation search"), which the platform then never
      * followed up on its own.
      *
@@ -182,7 +190,7 @@ public class WorkmateGateway
         + "\u044D\u0442\u043E\u0442 \u043C\u0430\u0440\u043A\u0435\u0440 \u043D\u0435 \u043F\u0438\u0448\u0438."; //$NON-NLS-1$
 
     /** The Russian negation particle that turns any of the verbs below into a refusal. */
-    private static final String NEGATION_PARTICLE = "\u043D\u0435"; // не
+    private static final String NEGATION_PARTICLE = "\u043D\u0435"; // ╨╜╨╡
 
     /** Words that turn a following "not" into a correlative rather than a denial. */
     private static final String[] CORRELATIVE_AFTER_NOT = {
@@ -196,22 +204,22 @@ public class WorkmateGateway
     };
 
     private static final String[] INTENT_MARKERS = {
-        "\u0432\u043E\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0441\u044C", // воспользуюсь //$NON-NLS-1$
-        "\u043F\u043E\u0438\u0449\u0443", // поищу //$NON-NLS-1$
-        "\u043D\u0430\u0439\u0434\u0443", // найду //$NON-NLS-1$
-        "\u0438\u0437\u0443\u0447\u0443", // изучу //$NON-NLS-1$
-        "\u043F\u043E\u0441\u043C\u043E\u0442\u0440\u044E", // посмотрю //$NON-NLS-1$
-        "\u043F\u0440\u043E\u0432\u0435\u0440\u044E", // проверю //$NON-NLS-1$
-        "\u0441\u043E\u0437\u0434\u0430\u043C", // создам //$NON-NLS-1$
-        "\u043D\u0430\u0447\u043D\u0443", // начну //$NON-NLS-1$
+        "\u0432\u043E\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0441\u044C", // ╨▓╨╛╤Б╨┐╨╛╨╗╤М╨╖╤Г╤О╤Б╤М //$NON-NLS-1$
+        "\u043F\u043E\u0438\u0449\u0443", // ╨┐╨╛╨╕╤Й╤Г //$NON-NLS-1$
+        "\u043D\u0430\u0439\u0434\u0443", // ╨╜╨░╨╣╨┤╤Г //$NON-NLS-1$
+        "\u0438\u0437\u0443\u0447\u0443", // ╨╕╨╖╤Г╤З╤Г //$NON-NLS-1$
+        "\u043F\u043E\u0441\u043C\u043E\u0442\u0440\u044E", // ╨┐╨╛╤Б╨╝╨╛╤В╤А╤О //$NON-NLS-1$
+        "\u043F\u0440\u043E\u0432\u0435\u0440\u044E", // ╨┐╤А╨╛╨▓╨╡╤А╤О //$NON-NLS-1$
+        "\u0441\u043E\u0437\u0434\u0430\u043C", // ╤Б╨╛╨╖╨┤╨░╨╝ //$NON-NLS-1$
+        "\u043D\u0430\u0447\u043D\u0443", // ╨╜╨░╤З╨╜╤Г //$NON-NLS-1$
         // Analytic future, restricted to an action verb for the same reason "let me" is:
         // the bare auxiliary also opens finished statements ("I will be glad to help").
-        "\u0431\u0443\u0434\u0443 \u0438\u0441\u043A\u0430\u0442\u044C", // буду искать //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0442\u044C", // буду проверять //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C", // буду смотреть //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0438\u0437\u0443\u0447\u0430\u0442\u044C", // буду изучать //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C", // буду создавать //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0442\u044C\u0441\u044F", // буду разбираться //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0438\u0441\u043A\u0430\u0442\u044C", // ╨▒╤Г╨┤╤Г ╨╕╤Б╨║╨░╤В╤М //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0442\u044C", // ╨▒╤Г╨┤╤Г ╨┐╤А╨╛╨▓╨╡╤А╤П╤В╤М //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C", // ╨▒╤Г╨┤╤Г ╤Б╨╝╨╛╤В╤А╨╡╤В╤М //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0438\u0437\u0443\u0447\u0430\u0442\u044C", // ╨▒╤Г╨┤╤Г ╨╕╨╖╤Г╤З╨░╤В╤М //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C", // ╨▒╤Г╨┤╤Г ╤Б╨╛╨╖╨┤╨░╨▓╨░╤В╤М //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0442\u044C\u0441\u044F", // ╨▒╤Г╨┤╤Г ╤А╨░╨╖╨▒╨╕╤А╨░╤В╤М╤Б╤П //$NON-NLS-1$
         "i will", //$NON-NLS-1$
         "i'll", //$NON-NLS-1$
         // "let me" alone is a discourse marker ("let me clarify: ..."), so only the phrases
@@ -258,6 +266,187 @@ public class WorkmateGateway
         "com.e1c.edt.ai.assistent.model.McpToolCallFunctionCall"; //$NON-NLS-1$
 
     /**
+     * Finds the seven-argument conversation request shared by the supported API layouts.
+     * The first parameter deliberately remains open: it is the part Workmate changed.
+     *
+     * @param requestClass installed request class
+     * @param sessionClass installed conversation-session class
+     * @return the matching public constructor, or {@code null}
+     */
+    static Constructor<?> findConversationRequestConstructor(Class<?> requestClass,
+        Class<?> sessionClass)
+    {
+        try
+        {
+            for (Constructor<?> constructor : requestClass.getConstructors())
+            {
+                Class<?>[] parameters = constructor.getParameterTypes();
+                if (parameters.length == 7
+                    && parameters[1] == String.class
+                    && parameters[2] == sessionClass
+                    && parameters[3] == boolean.class
+                    && parameters[4] == String.class
+                    && parameters[5] == Boolean.class
+                    && parameters[6] == Integer.class)
+                {
+                    return constructor;
+                }
+            }
+        }
+        catch (RuntimeException | LinkageError e) // NOSONAR a failed probe is reported by its caller
+        {
+            return null;
+        }
+        return null;
+    }
+
+    /**
+     * Finds the thirteen-argument AI context shared by the supported API layouts.
+     * The first parameter deliberately remains open: it is the part Workmate changed.
+     *
+     * @param contextClass installed context class
+     * @param documentClass installed document class
+     * @return the matching public constructor, or {@code null}
+     */
+    static Constructor<?> findAiContextConstructor(Class<?> contextClass, Class<?> documentClass)
+    {
+        try
+        {
+            for (Constructor<?> constructor : contextClass.getConstructors())
+            {
+                Class<?>[] parameters = constructor.getParameterTypes();
+                if (parameters.length == 13
+                    && parameters[1] == int.class
+                    && parameters[2] == String.class
+                    && parameters[3] == int.class
+                    && parameters[4] == String.class
+                    && parameters[5] == String.class
+                    && parameters[6] == int.class
+                    && parameters[7] == String.class
+                    && parameters[8] == String.class
+                    && parameters[9] == int.class
+                    && parameters[10] == int.class
+                    && parameters[11] == documentClass
+                    && parameters[12] == Supplier.class)
+                {
+                    return constructor;
+                }
+            }
+        }
+        catch (RuntimeException | LinkageError e) // NOSONAR a failed probe is reported by its caller
+        {
+            return null;
+        }
+        return null;
+    }
+
+    /**
+     * Finds Workmate's conversation send method, preferring the older two-argument shape.
+     *
+     * @param facadeClass installed conversation facade class
+     * @param requestClass installed request class
+     * @param tokenClass installed cancellation-token class
+     * @return the two-argument method, otherwise a matching three-argument method, or {@code null}
+     */
+    static Method findSendAsync(Class<?> facadeClass, Class<?> requestClass, Class<?> tokenClass)
+    {
+        Method threeArgument = null;
+        try
+        {
+            for (Method method : facadeClass.getMethods())
+            {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (!"sendAsync".equals(method.getName()) //$NON-NLS-1$
+                    || parameters.length < 2
+                    || parameters[0] != requestClass
+                    || parameters[1] != tokenClass)
+                {
+                    continue;
+                }
+                if (parameters.length == 2)
+                {
+                    return method;
+                }
+                if (parameters.length == 3 && threeArgument == null)
+                {
+                    threeArgument = method;
+                }
+            }
+        }
+        catch (RuntimeException | LinkageError e) // NOSONAR a failed probe is reported by its caller
+        {
+            return null;
+        }
+        return threeArgument;
+    }
+
+    /**
+     * Builds the arguments for whichever supported {@code sendAsync} overload was found.
+     *
+     * @param sendAsync resolved two- or three-argument method
+     * @param request prepared conversation request
+     * @param cancellationToken Workmate cancellation token
+     * @return arguments matching the resolved method's arity
+     */
+    static Object[] sendAsyncArguments(Method sendAsync, Object request, Object cancellationToken)
+    {
+        return sendAsync.getParameterCount() == 3
+            ? new Object[] {request, cancellationToken, null}
+            : new Object[] {request, cancellationToken};
+    }
+
+    /**
+     * Reports whether the constructor explicitly declares an Eclipse project type.
+     * <p>
+     * The direction is deliberately {@code IProject.class.isAssignableFrom(parameterType)}.
+     * Reversing it would accept supertypes such as {@code Object} or {@code IResource}; those
+     * are unrecognized API shapes and must be refused with a diagnostic rather than guessed.
+     *
+     * @param projectParameterType first parameter of the probed Workmate constructor
+     * @return whether that parameter is {@link IProject} or a more specific project type
+     */
+    static boolean takesEclipseProject(Class<?> projectParameterType)
+    {
+        return projectParameterType != null
+            && IProject.class.isAssignableFrom(projectParameterType);
+    }
+
+    /**
+     * Reports whether a type is Workmate's legacy project wrapper.
+     * <p>
+     * The known FQN is checked first. The exact shape fallback exists because a renamed wrapper
+     * with the same public {@code Default} value and {@code (IProject)} constructor is still that
+     * wrapper; anything else is refused rather than inferred from a looser resemblance.
+     *
+     * @param projectParameterType first parameter of the probed Workmate constructor
+     * @return whether the type is the known wrapper or declares its exact public shape
+     */
+    static boolean isLegacyProjectWrapper(Class<?> projectParameterType)
+    {
+        if (projectParameterType == null)
+        {
+            return false;
+        }
+        if (PROJECT_ID.equals(projectParameterType.getName()))
+        {
+            return true;
+        }
+        try
+        {
+            Field defaultField = projectParameterType.getDeclaredField("Default"); //$NON-NLS-1$
+            int modifiers = defaultField.getModifiers();
+            return Modifier.isPublic(modifiers)
+                && Modifier.isStatic(modifiers)
+                && defaultField.getType() == projectParameterType
+                && projectParameterType.getConstructor(IProject.class) != null;
+        }
+        catch (NoSuchFieldException | NoSuchMethodException | SecurityException | LinkageError e)
+        {
+            return false;
+        }
+    }
+
+    /**
      * How long the hand-off to the SWT thread may take. This bounds only the hand-off - opening
      * the view and posting the question - never Workmate's own work, which continues in its chat.
      */
@@ -293,6 +482,7 @@ public class WorkmateGateway
         DISABLED,
         NO_CLIENT_TOKEN,
         INCOMPATIBLE,
+        PROJECT_REQUIRED,
         NOT_READY,
         TIMED_OUT,
         /**
@@ -359,7 +549,13 @@ public class WorkmateGateway
 
         public static GatewayException incompatible(String detail)
         {
-            return new GatewayException(FailureKind.INCOMPATIBLE, detail);
+            return new GatewayException(FailureKind.INCOMPATIBLE,
+                detail + installedWorkmateBundles());
+        }
+
+        public static GatewayException projectRequired(String detail)
+        {
+            return new GatewayException(FailureKind.PROJECT_REQUIRED, detail);
         }
 
         public static GatewayException notReady(String detail)
@@ -518,7 +714,8 @@ public class WorkmateGateway
     /**
      * Sends one new conversation request through Workmate's own full tool loop.
      *
-     * @param project optional EDT project; {@code null} selects ProjectId.Default
+     * @param project optional EDT project; {@code null} selects {@code ProjectId.Default}
+     *            only on Workmate layouts that provide it
      * @param question user message
      * @param maxToolRounds optional Workmate tool-round limit
      * @param skillName optional Workmate skill name
@@ -538,7 +735,8 @@ public class WorkmateGateway
      * Sends one new conversation request and reports only milestones actually
      * completed by the reflective adapter.
      *
-     * @param project optional EDT project; {@code null} selects ProjectId.Default
+     * @param project optional EDT project; {@code null} selects {@code ProjectId.Default}
+     *            only on Workmate layouts that provide it
      * @param question user message
      * @param maxToolRounds optional Workmate tool-round limit
      * @param skillName optional Workmate skill name
@@ -583,21 +781,33 @@ public class WorkmateGateway
             }
             progress.onProgress("Obtained the Workmate conversation facade."); //$NON-NLS-1$
 
-            Class<?> projectIdClass = requireClass(aiBundle, PROJECT_ID);
-            Object projectId = project == null
-                ? readField(requirePublicField(projectIdClass, "Default"), null) //$NON-NLS-1$
-                : create(requireConstructor(projectIdClass, PROJECT_ID + "(IProject)", //$NON-NLS-1$
-                    IProject.class), project);
-
             Class<?> sessionClass = requireClass(aiBundle, CONVERSATION_SESSION);
             Class<?> requestClass = requireClass(aiBundle, SEND_REQUEST);
-            Constructor<?> requestConstructor = requireConstructor(requestClass,
-                SEND_REQUEST + "(ProjectId,String,ConversationSession,boolean,String,Boolean,Integer)", //$NON-NLS-1$
-                projectIdClass, String.class, sessionClass, boolean.class, String.class,
-                Boolean.class, Integer.class);
+            Constructor<?> requestConstructor =
+                findConversationRequestConstructor(requestClass, sessionClass);
+            if (requestConstructor == null)
+            {
+                throw GatewayException.incompatible("constructor probe for '" //$NON-NLS-1$
+                    + requestClass.getName() + "' looked for public " //$NON-NLS-1$
+                    + "(X,java.lang.String," + sessionClass.getName() //$NON-NLS-1$
+                    + ",boolean,java.lang.String,java.lang.Boolean,java.lang.Integer); " //$NON-NLS-1$
+                    + "selected: none; detected public constructors: " //$NON-NLS-1$
+                    + publicConstructorShapes(requestClass));
+            }
+            Object requestProject = projectArgument(requestConstructor.getParameterTypes()[0],
+                project, "SendUserMessageRequest"); //$NON-NLS-1$
             Class<?> cancellationTokenClass = requireClass(aiBundle, CANCELLATION_TOKEN);
-            Method sendAsync = requireMethod(facadeClass, "sendAsync", requestClass, //$NON-NLS-1$
-                cancellationTokenClass);
+            Method sendAsync = findSendAsync(facadeClass, requestClass, cancellationTokenClass);
+            if (sendAsync == null)
+            {
+                throw GatewayException.incompatible("method probe for '" //$NON-NLS-1$
+                    + facadeClass.getName() + "' looked for public sendAsync(" //$NON-NLS-1$
+                    + requestClass.getName() + ',' + cancellationTokenClass.getName()
+                    + ") and sendAsync(" + requestClass.getName() + ',' //$NON-NLS-1$
+                    + cancellationTokenClass.getName() + ",X), preferring 2 arguments; " //$NON-NLS-1$
+                    + "selected: none; detected public sendAsync methods: " //$NON-NLS-1$
+                    + publicMethodShapes(facadeClass, "sendAsync")); //$NON-NLS-1$
+            }
             Class<?> resultClass = requireClass(aiBundle, SEND_RESULT);
 
             // ONE facade call answers ONE assistant turn: ConversationFacade completes its future
@@ -621,7 +831,7 @@ public class WorkmateGateway
             int continuations = 0;
             while (true)
             {
-                Object request = create(requestConstructor, projectId,
+                Object request = create(requestConstructor, requestProject,
                     message + FINALITY_INSTRUCTION, session,
                     session == null,
                     // chat = FALSE matches Workmate's OWN default (ConversationFacade maps a null
@@ -835,13 +1045,13 @@ public class WorkmateGateway
      * <p>Two shapes, both reported by issue #427 and both produced by the platform completing its
      * ask stream after one assistant turn:
      * <ul>
-     *   <li>an EMPTY answer — nothing was said at all, so there is nothing to report;</li>
+     *   <li>an EMPTY answer тАФ nothing was said at all, so there is nothing to report;</li>
      *   <li>a SHORT answer that states an intention ("For a full reference \u2026 I will use the 1C
      *       documentation search"). Length is what keeps this from eating real answers: a
      *       finished answer that happens to contain such a word is not {@value
      *       #PLAN_TEXT_MAX_CHARS} characters short.</li>
      * </ul>
-     * Over-eagerness here costs one extra round-trip and nothing else — the continuation cannot
+     * Over-eagerness here costs one extra round-trip and nothing else тАФ the continuation cannot
      * lose an answer, because the last NON-BLANK text is what the caller receives. Under-eagerness
      * is the bug itself.
      *
@@ -1014,7 +1224,7 @@ public class WorkmateGateway
 
     /**
      * Russian negation: the particle sits in front of the verb this list matches
-     * ("не проверю").
+     * ("╨╜╨╡ ╨┐╤А╨╛╨▓╨╡╤А╤О").
      *
      * @param text the lowercased answer
      * @param at where the marker starts
@@ -1085,7 +1295,11 @@ public class WorkmateGateway
         Object futureValue;
         try
         {
-            futureValue = invoke(sendAsync, facade, request, cancellationToken);
+            // Workmate 1.0.7 added a progress listener, but its reporting paths explicitly
+            // accept null. Passing that sentinel keeps this adapter independent of the listener
+            // interface and preserves the two-argument call on 1.0.5.
+            futureValue = invoke(sendAsync, facade,
+                sendAsyncArguments(sendAsync, request, cancellationToken));
         }
         catch (GatewayException e)
         {
@@ -1732,28 +1946,29 @@ public class WorkmateGateway
      * outside an editor: a project, no document, and EMPTY (not null) text fields, because
      * Workmate reads members such as {@code getPrefix()} without a null check.
      *
-     * @param aiBundle the {@code com.e1c.edt.ai} bundle
      * @param contextClass the resolved {@code AIContext} class
      * @param project optional project; {@code null} selects {@code ProjectId.Default}
+     *            only on Workmate layouts that provide it
      * @return a usable empty context
      * @throws GatewayException when the expected constructor is missing
      */
-    private static Object createEmptyContext(Bundle aiBundle, Class<?> contextClass,
-        IProject project) throws GatewayException
+    private static Object createEmptyContext(Class<?> contextClass, IProject project)
+        throws GatewayException
     {
-        Class<?> projectIdClass = requireClass(aiBundle, PROJECT_ID);
-        Object projectId = project == null
-            ? readField(requirePublicField(projectIdClass, "Default"), null) //$NON-NLS-1$
-            : create(requireConstructor(projectIdClass, PROJECT_ID + "(IProject)", //$NON-NLS-1$
-                IProject.class), project);
-        Constructor<?> constructor = requireConstructor(contextClass,
-            AI_CONTEXT + "(ProjectId,int,String,int,String,String,int,String,String,int,int," //$NON-NLS-1$
-                + "IDocument,Supplier)", //$NON-NLS-1$
-            projectIdClass, int.class, String.class, int.class, String.class, String.class,
-            int.class, String.class, String.class, int.class, int.class, IDocument.class,
-            Supplier.class);
+        Constructor<?> constructor = findAiContextConstructor(contextClass, IDocument.class);
+        if (constructor == null)
+        {
+            throw GatewayException.incompatible("constructor probe for '" //$NON-NLS-1$
+                + contextClass.getName() + "' looked for public " //$NON-NLS-1$
+                + "(X,int,java.lang.String,int,java.lang.String,java.lang.String,int," //$NON-NLS-1$
+                + "java.lang.String,java.lang.String,int,int," + IDocument.class.getName() //$NON-NLS-1$
+                + ",java.util.function.Supplier); selected: none; detected public " //$NON-NLS-1$
+                + "constructors: " + publicConstructorShapes(contextClass)); //$NON-NLS-1$
+        }
+        Object contextProject = projectArgument(constructor.getParameterTypes()[0], project,
+            "AIContext"); //$NON-NLS-1$
         Supplier<Boolean> notDisposed = () -> Boolean.FALSE;
-        return create(constructor, projectId, Integer.valueOf(0), "", Integer.valueOf(0), //$NON-NLS-1$
+        return create(constructor, contextProject, Integer.valueOf(0), "", Integer.valueOf(0), //$NON-NLS-1$
             "", "", Integer.valueOf(0), "", "", Integer.valueOf(0), Integer.valueOf(0), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             null, notDisposed);
     }
@@ -2047,7 +2262,7 @@ public class WorkmateGateway
      * lie). The caller's cancellation - the job deadline - is what ends the wait.
      *
      * @param project optional EDT project the chat should treat as context; {@code null} selects
-     *            Workmate's default project
+     *            Workmate's default project only on layouts that provide one
      * @param question the user question, already validated as non-blank
      * @param progress milestone listener
      * @throws GatewayException categorized runtime/compatibility failure
@@ -2085,7 +2300,7 @@ public class WorkmateGateway
             // question never reached the chat. Build an EMPTY-but-real context instead - no
             // editor, no selection, empty text - which is what "asked from outside an editor"
             // actually means.
-            Object aiContext = createEmptyContext(aiBundle, contextClass, project);
+            Object aiContext = createEmptyContext(contextClass, project);
             progress.onProgress("Obtained the Workmate chat."); //$NON-NLS-1$
 
             // Chat.chat(...) calls IUI.showView(...) before dispatching, so it must start on the
@@ -2229,6 +2444,188 @@ public class WorkmateGateway
                 + "' returned " + typeName(value) + " instead of boolean"); //$NON-NLS-1$ //$NON-NLS-2$
         }
         return ((Boolean)value).booleanValue();
+    }
+
+    /**
+     * Adapts the caller's project only after the constructor itself has revealed which
+     * Workmate layout is installed. A version string would not prove that layout.
+     *
+     * @param projectParameterType first parameter of the selected constructor
+     * @param project caller's optional EDT project
+     * @param apiType selected Workmate API type, for diagnostics
+     * @return direct project or legacy wrapper expected by the constructor
+     * @throws GatewayException when the build requires a project or exposes an unknown shape
+     */
+    static Object projectArgument(Class<?> projectParameterType, IProject project,
+        String apiType) throws GatewayException
+    {
+        if (takesEclipseProject(projectParameterType))
+        {
+            if (project == null)
+            {
+                throw GatewayException.projectRequired(
+                    "This 1C:Workmate build binds every conversation to an EDT project ('" //$NON-NLS-1$
+                        + apiType + "' takes an " + projectParameterType.getName() + ")."); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            return project;
+        }
+        if (isLegacyProjectWrapper(projectParameterType))
+        {
+            return project == null
+                ? readField(requirePublicField(projectParameterType, "Default"), null) //$NON-NLS-1$
+                // The display name comes from the type actually selected, not from the known
+                // FQN: a shape-matched wrapper under another name would otherwise be reported
+                // as the one class this adapter did NOT find.
+                : create(requireConstructor(projectParameterType,
+                    projectParameterType.getName() + "(IProject)", //$NON-NLS-1$
+                    IProject.class), project);
+        }
+        throw GatewayException.incompatible("selected the public " + apiType //$NON-NLS-1$
+            + " constructor, whose project parameter type is '" //$NON-NLS-1$
+            + projectParameterType.getName() + "'; supported project parameter shapes are '" //$NON-NLS-1$
+            + IProject.class.getName() + "' and the legacy wrapper '" + PROJECT_ID //$NON-NLS-1$
+            + "' (or the same shape: public static Default of its own type plus a public " //$NON-NLS-1$
+            + "constructor taking IProject)"); //$NON-NLS-1$
+    }
+
+    /**
+     * Appends runtime evidence to every structure refusal, including failures outside the
+     * two version probes. Diagnostics must identify the installation that was actually seen.
+     */
+    private static String installedWorkmateBundles()
+    {
+        try
+        {
+            Bundle owner = FrameworkUtil.getBundle(WorkmateGateway.class);
+            if (owner == null)
+            {
+                return " (installed: unavailable; EDT-MCP is not loaded as an OSGi bundle)"; //$NON-NLS-1$
+            }
+            BundleContext context = owner.getBundleContext();
+            if (context == null)
+            {
+                return " (installed: unavailable; EDT-MCP BundleContext is null)"; //$NON-NLS-1$
+            }
+            Bundle[] bundles = context.getBundles();
+            if (bundles == null)
+            {
+                return " (installed: unavailable; BundleContext returned no bundle list)"; //$NON-NLS-1$
+            }
+            String[] workmateBundleNames = {
+                AI_BUNDLE, UI_BUNDLE, UI_COMMON_BUNDLE, CONTEXT_BUNDLE
+            };
+            StringBuilder detected = new StringBuilder();
+            for (String symbolicName : workmateBundleNames)
+            {
+                for (Bundle bundle : bundles)
+                {
+                    if (symbolicName.equals(bundle.getSymbolicName()))
+                    {
+                        if (detected.length() > 0)
+                        {
+                            detected.append(", "); //$NON-NLS-1$
+                        }
+                        // The STATE belongs here as much as the version. "class not found" has
+                        // two very different causes - the build genuinely does not carry that
+                        // class, or the bundle never resolved and can load nothing - and only
+                        // the state tells them apart. Without it the same sentence sends the
+                        // reader to reinstall Workmate in both cases.
+                        detected.append(symbolicName)
+                            .append(' ')
+                            .append(bundle.getVersion())
+                            .append(" [") //$NON-NLS-1$
+                            .append(bundleStateName(bundle.getState()))
+                            .append(']');
+                        break;
+                    }
+                }
+            }
+            return detected.length() == 0
+                ? " (installed: no known 1C:Workmate bundles detected)" //$NON-NLS-1$
+                : " (installed: " + detected + ')'; //$NON-NLS-1$
+        }
+        catch (RuntimeException | LinkageError e) // NOSONAR diagnostics must never hide the refusal
+        {
+            return " (installed: bundle discovery failed with " //$NON-NLS-1$
+                + e.getClass().getSimpleName() + ')';
+        }
+    }
+
+    /**
+     * Names an OSGi bundle state for the diagnostics above.
+     *
+     * @param state the value returned by {@code Bundle.getState()}
+     * @return the OSGi name of that state, or the raw number when it is not a known one
+     */
+    static String bundleStateName(int state)
+    {
+        switch (state)
+        {
+            case Bundle.UNINSTALLED:
+                return "UNINSTALLED"; //$NON-NLS-1$
+            case Bundle.INSTALLED:
+                return "INSTALLED"; //$NON-NLS-1$
+            case Bundle.RESOLVED:
+                return "RESOLVED"; //$NON-NLS-1$
+            case Bundle.STARTING:
+                return "STARTING"; //$NON-NLS-1$
+            case Bundle.STOPPING:
+                return "STOPPING"; //$NON-NLS-1$
+            case Bundle.ACTIVE:
+                return "ACTIVE"; //$NON-NLS-1$
+            default:
+                return "state " + state; //$NON-NLS-1$
+        }
+    }
+
+    private static String publicConstructorShapes(Class<?> type)
+    {
+        try
+        {
+            Constructor<?>[] constructors = type.getConstructors();
+            if (constructors.length == 0)
+            {
+                return "none"; //$NON-NLS-1$
+            }
+            StringBuilder result = new StringBuilder();
+            for (Constructor<?> constructor : constructors)
+            {
+                if (result.length() > 0)
+                {
+                    result.append(" | "); //$NON-NLS-1$
+                }
+                result.append(constructor.toGenericString());
+            }
+            return result.toString();
+        }
+        catch (RuntimeException | LinkageError e) // NOSONAR this text reports why the probe failed
+        {
+            return "unavailable (" + e.getClass().getSimpleName() + ')'; //$NON-NLS-1$
+        }
+    }
+
+    private static String publicMethodShapes(Class<?> type, String methodName)
+    {
+        try
+        {
+            StringBuilder result = new StringBuilder();
+            for (Method method : type.getMethods())
+            {
+                if (methodName.equals(method.getName()))
+                {
+                    if (result.length() > 0)
+                    {
+                        result.append(" | "); //$NON-NLS-1$
+                    }
+                    result.append(method.toGenericString());
+                }
+            }
+            return result.length() == 0 ? "none" : result.toString(); //$NON-NLS-1$
+        }
+        catch (RuntimeException | LinkageError e) // NOSONAR this text reports why the probe failed
+        {
+            return "unavailable (" + e.getClass().getSimpleName() + ')'; //$NON-NLS-1$
+        }
     }
 
     private static Bundle requireBundle(String symbolicName) throws GatewayException

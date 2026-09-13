@@ -17,13 +17,14 @@ import fm.giper.edt.mcp.server.tools.impl.AskWorkmateTool;
 import fm.giper.edt.mcp.server.tools.impl.BuildExternalObjectsTool;
 import fm.giper.edt.mcp.server.tools.impl.CancelJobTool;
 import fm.giper.edt.mcp.server.tools.impl.CleanProjectTool;
+import fm.giper.edt.mcp.server.tools.impl.CompareConfigurationsTool;
 import fm.giper.edt.mcp.server.tools.impl.CreateGitBranchTool;
 import fm.giper.edt.mcp.server.tools.impl.CreateInfobaseTool;
 import fm.giper.edt.mcp.server.tools.impl.SetInfobaseCredentialsTool;
 import fm.giper.edt.mcp.server.tools.impl.CreateLaunchConfigTool;
 import fm.giper.edt.mcp.server.tools.impl.CreateMetadataTool;
 import fm.giper.edt.mcp.server.tools.impl.CreateProjectTool;
-import fm.giper.edt.mcp.server.tools.impl.DebugLaunchTool;
+import fm.giper.edt.mcp.server.tools.impl.LaunchTool;
 import fm.giper.edt.mcp.server.tools.impl.DebugStatusTool;
 import fm.giper.edt.mcp.server.tools.impl.DebugYaxunitTestsTool;
 import fm.giper.edt.mcp.server.tools.impl.DeleteInfobaseTool;
@@ -39,6 +40,7 @@ import fm.giper.edt.mcp.server.tools.impl.FindReferencesTool;
 import fm.giper.edt.mcp.server.tools.impl.GenerateTranslationStringsTool;
 import fm.giper.edt.mcp.server.tools.impl.GetApplicationsTool;
 import fm.giper.edt.mcp.server.tools.impl.GetCheckDescriptionTool;
+import fm.giper.edt.mcp.server.tools.impl.GetComparisonNodeTool;
 import fm.giper.edt.mcp.server.tools.impl.GetConfigurationPropertiesTool;
 import fm.giper.edt.mcp.server.tools.impl.GetContentAssistTool;
 import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
@@ -77,6 +79,7 @@ import fm.giper.edt.mcp.server.tools.impl.ListModulesTool;
 import fm.giper.edt.mcp.server.tools.impl.ListProjectsTool;
 import fm.giper.edt.mcp.server.tools.impl.ListSubsystemsTool;
 import fm.giper.edt.mcp.server.tools.impl.ListToolsetsTool;
+import fm.giper.edt.mcp.server.tools.impl.MergeRulesTool;
 import fm.giper.edt.mcp.server.tools.impl.ReadMethodSourceTool;
 import fm.giper.edt.mcp.server.tools.impl.ReadModuleSourceTool;
 import fm.giper.edt.mcp.server.tools.impl.RemoveBreakpointTool;
@@ -88,6 +91,7 @@ import fm.giper.edt.mcp.server.tools.impl.RunYaxunitTestsTool;
 import fm.giper.edt.mcp.server.tools.impl.SearchInCodeTool;
 import fm.giper.edt.mcp.server.tools.impl.SetBranchInfobaseTool;
 import fm.giper.edt.mcp.server.tools.impl.SetBreakpointTool;
+import fm.giper.edt.mcp.server.tools.impl.SetErrorBreakpointTool;
 import fm.giper.edt.mcp.server.tools.impl.SetVariableTool;
 import fm.giper.edt.mcp.server.tools.impl.ModifyMetadataTool;
 import fm.giper.edt.mcp.server.tools.impl.StartProfilingTool;
@@ -97,6 +101,7 @@ import fm.giper.edt.mcp.server.tools.impl.SwitchGitBranchTool;
 import fm.giper.edt.mcp.server.tools.impl.TerminateLaunchTool;
 import fm.giper.edt.mcp.server.tools.impl.TranslateConfigurationTool;
 import fm.giper.edt.mcp.server.tools.impl.UpdateDatabaseTool;
+import fm.giper.edt.mcp.server.tools.impl.ValidateFormModelTool;
 import fm.giper.edt.mcp.server.tools.impl.ValidateQueryTool;
 import fm.giper.edt.mcp.server.tools.impl.ValidateXdtoPackageTool;
 import fm.giper.edt.mcp.server.tools.impl.WaitForBreakTool;
@@ -182,7 +187,7 @@ public final class BuiltInToolRegistrar
         catalogue.add(new SetInfobaseCredentialsTool());
         catalogue.add(new DeleteInfobaseTool());
         catalogue.add(new UpdateDatabaseTool());
-        catalogue.add(new DebugLaunchTool());
+        catalogue.add(new LaunchTool());
         catalogue.add(new ListConfigurationsTool());
         catalogue.add(new CreateLaunchConfigTool());
         catalogue.add(new DeleteLaunchConfigTool());
@@ -194,6 +199,7 @@ public final class BuiltInToolRegistrar
 
         // Debug inspection tools (breakpoints + suspended state)
         catalogue.add(new SetBreakpointTool());
+        catalogue.add(new SetErrorBreakpointTool());
         catalogue.add(new RemoveBreakpointTool());
         catalogue.add(new ListBreakpointsTool());
         catalogue.add(new WaitForBreakTool());
@@ -223,6 +229,7 @@ public final class BuiltInToolRegistrar
         catalogue.add(new GetFormScreenshotTool());
         catalogue.add(new GetTemplateScreenshotTool());
         catalogue.add(new ValidateQueryTool());
+        catalogue.add(new ValidateFormModelTool());
 
         // Metadata refactoring tools (form members are created/edited/removed by their FQNs via
         // create/modify/delete_metadata; the former add_form_*/set_form_item_property/delete_form_item/
@@ -233,6 +240,11 @@ public final class BuiltInToolRegistrar
         catalogue.add(new ModifyMetadataTool());
         catalogue.add(new AdoptMetadataObjectTool());
         catalogue.add(new ValidateXdtoPackageTool());
+
+        // Three-way configuration comparison (read-only: nothing is ever merged).
+        catalogue.add(new CompareConfigurationsTool());
+        catalogue.add(new GetComparisonNodeTool());
+        catalogue.add(new MergeRulesTool());
 
         // LanguageTool translation tools
         catalogue.add(new GenerateTranslationStringsTool());

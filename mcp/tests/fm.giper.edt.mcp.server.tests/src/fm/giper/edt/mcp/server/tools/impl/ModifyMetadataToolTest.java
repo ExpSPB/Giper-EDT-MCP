@@ -1,5 +1,5 @@
 /**
- * MCP Server for EDT - Tests
+ * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.eclipse.emf.common.util.Enumerator;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EDataType;
@@ -38,10 +39,17 @@ import org.junit.Test;
 import org.mockito.Mockito;
 
 import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.dt.mcore.McoreFactory;
 import com._1c.g5.v8.dt.mcore.McorePackage;
 import com._1c.g5.v8.dt.mcore.QName;
+import com._1c.g5.v8.dt.mcore.Type;
+import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicTemplate;
+import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
+import com._1c.g5.v8.dt.metadata.mdclass.CatalogAttribute;
+import com._1c.g5.v8.dt.metadata.mdclass.CatalogForm;
 import com._1c.g5.v8.dt.metadata.mdclass.CommandGroup;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonForm;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
 import com._1c.g5.v8.dt.metadata.mdclass.CommonPicture;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
@@ -64,10 +72,12 @@ import fm.giper.edt.mcp.server.utils.FormElementWriter;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.McoreValueListBuilder;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
+import fm.giper.edt.mcp.server.utils.MetadataTypeBuilder;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils.MetadataTypeInfo;
 import fm.giper.edt.mcp.server.utils.PredefinedWriter;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
@@ -93,12 +103,100 @@ public class ModifyMetadataToolTest
     }
 
     @Test
+    public void testEventSubscriptionSourceSelectsEventSourceTypeTargetOnlyForThatFeature()
+    {
+        EStructuralFeature source = MdClassPackage.Literals.EVENT_SUBSCRIPTION__SOURCE;
+        assertSame(McorePackage.Literals.TYPE_DESCRIPTION, source.getEType());
+        assertSame(MetadataTypeBuilder.TypeTarget.EVENT_SOURCE,
+            ModifyMetadataTool.typeTargetForFeature(
+                MetadataTypeBuilder.TypeTarget.METADATA, source));
+
+        CatalogAttribute attribute = MdClassFactory.eINSTANCE.createCatalogAttribute();
+        EStructuralFeature attributeType = attribute.eClass().getEStructuralFeature("type"); //$NON-NLS-1$
+        assertNotNull(attributeType);
+        assertSame(McorePackage.Literals.TYPE_DESCRIPTION, attributeType.getEType());
+        assertSame(MetadataTypeBuilder.TypeTarget.METADATA,
+            ModifyMetadataTool.typeTargetForFeature(
+                MetadataTypeBuilder.TypeTarget.METADATA, attributeType));
+        assertSame(MetadataTypeBuilder.TypeTarget.FORM_ATTRIBUTE,
+            ModifyMetadataTool.typeTargetForFeature(
+                MetadataTypeBuilder.TypeTarget.FORM_ATTRIBUTE, source));
+    }
+
+    @Test
     public void testDescriptionPointsToGuide()
     {
         String desc = new ModifyMetadataTool().getDescription();
         assertNotNull(desc);
         assertTrue("description should point to get_tool_guide", //$NON-NLS-1$
             desc.contains("get_tool_guide('modify_metadata')")); //$NON-NLS-1$
+        assertTrue("description should advertise managed-form roots", //$NON-NLS-1$
+            desc.contains("managed-form roots")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testManagedFormRootDispatchUsesOwnedAndCommonFallbackRules()
+    {
+        Configuration config = MdClassFactory.eINSTANCE.createConfiguration();
+        Catalog catalog = MdClassFactory.eINSTANCE.createCatalog();
+        catalog.setName("X"); //$NON-NLS-1$
+        CatalogForm owned = MdClassFactory.eINSTANCE.createCatalogForm();
+        owned.setName("Y"); //$NON-NLS-1$
+        catalog.getForms().add(owned);
+        config.getCatalogs().add(catalog);
+        CommonForm common = MdClassFactory.eINSTANCE.createCommonForm();
+        common.setName("Y"); //$NON-NLS-1$
+        config.getCommonForms().add(common);
+        MetadataScope scope = MetadataScope.ofConfiguration(config);
+
+        String englishOwned = MetadataTypeUtils.normalizeFqn("Catalog.X.Form.Y"); //$NON-NLS-1$
+        String russianOwned = MetadataTypeUtils.normalizeFqn("Справочник.X.Форма.Y"); //$NON-NLS-1$
+        String commonPath = MetadataTypeUtils.normalizeFqn("CommonForm.Y"); //$NON-NLS-1$
+
+        assertSame(owned, ModifyMetadataTool.resolveFormRootForDispatch(scope, englishOwned));
+        assertSame(owned, ModifyMetadataTool.resolveFormRootForDispatch(scope, russianOwned));
+        assertTrue("an English owned-form address always takes the content-root path", //$NON-NLS-1$
+            ModifyMetadataTool.shouldDispatchFormRoot(
+                FormElementWriter.parseFormPath(englishOwned), null,
+                Collections.singletonList(prop("comment", "x")))); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("a Russian owned-form address always takes the content-root path", //$NON-NLS-1$
+            ModifyMetadataTool.shouldDispatchFormRoot(
+                FormElementWriter.parseFormPath(russianOwned), null,
+                Collections.singletonList(prop("comment", "x")))); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertSame(common, ModifyMetadataTool.resolveFormRootForDispatch(scope, commonPath));
+        assertFalse("an mdclass-assignable property keeps CommonForm.Y on the mdclass path", //$NON-NLS-1$
+            ModifyMetadataTool.shouldDispatchFormRoot(
+                FormElementWriter.parseFormPath(commonPath), common,
+                Collections.singletonList(prop("usePurposes", "PersonalComputer")))); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("root-only properties make CommonForm.Y fall back to the content root", //$NON-NLS-1$
+            ModifyMetadataTool.shouldDispatchFormRoot(
+                FormElementWriter.parseFormPath(commonPath), common,
+                Collections.singletonList(prop("autoTitle", "false")))); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse("a mixed CommonForm.Y call stays wholly on the mdclass path", //$NON-NLS-1$
+            ModifyMetadataTool.shouldDispatchFormRoot(
+                FormElementWriter.parseFormPath(commonPath), common,
+                Arrays.asList(prop("autoTitle", "false"), //$NON-NLS-1$ //$NON-NLS-2$
+                    prop("comment", "x")))); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testMissingManagedFormRootUsesFormSpecificOwnerError()
+    {
+        Configuration config = MdClassFactory.eINSTANCE.createConfiguration();
+        Catalog catalog = MdClassFactory.eINSTANCE.createCatalog();
+        catalog.setName("X"); //$NON-NLS-1$
+        config.getCatalogs().add(catalog);
+        MetadataScope scope = MetadataScope.ofConfiguration(config);
+        String normFqn = MetadataTypeUtils.normalizeFqn("Catalog.X.Form.Nope"); //$NON-NLS-1$
+
+        assertNull(ModifyMetadataTool.resolveFormRootForDispatch(scope, normFqn));
+        String error = ModifyMetadataTool.formRootNotFoundError(
+            FormElementWriter.parseFormPath(normFqn));
+        assertTrue(error, error.contains("Form 'Nope' not found")); //$NON-NLS-1$
+        assertTrue(error, error.contains("Catalog.X")); //$NON-NLS-1$
+        assertTrue(error, error.contains("get_metadata_details")); //$NON-NLS-1$
+        assertFalse(error, error.contains("Node not found")); //$NON-NLS-1$
     }
 
     @Test
@@ -369,6 +467,103 @@ public class ModifyMetadataToolTest
         Mockito.verify(livePackage).bmGetId();
     }
 
+    @Test
+    public void testManyEnumArrayPreparesListReplacement() throws Exception
+    {
+        Object change = preparedManyEnumChange(
+            JsonParser.parseString("[\"personalcomputer\",\"MobileDevice\"]")); //$NON-NLS-1$
+
+        assertEquals("MANY_ENUM", preparedChangeKind(change)); //$NON-NLS-1$
+        List<?> values = preparedChangeValues(change);
+        assertEquals(2, values.size());
+        assertEquals("PersonalComputer", ((Enumerator)values.get(0)).getName()); //$NON-NLS-1$
+        assertEquals("MobileDevice", ((Enumerator)values.get(1)).getName()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testManyEnumScalarPreparesOneElementListReplacement() throws Exception
+    {
+        Object change = preparedManyEnumChange(new JsonPrimitive("MobileDevice")); //$NON-NLS-1$
+
+        assertEquals("MANY_ENUM", preparedChangeKind(change)); //$NON-NLS-1$
+        List<?> values = preparedChangeValues(change);
+        assertEquals(1, values.size());
+        assertEquals("MobileDevice", ((Enumerator)values.get(0)).getName()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testManyEnumUnknownLiteralNamesElementAndAllowedValues()
+    {
+        String bad = "DesktopComputer"; //$NON-NLS-1$
+        String error = errorText(manyEnumVerdict(
+            JsonParser.parseString("[\"PersonalComputer\",\"" + bad + "\"]"))); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertTrue(error.contains("index 1")); //$NON-NLS-1$
+        assertTrue(error.contains(bad));
+        assertTrue(error.contains("PersonalComputer")); //$NON-NLS-1$
+        assertTrue(error.contains("MobileDevice")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testManyEnumObjectAndNestedArrayAreCleanShapeRefusals()
+    {
+        JsonElement object = JsonParser.parseString("{\"literal\":\"PersonalComputer\"}"); //$NON-NLS-1$
+        JsonElement nested = JsonParser.parseString("[[\"PersonalComputer\"]]"); //$NON-NLS-1$
+        for (JsonElement[] refusal : new JsonElement[][] {
+            {object, object}, {nested, nested.getAsJsonArray().get(0)}})
+        {
+            String error = errorText(manyEnumVerdict(refusal[0]));
+
+            assertTrue("the refusal must name the bad JSON value: " + error, //$NON-NLS-1$
+                error.contains(refusal[1].toString()));
+            assertTrue(error.contains("Expected a JSON array of enum literal strings")); //$NON-NLS-1$
+            assertTrue(error.contains("bare enum literal string")); //$NON-NLS-1$
+        }
+    }
+
+    private static Object preparedManyEnumChange(JsonElement value) throws Exception
+    {
+        Method prepare = ModifyMetadataTool.class.getDeclaredMethod("prepareFormMemberChanges", //$NON-NLS-1$
+            MetadataScope.class, Version.class, EObject.class, List.class, MdNameNormalizer.Report.class);
+        prepare.setAccessible(true);
+        List<?> changes = (List<?>)prepare.invoke(new ModifyMetadataTool(), null, null,
+            MdClassFactory.eINSTANCE.createCommonForm(),
+            Collections.singletonList(manyEnumProperty(value)), report());
+        Object holderChange = changes.get(0);
+        Field changeField = holderChange.getClass().getDeclaredField("change"); //$NON-NLS-1$
+        changeField.setAccessible(true);
+        return changeField.get(holderChange);
+    }
+
+    private static String preparedChangeKind(Object change) throws Exception
+    {
+        Field kind = change.getClass().getDeclaredField("kind"); //$NON-NLS-1$
+        kind.setAccessible(true);
+        return kind.get(change).toString();
+    }
+
+    private static List<?> preparedChangeValues(Object change) throws Exception
+    {
+        Field scalarValue = change.getClass().getDeclaredField("scalarValue"); //$NON-NLS-1$
+        scalarValue.setAccessible(true);
+        return (List<?>)scalarValue.get(change);
+    }
+
+    private static String manyEnumVerdict(JsonElement value)
+    {
+        return neverAsking().formRetypeVerdict(null, null,
+            MdClassFactory.eINSTANCE.createCommonForm(),
+            Collections.singletonList(manyEnumProperty(value)), report());
+    }
+
+    private static JsonObject manyEnumProperty(JsonElement value)
+    {
+        JsonObject property = new JsonObject();
+        property.addProperty("name", "usePurposes"); //$NON-NLS-1$ //$NON-NLS-2$
+        property.add("value", value); //$NON-NLS-1$
+        return property;
+    }
+
     private static String errorText(String errorJson)
     {
         assertNotNull(errorJson);
@@ -418,6 +613,18 @@ public class ModifyMetadataToolTest
         // renaming is refused with a pointer to rename_metadata_object
         assertTrue("guide should point a rename at rename_metadata_object", //$NON-NLS-1$
             guide.contains("rename_metadata_object")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGuideExplainsManyEnumReplacementShapes()
+    {
+        String guide = new ModifyMetadataTool().getGuide();
+
+        assertTrue(guide.contains("MANY_ENUM")); //$NON-NLS-1$
+        assertTrue(guide.contains("FULL-REPLACE")); //$NON-NLS-1$
+        assertTrue(guide.contains("CommonForm.Main")); //$NON-NLS-1$
+        assertTrue(guide.contains("bare scalar literal")); //$NON-NLS-1$
+        assertTrue(guide.contains("does not append")); //$NON-NLS-1$
     }
 
     // ---- a handler rebind must not be mixed with other property changes ---------------------------
@@ -1402,13 +1609,28 @@ public class ModifyMetadataToolTest
         module.setName("Calc"); //$NON-NLS-1$
         config.getCommonModules().add(module);
         ScheduledJob job = MdClassFactory.eINSTANCE.createScheduledJob();
-        assertEquals("a validated methodName must serialize WITHOUT the type prefix", //$NON-NLS-1$
-            "Calc.Add", ModifyMetadataTool.canonicalMethodReference(config, job, "methodName", "CommonModule.Calc.Add")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertEquals("a validated methodName must serialize with the English CommonModule prefix", //$NON-NLS-1$
+            "CommonModule.Calc.Add", //$NON-NLS-1$
+            ModifyMetadataTool.canonicalMethodReference(config, job, "methodName", "CommonModule.Calc.Add")); //$NON-NLS-1$ //$NON-NLS-2$
         EventSubscription sub = MdClassFactory.eINSTANCE.createEventSubscription();
         assertEquals("a validated handler must serialize WITH the English CommonModule prefix", //$NON-NLS-1$
             "CommonModule.Calc.Add", ModifyMetadataTool.canonicalMethodReference(config, sub, "handler", "Calc.Add")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // Unguarded combo: value passes through unchanged.
         assertEquals("x.y", ModifyMetadataTool.canonicalMethodReference(config, module, "methodName", "x.y")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    }
+
+    @Test
+    public void testCanonicalMethodReferencePrefixesShortScheduledJobInput()
+    {
+        Configuration config = MdClassFactory.eINSTANCE.createConfiguration();
+        CommonModule module = MdClassFactory.eINSTANCE.createCommonModule();
+        module.setName("Calc"); //$NON-NLS-1$
+        config.getCommonModules().add(module);
+        ScheduledJob job = MdClassFactory.eINSTANCE.createScheduledJob();
+
+        assertEquals("a short ScheduledJob methodName must be stored with the CommonModule prefix", //$NON-NLS-1$
+            "CommonModule.Calc.Add", //$NON-NLS-1$
+            ModifyMetadataTool.canonicalMethodReference(config, job, "methodName", "Calc.Add")); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     // ===== XDTO package member payload dispatch guards (issue #183 stream 1) =========================
@@ -1606,7 +1828,7 @@ public class ModifyMetadataToolTest
         RecordingConsent consent = new RecordingConsent(ConsentDecision.REJECT);
         RecordingWrite write = new RecordingWrite();
 
-        String result = new ModifyMetadataTool(consent).gateFormRetype(retypePreview(),
+        String result = new ModifyMetadataTool(consent).gateFormRetype(() -> retypePreview(),
             () -> REFUSAL, write);
 
         assertEquals("a refused retype must never raise the destructive prompt", 0, consent.asked); //$NON-NLS-1$
@@ -1624,7 +1846,7 @@ public class ModifyMetadataToolTest
         RecordingConsent consent = new RecordingConsent(ConsentDecision.REJECT);
         RecordingWrite write = new RecordingWrite();
 
-        String result = new ModifyMetadataTool(consent).gateFormRetype(retypePreview(), () -> "", write); //$NON-NLS-1$
+        String result = new ModifyMetadataTool(consent).gateFormRetype(() -> retypePreview(), () -> "", write); //$NON-NLS-1$
 
         assertEquals("a benign change must not prompt", 0, consent.asked); //$NON-NLS-1$
         assertEquals("a benign change is written exactly once", 1, write.calls); //$NON-NLS-1$
@@ -1640,7 +1862,7 @@ public class ModifyMetadataToolTest
             RecordingConsent consent = new RecordingConsent(refused);
             RecordingWrite write = new RecordingWrite();
             String result =
-                new ModifyMetadataTool(consent).gateFormRetype(retypePreview(), () -> null, write);
+                new ModifyMetadataTool(consent).gateFormRetype(() -> retypePreview(), () -> null, write);
             assertEquals("a real retype must be authorized (" + refused + ")", 1, consent.asked); //$NON-NLS-1$ //$NON-NLS-2$
             assertEquals("a refused retype must not write (" + refused + ")", 0, write.calls); //$NON-NLS-1$ //$NON-NLS-2$
             assertTrue(result.contains("error")); //$NON-NLS-1$
@@ -1648,7 +1870,7 @@ public class ModifyMetadataToolTest
 
         RecordingConsent allowed = new RecordingConsent(ConsentDecision.ALLOW);
         RecordingWrite write = new RecordingWrite();
-        String ok = new ModifyMetadataTool(allowed).gateFormRetype(retypePreview(), () -> null, write);
+        String ok = new ModifyMetadataTool(allowed).gateFormRetype(() -> retypePreview(), () -> null, write);
         assertEquals("an allowed retype is written exactly once", 1, write.calls); //$NON-NLS-1$
         assertEquals(WRITTEN, ok);
     }
@@ -2444,5 +2666,154 @@ public class ModifyMetadataToolTest
         valueType.setEType(typeDescription);
         valueType.setContainment(true);
         return valueType;
+    }
+
+
+    /**
+     * The consent gate for a main-flag write reads the value with the same parser the WRITE uses.
+     * {@code prepareBoolean} accepts {@code 1}/{@code 0}/{@code yes}/{@code no} as well as
+     * {@code true}/{@code false}, so a gate that only knew the last pair would let
+     * {@code {"main":"no"}} delete a form root ext-info - handlers and all - with no prompt.
+     */
+    @Test
+    public void testTheMainFlagGateReadsEverySpellingTheWriteAccepts()
+    {
+        for (String yes : new String[]{"true", "1", "yes", "YES"}) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        {
+            assertEquals(yes, Boolean.TRUE, ModifyMetadataTool.mainFlagIn(props("main", yes))); //$NON-NLS-1$
+        }
+        for (String no : new String[]{"false", "0", "no", "No"}) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        {
+            assertEquals(no, Boolean.FALSE, ModifyMetadataTool.mainFlagIn(props("main", no))); //$NON-NLS-1$
+        }
+        assertEquals("a JSON boolean is the ordinary form", //$NON-NLS-1$
+            Boolean.TRUE, ModifyMetadataTool.mainFlagIn(List.of(boolProp("main", true)))); //$NON-NLS-1$
+        assertNull("a list that writes no main flag asks for no consent", //$NON-NLS-1$
+            ModifyMetadataTool.mainFlagIn(props("savedData", "true"))); //$NON-NLS-1$ //$NON-NLS-2$
+        assertNull("a value the write itself refuses is not a main write either", //$NON-NLS-1$
+            ModifyMetadataTool.mainFlagIn(props("main", "maybe"))); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * A batch is applied in ORDER, so a repeated property is decided by its last write. The gate
+     * judges the state the model is left in: reading the first {@code main} would wave
+     * {@code [main=true, main=false]} through and prompt for {@code [main=false, main=true]},
+     * which deletes nothing.
+     */
+    @Test
+    public void testARepeatedMainWriteIsJudgedByItsLastValue()
+    {
+        assertEquals("the LAST write is what the model ends up with", //$NON-NLS-1$
+            Boolean.FALSE,
+            ModifyMetadataTool.mainFlagIn(List.of(boolProp("main", true), //$NON-NLS-1$
+                boolProp("main", false)))); //$NON-NLS-1$
+        assertEquals("and the other way round", Boolean.TRUE, //$NON-NLS-1$
+            ModifyMetadataTool.mainFlagIn(List.of(boolProp("main", false), //$NON-NLS-1$
+                boolProp("main", true)))); //$NON-NLS-1$
+    }
+
+    /**
+     * One batch can carry two different destructions - a retype and a main flag that empties the
+     * form root. The dialog has to name both, or a single answer authorizes a loss the question
+     * never mentioned.
+     */
+    @Test
+    public void testTheConsentPreviewNamesEveryLossTheBatchCarries()
+    {
+        FormElementWriter.FormMemberRef ref = FormElementWriter.parse(
+            "InformationRegister.Reg.Form.RecordForm.Attribute.Record"); //$NON-NLS-1$
+        String fqn = "InformationRegister.Reg.Form.RecordForm.Attribute.Record"; //$NON-NLS-1$
+
+        ConsentPreview retypeOnly =
+            ModifyMetadataTool.formRetypePreview(fqn, ref, props("valueType", "String"), false); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(List.of("valueType"), retypeOnly.getTopNames()); //$NON-NLS-1$
+
+        ConsentPreview mainOnly =
+            ModifyMetadataTool.formRetypePreview(fqn, ref, props("main", "false"), true); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(List.of("main"), mainOnly.getTopNames()); //$NON-NLS-1$
+        assertTrue("a main-only prompt is about the ext-info, not about stored values: " //$NON-NLS-1$
+            + mainOnly.getSubtitle(),
+            mainOnly.getSubtitle().contains("ext-info")); //$NON-NLS-1$
+
+        ConsentPreview both = ModifyMetadataTool.formRetypePreview(fqn, ref,
+            List.of(props("valueType", "String").get(0), props("main", "false").get(0)), true); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        assertEquals("both losses are named", List.of("valueType", "main"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            both.getTopNames());
+        assertTrue("and the subtitle spells out the second one: " + both.getSubtitle(), //$NON-NLS-1$
+            both.getSubtitle().contains("ext-info")); //$NON-NLS-1$
+    }
+
+    /**
+     * The other edge of the same rule. A batch may carry BOTH a retype and a main write and still
+     * lose no handler - the node merely changes kind, and its data is carried over. The dialog is
+     * therefore built from what the pre-check FOUND, not from what the request could have carried:
+     * a prompt that promises a deletion which will not happen teaches the reader to ignore it.
+     */
+    @Test
+    public void testThePreviewDoesNotClaimALossThePreCheckDidNotFind()
+    {
+        FormElementWriter.FormMemberRef ref = FormElementWriter.parse(
+            "InformationRegister.Reg.Form.RecordForm.Attribute.Record"); //$NON-NLS-1$
+        String fqn = "InformationRegister.Reg.Form.RecordForm.Attribute.Record"; //$NON-NLS-1$
+
+        ConsentPreview harmlessMain = ModifyMetadataTool.formRetypePreview(fqn, ref,
+            List.of(props("valueType", "String").get(0), props("main", "true").get(0)), false); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        assertEquals("only the retype is at stake", List.of("valueType"), //$NON-NLS-1$ //$NON-NLS-2$
+            harmlessMain.getTopNames());
+        assertFalse("so the dialog must not promise a deletion that will not happen: " //$NON-NLS-1$
+            + harmlessMain.getSubtitle(), harmlessMain.getSubtitle().contains("ext-info")); //$NON-NLS-1$
+    }
+
+    /**
+     * The same ordering rule as {@code mainFlagIn}, on the other property the ext-info decision
+     * keys on: a batch is applied in order, so a repeated {@code valueType} leaves the LAST one.
+     * Judged by the first, {@code [valueType=CatalogObject, valueType=String, main=true]} would
+     * promise no loss and then delete the node with its handlers.
+     */
+    @Test
+    public void testARepeatedRetypeIsJudgedByItsLastWrite()
+    {
+        EAttribute valueTypeFeature = EcoreFactory.eINSTANCE.createEAttribute();
+        valueTypeFeature.setName("valueType"); //$NON-NLS-1$
+        List<ModifyMetadataTool.HolderChange> prepared = List.of(
+            new ModifyMetadataTool.HolderChange(false,
+                ModifyMetadataTool.PreparedChange.typeDescription(valueTypeFeature,
+                    singleType("CatalogObject.Goods"))), //$NON-NLS-1$
+            new ModifyMetadataTool.HolderChange(false,
+                ModifyMetadataTool.PreparedChange.typeDescription(valueTypeFeature,
+                    singleType("String")))); //$NON-NLS-1$
+
+        assertEquals("the LAST write is what the model ends up with", //$NON-NLS-1$
+            "String", ModifyMetadataTool.categoryAfter(prepared, null)); //$NON-NLS-1$
+        assertNull("a batch that retypes nothing falls back to the member", //$NON-NLS-1$
+            ModifyMetadataTool.categoryAfter(List.of(), null));
+    }
+
+    /** A {@code TypeDescription} naming exactly one type, the shape a retype prepares. */
+    private static TypeDescription singleType(String typeName)
+    {
+        TypeDescription description = McoreFactory.eINSTANCE.createTypeDescription();
+        Type type = McoreFactory.eINSTANCE.createType();
+        type.setName(typeName);
+        description.getTypes().add(type);
+        return description;
+    }
+
+    /** One property list carrying a single string-valued property. */
+    private static List<JsonObject> props(String name, String value)
+    {
+        JsonObject prop = new JsonObject();
+        prop.addProperty("name", name); //$NON-NLS-1$
+        prop.addProperty("value", value); //$NON-NLS-1$
+        return List.of(prop);
+    }
+
+    /** One property carrying a JSON boolean, the shape a schema-driven client sends. */
+    private static JsonObject boolProp(String name, boolean value)
+    {
+        JsonObject prop = new JsonObject();
+        prop.addProperty("name", name); //$NON-NLS-1$
+        prop.addProperty("value", Boolean.valueOf(value)); //$NON-NLS-1$
+        return prop;
     }
 }
