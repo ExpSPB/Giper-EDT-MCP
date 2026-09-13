@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -85,7 +86,13 @@ public final class FormElementWriter
     private static final String FEATURE_ATTRIBUTES = "attributes"; //$NON-NLS-1$
     /** The COLUMNS of a form attribute whose value type is an in-memory collection (issue #295). */
     private static final String FEATURE_COLUMNS = "columns"; //$NON-NLS-1$
+    private static final String FEATURE_ADDITIONAL_COLUMNS = "additionalColumns"; //$NON-NLS-1$
     private static final String FEATURE_FORM_COMMANDS = "formCommands"; //$NON-NLS-1$
+    /** The inferred commands of a {@code FormStandardCommandSource}; transient, but readable. */
+    private static final String FEATURE_STANDARD_COMMANDS = "commands"; //$NON-NLS-1$
+    /** Dynamic-list paths whose UseAlways value differs from the unchecked default. */
+    private static final String FEATURE_NOT_DEFAULT_USE_ALWAYS_ATTRIBUTES =
+        "notDefaultUseAlwaysAttributes"; //$NON-NLS-1$
 
     /** The form's own {@code parameters} containment - FormParameter, issue #396. */
     private static final String FEATURE_PARAMETERS = "parameters"; //$NON-NLS-1$
@@ -145,6 +152,7 @@ public final class FormElementWriter
     private static final String FEATURE_COMMAND_BAR = "commandBar"; //$NON-NLS-1$
     private static final String FEATURE_BASE_FORM = "baseForm"; //$NON-NLS-1$
     private static final String FEATURE_EXTENSION_FORM = "extensionForm"; //$NON-NLS-1$
+    private static final String FEATURE_ADOPTED = "adopted"; //$NON-NLS-1$
     private static final int DEFAULT_EXT_FORM_OBJECT_ID = 1_000_000;
     /** {@code FormChildrenGroup.VERTICAL} - the designer default children grouping before 8.5.1. */
     private static final String LITERAL_VERTICAL = "Vertical"; //$NON-NLS-1$
@@ -165,6 +173,7 @@ public final class FormElementWriter
     private static final String ECLASS_USUAL_GROUP_EXT_INFO = "UsualGroupExtInfo"; //$NON-NLS-1$
     private static final String ECLASS_LABEL_DECORATION_EXT_INFO = "LabelDecorationExtInfo"; //$NON-NLS-1$
     private static final String ECLASS_FORM_COMMAND = "FormCommand"; //$NON-NLS-1$
+    private static final String ECLASS_FORM_STANDARD_COMMAND = "FormStandardCommand"; //$NON-NLS-1$
 
     /** A form PARAMETER - a data member of the form, not an item in its tree (issue #396). */
     private static final String ECLASS_FORM_PARAMETER = "FormParameter"; //$NON-NLS-1$
@@ -849,26 +858,15 @@ public final class FormElementWriter
         return false;
     }
 
-    /** The dot-split segments of an item's bound {@code dataPath}, or an empty array when unbound. */
+    /**
+     * The dot-split segments of an item's bound {@code dataPath}, or an empty array when unbound.
+     * Reads the path through {@link #segmentsOf} so the two callers that ask this question of an
+     * ITEM and the ones that ask it of a {@code DataPath} cannot drift apart on what a segment is.
+     */
     private static String[] dataPathSegments(EObject item)
     {
-        EObject dataPath = singleReference(item, "dataPath"); //$NON-NLS-1$
-        if (dataPath == null)
-        {
-            return new String[0];
-        }
-        EStructuralFeature segments = dataPath.eClass().getEStructuralFeature("segments"); //$NON-NLS-1$
-        if (segments == null || !(dataPath.eGet(segments) instanceof List<?>))
-        {
-            return new String[0];
-        }
-        List<?> values = (List<?>)dataPath.eGet(segments);
-        String[] parts = new String[values.size()];
-        for (int i = 0; i < values.size(); i++)
-        {
-            parts[i] = String.valueOf(values.get(i));
-        }
-        return parts;
+        List<String> segments = segmentsOf(singleReference(item, "dataPath")); //$NON-NLS-1$
+        return segments.toArray(new String[0]);
     }
 
     /** Whether a kind token addresses an event Handler (English or Russian, case-insensitive). */
@@ -1977,6 +1975,8 @@ public final class FormElementWriter
         // one shared helper rather than a copy that can drift out of step (issue #382).
         applyFormAttributeDefaults(attr);
         addToList(content, FEATURE_ATTRIBUTES, attr);
+        // The designer pairs a root ext-info with the main attribute it just seeded (#591).
+        syncFormExtInfo(content);
     }
 
     /**
@@ -2809,9 +2809,12 @@ public final class FormElementWriter
                 + "Catalog.Products'}. 'customQuery' alone only toggles an attribute that is already a " //$NON-NLS-1$
                 + "dynamic list.").toJson()); //$NON-NLS-1$
         }
+        boolean promotedToMain = false;
         if (!alreadyDynamicList)
         {
+            boolean hadMainAttribute = hasMainAttribute(formModel);
             extInfo = convertPlainAttributeToDynamicList(formModel, attribute, version, applied);
+            promotedToMain = !hadMainAttribute && isMainAttribute(attribute);
         }
 
         boolean effectiveCustomQuery = customQuery != null ? customQuery.booleanValue() : queryText != null;
@@ -2834,6 +2837,13 @@ public final class FormElementWriter
         if (mainTableFqn != null)
         {
             applyMainTable(extInfo, config, mainTableFqn, applied);
+        }
+        // This branch sets main itself, outside the property loop that syncs the form root - so it
+        // asks here, but ONLY when it actually promoted the attribute. A query edit on a list that
+        // was already dynamic writes no main flag, and the root node is not its business.
+        if (promotedToMain)
+        {
+            syncFormExtInfo(formModel);
         }
         return applied;
     }
@@ -2918,6 +2928,16 @@ public final class FormElementWriter
     }
 
     /**
+     * The classifier the platform pairs with this attribute's value type, or {@code null} when the
+     * attribute takes none - which also covers a MULTI-typed attribute, whose category cannot be
+     * read at all.
+     */
+    public static String attributeExtInfoClassifierNameFor(EObject attribute)
+    {
+        return ATTRIBUTE_EXT_INFO_BY_TYPE_CATEGORY.get(singleValueTypeCategory(attribute));
+    }
+
+    /**
      * Brings the form attribute's {@code <extInfo>} in line with the value type it now carries - the
      * step that turns a bare {@code valueType} set into the attribute the designer would have written
      * (issue #369). Mirrors {@code ExtInfoManagementService.setExtInfo(tx, attribute, type, version)}:
@@ -2976,6 +2996,315 @@ public final class FormElementWriter
     }
 
     /**
+     * The MAIN attribute's value-type CATEGORY &rarr; the concrete {@code FormExtInfo} classifier the
+     * platform pairs with the form ROOT. A category not listed here normally leaves the form without
+     * a root ext-info; importer-only ambiguity is named alongside the map.
+     *
+     * <p>The platform decides this in THREE places that do not agree:
+     * {@code ExtInfoManagementService.createFormExtInfo} (the main-attribute checkbox), the form
+     * generators ({@code ItemFormContainGenerator} and its siblings, at form creation) and
+     * {@code FormExtInfoXmlPartReader} (designer-XML import). This map is their UNION, because a
+     * form on disk carries whichever of them wrote it - the DT load path re-derives nothing - and a
+     * narrower map would delete a node a different writer legitimately produced. Chart-of-accounts
+     * object forms are the case that proves it: only the generator and the importer map them.</p>
+     */
+    private static final Map<String, String> FORM_EXT_INFO_BY_TYPE_CATEGORY = buildFormExtInfoMap();
+
+    // Deliberately absent: SpreadsheetDocument may still receive an importer node, while
+    // InformationRegisterManager has no pairing from any writer.
+    private static final Set<String> FORM_EXT_INFO_CATEGORIES_WITH_POSSIBLE_WRITER_NODE =
+        Set.of("SpreadsheetDocument"); //$NON-NLS-1$
+
+    private static Map<String, String> buildFormExtInfoMap()
+    {
+        Map<String, String> m = new HashMap<>();
+        m.put("BusinessProcessObject", "BusinessProcesFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("CatalogObject", "CatalogFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("ChartOfCharacteristicTypesObject", //$NON-NLS-1$
+            "ChartOfCharacteristicTypesFormExtInfo"); //$NON-NLS-1$
+        m.put("ConstantsSet", "ConstantsFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("DocumentObject", "DocumentFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("ExternalDataSourceCubeDimensionTableObject", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("ExchangePlanObject", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("DataProcessorObject", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("DynamicList", "DynamicListFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("InformationRegisterRecordManager", //$NON-NLS-1$
+            "InformationRegisterManagerFormExtInfo"); //$NON-NLS-1$
+        m.put("RecalculationRecordSet", ECLASS_RECORD_SET_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("CalculationRegisterRecordSet", ECLASS_RECORD_SET_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("InformationRegisterRecordSet", ECLASS_RECORD_SET_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("AccountingRegisterRecordSet", ECLASS_RECORD_SET_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("SequenceRecordSet", ECLASS_RECORD_SET_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("AccumulationRegisterRecordSet", ECLASS_RECORD_SET_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("ReportObject", "ReportFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("DataCompositionSettingsComposer", "SettingsComposerFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("TaskObject", "TaskFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("ExternalDataSourceTableObject", "TableObjectFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("ExternalDataSourceTableRecordManager", "TableRecordFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("ExternalDataSourceCubeRecordManager", "CubeRecordFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        // Kinds only the GENERATORS and the designer-XML importer produce; createFormExtInfo has no
+        // case for them and would clear a correct node.
+        m.put("ChartOfAccountsObject", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("ChartOfCalculationTypesObject", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("ExternalDataProcessor", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("ExternalDataProcessorObject", ECLASS_OBJECT_FORM_EXT_INFO); //$NON-NLS-1$
+        m.put("ExternalReport", "ReportFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        m.put("ExternalReportObject", "ReportFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        // ... and one only the record-set generator produces, for a cube.
+        m.put("ExternalDataSourceCubeRecordSet", "CubeRecordSetFormExtInfo"); //$NON-NLS-1$ //$NON-NLS-2$
+        return Collections.unmodifiableMap(m);
+    }
+
+    private static final String ECLASS_OBJECT_FORM_EXT_INFO = "ObjectFormExtInfo"; //$NON-NLS-1$
+    private static final String ECLASS_RECORD_SET_FORM_EXT_INFO = "RecordSetFormExtInfo"; //$NON-NLS-1$
+
+    /**
+     * Gives the form ROOT the ext-info its MAIN attribute calls for, mirroring the platform pair
+     * {@code ExtInfoManagementService.setExtInfo(Form, FormAttribute, Version)} and
+     * {@code resetExtInfo(Form, Version)}.
+     *
+     * <p>That node is what publishes a form's write and read events: without it a record form
+     * refuses {@code BeforeWriteAtServer} outright, and no MCP property can supply it (issue #591).
+     * The platform reaches the question from exactly ONE place - a write of the main-attribute flag
+     * ({@code FormAttributeService.setMainAttribute}) - and answers it from the model alone: no main
+     * attribute, or a category that maps to no kind, and the node is cleared, because
+     * {@code isNeedUpdateExtInfo} returns true precisely when the new kind is {@code null}.</p>
+     *
+     * @param formModel the editable content form, re-fetched inside the tx
+     * @return the EClass name of the ext-info now on the form root, or {@code null} when it carries none
+     */
+    public static String syncFormExtInfo(EObject formModel)
+    {
+        EStructuralFeature extInfoFeature = formModel.eClass().getEStructuralFeature(FEATURE_EXT_INFO);
+        if (!(extInfoFeature instanceof EReference) || extInfoFeature.isMany())
+        {
+            return null;
+        }
+        EObject current = singleReference(formModel, FEATURE_EXT_INFO);
+        // The kind the main attribute calls for: none when the form has no main attribute at all
+        // (the platform's resetExtInfo) or when its category maps to nothing.
+        String classifier = hasMainAttribute(formModel)
+            ? FORM_EXT_INFO_BY_TYPE_CATEGORY.get(mainAttributeCategory(formModel)) : null;
+        if (classifier == null)
+        {
+            if (current != null)
+            {
+                formModel.eSet(extInfoFeature, null);
+            }
+            return null;
+        }
+        if (current != null && classifier.equals(current.eClass().getName()))
+        {
+            return classifier;
+        }
+        EObject created =
+            replaceExtInfoClassifier(formModel, formModel, extInfoFeature, classifier);
+        if (created == null)
+        {
+            return null;
+        }
+        // A CHANGE of kind is not a reason to lose what the old node held - above all the event
+        // handlers bound inside it.
+        copySameFeatures(current, created);
+        return created.eClass().getName();
+    }
+
+    /**
+     * Brings a table's ext-info in line with its data-path pairing. An unreadable path preserves the
+     * node; a readable pairing replaces or clears it exactly as the platform does.
+     *
+     * @param formModel the editable content form owning {@code table}
+     * @param table the table whose data path has just been built
+     * @return the EClass name of the ext-info now on the table, or {@code null} when it carries none
+     */
+    public static String syncTableExtInfo(EObject formModel, EObject table)
+    {
+        EStructuralFeature extInfoFeature = table.eClass().getEStructuralFeature(FEATURE_EXT_INFO);
+        if (!(extInfoFeature instanceof EReference) || extInfoFeature.isMany())
+        {
+            return null;
+        }
+        EObject current = singleReference(table, FEATURE_EXT_INFO);
+        ExtInfoRequirement requirement = extInfoRequirement(formModel, table);
+        if (!requirement.readable())
+        {
+            return current == null ? null : current.eClass().getName();
+        }
+        String classifier = requirement.classifier();
+        if (classifier == null)
+        {
+            if (current != null)
+            {
+                table.eSet(extInfoFeature, null);
+            }
+            return null;
+        }
+        if (current != null && classifier.equals(current.eClass().getName()))
+        {
+            return classifier;
+        }
+        EObject created = replaceExtInfoClassifier(formModel, table, extInfoFeature, classifier);
+        return created == null ? null : created.eClass().getName();
+    }
+
+    /**
+     * The type CATEGORY of the form's MAIN attribute, or {@code null} when the form has no main
+     * attribute or its type is not single.
+     *
+     * <p>This is the one value {@link #syncFormExtInfo(EObject)} keys on. It is the FIRST main
+     * attribute in list order, exactly what {@code FormUtil.getMainAttribute} answers; a form
+     * carrying TWO of them is a state the platform reports as an error rather than resolves, so
+     * {@link #demoteOtherMainAttributes(EObject, EObject)} keeps it from arising.</p>
+     *
+     * @param formModel the editable content form, on the tx-bound model
+     * @return the category, or {@code null}
+     */
+    public static String mainAttributeCategory(EObject formModel)
+    {
+        for (EObject attr : referenceList(formModel, FEATURE_ATTRIBUTES))
+        {
+            if (isMainAttribute(attr))
+            {
+                return singleValueTypeCategory(attr);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether writing {@code main} on this attribute would DELETE event handlers: the form root
+     * carries an ext-info with bindings inside, and the kind it would be left with is none.
+     *
+     * <p>Following the platform ({@code resetExtInfo} clears the node unconditionally) costs
+     * nothing when the node is empty or merely changes kind - a kind change carries the handlers
+     * over. This is the one shape where it destroys something the caller did not name, so it is
+     * the one the consent gate is asked about.</p>
+     *
+     * @param formModel the editable content form, on the tx-bound model
+     * @param attribute the attribute whose main flag the request writes
+     * @param mainAfter the value the request writes into that flag
+     * @param categoryAfter the attribute's type category AFTER the batch - the same batch may
+     *            retype it, and the model still holds the old one when this is asked
+     * @param demotesOthers whether the batch takes the flag off every OTHER attribute, which it
+     *            does as soon as it flags this one main at any point
+     * @return {@code true} when the write would take bound handlers with the node
+     */
+    public static boolean clearsBoundFormExtInfo(EObject formModel, EObject attribute, // NOSONAR the decision needs all four; a parameter object would not make it clearer
+        boolean mainAfter, String categoryAfter, boolean demotesOthers)
+    {
+        EObject current = singleReference(formModel, FEATURE_EXT_INFO);
+        if (current == null || referenceList(current, KEY_HANDLERS).isEmpty())
+        {
+            return false;
+        }
+        if (mainAfter)
+        {
+            return !pairsWithACreatableKind(formModel, categoryAfter);
+        }
+        // With the others demoted the form is left with no main attribute at all, whatever it
+        // carried before the batch.
+        EObject deciding = demotesOthers ? null : otherMainAttribute(formModel, attribute);
+        return deciding == null
+            || !pairsWithACreatableKind(formModel, singleValueTypeCategory(deciding));
+    }
+
+    /**
+     * Whether a category pairs with an ext-info kind THIS form model can actually create. The map
+     * alone is not enough: on a platform whose form EPackage has no such EClass,
+     * {@code replaceExtInfoClassifier} clears the slot rather than leave a stale node, so the
+     * handlers go the same way as for a category that pairs with nothing.
+     */
+    private static boolean pairsWithACreatableKind(EObject formModel, String category)
+    {
+        String classifier = FORM_EXT_INFO_BY_TYPE_CATEGORY.get(category);
+        return classifier != null && formEClass(formModel, classifier) != null;
+    }
+
+    /** The form's main attribute other than the given one, or {@code null} when there is none. */
+    private static EObject otherMainAttribute(EObject formModel, EObject excluded)
+    {
+        for (EObject attr : referenceList(formModel, FEATURE_ATTRIBUTES))
+        {
+            if (attr != excluded && isMainAttribute(attr))
+            {
+                return attr;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Clears {@code main} on every OTHER attribute of the form, mirroring
+     * {@code FormAttributeService.setMainAttribute}, which demotes the previous main before it
+     * flags the new one. A form may hold one main attribute or none - the platform reports two as
+     * an error ({@code FormValidator.isMainFormAttributeOneOrNone}).
+     *
+     * <p>Called when the batch flags the attribute main AT ANY POINT, not when it is left main: a
+     * batch of {@code [main=true, main=false]} promotes it and takes it back, and the platform's
+     * two calls would have demoted the previous main on the way through.</p>
+     *
+     * @param formModel the editable content form, on the tx-bound model
+     * @param promoted the attribute the batch flagged main
+     * @return the names of the demoted attributes in list order, empty when there were none
+     */
+    public static List<String> demoteOtherMainAttributes(EObject formModel, EObject promoted)
+    {
+        List<EObject> attributes = referenceList(formModel, FEATURE_ATTRIBUTES);
+        // Only a member of the form's OWN attribute list can be its main one: that is the list
+        // FormUtil.getMainAttribute reads, so a flag on a nested column decides nothing.
+        if (promoted == null || !attributes.contains(promoted))
+        {
+            return List.of();
+        }
+        List<String> demoted = new ArrayList<>();
+        for (EObject attr : attributes)
+        {
+            if (attr == promoted || !isMainAttribute(attr))
+            {
+                continue;
+            }
+            setBooleanFeature(attr, FEATURE_MAIN, false);
+            demoted.add(stringFeature(attr, FEATURE_NAME));
+        }
+        return demoted;
+    }
+
+    /** The features {@code ExtInfoManagementService} refuses to carry over. */
+    private static final Set<String> EXT_INFO_FEATURES_NOT_CARRIED_OVER =
+        Set.of("orientation"); //$NON-NLS-1$
+
+    /**
+     * Carries the old ext-info's data over to the new one, mirroring
+     * {@code ExtInfoManagementService.copyDataOfSameFeatures}: every feature the two kinds share by
+     * NAME and TYPE, that the old one actually set, minus the ones the platform skips.
+     *
+     * <p>For a form ROOT that is what keeps the event handlers bound inside the node when its KIND
+     * changes - promoting a different main attribute must not silently discard them.</p>
+     */
+    private static void copySameFeatures(EObject source, EObject destination)
+    {
+        if (source == null || destination == null)
+        {
+            return;
+        }
+        EClass destinationClass = destination.eClass();
+        for (EStructuralFeature feature : source.eClass().getEAllStructuralFeatures())
+        {
+            EStructuralFeature target = destinationClass.getEStructuralFeature(feature.getName());
+            if (target == null || !feature.getEType().equals(target.getEType())
+                || !source.eIsSet(feature)
+                || EXT_INFO_FEATURES_NOT_CARRIED_OVER.contains(feature.getName()))
+            {
+                continue;
+            }
+            Object value = source.eGet(feature);
+            // A containment list is COPIED before it is handed over: setting it moves the elements
+            // out of the source, and the source list is what is being read.
+            destination.eSet(target, value instanceof List<?> ? new ArrayList<>((List<?>)value) : value);
+        }
+    }
+
+    /**
      * The English type CATEGORY of a SINGLE-typed member's value type (the name up to the first dot,
      * e.g. {@code CatalogRef} of {@code CatalogRef.Goods}), or {@code null} when the member declares no
      * type or more than one. Single-typed is the platform's own precondition: a composite attribute
@@ -2984,14 +3313,50 @@ public final class FormElementWriter
      * platform PROXY as well as for a resolved type - so an attribute typed with the Russian spelling
      * classifies identically.
      */
-    private static String singleValueTypeCategory(EObject member)
+    /**
+     * The type CATEGORY a form member is typed with, or {@code null} when its type is not single.
+     * The read-only counterpart of {@link #typeCategoryOf(Object)} for a member that already
+     * carries its type.
+     *
+     * @param member the form member, on the tx-bound model
+     * @return the category, or {@code null}
+     */
+    public static String valueTypeCategoryOf(EObject member)
+    {
+        return member == null ? null : singleValueTypeCategory(member);
+    }
+
+    /**
+     * The category of a member's SINGLE value type ({@code DynamicList}, {@code String}, the head of
+     * a qualified name), or {@code null} when the member does not carry exactly one type - which is
+     * the difference between "this type takes no ext-info" and "the type cannot be read at all".
+     *
+     * @param member the form attribute or column to read
+     * @return the type category, or {@code null} when the value type is absent or not single
+     */
+    public static String singleValueTypeCategory(EObject member)
     {
         EStructuralFeature feature = member.eClass().getEStructuralFeature(FEATURE_VALUE_TYPE);
-        if (feature == null || !(member.eGet(feature) instanceof EObject))
+        return feature == null ? null : typeCategoryOf(member.eGet(feature));
+    }
+
+    /**
+     * The type CATEGORY a value-type description names - the part before the first dot - or
+     * {@code null} when it does not name exactly one type.
+     *
+     * <p>Asked of the DESCRIPTION rather than of the member on purpose: a caller deciding what a
+     * batch will leave behind holds the type it is about to write, not a model that has it yet.</p>
+     *
+     * @param valueType the {@code TypeDescription}, or anything else (answered {@code null})
+     * @return the category, or {@code null}
+     */
+    public static String typeCategoryOf(Object valueType)
+    {
+        if (!(valueType instanceof EObject))
         {
             return null;
         }
-        List<EObject> types = referenceList((EObject)member.eGet(feature), "types"); //$NON-NLS-1$
+        List<EObject> types = referenceList((EObject)valueType, "types"); //$NON-NLS-1$
         if (types.size() != 1 || !(types.get(0) instanceof TypeItem))
         {
             return null;
@@ -3136,8 +3501,14 @@ public final class FormElementWriter
         return extInfo != null && ECLASS_DYNAMIC_LIST_EXT_INFO.equals(extInfo.eClass().getName());
     }
 
-    /** Whether a form attribute is flagged as the form's main data source ({@code main = true}). */
-    private static boolean isMainAttribute(EObject attribute)
+    /**
+     * Whether a form member is flagged as the form's main data source ({@code main = true}).
+     * Answers {@code false} for anything without that flag, an item or a column included.
+     *
+     * @param attribute the form member to inspect, on the tx-bound model
+     * @return {@code true} only for the attribute the form reads its data through
+     */
+    public static boolean isMainAttribute(EObject attribute)
     {
         EStructuralFeature mainFeature = attribute.eClass().getEStructuralFeature(FEATURE_MAIN);
         return mainFeature != null && Boolean.TRUE.equals(attribute.eGet(mainFeature));
@@ -3846,6 +4217,7 @@ public final class FormElementWriter
         applyVisibleDefaults(table);
         setIntFeature(table, FEATURE_ID, nextItemId(formModel));
         buildDataPath(formModel, table, dataPath);
+        syncTableExtInfo(formModel, table);
         setEnumFeature(table, "titleLocation", "None"); //$NON-NLS-1$ //$NON-NLS-2$
         applyTableDefaults(table);
         setUndefinedRowFilter(table);
@@ -3947,7 +4319,206 @@ public final class FormElementWriter
                 }
             }
             item.eSet(dpFeat, dataPath);
+            registerDynamicListUseAlwaysPath(formModel, dataPath);
         }
+    }
+
+    /**
+     * Registers a copy of a dynamic-list column path on its root form attribute. Dynamic-list
+     * columns default to unchecked UseAlways, so the platform represents UseAlways=true by putting
+     * the path in {@code notDefaultUseAlwaysAttributes}. The item and registration deliberately keep
+     * the same caller-supplied segment spelling.
+     */
+    @SuppressWarnings("unchecked")
+    private static void registerDynamicListUseAlwaysPath(EObject formModel, EObject dataPath)
+    {
+        List<String> segments = segmentsOf(dataPath);
+        if (segments.size() < 2)
+        {
+            return;
+        }
+        EObject attribute = findByName(referenceList(formModel, FEATURE_ATTRIBUTES), segments.get(0));
+        if (attribute == null || !isDynamicListAttribute(attribute))
+        {
+            return;
+        }
+        EStructuralFeature registrationsFeature =
+            attribute.eClass().getEStructuralFeature(FEATURE_NOT_DEFAULT_USE_ALWAYS_ATTRIBUTES);
+        if (!(registrationsFeature instanceof EReference) || !registrationsFeature.isMany()
+            || !(attribute.eGet(registrationsFeature) instanceof EList<?>))
+        {
+            return;
+        }
+        EList<EObject> registrations = (EList<EObject>)attribute.eGet(registrationsFeature);
+        for (EObject registered : registrations)
+        {
+            if (sameDataPath(registered, segments))
+            {
+                return;
+            }
+        }
+        registrations.add(EcoreUtil.copy(dataPath));
+    }
+
+    /** The string segments stored on a DataPath, copied out so they survive containment changes. */
+    @SuppressWarnings("unchecked")
+    private static List<String> segmentsOf(EObject dataPath)
+    {
+        if (dataPath == null)
+        {
+            return Collections.emptyList();
+        }
+        EStructuralFeature segmentsFeature = dataPath.eClass().getEStructuralFeature("segments"); //$NON-NLS-1$
+        if (segmentsFeature == null || !(dataPath.eGet(segmentsFeature) instanceof List<?>))
+        {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object segment : (List<Object>)dataPath.eGet(segmentsFeature))
+        {
+            if (segment instanceof String)
+            {
+                result.add((String)segment);
+            }
+        }
+        return result;
+    }
+
+    /** Platform-equivalent DataPath equality: same number of segments, case-insensitive per segment. */
+    private static boolean sameDataPath(EObject dataPath, List<String> expectedSegments)
+    {
+        List<String> actualSegments = segmentsOf(dataPath);
+        if (actualSegments.size() != expectedSegments.size())
+        {
+            return false;
+        }
+        for (int i = 0; i < actualSegments.size(); i++)
+        {
+            if (!actualSegments.get(i).equalsIgnoreCase(expectedSegments.get(i)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Removes a resolved form member and prunes any dynamic-list UseAlways registrations that only
+     * the removed item subtree referenced. This is the symmetric delete path for registrations made
+     * by {@link #buildDataPath}; paths still referenced by another authored item are retained.
+     *
+     * @param formModel the editable form content model
+     * @param target the resolved member to remove
+     */
+    public static void removeFormMember(EObject formModel, EObject target)
+    {
+        List<List<String>> removedPaths = itemDataPaths(target);
+        EcoreUtil.remove(target);
+        for (List<String> path : removedPaths)
+        {
+            removeUnusedDynamicListUseAlwaysPath(formModel, path);
+        }
+    }
+
+    /** Collects the bound paths on a target FormItem and every authored FormItem below it. */
+    private static List<List<String>> itemDataPaths(EObject target)
+    {
+        EClassifier formItem = target != null && target.eClass().getEPackage() != null
+            ? target.eClass().getEPackage().getEClassifier(ECLASS_FORM_ITEM) : null;
+        if (!(formItem instanceof EClass) || !((EClass)formItem).isInstance(target))
+        {
+            return Collections.emptyList();
+        }
+        List<List<String>> paths = new ArrayList<>();
+        Deque<EObject> pending = new ArrayDeque<>();
+        pending.push(target);
+        while (!pending.isEmpty())
+        {
+            EObject item = pending.pop();
+            List<String> path = segmentsOf(singleReference(item, "dataPath")); //$NON-NLS-1$
+            if (path.size() >= 2 && !containsDataPath(paths, path))
+            {
+                paths.add(path);
+            }
+            pushFormItems(item, (EClass)formItem, pending);
+        }
+        return paths;
+    }
+
+    private static boolean containsDataPath(List<List<String>> paths, List<String> expected)
+    {
+        for (List<String> path : paths)
+        {
+            if (sameSegments(path, expected))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean sameSegments(List<String> actual, List<String> expected)
+    {
+        if (actual.size() != expected.size())
+        {
+            return false;
+        }
+        for (int i = 0; i < actual.size(); i++)
+        {
+            if (!actual.get(i).equalsIgnoreCase(expected.get(i)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void removeUnusedDynamicListUseAlwaysPath(EObject formModel, List<String> path)
+    {
+        EObject attribute = path.size() >= 2
+            ? findByName(referenceList(formModel, FEATURE_ATTRIBUTES), path.get(0)) : null;
+        if (attribute == null || !isDynamicListAttribute(attribute) || formReferencesDataPath(formModel, path))
+        {
+            return;
+        }
+        EStructuralFeature registrationsFeature =
+            attribute.eClass().getEStructuralFeature(FEATURE_NOT_DEFAULT_USE_ALWAYS_ATTRIBUTES);
+        if (!(registrationsFeature instanceof EReference) || !registrationsFeature.isMany()
+            || !(attribute.eGet(registrationsFeature) instanceof EList<?>))
+        {
+            return;
+        }
+        EList<EObject> registrations = (EList<EObject>)attribute.eGet(registrationsFeature);
+        for (int i = registrations.size() - 1; i >= 0; i--)
+        {
+            if (sameDataPath(registrations.get(i), path))
+            {
+                registrations.remove(i);
+            }
+        }
+    }
+
+    /** Whether any remaining authored form item references the path. */
+    private static boolean formReferencesDataPath(EObject formModel, List<String> path)
+    {
+        EClassifier formItem = formModel.eClass().getEPackage().getEClassifier(ECLASS_FORM_ITEM);
+        if (!(formItem instanceof EClass))
+        {
+            return false;
+        }
+        Deque<EObject> pending = new ArrayDeque<>();
+        pushFormItems(formModel, (EClass)formItem, pending);
+        while (!pending.isEmpty())
+        {
+            EObject item = pending.pop();
+            if (sameDataPath(singleReference(item, "dataPath"), path)) //$NON-NLS-1$
+            {
+                return true;
+            }
+            pushFormItems(item, (EClass)formItem, pending);
+        }
+        return false;
     }
 
     /**
@@ -4099,7 +4670,7 @@ public final class FormElementWriter
         }
     }
 
-    /** A Button bound to a form command (FormCommand is-a mcore Command, so the reference is direct). */
+    /** A Button bound to a custom or platform-standard form command. */
     private static String createButton(EObject formModel, String name, String parentName, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
         String cmdName, String titleLanguage, String title, boolean russianAutoNames,
         String[] createdKind)
@@ -4108,12 +4679,6 @@ public final class FormElementWriter
         {
             return "A form button needs a 'command' property naming the form command it runs " //$NON-NLS-1$
                 + "(e.g. {name:'command', value:'Refresh'})."; //$NON-NLS-1$
-        }
-        EObject command = findByName(referenceList(formModel, FEATURE_FORM_COMMANDS), cmdName);
-        if (command == null)
-        {
-            return "Form command '" + cmdName + "' not found - create it first, then bind the button " //$NON-NLS-1$ //$NON-NLS-2$
-                + "to it."; //$NON-NLS-1$
         }
         if (findItem(formModel, name) != null)
         {
@@ -4128,6 +4693,11 @@ public final class FormElementWriter
         if (invalid != null)
         {
             return invalid;
+        }
+        EObject command = resolveButtonCommand(formModel, container, cmdName);
+        if (command == null)
+        {
+            return buttonCommandNotFound(formModel, container, cmdName);
         }
         EObject item = createFromClassifier(formModel, ELEM_BUTTON);
         if (item == null)
@@ -4460,24 +5030,62 @@ public final class FormElementWriter
      * slot ({@link #resolveExtInfoEClass}), and which class a live instance must be REPLACED by when
      * the type changed under it ({@link #syncItemExtInfo}).</p>
      */
+    /**
+     * The ext-info classifier the element's CURRENT type calls for, or {@code null} when its type
+     * pairs with none. Read-only counterpart of the dispatch the writer uses, for a validator that
+     * has to tell "this type wants none" from "this kind has no opinion" - see
+     * {@link #kindDecidesExtInfo(EObject)}.
+     */
+    static String expectedExtInfoClassifier(EObject element)
+    {
+        return element == null ? null : extInfoClassifierNameFor(element);
+    }
+
+    /**
+     * Whether this element's KIND has an opinion at all about which ext-info it carries - by its
+     * {@code type} for most, by the class alone for an {@code ExtendedTooltip}. A {@code null}
+     * answer from {@link #expectedExtInfoClassifier} means "this type pairs with none" only for
+     * these; for every other kind it means "no opinion".
+     */
+    static boolean kindDecidesExtInfo(EObject element)
+    {
+        if (element == null)
+        {
+            return false;
+        }
+        EClass eClass = element.eClass();
+        return isOrInherits(eClass, ECLASS_FORM_GROUP) || isOrInherits(eClass, ECLASS_FORM_FIELD)
+            || isOrInherits(eClass, ECLASS_DECORATION) || isOrInherits(eClass, ECLASS_ADDITION);
+    }
+
     private static String extInfoClassifierNameFor(EObject element)
     {
-        String eClassName = element.eClass().getName();
+        EClass eClass = element.eClass();
         String typeLiteral = enumLiteralOf(element, FEATURE_TYPE);
-        if (ECLASS_FORM_GROUP.equals(eClassName))
+        if (isOrInherits(eClass, ECLASS_EXTENDED_TOOLTIP))
         {
-            // An unset type still means UsualGroup - the platform's own default group shape.
+            // A tooltip is pinned to the label node whatever its type says: the platform's own
+            // check overrides the type switch with a plain "is it an ExtendedTooltip", and pins the
+            // type to Label separately. Reading the type here would demand a picture node for a
+            // tooltip the platform rejects for its TYPE, and call a correct node stale.
+            return ECLASS_LABEL_DECORATION_EXT_INFO;
+        }
+        if (isOrInherits(eClass, ECLASS_FORM_GROUP))
+        {
+            // EMF answers ButtonGroup for an unset type (the first literal of
+            // ManagedFormGroupType), so this fallback is reached only by a model whose group has no
+            // type feature at all - there the plain-group shape is the honest guess.
             return groupExtInfoClassifierFor(typeLiteral != null ? typeLiteral : TYPE_LITERAL_USUAL_GROUP);
         }
-        if (ECLASS_FORM_FIELD.equals(eClassName))
+        if (isOrInherits(eClass, ECLASS_FORM_FIELD))
         {
             return FIELD_EXT_INFO_BY_TYPE.get(typeLiteral);
         }
-        if (ECLASS_DECORATION.equals(eClassName))
+        if (isOrInherits(eClass, ECLASS_DECORATION))
         {
             return DECORATION_EXT_INFO_BY_TYPE.get(typeLiteral);
         }
-        if (ECLASS_ADDITION.equals(eClassName))
+        if (isOrInherits(eClass, ECLASS_ADDITION))
         {
             return ADDITION_EXT_INFO_BY_TYPE.get(typeLiteral);
         }
@@ -4724,18 +5332,18 @@ public final class FormElementWriter
             return "The form element '" + container.eClass().getName() //$NON-NLS-1$
                 + "' cannot hold event handlers."; //$NON-NLS-1$
         }
-        List<EObject> events = availableEvents(container, version);
+        List<AvailableEvent> events = availableEvents(container, version).events();
         if (events.isEmpty())
         {
             return "Could not resolve the available events for this form element."; //$NON-NLS-1$
         }
-        EObject matched = null;
-        for (EObject ev : events)
+        AvailableEvent matched = null;
+        for (AvailableEvent candidate : events)
         {
-            if (eventName.equalsIgnoreCase(eventNameOf(ev, false))
-                || eventName.equalsIgnoreCase(eventNameOf(ev, true)))
+            if (eventName.equalsIgnoreCase(eventNameOf(candidate.event, false))
+                || eventName.equalsIgnoreCase(eventNameOf(candidate.event, true)))
             {
-                matched = ev;
+                matched = candidate;
                 break;
             }
         }
@@ -4743,8 +5351,9 @@ public final class FormElementWriter
         {
             boolean ru = "ru".equals(langCode); //$NON-NLS-1$
             StringBuilder sb = new StringBuilder();
-            for (EObject ev : events)
+            for (AvailableEvent candidate : events)
             {
+                EObject ev = candidate.event;
                 String n = eventNameOf(ev, ru);
                 if (n == null || n.isEmpty())
                 {
@@ -4762,8 +5371,12 @@ public final class FormElementWriter
             return ERR_EVENT_PREFIX + eventName + "' is not valid for " + container.eClass().getName() //$NON-NLS-1$
                 + ". Available events: " + sb; //$NON-NLS-1$
         }
-        return bindEventHandler(container, handlersFeat, matched, eventName, procName, callType,
-            createdKind);
+        // The binding goes where the event is published from: the element, or its extInfo when that
+        // is the handler container (a record form's write/read events, #592).
+        EStructuralFeature ownerHandlersFeat =
+            matched.owner.eClass().getEStructuralFeature(KEY_HANDLERS);
+        return bindEventHandler(matched.owner, ownerHandlersFeat, matched.event, eventName, procName,
+            callType, createdKind);
     }
 
     /**
@@ -4809,22 +5422,29 @@ public final class FormElementWriter
                     + "Instead (ChangeAndValidate is for method interception, not events)."; //$NON-NLS-1$
             }
         }
-        // Duplicate guard. Base path keeps the original "one handler per event" rule. Extension path lets
-        // the extension handler COEXIST with the base handler and with other-call-type extension handlers; // NOSONAR explanatory comment, not commented-out code
-        // only a same-(event, callType) EventHandlerExtension is a real duplicate.
-        EStructuralFeature evFeat = handlerEventFeature(handlersFeat);
-        for (EObject existing : referenceList(container, KEY_HANDLERS))
+        // Duplicate guard. Base path keeps the original "one BASE handler per event" rule. Extension
+        // path lets the extension handler COEXIST with the base handler and with other-call-type // NOSONAR explanatory comment, not commented-out code
+        // extension handlers; only a same-(event, callType) EventHandlerExtension is a real duplicate.
+        List<String> matchedSpellings = eventSpellings(matched);
+        for (EObject existing : handlersAroundContainer(container))
         {
-            if (evFeat == null || existing.eGet(evFeat) != matched)
+            if (!boundToSameEvent(existing, matched, matchedSpellings))
             {
                 continue;
             }
+            boolean existingIsExtension =
+                ECLASS_EVENT_HANDLER_EXTENSION.equals(existing.eClass().getName());
             if (!extension)
             {
+                // Coexistence works in BOTH orders: an extension handler intercepts the base one,
+                // so finding it says nothing about whether the base handler is already there.
+                if (existingIsExtension)
+                {
+                    continue;
+                }
                 return "An event handler for '" + eventName + "' already exists on this element."; //$NON-NLS-1$ //$NON-NLS-2$
             }
-            if (ECLASS_EVENT_HANDLER_EXTENSION.equals(existing.eClass().getName())
-                && callTypeLiteral.getName().equals(callTypeNameOf(existing)))
+            if (existingIsExtension && callTypeLiteral.getName().equals(callTypeNameOf(existing)))
             {
                 return "An extension event handler for '" + eventName + "' with call type '" //$NON-NLS-1$ //$NON-NLS-2$
                     + callType + "' already exists on this element."; //$NON-NLS-1$
@@ -4832,9 +5452,10 @@ public final class FormElementWriter
         }
         EObject handler = ehType.getEPackage().getEFactoryInstance().create(ehType);
         setStringFeature(handler, FEATURE_NAME, (procName == null || procName.isEmpty()) ? eventName : procName);
-        if (evFeat != null)
+        EStructuralFeature eventFeat = ehType.getEStructuralFeature(FEATURE_EVENT);
+        if (eventFeat != null)
         {
-            handler.eSet(evFeat, matched);
+            handler.eSet(eventFeat, matched);
         }
         if (extension)
         {
@@ -4982,16 +5603,167 @@ public final class FormElementWriter
         return matchesKindToken(item, ref.itemKindToken) ? item : null;
     }
 
-    /** The {@code event} EReference on the EventHandler EClass held by the {@code handlers} feature. */
-    private static EStructuralFeature handlerEventFeature(EStructuralFeature handlersFeat)
-    {
-        EClass ehType = ((EReference)handlersFeat).getEReferenceType();
-        return ehType != null ? ehType.getEStructuralFeature(FEATURE_EVENT) : null;
-    }
 
     private static String eventNameOf(EObject event, boolean russian)
     {
         return stringFeature(event, russian ? FEATURE_NAME_RU : FEATURE_NAME);
+    }
+
+    /**
+     * What ext-info an element requires: a classifier, none, or a pairing that cannot be read here.
+     */
+    public record ExtInfoRequirement(boolean readable, String classifier)
+    {
+        /** A readable pairing that requires no ext-info node. */
+        public static final ExtInfoRequirement NONE = new ExtInfoRequirement(true, null);
+
+        /** A pairing that cannot be derived from this model. */
+        public static final ExtInfoRequirement UNREADABLE = new ExtInfoRequirement(false, null);
+
+        public ExtInfoRequirement
+        {
+            if (!readable && classifier != null)
+            {
+                throw new IllegalArgumentException(
+                    "An unreadable ext-info requirement cannot carry a classifier."); //$NON-NLS-1$
+            }
+        }
+
+        /** A readable requirement; {@code null} means {@link #NONE}. */
+        public static ExtInfoRequirement of(String classifier)
+        {
+            return classifier == null ? NONE : new ExtInfoRequirement(true, classifier);
+        }
+    }
+
+    /**
+     * The ext-info {@code element} requires, resolving its content form from containment and keeping
+     * readable-none distinct from unreadable.
+     *
+     * @param element the form root or item to inspect
+     * @return its three-valued ext-info requirement
+     */
+    public static ExtInfoRequirement extInfoRequirement(EObject element)
+    {
+        EObject formModel = element == null ? null : contentFormOf(element);
+        return extInfoRequirement(formModel, element);
+    }
+
+    /**
+     * The ext-info {@code element} requires when its content-form root is already known.
+     *
+     * <p>A Table's dotted path ends at a metadata leaf this model does not resolve, and the platform
+     * decides from that leaf, so its requirement cannot be read here.</p>
+     *
+     * <p>For a single-segment Table path, a multi-typed attribute requires no node: the platform
+     * likewise answers null unless the value type holds exactly one type.</p>
+     *
+     * @param formModel the content form owning {@code element}, or {@code null} when unavailable
+     * @param element the form root or item to inspect
+     * @return its three-valued ext-info requirement
+     */
+    public static ExtInfoRequirement extInfoRequirement(EObject formModel, EObject element)
+    {
+        if (element == null)
+        {
+            return ExtInfoRequirement.UNREADABLE;
+        }
+        if (element.eClass().getEStructuralFeature(FEATURE_ATTRIBUTES) != null)
+        {
+            if (!hasMainAttribute(element))
+            {
+                return ExtInfoRequirement.NONE;
+            }
+            String category = mainAttributeCategory(element);
+            if (category == null
+                || FORM_EXT_INFO_CATEGORIES_WITH_POSSIBLE_WRITER_NODE.contains(category))
+            {
+                return ExtInfoRequirement.UNREADABLE;
+            }
+            return ExtInfoRequirement.of(FORM_EXT_INFO_BY_TYPE_CATEGORY.get(category));
+        }
+        if (ECLASS_TABLE.equals(element.eClass().getName()))
+        {
+            String dataPath = String.join(".", dataPathSegments(element)); //$NON-NLS-1$
+            if (dataPath.isEmpty())
+            {
+                return ExtInfoRequirement.UNREADABLE;
+            }
+            if (dataPath.indexOf('.') >= 0)
+            {
+                return ExtInfoRequirement.UNREADABLE;
+            }
+            if (formModel == null)
+            {
+                return ExtInfoRequirement.UNREADABLE;
+            }
+            EObject attribute = findFormAttribute(formModel, dataPath);
+            if (attribute == null)
+            {
+                return ExtInfoRequirement.UNREADABLE;
+            }
+            String category = singleValueTypeCategory(attribute);
+            return "DynamicList".equals(category) //$NON-NLS-1$
+                ? ExtInfoRequirement.of("DynamicListTableExtInfo") //$NON-NLS-1$
+                : ExtInfoRequirement.NONE;
+        }
+        if (element.eClass().getEStructuralFeature(FEATURE_EXT_INFO) == null)
+        {
+            return ExtInfoRequirement.NONE;
+        }
+        return kindDecidesExtInfo(element)
+            ? ExtInfoRequirement.of(extInfoClassifierNameFor(element))
+            : ExtInfoRequirement.UNREADABLE;
+    }
+
+    /**
+     * Whether the event union {@link #availableEvents} builds for {@code element} is the WHOLE set
+     * the platform publishes: its ext-info pairing must be readable and exactly the node it carries.
+     *
+     * <p>Map membership is deliberately not a condition. {@link #PLATFORM_TYPE_BY_ECLASS} is the
+     * platform's own map, and its lookup is keyed by exact EClass, so a miss on either side is the
+     * platform answering "no type, no events", not a gap in our knowledge.</p>
+     *
+     * <p>This cannot create a false accusation: a whole union with no mapped type produces an empty
+     * name list, and {@link #availableEventNames} also rejects an incompletely resolved union. The
+     * caller never accuses from any empty list.</p>
+     */
+    static boolean publishesKnownEventSet(EObject element)
+    {
+        ExtInfoRequirement required = extInfoRequirement(element);
+        if (!required.readable())
+        {
+            return false;
+        }
+        EObject ext = singleReference(element, FEATURE_EXT_INFO);
+        return Objects.equals(required.classifier(), ext == null ? null : ext.eClass().getName());
+    }
+
+    /**
+     * The English event names the platform publishes for {@code container}. Empty means "publishes
+     * nothing", "cannot tell", or "the union could not be fully resolved"; none may accuse.
+     */
+    public static List<String> availableEventNames(EObject container, Version version)
+    {
+        if (!publishesKnownEventSet(container))
+        {
+            return Collections.emptyList();
+        }
+        EventUnion union = availableEvents(container, version);
+        if (!union.complete())
+        {
+            return Collections.emptyList();
+        }
+        List<String> names = new ArrayList<>();
+        for (AvailableEvent available : union.events())
+        {
+            String name = eventNameOf(available.event, false);
+            if (name != null && !name.isEmpty())
+            {
+                names.add(name);
+            }
+        }
+        return names;
     }
 
     /**
@@ -5004,43 +5776,126 @@ public final class FormElementWriter
      * <p>Unioning the ext-info type matters for items: e.g. an input field's {@code OnChange} lives on
      * {@code FormFieldExtensionForATextBox} (its {@code InputFieldExtInfo}), not on the bare
      * {@code FormField} base type.</p>
+     *
+     * <p>Each event is paired with the object that OWNS its handler list. For an item that is the
+     * item itself, but a form root's {@code extInfo} is an {@code EventHandlerContainer} of its own
+     * and the events it publishes bind INSIDE it - that is where EDT puts a record form's
+     * {@code BeforeWriteAtServer} (issue #592, and {@code EventHandlerCollectionModel} does the same
+     * split). Item ext-infos hold no handler list, so they keep answering with the item.</p>
+     *
+     * <p>The union is incomplete when a non-null mapped type cannot be resolved. Validators then
+     * receive no union, while writer callers retain the successfully resolved events.</p>
      */
-    private static List<EObject> availableEvents(EObject element, Version version)
+    private static EventUnion availableEvents(EObject element, Version version)
     {
         if (version == null)
         {
-            return Collections.emptyList();
+            return new EventUnion(Collections.emptyList(), false);
         }
         IEObjectProvider provider =
             IEObjectProvider.Registry.INSTANCE.get(McorePackage.Literals.TYPE_ITEM, version);
         if (provider == null)
         {
-            return Collections.emptyList();
+            return new EventUnion(Collections.emptyList(), false);
         }
-        List<EObject> events = new ArrayList<>();
-        addTypeEvents(provider, element, PLATFORM_TYPE_BY_ECLASS.get(element.eClass().getName()), events);
-        EStructuralFeature extInfoFeat = element.eClass().getEStructuralFeature(FEATURE_EXT_INFO);
-        if (extInfoFeat instanceof EReference)
+        List<EObject> base = new ArrayList<>();
+        boolean complete = addTypeEvents(provider, element,
+            PLATFORM_TYPE_BY_ECLASS.get(element.eClass().getName()), base);
+        List<AvailableEvent> events = new ArrayList<>();
+        for (EObject event : base)
         {
-            Object ext = element.eGet(extInfoFeat);
-            if (ext instanceof EObject)
-            {
-                addTypeEvents(provider, element,
-                    PLATFORM_TYPE_BY_ECLASS.get(((EObject)ext).eClass().getName()), events);
-            }
+            events.add(new AvailableEvent(event, element));
         }
-        return events;
+        EObject ext = singleReference(element, FEATURE_EXT_INFO);
+        if (ext == null)
+        {
+            return new EventUnion(events, complete);
+        }
+        List<EObject> extEvents = new ArrayList<>();
+        complete &= addTypeEvents(provider, element,
+            PLATFORM_TYPE_BY_ECLASS.get(ext.eClass().getName()), extEvents);
+        EObject extOwner = holdsHandlerList(ext) ? ext : element;
+        for (EObject event : extEvents)
+        {
+            events.add(new AvailableEvent(event, extOwner));
+        }
+        return new EventUnion(events, complete);
     }
 
-    /** Resolves {@code typeName} to a platform {@code Type} and appends its {@code events} to the list. */
+    /** The successfully resolved events and whether every non-null mapped type resolved. */
+    private record EventUnion(List<AvailableEvent> events, boolean complete)
+    {
+    }
+
+    /** An available form event and the object whose {@code handlers} list its binding belongs in. */
+    private static final class AvailableEvent
+    {
+        final EObject event;
+        final EObject owner;
+
+        AvailableEvent(EObject event, EObject owner)
+        {
+            this.event = event;
+            this.owner = owner;
+        }
+    }
+
+    /** Whether the object carries a {@code handlers} COLLECTION of its own. */
+    private static boolean holdsHandlerList(EObject object)
+    {
+        EStructuralFeature feature = object.eClass().getEStructuralFeature(KEY_HANDLERS);
+        return feature instanceof EReference && feature.isMany();
+    }
+
+    /**
+     * Every handler bound around {@code container}: its own list plus the other half of the
+     * root/{@code extInfo} pair, whichever side was handed in.
+     *
+     * <p>One event has ONE binding, but the two lists are separate objects, so a lookup or a
+     * duplicate check that reads only one of them answers about half the form. That is how a second
+     * handler was appended to the root for an event already bound inside the extInfo (issue #592),
+     * and why a binding EDT wrote there could not be addressed at all.</p>
+     */
+    private static List<EObject> handlersAroundContainer(EObject container)
+    {
+        List<EObject> own = referenceList(container, KEY_HANDLERS);
+        EObject sibling = null;
+        EObject ext = singleReference(container, FEATURE_EXT_INFO);
+        if (ext != null && holdsHandlerList(ext))
+        {
+            sibling = ext;
+        }
+        else
+        {
+            EObject parent = container.eContainer();
+            if (parent != null && singleReference(parent, FEATURE_EXT_INFO) == container
+                && holdsHandlerList(parent))
+            {
+                sibling = parent;
+            }
+        }
+        if (sibling == null)
+        {
+            return own;
+        }
+        List<EObject> all = new ArrayList<>(own);
+        all.addAll(referenceList(sibling, KEY_HANDLERS));
+        return all;
+    }
+
+    /** Resolves a mapped type and appends its events; null means the platform publishes no type. */
     @SuppressWarnings("unchecked")
-    private static void addTypeEvents(IEObjectProvider provider, EObject context, String typeName,
+    private static boolean addTypeEvents(IEObjectProvider provider, EObject context, String typeName,
         List<EObject> accumulator)
     {
+        if (typeName == null)
+        {
+            return true;
+        }
         EObject type = resolveTypeName(provider, context, typeName);
         if (type == null)
         {
-            return;
+            return false;
         }
         EStructuralFeature eventsFeat = type.eClass().getEStructuralFeature("events"); //$NON-NLS-1$
         Object value = eventsFeat != null ? type.eGet(eventsFeat) : null;
@@ -5048,6 +5903,7 @@ public final class FormElementWriter
         {
             accumulator.addAll((List<EObject>)value);
         }
+        return true;
     }
 
     /**
@@ -5316,55 +6172,33 @@ public final class FormElementWriter
         return (classifier instanceof EClass) ? (EClass)classifier : null;
     }
 
-    // ---- the form-wide id allocation ------------------------------------------------------------
+    // ---- form id allocation and repair ----------------------------------------------------------
     //
-    // Two questions live here, and they have DIFFERENT answers. Conflating them is the mistake this
-    // block exists to prevent, so both answers are written down.
+    // Three independent axes govern these passes.
     //
-    // 1. "Which ids are TAKEN?" -> the WHOLE LIVE FORM MODEL, computed branches included.
-    //    The platform's own allocator, FormIdentifierService.getMaxId (bundle
-    //    com._1c.g5.v8.dt.form), scans EcoreUtil.getAllContents(form, true) - the same unconditional
-    //    walk as eAllContents(), which descends into transient containments - and filters with
-    //    exactly FormItem / AbstractFormAttribute / FormCommand, reading exactly getId(). So the
-    //    max* scans below stay WIDE on purpose. This is not indifference to the computed branches:
-    //    AutoCommandBar, SelectedItemsActionsPanel and RowActionsPanel are FormItem subtypes, so the
-    //    objects behind the layouter-only containments carry real ids. Those containments are
-    //    CommandBarHolder.topCommandBar / bottomCommandBar / fABCommandBar,
-    //    SelectedItemsActionsPanelHolder.selectedItemsActionsPanel and
-    //    RowActionsPanelHolder.rowActionsPanel - all five declared "contains transient" (the last
-    //    two are additionally commented "// layouter only"; being transient is the part that matters
-    //    here). (CommandBarHolder.autoCommandBar, by contrast, is PERSISTED and reached by both
-    //    passes. Every command-bar holder declares one - a Table's is numbered like any other item;
-    //    only the instance owned by the form ROOT carries the -1 sentinel.) Narrowing the ITEM
-    //    ceiling would hand out an id the platform considers reserved.
-    //    For attributes and commands the ceiling is wide for PARITY, not for a measurable effect:
-    //    nothing transient reaches an AbstractFormAttribute or a FormCommand in the shipped
-    //    metamodel, so narrowing those two would be observationally identical today. They stay wide
-    //    so all three id spaces answer "which ids are taken" the same way the platform does.
+    // 1. ALLOCATION is WIDE; repair targets are NARROW. FormIdentifierService.getMaxId (bundle
+    //    com._1c.g5.v8.dt.form) scans EcoreUtil.getAllContents(form, true), including transient
+    //    containments, and filters for FormItem / AbstractFormAttribute / FormCommand. The max* scans
+    //    below mirror that walk. Repair targets stay inside PersistedContents: InvalidItemIdCheck and
+    //    FormComparisonParticipant.checkUniqueItemIds use FormItemIterator, while the platform's
+    //    command and attribute repairs address their persisted named features. In particular,
+    //    layouter-only AutoCommandBar, SelectedItemsActionsPanel and RowActionsPanel instances reserve
+    //    item ids but are not repair targets. No transient containment reaches an
+    //    AbstractFormAttribute or FormCommand in the form metamodel, so their wide ceilings and narrow
+    //    targets currently produce the same maxima while retaining allocator parity.
     //
-    // 2. "Which objects may be RENUMBERED?" -> the PERSISTED AUTHORED GRAPH ONLY.
-    //    The platform draws this line in a different place, and does so consistently. Its
-    //    form-invalid-item-id diagnostic (InvalidItemIdCheck, bundle com.e1c.dt.check.form) and its
-    //    merge-time repair (FormComparisonParticipant.checkUniqueItemIds) both collect their targets
-    //    with FormItemIterator, which follows autoCommandBar, contextMenu, extendedTooltip, items,
-    //    autoTable and the Additions - every one of them persisted - and never the transient bars or
-    //    panels. Its command and attribute repairs are narrower still, addressing
-    //    FormPackage.Literals.FORM__FORM_COMMANDS and FORM__ATTRIBUTES outright. Only then does it
-    //    allocate a replacement through the WIDE getNext*Id. Wide read, narrow write.
+    // 2. Writes are OWN-ONLY on a merged extension form. Adopted/base-owned objects remain in their
+    //    repair scope and reserve their ids, but only an object whose nearest adoption-state holder is
+    //    unset may be renumbered.
     //
-    // Hence the shape below: the max* scans use eAllContents(), the three normalizeForm*Ids collect
-    // their targets through PersistedContents.descendants. Writing into a computed branch would be
-    // wrong twice over - it mutates an object that is never serialized, and, when a layouter item
-    // and an authored item collide on an id, it lets visit order decide which of the two is
-    // renumbered, so an ephemeral object can durably renumber authored content in Form.form.
-    //
-    // Only the FormItem pair makes this observable: no transient containment reaches an
-    // AbstractFormAttribute or a FormCommand (FormStandardCommand, the inferred one, extends Command
-    // and NOT FormCommand, and declares no id at all), so for those two the narrow collection is
-    // parity with the platform rather than a change in numbering.
-    //
-    // Verified against the shipped model/Form.xcore of EDT 2026.1.2+2 and 2026.2.0+289, which are
-    // identical on every declaration named above.
+    // 3. UNIQUENESS SCOPE follows FormComparisonParticipant. Items are form-wide through
+    //    checkUniqueItemIds, and commands occupy the single Form.formCommands list. Attribute repair
+    //    is split by checkUniqueAttributeIds into three independent list kinds:
+    //    Form.attributes (setUniqueAttributeIds), each FormAttribute.columns list
+    //    (setUniqueAttributeColumnsIds), and each FormAttributeAdditionalColumns.columns list
+    //    (setUniqueAttributeAdditionalColumnsIds). Its getNamedElementsToChangeIds examines only
+    //    eContainer.eGet(collectionFeature), so equal attribute ids in different lists are valid.
+    //    Replacement allocation remains wide, and one running maximum is shared across those scopes.
 
     /**
      * The next free form-attribute id = max existing {@code AbstractFormAttribute} id across the whole
@@ -5473,6 +6307,52 @@ public final class FormElementWriter
             || liveReference(formModel, FEATURE_EXTENSION_FORM) != null;
     }
 
+    /**
+     * Reserves, in {@code seen}, the ids of every candidate this pass may not rewrite, BEFORE the
+     * renumbering loop runs.
+     * <p>
+     * Without it the outcome would depend on containment order: an own object visited before the
+     * adopted object holding the same id would claim that id and keep it, leaving the collision the
+     * pass exists to remove - and the adopted twin can never be moved out of the way. Reserving
+     * first makes "an own id avoids every adopted id" hold whichever comes first in the model.
+     *
+     * @param candidates the pass's candidates, in model order
+     * @param seen the id set the renumbering loop allocates around
+     */
+    private static void reserveAdoptedIds(List<EObject> candidates, Set<Integer> seen)
+    {
+        for (EObject candidate : candidates)
+        {
+            int id = intFeature(candidate, FEATURE_ID);
+            if (id > 0 && !isFormObjectRenumberable(candidate))
+            {
+                seen.add(Integer.valueOf(id));
+            }
+        }
+    }
+
+    /**
+     * Returns whether id normalization may write to {@code object}. The nearest container (self
+     * included) exposing the nullable {@code adopted} feature owns the adoption state; this lets an
+     * attribute column inherit the state of its containing attribute without assuming a concrete
+     * form-model type. A missing feature preserves the non-extension behaviour.
+     *
+     * <p>Writing a replacement id into an adopted object marks it changed and materializes merged
+     * base-form content into the extension delta, corrupting {@code Form.form} (issue #514).</p>
+     */
+    private static boolean isFormObjectRenumberable(EObject object)
+    {
+        for (EObject holder = object; holder != null; holder = holder.eContainer())
+        {
+            EStructuralFeature adopted = holder.eClass().getEStructuralFeature(FEATURE_ADOPTED);
+            if (adopted != null)
+            {
+                return holder.eGet(adopted) == null;
+            }
+        }
+        return true;
+    }
+
     private static EObject liveReference(EObject owner, String featureName)
     {
         EObject reference = singleReference(owner, featureName);
@@ -5508,17 +6388,14 @@ public final class FormElementWriter
     }
 
     /**
-     * Repairs the form-wide {@code AbstractFormAttribute.id} invariant before validation/export sees
-     * the model. The designer allocates these ids through {@code getNextAttributeId}; attributes and
-     * attribute columns share this attribute id space, but it is intentionally independent from
-     * {@code FormItem.id}.
+     * Repairs {@code AbstractFormAttribute.id} uniqueness in the platform's independent per-list
+     * scopes: the form's {@code attributes}, each attribute's {@code columns}, and each
+     * {@code FormAttributeAdditionalColumns.columns}. The designer allocates replacements from one
+     * form-wide attribute id space, independent from {@code FormItem.id}, so the wide allocation
+     * ceiling and running maximum are shared by every scope.
      *
-     * <p>The ceiling is read WIDE and the repair targets are collected NARROW - see the block
-     * comment above. The platform repairs attribute ids by addressing
-     * {@code FormPackage.Literals.FORM__ATTRIBUTES} and the explicit column features outright, so
-     * only persisted attributes are eligible to be renumbered. No transient containment reaches an
-     * {@code AbstractFormAttribute} in the shipped metamodel, so this is parity with the platform
-     * rather than a change in the numbers produced.</p>
+     * <p>Targets are reached reflectively through persisted named containments only. Each scope gets
+     * its own {@code seen} set and reserves its adopted ids before considering own objects.</p>
      * Package-visible for the headless unit test.
      */
     static void normalizeFormAttributeIds(EObject formModel)
@@ -5529,27 +6406,41 @@ public final class FormElementWriter
             return;
         }
 
-        List<EObject> attributes = new ArrayList<>();
         int max = maxAttributeIdForAllocation(formModel, attributeClass);
         EObject extensionForm = liveReference(formModel, FEATURE_EXTENSION_FORM);
         if (extensionForm != null)
         {
             max = Math.max(max, maxAttributeIdForAllocation(extensionForm, attributeClass));
         }
-        for (EObject obj : PersistedContents.descendants(formModel))
+        List<EObject> attributes = persistedAttributeIdScope(formModel, FEATURE_ATTRIBUTES,
+            attributeClass);
+        max = normalizeFormAttributeIdScope(attributes, max);
+        for (EObject attribute : attributes)
         {
-            if (!attributeClass.isInstance(obj))
+            max = normalizeFormAttributeIdScope(
+                persistedAttributeIdScope(attribute, FEATURE_COLUMNS, attributeClass), max);
+            for (EObject additionalColumns :
+                persistedContainmentList(attribute, FEATURE_ADDITIONAL_COLUMNS))
             {
-                continue;
+                max = normalizeFormAttributeIdScope(
+                    persistedAttributeIdScope(additionalColumns, FEATURE_COLUMNS, attributeClass),
+                    max);
             }
-            attributes.add(obj);
         }
+    }
 
+    private static int normalizeFormAttributeIdScope(List<EObject> attributes, int max)
+    {
         Set<Integer> seen = new HashSet<>();
+        reserveAdoptedIds(attributes, seen);
         for (EObject attribute : attributes)
         {
             int id = intFeature(attribute, FEATURE_ID);
             if (id > 0 && seen.add(Integer.valueOf(id)))
+            {
+                continue;
+            }
+            if (!isFormObjectRenumberable(attribute))
             {
                 continue;
             }
@@ -5561,6 +6452,44 @@ public final class FormElementWriter
             setIntFeature(attribute, FEATURE_ID, max);
             seen.add(Integer.valueOf(max));
         }
+        return max;
+    }
+
+    private static List<EObject> persistedAttributeIdScope(EObject owner, String featureName,
+        EClass attributeClass)
+    {
+        List<EObject> attributes = new ArrayList<>();
+        for (EObject child : persistedContainmentList(owner, featureName))
+        {
+            if (attributeClass.isInstance(child))
+            {
+                attributes.add(child);
+            }
+        }
+        return attributes;
+    }
+
+    /**
+     * Returns one persisted containment list by reflective feature name. A missing, computed,
+     * transient, non-containment or single-valued feature contributes no list and is never read.
+     */
+    private static List<EObject> persistedContainmentList(EObject owner, String featureName)
+    {
+        List<EObject> result = new ArrayList<>();
+        EStructuralFeature feature = owner.eClass().getEStructuralFeature(featureName);
+        if (!(feature instanceof EReference) || !feature.isMany() || !((EReference)feature).isContainment()
+            || feature.isDerived() || feature.isTransient())
+        {
+            return result;
+        }
+        for (EObject child : PersistedContents.of(owner))
+        {
+            if (child.eContainingFeature() == feature)
+            {
+                result.add(child);
+            }
+        }
+        return result;
     }
 
     /**
@@ -5602,10 +6531,15 @@ public final class FormElementWriter
         }
 
         Set<Integer> seen = new HashSet<>();
+        reserveAdoptedIds(commands, seen);
         for (EObject command : commands)
         {
             int id = intFeature(command, FEATURE_ID);
             if (id > 0 && seen.add(Integer.valueOf(id)))
+            {
+                continue;
+            }
+            if (!isFormObjectRenumberable(command))
             {
                 continue;
             }
@@ -5639,7 +6573,9 @@ public final class FormElementWriter
      * one it would let visit order decide which of the two keeps its id.
      *
      * <p>The form root's own {@code autoCommandBar} is a PERSISTED containment, so it stays visible
-     * to the narrow pass and keeps its {@code -1} sentinel.</p>
+     * to the narrow pass and keeps its {@code -1} sentinel. The sentinel still passes through the
+     * shared integer setter when the root is adopted; its equality guard avoids dirtying a bar that
+     * already holds {@code -1}.</p>
      * Package-visible for the headless unit test.
      */
     static void normalizeFormItemIds(EObject formModel)
@@ -5669,6 +6605,7 @@ public final class FormElementWriter
             setIntFeature(rootAutoCommandBar, FEATURE_ID, -1);
             seen.add(Integer.valueOf(-1));
         }
+        reserveAdoptedIds(items, seen);
 
         for (EObject item : items)
         {
@@ -5720,6 +6657,10 @@ public final class FormElementWriter
         }
         int id = intFeature(item, FEATURE_ID);
         if (id > 0 && seen.add(Integer.valueOf(id)))
+        {
+            return max;
+        }
+        if (!isFormObjectRenumberable(item))
         {
             return max;
         }
@@ -6059,7 +7000,7 @@ public final class FormElementWriter
      * Whether {@code eClass} IS the named form EClass or inherits from it. Matched by NAME so this
      * stays reflective (no compile dependency on {@code com._1c.g5.v8.dt.form.model}).
      */
-    private static boolean isOrInherits(EClass eClass, String eClassName)
+    static boolean isOrInherits(EClass eClass, String eClassName)
     {
         if (eClassName.equals(eClass.getName()))
         {
@@ -6285,8 +7226,9 @@ public final class FormElementWriter
         {
             return owner.eClass().getEStructuralFeature(FEATURE_ACTION) != null && isActionToken(leaf);
         }
-        for (EObject event : availableEvents(owner, version))
+        for (AvailableEvent candidate : availableEvents(owner, version).events())
         {
+            EObject event = candidate.event;
             if (leaf.equalsIgnoreCase(eventNameOf(event, false))
                 || leaf.equalsIgnoreCase(eventNameOf(event, true)))
             {
@@ -6458,7 +7400,7 @@ public final class FormElementWriter
         }
         EClass ehType = ((EReference)handlersFeat).getEReferenceType();
         EStructuralFeature evFeat = ehType != null ? ehType.getEStructuralFeature(FEATURE_EVENT) : null;
-        for (EObject handler : referenceList(container, KEY_HANDLERS))
+        for (EObject handler : handlersAroundContainer(container))
         {
             Object ev = evFeat != null ? handler.eGet(evFeat) : null;
             if (ev instanceof EObject
@@ -6489,20 +7431,55 @@ public final class FormElementWriter
      */
     public static List<String> eventNameSpellings(EObject handler)
     {
-        List<String> names = new ArrayList<>(2);
         if (handler == null)
         {
-            return names;
+            return new ArrayList<>(2);
         }
         EStructuralFeature eventFeat = handler.eClass().getEStructuralFeature(FEATURE_EVENT);
         Object event = eventFeat instanceof EReference ? handler.eGet(eventFeat) : null;
-        if (!(event instanceof EObject))
+        return event instanceof EObject ? eventSpellings((EObject)event) : new ArrayList<>(2);
+    }
+
+    /**
+     * Whether an existing handler is bound to the SAME event as the one being written. Object
+     * identity is not enough: a change of ext-info kind carries the handlers over to the new node
+     * ({@code copyDataOfSameFeatures}), and they keep pointing at the PREVIOUS platform type's event
+     * object while a fresh resolution answers with the new type's - two objects, one event, and a
+     * duplicate the identity test would wave through.
+     */
+    private static boolean boundToSameEvent(EObject handler, EObject event, List<String> spellings)
+    {
+        EStructuralFeature eventFeat = handler.eClass().getEStructuralFeature(FEATURE_EVENT);
+        Object bound = eventFeat instanceof EReference ? handler.eGet(eventFeat) : null;
+        if (bound == event)
+        {
+            return true;
+        }
+        if (!(bound instanceof EObject) || spellings.isEmpty())
+        {
+            return false;
+        }
+        for (String spelling : eventSpellings((EObject)bound))
+        {
+            if (spellings.contains(spelling))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Both spellings an event answers to, English first; empty when it names itself neither way. */
+    private static List<String> eventSpellings(EObject event)
+    {
+        List<String> names = new ArrayList<>(2);
+        if (event == null)
         {
             return names;
         }
         for (String feature : new String[] {FEATURE_NAME, FEATURE_NAME_RU})
         {
-            String name = stringFeature((EObject)event, feature);
+            String name = stringFeature(event, feature);
             if (name != null && !name.isEmpty() && !names.contains(name))
             {
                 names.add(name);
@@ -6610,11 +7587,10 @@ public final class FormElementWriter
     }
 
     /**
-     * Re-points an EXISTING button at a different (existing) form command: validates that
-     * {@code button} carries a {@code commandName} reference and that a {@code FormCommand} named
-     * {@code commandName} exists on {@code formModel}, then sets the reference. A button's
-     * {@code commandName} targets a FormCommand (a form-model object, not an mdclass object), so it
-     * is not introspector-assignable and is rebound here. Reflective, so no compile-time form-model
+     * Re-points an EXISTING button at a different custom or platform-standard form command. Custom
+     * {@code FormCommand}s win over inferred {@code FormStandardCommand}s for an unqualified name;
+     * standard commands are read explicitly from the transient {@code commands} feature of the
+     * button's owning Table/FormField and the form root. Reflective, so no compile-time form-model
      * dependency. Call on the tx-bound form model.
      *
      * @param formModel the editable form content model (tx-bound)
@@ -6635,14 +7611,145 @@ public final class FormElementWriter
             return "Provide the form command to point the button at in the 'command' property " //$NON-NLS-1$
                 + "(e.g. {name:'command', value:'Refresh'})."; //$NON-NLS-1$
         }
-        EObject command = findByName(referenceList(formModel, FEATURE_FORM_COMMANDS), commandName);
+        EObject command = resolveButtonCommand(formModel, button, commandName);
         if (command == null)
         {
-            return "Form command '" + commandName + "' not found - create it first " //$NON-NLS-1$ //$NON-NLS-2$
-                + "(create_metadata on the form's Command FQN), then re-point the button at it."; //$NON-NLS-1$
+            return buttonCommandNotFound(formModel, button, commandName);
         }
         button.eSet(cmdFeat, command);
         return null;
+    }
+
+    /** Custom-first command resolution shared by button creation and rebinding. */
+    private static EObject resolveButtonCommand(EObject formModel, EObject buttonOrContainer,
+        String commandName)
+    {
+        EObject custom = findByName(referenceList(formModel, FEATURE_FORM_COMMANDS), commandName);
+        if (custom != null)
+        {
+            return custom;
+        }
+
+        String[] parts = commandName.split("\\.", -1); //$NON-NLS-1$
+        if (parts.length == 2 && "StandardCommand".equalsIgnoreCase(parts[0])) //$NON-NLS-1$
+        {
+            return findStandardCommand(formModel, parts[1]);
+        }
+
+        EObject itemSource = owningItemStandardCommandSource(formModel, buttonOrContainer);
+        if (parts.length == 4 && "Item".equalsIgnoreCase(parts[0]) //$NON-NLS-1$
+            && "StandardCommand".equalsIgnoreCase(parts[2])) //$NON-NLS-1$
+        {
+            return standardCommandFromNamedSource(formModel, parts[1], parts[3]);
+        }
+        if (parts.length == 3 && "StandardCommand".equalsIgnoreCase(parts[1])) //$NON-NLS-1$
+        {
+            return standardCommandFromNamedSource(formModel, parts[0], parts[2]);
+        }
+
+        EObject itemCommand = findStandardCommand(itemSource, commandName);
+        return itemCommand != null ? itemCommand : findStandardCommand(formModel, commandName);
+    }
+
+    /** The nearest Table/FormField ancestor whose standard commands are relevant to the button. */
+    private static EObject owningItemStandardCommandSource(EObject formModel, EObject object)
+    {
+        for (EObject current = object; current != null && current != formModel; current = current.eContainer())
+        {
+            String className = current.eClass().getName();
+            if (ECLASS_TABLE.equals(className) || ECLASS_FORM_FIELD.equals(className))
+            {
+                return current;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Resolves {@code Item.<name>.StandardCommand.<command>}: the standard command of the form item
+     * NAMED by the address, found anywhere in the form.
+     * <p>
+     * Deliberately not restricted to the button's own ancestor. Naming a source explicitly is what
+     * the qualified spelling is FOR - a button placed in a group beside a table still binds that
+     * table's {@code AddFilterItem}, which is the shape the designer produces. The unqualified
+     * spelling is the one that means "my own source".
+     *
+     * @param formModel the form the button belongs to
+     * @param sourceName the named form item that owns the standard command
+     * @param commandName the standard command's English or Russian name
+     * @return the resolved command, or {@code null} when the item or the command does not exist
+     */
+    private static EObject standardCommandFromNamedSource(EObject formModel, String sourceName,
+        String commandName)
+    {
+        EObject source = findFormItem(formModel, sourceName);
+        return source != null ? findStandardCommand(source, commandName) : null;
+    }
+
+    /** Reads, but never mutates, one source's inferred standard commands. */
+    private static EObject findStandardCommand(EObject source, String commandName)
+    {
+        if (source == null || commandName == null)
+        {
+            return null;
+        }
+        for (EObject command : referenceList(source, FEATURE_STANDARD_COMMANDS))
+        {
+            if (ECLASS_FORM_STANDARD_COMMAND.equals(command.eClass().getName())
+                && (commandName.equalsIgnoreCase(stringFeature(command, FEATURE_NAME))
+                    || commandName.equalsIgnoreCase(stringFeature(command, FEATURE_NAME_RU))))
+            {
+                return command;
+            }
+        }
+        return null;
+    }
+
+    /** Missing-command error with the standard commands actually visible from this button. */
+    private static String buttonCommandNotFound(EObject formModel, EObject buttonOrContainer,
+        String commandName)
+    {
+        EObject itemSource = owningItemStandardCommandSource(formModel, buttonOrContainer);
+        List<String> available = new ArrayList<>();
+        appendAvailableStandardCommands(available, itemSource, false);
+        appendAvailableStandardCommands(available, formModel, true);
+        return "Button command '" + commandName + "' not found. Available standard commands: " //$NON-NLS-1$ //$NON-NLS-2$
+            + (available.isEmpty() ? "(none)" : String.join(", ", available)) //$NON-NLS-1$ //$NON-NLS-2$
+            + ". Use one of those names (English or Russian), qualify an ambiguous name as " //$NON-NLS-1$
+            + "'StandardCommand.<Name>' or 'Item.<ItemName>.StandardCommand.<Name>', or create a " //$NON-NLS-1$
+            + "custom form command first with create_metadata on the form's Command FQN."; //$NON-NLS-1$
+    }
+
+    private static void appendAvailableStandardCommands(List<String> available, EObject source,
+        boolean formRoot)
+    {
+        if (source == null)
+        {
+            return;
+        }
+        String sourceName = stringFeature(source, FEATURE_NAME);
+        String prefix = formRoot ? "StandardCommand." //$NON-NLS-1$
+            : "Item." + sourceName + ".StandardCommand."; //$NON-NLS-1$ //$NON-NLS-2$
+        for (EObject command : referenceList(source, FEATURE_STANDARD_COMMANDS))
+        {
+            if (!ECLASS_FORM_STANDARD_COMMAND.equals(command.eClass().getName()))
+            {
+                continue;
+            }
+            String name = stringFeature(command, FEATURE_NAME);
+            String nameRu = stringFeature(command, FEATURE_NAME_RU);
+            String displayName = name != null && !name.isEmpty() ? name : nameRu;
+            if (displayName == null || displayName.isEmpty())
+            {
+                continue;
+            }
+            StringBuilder entry = new StringBuilder(prefix).append(displayName);
+            if (nameRu != null && !nameRu.isEmpty() && !nameRu.equalsIgnoreCase(displayName))
+            {
+                entry.append(" (Russian: ").append(nameRu).append(')'); //$NON-NLS-1$
+            }
+            available.add(entry.toString());
+        }
     }
 
     /**
@@ -6944,10 +8051,25 @@ public final class FormElementWriter
         }
     }
 
+    /**
+     * Sets an int feature, skipping the write when the feature already holds that value.
+     * <p>
+     * The guard is not an optimization: an {@code eSet} with an equal value still marks the object
+     * changed, and on an ADOPTED object that is enough to materialize the extension's merged delta
+     * into its {@code Form.form} (issue #514). {@link #normalizeFormItemIds} re-stamps the form
+     * root's {@code autoCommandBar} sentinel on every single form edit, so without this every write
+     * to an adopted form dirtied its root.
+     * <p>
+     * Deliberately NOT applied to the sibling string / boolean / enum setters. Their call sites
+     * write designer-exact defaults ({@code AdjustableBoolean.common == false} is the whole payload
+     * of the issue #382 fix), and EMF omits a default-valued feature that was never set - so
+     * skipping an equal write there would silently stop serializing the value. Every {@code int}
+     * call site here writes an allocated id or the {@code -1} sentinel, never a default.
+     */
     private static void setIntFeature(EObject object, String featureName, int value)
     {
         EStructuralFeature feature = object.eClass().getEStructuralFeature(featureName);
-        if (feature != null)
+        if (feature != null && !Integer.valueOf(value).equals(object.eGet(feature)))
         {
             object.eSet(feature, Integer.valueOf(value));
         }

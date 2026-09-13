@@ -1,7 +1,6 @@
 ﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
- * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -112,7 +111,7 @@ public class UpdateDatabaseTool implements IMcpTool
                 StandaloneServerPortConflictPolicy.PARAMETER_DESCRIPTION)
             .booleanProperty("terminateRunningClients", //$NON-NLS-1$
                 "Before applying, terminate any 1C client THIS EDT launched on the target infobase " //$NON-NLS-1$
-                + "to free the exclusive lock (default true). false keeps a running client — the " //$NON-NLS-1$
+                + "to free the exclusive lock (default true). false keeps a running client тАФ the " //$NON-NLS-1$
                 + "update then fails if that client holds the infobase exclusively.") //$NON-NLS-1$
             .build();
     }
@@ -156,7 +155,7 @@ public class UpdateDatabaseTool implements IMcpTool
     public boolean connectsToInfobase()
     {
         // getUpdateState()/update() open a live connection to run the database update
-        // (issue #270) — the classic case #194 introduced the auth dialog for.
+        // (issue #270) тАФ the classic case #194 introduced the auth dialog for.
         return true;
     }
 
@@ -195,7 +194,7 @@ public class UpdateDatabaseTool implements IMcpTool
             return argError;
         }
 
-        // Resolve via launch config if name is given — it fixes the project, and the
+        // Resolve via launch config if name is given тАФ it fixes the project, and the
         // applicationId too when the configuration is actually bound to an application
         // (see effectiveApplicationId for the unbound case).
         if (hasName)
@@ -232,7 +231,7 @@ public class UpdateDatabaseTool implements IMcpTool
         {
             // Only reachable through the launch-configuration branch: validateDirectArguments
             // makes applicationId mandatory in the projectName+applicationId mode. Runs AFTER
-            // the BUILDING gate on purpose — enumerating the applications of a project that is
+            // the BUILDING gate on purpose тАФ enumerating the applications of a project that is
             // mid-build can observe an incomplete list, and the "exactly one" decision below
             // is only as trustworthy as that list. Guarded like updateDatabase's own body: an
             // unchecked failure from the platform must come back as this tool's JSON error, not
@@ -271,15 +270,15 @@ public class UpdateDatabaseTool implements IMcpTool
      * Resolves the project + application pair a named runtime-client launch configuration
      * addresses, or the actionable refusal that replaces it.
      *
-     * <p>Split out of {@code execute} so the whole named-configuration decision — the type gate,
+     * <p>Split out of {@code execute} so the whole named-configuration decision тАФ the type gate,
      * the attribute read, the missing-project refusal and the
-     * {@link #effectiveApplicationId} merge — is reachable from a unit test with a mocked
+     * {@link #effectiveApplicationId} merge тАФ is reachable from a unit test with a mocked
      * {@link ILaunchConfiguration}; only the launch-manager lookup that produced {@code cfg}
      * stays behind the live platform.
      *
      * <p>The two attributes are read DIRECTLY rather than through
      * {@link LaunchConfigUtils#readAttribute}: that helper maps a read failure onto the default
-     * value, and an empty applicationId no longer means "refuse" — it now unlocks the
+     * value, and an empty applicationId no longer means "refuse" тАФ it now unlocks the
      * project-derived fallback. An attribute this tool FAILED to read must not be mistaken for
      * one the configuration does not have, or an unreadable binding would silently become a
      * write to whatever the project resolves to.
@@ -296,7 +295,7 @@ public class UpdateDatabaseTool implements IMcpTool
         if (!LaunchConfigUtils.LAUNCH_CONFIG_TYPE_ID.equals(LaunchConfigUtils.getConfigTypeId(cfg)))
         {
             return LaunchTarget.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' is not a runtime-client config — update_database requires one."); //$NON-NLS-1$
+                + "' is not a runtime-client config тАФ update_database requires one."); //$NON-NLS-1$
         }
         String cfgProject;
         String cfgAppId;
@@ -317,7 +316,7 @@ public class UpdateDatabaseTool implements IMcpTool
         if (cfgProject.isEmpty())
         {
             return LaunchTarget.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' has no project attribute — cannot derive update target. Bind it to a " //$NON-NLS-1$
+                + "' has no project attribute тАФ cannot derive update target. Bind it to a " //$NON-NLS-1$
                 + "project in EDT, or target the update directly with projectName + " //$NON-NLS-1$
                 + "applicationId (get_applications lists the application ids)."); //$NON-NLS-1$
         }
@@ -326,7 +325,7 @@ public class UpdateDatabaseTool implements IMcpTool
 
     /**
      * Outcome of {@link #resolveLaunchConfigTarget}: either the {@link #projectName} +
-     * {@link #applicationId} pair (the id may be empty — the project still has to supply it) or
+     * {@link #applicationId} pair (the id may be empty тАФ the project still has to supply it) or
      * an {@link #errorJson} to return verbatim. Never both.
      */
     static final class LaunchTarget
@@ -358,7 +357,7 @@ public class UpdateDatabaseTool implements IMcpTool
      *
      * <p>A configuration WITH a binding fixes the pair, as it always did: its own id wins over
      * anything the caller passed. A configuration WITHOUT one used to be an outright refusal;
-     * now an explicitly supplied id is used instead (the caller named the target themselves —
+     * now an explicitly supplied id is used instead (the caller named the target themselves тАФ
      * there is nothing to guess), and only a genuinely unspecified target falls through to
      * {@link #resolveSoleApplicationId}. Mirrors {@code RunYaxunitTestsTool.deriveLaunchContext},
      * which likewise substitutes the configuration's attribute only into an EMPTY value.
@@ -379,27 +378,27 @@ public class UpdateDatabaseTool implements IMcpTool
 
     /**
      * Derives the update target for a runtime-client launch configuration that carries no
-     * {@code ATTR_APPLICATION_ID} binding — the case {@code run_yaxunit_tests} and
-     * {@code debug_launch} already survive (they fall back to the project's default
+     * {@code ATTR_APPLICATION_ID} binding тАФ the case {@code run_yaxunit_tests} and
+     * {@code launch} already survive (they fall back to the project's default
      * application through {@link LaunchLifecycleUtils#resolveDefaultApplicationId}) and this
      * tool used to refuse outright.
      *
      * <p><b>The fallback is deliberately narrower than the launch tools'.</b> A launch that
-     * guesses the wrong application starts the wrong client — annoying, visible, undone by
+     * guesses the wrong application starts the wrong client тАФ annoying, visible, undone by
      * closing it; the alternative there is EDT's blocking "Update infobase before launch?"
      * modal, which hangs an unattended call. This call WRITES to an infobase and cannot be
      * undone, so it only substitutes when the answer is unambiguous: the project must have
      * <b>exactly one</b> application. Anything else is refused with the candidates named, so
      * the caller (not this code) chooses which database gets updated.
      *
-     * <p>The target is the one enumerated application — the list the "exactly one" decision was
-     * actually made on — and {@link LaunchLifecycleUtils#resolveDefaultApplicationId} is then run
+     * <p>The target is the one enumerated application тАФ the list the "exactly one" decision was
+     * actually made on тАФ and {@link LaunchLifecycleUtils#resolveDefaultApplicationId} is then run
      * as a CROSS-CHECK, so an app-less configuration provably resolves to the same infobase here
      * as under the launch tools. When the project has exactly one application EDT's own
      * {@code getDefaultApplication} returns that application (it clears a stale stored default
-     * and then falls through to "one application → that one"), so the two agree and the check is
+     * and then falls through to "one application тЖТ that one"), so the two agree and the check is
      * silent; that also makes a disagreement mean the enumeration and the resolver disagree about
-     * the project — the one situation in which picking either could update a database nobody
+     * the project тАФ the one situation in which picking either could update a database nobody
      * named, so it is refused instead. Absence of a recorded default is NOT a disagreement: the
      * single enumerated application is then the answer. The check is kept even though a stable
      * EDT cannot produce it: this bundle is compiled against one EDT version and runs on later
@@ -428,14 +427,14 @@ public class UpdateDatabaseTool implements IMcpTool
             Activator.logError("Error listing applications of project " + projectName, e); //$NON-NLS-1$
             return ApplicationFallback.error(noBindingPrefix(configName)
                 + "and the applications of project '" + projectName + "' could not be listed: " //$NON-NLS-1$ //$NON-NLS-2$
-                + e.getMessage() + ". The project may still be indexing — retry in a moment, or " //$NON-NLS-1$
+                + e.getMessage() + ". The project may still be indexing тАФ retry in a moment, or " //$NON-NLS-1$
                 + "pass projectName + applicationId explicitly (get_applications lists the " //$NON-NLS-1$
                 + "application ids)."); //$NON-NLS-1$
         }
         if (applications == null || applications.isEmpty())
         {
             return ApplicationFallback.error(noBindingPrefix(configName)
-                + "and project '" + projectName + "' has no applications of its own — nothing to " //$NON-NLS-1$ //$NON-NLS-2$
+                + "and project '" + projectName + "' has no applications of its own тАФ nothing to " //$NON-NLS-1$ //$NON-NLS-2$
                 + "update. Bind the configuration to an application in EDT, or create an infobase " //$NON-NLS-1$
                 + "for the project. Use get_applications to see which project owns the " //$NON-NLS-1$
                 + "applications: for an extension project they belong to its base configuration " //$NON-NLS-1$
@@ -445,7 +444,7 @@ public class UpdateDatabaseTool implements IMcpTool
         {
             return ApplicationFallback.error(noBindingPrefix(configName)
                 + "and project '" + projectName + "' has " + applications.size() //$NON-NLS-1$ //$NON-NLS-2$
-                + " applications, so the target is ambiguous — refusing to guess which database " //$NON-NLS-1$
+                + " applications, so the target is ambiguous тАФ refusing to guess which database " //$NON-NLS-1$
                 + "to update: " + describeCandidates(applications) //$NON-NLS-1$
                 + ". Re-call with projectName='" + projectName //$NON-NLS-1$
                 + "' and one of those applicationId values (get_applications lists them)."); //$NON-NLS-1$
@@ -458,7 +457,7 @@ public class UpdateDatabaseTool implements IMcpTool
             // the application lookup as if the caller had asked for nothing.
             return ApplicationFallback.error(noBindingPrefix(configName)
                 + "and the single application of project '" + projectName //$NON-NLS-1$
-                + "' reports no id — nothing to target. Pass projectName + applicationId " //$NON-NLS-1$
+                + "' reports no id тАФ nothing to target. Pass projectName + applicationId " //$NON-NLS-1$
                 + "explicitly (get_applications lists the application ids)."); //$NON-NLS-1$
         }
         String resolved = LaunchLifecycleUtils.resolveDefaultApplicationId(project, "", appManager); //$NON-NLS-1$
@@ -467,7 +466,7 @@ public class UpdateDatabaseTool implements IMcpTool
             return ApplicationFallback.error(noBindingPrefix(configName)
                 + "and project '" + projectName + "' reports a single application '" //$NON-NLS-1$ //$NON-NLS-2$
                 + onlyId + "' but a different default application '" + resolved //$NON-NLS-1$
-                + "' — refusing to guess which database to update. Re-call with projectName='" //$NON-NLS-1$
+                + "' тАФ refusing to guess which database to update. Re-call with projectName='" //$NON-NLS-1$
                 + projectName + "' and an explicit applicationId (get_applications lists them)."); //$NON-NLS-1$
         }
         return ApplicationFallback.of(onlyId);
@@ -714,7 +713,7 @@ public class UpdateDatabaseTool implements IMcpTool
             IProgressMonitor monitor = new NullProgressMonitor();
 
             // Free the infobase and apply the update under the SAME per-IB lock the launch path
-            // uses (LaunchLifecycleUtils.lockFor), so a concurrent run_yaxunit_tests / debug_launch
+            // uses (LaunchLifecycleUtils.lockFor), so a concurrent run_yaxunit_tests / launch
             // on this infobase cannot interleave its own terminate+update (two updates racing, or a
             // freshly-freed IB grabbed by a new client between the sweep and update()). A 1C client
             // THIS EDT launched holds the IB in exclusive use (the update fails) and caches the old
@@ -734,17 +733,17 @@ public class UpdateDatabaseTool implements IMcpTool
                             + "infobase: project=" + projectName + ", application=" + applicationId); //$NON-NLS-1$ //$NON-NLS-2$
                     }
                 }
-                // EDT pops a blocking "Restructure data" / «Реорганизация информации» modal
+                // EDT pops a blocking "Restructure data" / ┬л╨а╨╡╨╛╤А╨│╨░╨╜╨╕╨╖╨░╤Ж╨╕╤П ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╨╕┬╗ modal
                 // (InfobaseUpdateConfirmDialog) whenever the config changes the DB structure; it
                 // hangs this unattended call. Arm the restructure matcher to auto-press its default
-                // "Accept" button around the update only — the confirm=true gate already approved the
+                // "Accept" button around the update only тАФ the confirm=true gate already approved the
                 // (irreversible) update, so accepting the platform's re-prompt is the correct completion.
                 // The same update can also raise EDT's "Infobase configuration changes" modal when
                 // the infobase was changed outside EDT since the last EDT interaction; it is answered
                 // by the caller's externalInfobaseChanges policy (default: override the infobase with
                 // the project configuration, i.e. exactly what this tool was asked to do).
                 // Reference-first: EDT's dialog names the REGISTERED infobase, which can differ
-                // from the application's display name — resolving the wrong one would leave every
+                // from the application's display name тАФ resolving the wrong one would leave every
                 // dialog unattributable and silently degrade override/import to cancel.
                 String infobaseName = LaunchLifecycleUtils.conflictAttributionName(application);
                 // Resolved once, for the window AND the arm below: a port-conflict event is routed
@@ -811,7 +810,7 @@ public class UpdateDatabaseTool implements IMcpTool
                             terminatedClient);
                     }
                     // A cancelled external-changes modal means the update wrote NOTHING. Reporting
-                    // "updated" here would be a false success — and the returned state cannot be
+                    // "updated" here would be a false success тАФ and the returned state cannot be
                     // used to tell the two apart: EDT may hand back a CACHED UPDATED, because the
                     // process that changed the infobase behind its back emitted no state event. The
                     // window is per-update, so a cancel recorded in it is this call's by
@@ -865,7 +864,7 @@ public class UpdateDatabaseTool implements IMcpTool
      * (debug-server) configuration, which {@code update_database} rejects by type, so pointing
      * there would send the caller into a second refusal.
      *
-     * <p>The classification is made from the STRING alone — no configuration is looked up — so
+     * <p>The classification is made from the STRING alone тАФ no configuration is looked up тАФ so
      * the wording claims only that the value has the FORM of such an identifier. A value that
      * merely looks like one (a stale id, a hand-typed string) must not be described as something
      * {@code list_configurations} actually reported.
@@ -873,7 +872,7 @@ public class UpdateDatabaseTool implements IMcpTool
      * <p>Deliberately tests the two prefixes rather than calling
      * {@link LaunchConfigUtils#isSyntheticApplicationId}: that predicate also matches
      * {@code ServerApplication.}, which is the prefix REAL 1C standalone-server applications carry
-     * in their own id — using it would tell a caller whose server application is merely missing or
+     * in their own id тАФ using it would tell a caller whose server application is merely missing or
      * stale that they had not passed an application id at all. Exposed (package-private) so the
      * classification can be unit-tested directly.
      *
@@ -910,7 +909,7 @@ public class UpdateDatabaseTool implements IMcpTool
             }
             return " That value has the form of the identifier list_configurations reports for an " //$NON-NLS-1$
                 + "Attach (debug-server) configuration ('" + configName + "'), so it is not an " //$NON-NLS-1$ //$NON-NLS-2$
-                + "application id — and update_database requires a runtime-client configuration, " //$NON-NLS-1$
+                + "application id тАФ and update_database requires a runtime-client configuration, " //$NON-NLS-1$
                 + "which an Attach configuration is not."; //$NON-NLS-1$
         }
         return ""; //$NON-NLS-1$
@@ -920,7 +919,7 @@ public class UpdateDatabaseTool implements IMcpTool
      * Builds the failure JSON for an update whose standalone server could not start because its
      * network ports were taken (EDT's port-conflict modal, auto-cancelled by
      * {@link LaunchUpdateDialogAutoConfirmer}). Nothing was published, so this is an error, not a
-     * partial success — and it names the real condition instead of the platform's bare
+     * partial success тАФ and it names the real condition instead of the platform's bare
      * "User has cancelled operation.".
      *
      * @param watch the window that recorded the cancelled dialog
@@ -928,6 +927,43 @@ public class UpdateDatabaseTool implements IMcpTool
      * @param applicationId the target application (echoed for the caller's context)
      * @return the error payload
      */
+    /**
+     * The {@code Caused by} clause, or nothing when the failure carries no distinct deeper reason.
+     *
+     * <p>Platform messages end in a period only sometimes, and the hint that follows this clause is
+     * a sentence of its own - so without a terminator the three run together into
+     * {@code "... session open error Caused by: ... Auth fail If the infobase requires ..."}, which
+     * is the reading the caller has to do at the exact moment it is already confused. The clause
+     * therefore closes itself, and opens with one only when the selected message did not.
+     *
+     * <p>When there is no deeper reason this returns the empty string, so the message stays
+     * character-for-character what it was before the cause chain was surfaced.
+     *
+     * @param described the message {@code PlatformFailures.describe} selected
+     * @param rootCause the deeper diagnosis, possibly empty
+     * @return the clause to append, possibly empty
+     */
+    private static String causedBySegment(String described, String rootCause)
+    {
+        if (rootCause.isEmpty())
+        {
+            return ""; //$NON-NLS-1$
+        }
+        return (endsSentence(described) ? " Caused by: " : ". Caused by: ") + rootCause //$NON-NLS-1$ //$NON-NLS-2$
+            + (endsSentence(rootCause) ? "" : "."); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** Whether this text already closes its own sentence. */
+    private static boolean endsSentence(String text)
+    {
+        if (text == null || text.isEmpty())
+        {
+            return true;
+        }
+        char last = text.charAt(text.length() - 1);
+        return last == '.' || last == '!' || last == '?' || last == ':';
+    }
+
     private static String portConflictError(LaunchUpdateDialogAutoConfirmer.ConflictWatch watch,
         String projectName, String applicationId, boolean terminatedClient)
     {
@@ -961,7 +997,7 @@ public class UpdateDatabaseTool implements IMcpTool
      *
      * <p>Reads {@code watch.portsReassigned()} HERE, at construction time: an early
      * {@code return ToolResult.error(...)} is evaluated before the enclosing {@code finally} runs,
-     * so a flag captured there could never reach this payload — and the server may already have
+     * so a flag captured there could never reach this payload тАФ and the server may already have
      * been re-addressed before the dialog was declined.
      *
      * @param watch the window opened around the update
@@ -976,7 +1012,7 @@ public class UpdateDatabaseTool implements IMcpTool
                 + (reassigned
                     ? " NOTE: EDT had already moved the standalone server to free ports and " //$NON-NLS-1$
                         + "rewritten its configuration " //$NON-NLS-1$
-                        + "(standaloneServerPortConflict=reassign) — that change stands." //$NON-NLS-1$
+                        + "(standaloneServerPortConflict=reassign) \u2014 that change stands." //$NON-NLS-1$
                     : ""); //$NON-NLS-1$
         ToolResult result = reassigned ? ToolResult.errorAfterMutation(message) : ToolResult.error(message);
         if (reassigned)
@@ -1021,7 +1057,7 @@ public class UpdateDatabaseTool implements IMcpTool
     /**
      * Builds the success JSON after an applied update. terminatedClient is emitted ONLY when a
      * client was actually terminated (truthful; "swept but none / not confirmed" and opt-out are
-     * indistinguishable by absence — the confirmationRequired idiom). Side-effect-free.
+     * indistinguishable by absence тАФ the confirmationRequired idiom). Side-effect-free.
      */
     private static String buildUpdatedResult(String projectName, String applicationId, // NOSONAR every value is already resolved by the caller
             IApplication application, ApplicationUpdateType updateType,
@@ -1038,7 +1074,7 @@ public class UpdateDatabaseTool implements IMcpTool
             // A delegate can hand back NO state at all (EDT's standalone-server delegate returns
             // whatever its server operation produced), and reading .name() off that turned a
             // platform outcome into a raw NullPointerException from this tool. Report the absence
-            // as UNKNOWN — the same token the platform uses for "cannot tell".
+            // as UNKNOWN тАФ the same token the platform uses for "cannot tell".
             .put("stateAfter", stateAfter == null //$NON-NLS-1$
                 ? ApplicationUpdateState.UNKNOWN.name() : stateAfter.name());
         if (terminatedClient)
@@ -1054,7 +1090,7 @@ public class UpdateDatabaseTool implements IMcpTool
         // and changes the address clients use, so it must not be a flag the caller has to notice.
         String reassignNote = portsReassigned
             ? " NOTE: the standalone server's ports were busy, so EDT moved it to free ports and " //$NON-NLS-1$
-                + "rewrote its configuration (standaloneServerPortConflict=reassign) — clients " //$NON-NLS-1$
+                + "rewrote its configuration (standaloneServerPortConflict=reassign) \u2014 clients " //$NON-NLS-1$
                 + "must use the new address." //$NON-NLS-1$
             : ""; //$NON-NLS-1$
 
@@ -1091,7 +1127,7 @@ public class UpdateDatabaseTool implements IMcpTool
      * is exempt from the sweep, or a client outlived the terminate window) so the agent can act
      * instead of seeing a bare failure. When the failure matches the known EDT-platform
      * {@code InternalInfo} pipeline limitation (#258), {@link #describeInternalInfoHint} takes
-     * priority and {@link #describeAuthHint} is suppressed — that failure has nothing to do with
+     * priority and {@link #describeAuthHint} is suppressed тАФ that failure has nothing to do with
      * credentials, and appending the auth hint too would mislead the caller. Side-effect-free (the
      * error is already logged by the caller). Exposed (package-private) so the #258
      * InternalInfo-vs-auth-hint precedence can be unit-tested directly.
@@ -1105,7 +1141,7 @@ public class UpdateDatabaseTool implements IMcpTool
     /**
      * Same failure payload, additionally stating that EDT had ALREADY moved the standalone server
      * to free ports before the update failed for another reason. That re-address outlives this
-     * call, so it is reported on the failure path too — not only when everything worked.
+     * call, so it is reported on the failure path too тАФ not only when everything worked.
      *
      * @param portsReassigned whether the server was re-addressed during this call
      */
@@ -1114,16 +1150,20 @@ public class UpdateDatabaseTool implements IMcpTool
     {
         String internalInfoHint = describeInternalInfoHint(e);
         String hint = internalInfoHint.isEmpty() ? describeAuthHint(e) : internalInfoHint;
+        String described = PlatformFailures.describe(e);
+        String rootCause = PlatformFailures.rootCause(e);
         // PlatformFailures, not getMessage(): EDT reports failures as IStatus and only wraps them,
         // so the exception's own message is routinely empty (a cancelled server operation) or
         // generic while the reason sits in the status tree - and "Database update failed: " with
-        // nothing after it tells the caller nothing at all.
+        // nothing after it tells the caller nothing at all. The distinct terminal diagnosis is
+        // composed here rather than changing describe's widely used selection rule.
         ToolResult errorResult = ToolResult.error("Database update failed: " //$NON-NLS-1$
-            + PlatformFailures.describe(e) + describeInfobaseHolder(applicationId) + hint
+            + described + causedBySegment(described, rootCause)
+            + describeInfobaseHolder(applicationId) + hint
             + (portsReassigned
                 ? " NOTE: before this failure EDT had already moved the standalone server to free " //$NON-NLS-1$
                     + "ports and rewritten its configuration " //$NON-NLS-1$
-                    + "(standaloneServerPortConflict=reassign) — that change stands." //$NON-NLS-1$
+                    + "(standaloneServerPortConflict=reassign) \u2014 that change stands." //$NON-NLS-1$
                 : "")); //$NON-NLS-1$
         errorResult.put(McpKeys.APPLICATION_ID, applicationId);
         errorResult.put(McpKeys.PROJECT, projectName);
@@ -1147,13 +1187,13 @@ public class UpdateDatabaseTool implements IMcpTool
     }
 
     /**
-     * Builds the JSON for a failure that is NOT an {@link ApplicationException} — anything the
+     * Builds the JSON for a failure that is NOT an {@link ApplicationException} тАФ anything the
      * update path throws unexpectedly, including a {@link CoreException} whose reason lives in an
      * {@code IStatus} tree rather than in the exception itself.
      *
      * <p>{@link PlatformFailures#describe} rather than {@code getMessage()}, for the same reason
      * {@link #buildApplicationErrorResult} uses it: a platform exception routinely carries no
-     * message of its own, so the concatenation emitted the literal "Unexpected error: null" —
+     * message of its own, so the concatenation emitted the literal "Unexpected error: null" тАФ
      * from a tool that had just changed an infobase irreversibly. The helper walks the cause chain
      * and the status tree instead, and when the failure genuinely carries no text anywhere it
      * names the exception type and the status severity, which is itself the diagnosis.
@@ -1163,7 +1203,7 @@ public class UpdateDatabaseTool implements IMcpTool
      * reaction the wording must not invite is an immediate blind re-call: the state is read back
      * with {@code get_applications}, and the reason the platform did not put in the exception is
      * in the EDT Error Log. The sentence comes AFTER the port-reassignment note, which keeps its
-     * place directly behind the failure description — that note is a claim about a change that
+     * place directly behind the failure description тАФ that note is a claim about a change that
      * already outlived this call, and nothing may push it away from the failure it qualifies.
      *
      * <p>Side-effect-free (the failure is already logged by the caller) and static, so the message
@@ -1182,7 +1222,7 @@ public class UpdateDatabaseTool implements IMcpTool
             + (portsReassigned
                 ? " NOTE: before this failure EDT had already moved the standalone server to " //$NON-NLS-1$
                     + "free ports and rewritten its configuration " //$NON-NLS-1$
-                    + "(standaloneServerPortConflict=reassign) — that change stands." //$NON-NLS-1$
+                    + "(standaloneServerPortConflict=reassign) \u2014 that change stands." //$NON-NLS-1$
                 : "") //$NON-NLS-1$
             + " The update may have applied partially, so do not retry blindly: check the actual " //$NON-NLS-1$
             + "state with get_applications (updateState) and the EDT Error Log first."); //$NON-NLS-1$
@@ -1220,7 +1260,7 @@ public class UpdateDatabaseTool implements IMcpTool
         }
         catch (Exception ignore)
         {
-            // best-effort hint only — never let it mask the real error
+            // best-effort hint only тАФ never let it mask the real error
         }
         return ""; //$NON-NLS-1$
     }
@@ -1258,13 +1298,13 @@ public class UpdateDatabaseTool implements IMcpTool
      * Hint appended to the update-failure message when the failure is the known EDT-platform
      * pipeline limitation (#258): the configuration XML that EDT itself generated for the load is
      * rejected because the {@code InternalInfo} node is missing (Russian EDT message:
-     * "Отсутствует внутренняя информация (узел InternalInfo) для объекта Configuration"). This is
-     * an EDT-side failure, not something the MCP call causes — the EDT GUI's "Update database
+     * "╨Ю╤В╤Б╤Г╤В╤Б╤В╨▓╤Г╨╡╤В ╨▓╨╜╤Г╤В╤А╨╡╨╜╨╜╤П╤П ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╤П (╤Г╨╖╨╡╨╗ InternalInfo) ╨┤╨╗╤П ╨╛╨▒╤К╨╡╨║╤В╨░ Configuration"). This is
+     * an EDT-side failure, not something the MCP call causes тАФ the EDT GUI's "Update database
      * configuration" fails the same way on the same project.
      * <p>
      * Detection is MARKER-FIRST (issue #382): the whole chain is searched for the {@code InternalInfo}
      * marker before anything else, and only a chain without it falls back to reporting a
-     * {@code ConfigurationLoadException} GENERICALLY — surfacing the platform's own message and
+     * {@code ConfigurationLoadException} GENERICALLY тАФ surfacing the platform's own message and
      * asserting no cause. The previous single pass treated the exception TYPE as proof of the
      * InternalInfo limitation, so every unrelated load failure (a malformed form attribute, for one)
      * was answered with a cause that was not there and a workaround that could not help.

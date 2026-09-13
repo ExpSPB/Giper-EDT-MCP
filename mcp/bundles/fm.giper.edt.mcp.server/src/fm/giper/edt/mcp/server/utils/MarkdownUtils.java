@@ -61,6 +61,59 @@ public final class MarkdownUtils
             .replace(">", "\\>"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
+    /**
+     * Wraps text so that a Markdown reader takes it as ONE inline code span and never as markup.
+     *
+     * @param text the text to render; {@code null} is treated as empty
+     * @return the code span, always non-empty and always on one line
+     */
+    public static String inlineCode(String text)
+    {
+        String source = text == null ? "" : text; //$NON-NLS-1$
+        StringBuilder body = new StringBuilder(source.length());
+        int longestRun = 0;
+        int run = 0;
+        for (int i = 0; i < source.length(); i++)
+        {
+            char c = source.charAt(i);
+            if (c < 0x20 || c == 0x7F || c == 0x85 || c == 0x2028 || c == 0x2029)
+            {
+                body.append('\uFFFD');
+                run = 0;
+                continue;
+            }
+            body.append(c);
+            run = c == '`' ? run + 1 : 0;
+            longestRun = Math.max(longestRun, run);
+        }
+        if (body.length() == 0)
+        {
+            body.append(' ');
+        }
+        StringBuilder fence = new StringBuilder();
+        for (int i = 0; i <= longestRun; i++)
+        {
+            fence.append('`');
+        }
+        char first = body.charAt(0);
+        char last = body.charAt(body.length() - 1);
+        boolean pad = first == '`' || last == '`'
+            || (first == ' ' && last == ' ' && !isOnlySpaces(body));
+        return fence + (pad ? " " : "") + body + (pad ? " " : "") + fence; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+    }
+
+    private static boolean isOnlySpaces(CharSequence body)
+    {
+        for (int i = 0; i < body.length(); i++)
+        {
+            if (body.charAt(i) != ' ')
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // ====================================================================
     // Table builders
     //

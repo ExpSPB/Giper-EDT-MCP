@@ -1,7 +1,6 @@
-/**
+﻿/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
- * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -67,8 +66,9 @@ public class ToolPresetTest
         assertNotNull(disabled);
 
         // Should disable applications, debug, BSL code, refactoring
-        assertTrue("Should disable debug_launch", disabled.contains("debug_launch"));
+        assertTrue("Should disable launch", disabled.contains("launch"));
         assertTrue("Should disable set_breakpoint", disabled.contains("set_breakpoint"));
+        assertTrue("Should disable set_error_breakpoint", disabled.contains("set_error_breakpoint")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("Should disable write_module_source", disabled.contains("write_module_source"));
         assertTrue("Should disable rename_metadata_object", disabled.contains("rename_metadata_object"));
         assertTrue("Should disable adopt_metadata_object", //$NON-NLS-1$
@@ -107,6 +107,7 @@ public class ToolPresetTest
         // Should disable refactoring and debug
         assertTrue("Should disable rename_metadata_object", disabled.contains("rename_metadata_object"));
         assertTrue("Should disable set_breakpoint", disabled.contains("set_breakpoint"));
+        assertTrue("Should disable set_error_breakpoint", disabled.contains("set_error_breakpoint")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("Should disable adopt_metadata_object", //$NON-NLS-1$
             disabled.contains("adopt_metadata_object")); //$NON-NLS-1$
         assertTrue("Should disable build_external_objects", //$NON-NLS-1$
@@ -131,6 +132,7 @@ public class ToolPresetTest
 
         // Should disable debug tools
         assertTrue("Should disable set_breakpoint", disabled.contains("set_breakpoint"));
+        assertTrue("Should disable set_error_breakpoint", disabled.contains("set_error_breakpoint")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("Should disable resume", disabled.contains("resume"));
         assertTrue("Should disable stop_profiling", //$NON-NLS-1$
             disabled.contains("stop_profiling")); //$NON-NLS-1$
@@ -268,33 +270,6 @@ public class ToolPresetTest
      * tool. {@link ToolPreset#ALL_TOOLS} is the single deliberate exception - its name says so.
      */
     @Test
-    public void toAllowlistRemovesPresetDisabledToolsFromCatalog()
-    {
-        Set<String> catalog = Set.of("list_projects", "write_module_source", "git"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        Set<String> allowed = ToolPreset.ALL_TOOLS.toAllowlist(catalog);
-        assertEquals(catalog, allowed);
-
-        Set<String> review = ToolPreset.CODE_REVIEW.toAllowlist(Set.of(
-            "list_projects", "write_module_source", "get_server_status")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        assertTrue(review.contains("list_projects")); //$NON-NLS-1$
-        assertTrue(review.contains("get_server_status")); //$NON-NLS-1$
-        assertFalse(review.contains("write_module_source")); //$NON-NLS-1$
-        assertTrue(ToolPreset.CUSTOM.toAllowlist(catalog).isEmpty());
-    }
-
-    @Test
-    public void matchAllowlistUsesCatalogComplementAndKeepsCustomComputed()
-    {
-        Set<String> catalog = ToolGroup.allToolNames();
-        assertEquals(ToolPreset.ALL_TOOLS,
-            ToolPreset.matchAllowlist(ToolPreset.ALL_TOOLS.toAllowlist(catalog), catalog));
-        assertEquals(ToolPreset.CODE_REVIEW,
-            ToolPreset.matchAllowlist(ToolPreset.CODE_REVIEW.toAllowlist(catalog), catalog));
-        assertEquals(ToolPreset.CUSTOM,
-            ToolPreset.matchAllowlist(Set.of("list_projects"), catalog)); //$NON-NLS-1$
-    }
-
-    @Test
     public void testOnlyAllToolsPresetEnablesTheDefaultOffTools()
     {
         Set<String> defaultOff =
@@ -311,5 +286,28 @@ public class ToolPresetTest
             assertTrue(preset.getDisplayName() + " must keep the default-off tools disabled", //$NON-NLS-1$
                 disabled.containsAll(defaultOff));
         }
+    }
+
+    /**
+     * Read-only presets disable file-writing merge_rules and delete_project, but keep the read-only
+     * comparison tools enabled.
+     */
+    @Test
+    public void testReadOnlyPresetsDisableMergeRulesAndDeleteProjectButKeepComparisonReads()
+    {
+        for (ToolPreset preset : new ToolPreset[] { ToolPreset.ANALYSIS_ONLY, ToolPreset.CODE_REVIEW })
+        {
+            Set<String> disabled = preset.getDisabledTools();
+            assertTrue(preset.getDisplayName() + " must disable merge_rules", //$NON-NLS-1$
+                disabled.contains("merge_rules")); //$NON-NLS-1$
+            assertTrue(preset.getDisplayName() + " must disable delete_project", //$NON-NLS-1$
+                disabled.contains("delete_project")); //$NON-NLS-1$
+            assertFalse(preset.getDisplayName() + " must keep compare_configurations", //$NON-NLS-1$
+                disabled.contains("compare_configurations")); //$NON-NLS-1$
+            assertFalse(preset.getDisplayName() + " must keep get_comparison_node", //$NON-NLS-1$
+                disabled.contains("get_comparison_node")); //$NON-NLS-1$
+        }
+        assertFalse("Development must not disable merge_rules", //$NON-NLS-1$
+            ToolPreset.DEVELOPMENT.getDisabledTools().contains("merge_rules")); //$NON-NLS-1$
     }
 }

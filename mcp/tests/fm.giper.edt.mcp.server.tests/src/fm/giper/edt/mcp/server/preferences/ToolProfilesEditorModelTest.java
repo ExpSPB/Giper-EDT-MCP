@@ -34,7 +34,7 @@ public class ToolProfilesEditorModelTest
         "list_projects", //$NON-NLS-1$
         "write_module_source", //$NON-NLS-1$
         "get_server_status", //$NON-NLS-1$
-        "debug_launch"); //$NON-NLS-1$
+        "launch"); //$NON-NLS-1$
 
     @Test
     public void addCreatesImmutableIdAndSelectsDraft()
@@ -309,7 +309,7 @@ public class ToolProfilesEditorModelTest
             .id("foreign") //$NON-NLS-1$
             .displayName("Imported") //$NON-NLS-1$
             .description("Draft only") //$NON-NLS-1$
-            .allowedTools(Set.of("debug_launch")) //$NON-NLS-1$
+            .allowedTools(Set.of("launch")) //$NON-NLS-1$
             .build();
         assertTrue(model.applyImportedProfileToSelected(imported).isOk());
 
@@ -412,7 +412,7 @@ public class ToolProfilesEditorModelTest
             .id("foreign") //$NON-NLS-1$
             .displayName("Imported name") //$NON-NLS-1$
             .description("Imported description") //$NON-NLS-1$
-            .allowedTools(Set.of("debug_launch")) //$NON-NLS-1$
+            .allowedTools(Set.of("launch")) //$NON-NLS-1$
             .revision(99L)
             .build();
         assertTrue(model.applyImportedProfileToSelected(imported).isOk());

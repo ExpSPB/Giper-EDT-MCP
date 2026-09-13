@@ -13,8 +13,10 @@ import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
 import com.google.gson.JsonObject;
@@ -51,12 +53,14 @@ public final class ProxyServer
     private static final String HTTP_METHOD_POST = "POST"; //$NON-NLS-1$
     private static final String CONTEXT_ADMIN_SHUTDOWN = "/admin/shutdown"; //$NON-NLS-1$
 
+    private static final int WORKER_THREADS = 32;
+
     private final ProxyConfig cfg;
     private final BackendRegistry registry;
     private final McpProxyHandler handler;
 
     private HttpServer httpServer;
-    private ExecutorService executor;
+    private ThreadPoolExecutor executor;
 
     /**
      * Cleanup run once {@code POST /admin/shutdown} has been accepted and its response flushed;
@@ -114,12 +118,20 @@ public final class ProxyServer
                 + (cfg.allowRemote ? cfg.bindHost : "loopback") + ":" + cfg.port //$NON-NLS-1$ //$NON-NLS-2$
                 + " (already in use?): " + e.getMessage(), e); //$NON-NLS-1$
         }
-        executor = Executors.newCachedThreadPool(r -> {
-            Thread thread = new Thread(r, "edt-mcp-proxy-worker"); //$NON-NLS-1$
-            thread.setDaemon(true);
-            return thread;
-        });
+        // Unbounded queue so a burst is answered with a retryable 503 (see McpProxyHandler.overloaded)
+        // instead of a dropped connection; the 50-in-flight ceiling is what bounds work in progress.
+        AtomicInteger workerCounter = new AtomicInteger();
+        executor = new ThreadPoolExecutor(
+            WORKER_THREADS, WORKER_THREADS, 60L, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(),
+            r -> {
+                Thread thread = new Thread(r, "edt-mcp-proxy-worker-" + workerCounter.incrementAndGet()); //$NON-NLS-1$
+                thread.setDaemon(true);
+                return thread;
+            });
+        executor.allowCoreThreadTimeOut(true);
         httpServer.setExecutor(executor);
+        handler.setWorkerPool(executor);
         httpServer.createContext("/health", this::handleHealth); //$NON-NLS-1$
         httpServer.createContext("/mcp", handler); //$NON-NLS-1$
         httpServer.createContext(CONTEXT_ADMIN_SHUTDOWN, this::handleAdminShutdown);

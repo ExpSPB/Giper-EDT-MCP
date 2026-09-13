@@ -151,8 +151,10 @@ public final class InputSchemaCompactor
         // formName / commandName: with objectName on a NON-common object and
         // moduleType=FormModule / CommandModule, path resolution refuses the write without
         // them. Same conditional shape as mode->oldSource, one step further out.
+        // methodName is required by all three method-targeted modes; expectedHash becomes
+        // mandatory for the same modes instead of merely being an optional any-mode guard.
         keep.put("write_module_source", asSet("expectedHash", "mode", "oldSource", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-            "formName", "commandName")); //$NON-NLS-1$ //$NON-NLS-2$
+            "methodName", "formName", "commandName")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // The enum cannot express either fact: md is the default, and xml is legal only for
         // action=get + type=schema + a bare root. Without this one clause a schema-valid
         // format=xml call can select a fragment, dynamic-list type, or mutation and be refused.
@@ -176,6 +178,7 @@ public final class InputSchemaCompactor
         keep.put("delete_infobase", //$NON-NLS-1$
             asSet("deleteRegistration", "deleteDatabaseFiles")); //$NON-NLS-1$ //$NON-NLS-2$
         keep.put("resync_to_disk", asSet("overwriteDiskEdits")); //$NON-NLS-1$ //$NON-NLS-2$
+        keep.put("merge_rules", asSet("filePath")); //$NON-NLS-1$ //$NON-NLS-2$
         // debug=true also changes the return contract (a wait_for_break follow-up).
         // launchConfigurationName OR projectName+applicationId - the same target-selector
         // contract the grader models, and the arms produced project-only calls without it.
@@ -188,8 +191,8 @@ public final class InputSchemaCompactor
         // external work. A launch that looks routine silently overwrites someone's changes.
         // restartIfRunning=true TERMINATES the live session before relaunching, on a tool
         // whose destructiveHint is false - nothing else in the always-loaded contract says so.
-        keep.put("debug_launch", //$NON-NLS-1$
-            asSet("updateBeforeLaunch", KEY_EXTERNAL_CHANGES, KEY_PORT_CONFLICT,
+        keep.put("launch", //$NON-NLS-1$
+            asSet("mode", "updateBeforeLaunch", KEY_EXTERNAL_CHANGES, KEY_PORT_CONFLICT, //$NON-NLS-1$ //$NON-NLS-2$
                 "restartIfRunning")); //$NON-NLS-1$
         keep.put("debug_yaxunit_tests", //$NON-NLS-1$
             asSet("updateBeforeLaunch", KEY_EXTERNAL_CHANGES, KEY_PORT_CONFLICT)); //$NON-NLS-1$
@@ -246,10 +249,14 @@ public final class InputSchemaCompactor
         // a second keep.put() for create_project would silently drop the first.
         // baseProjectName completes the projectKind story: for an extension it is REQUIRED
         // (validateExtensionBaseProject rejects a blank one), while `required` lists only
-        // projectKind and name. Fourth parameter of this tool whose contract lives in prose
-        // - one schema serving three project kinds is the worst case for compaction.
+        // projectKind and name. This tool has several contracts that live in prose because one
+        // schema serves three project kinds - the worst case for compaction.
+        // externalObject is similarly conditional and its string schema cannot express either
+        // the Type.Name shape or that omission deliberately creates an empty import target.
+        // normalizeYo has the same silent-rewrite default as create_metadata below: without its
+        // prose a caller cannot know that a requested root Name may be stored differently.
         keep.put("create_project", asSet("autoSortTopObjects", "scriptVariant", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            "version", "baseProjectName")); //$NON-NLS-1$ //$NON-NLS-2$
+            "version", "baseProjectName", "externalObject", "normalizeYo")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
         // The parameter is ACCEPTED and then discarded (execute() reads it only for schema
         // parity; the class doc reserves it for a future release). Stripped to a bare
         // boolean it reads as a working option, and the response says otherwise only after

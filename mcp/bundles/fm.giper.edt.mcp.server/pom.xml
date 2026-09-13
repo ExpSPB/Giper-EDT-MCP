@@ -7,7 +7,7 @@
   <parent>
     <groupId>fm.giper.edt.mcp</groupId>
     <artifactId>bundles</artifactId>
-    <version>1.0.9-SNAPSHOT</version>
+    <version>1.0.10-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
@@ -28,6 +28,30 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-checks</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.basedir}/checks</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/../../../checks</directory>
+                  <includes>
+                    <include>**/*.md</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <!-- `mvn -pl bundles/fm.giper.edt.mcp.server jacoco:report` (after verify) turns the
            tests fragment's .exec into an XML report against THIS bundle's classes/sources.
            No execution binding: the bundle builds before the tests, so the report is a

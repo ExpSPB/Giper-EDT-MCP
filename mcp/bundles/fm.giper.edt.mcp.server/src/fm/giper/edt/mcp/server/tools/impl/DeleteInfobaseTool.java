@@ -38,6 +38,7 @@ import fm.giper.edt.mcp.server.utils.DestructiveConsentGate;
 import fm.giper.edt.mcp.server.utils.McpJobs;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
+import fm.giper.edt.mcp.server.utils.StandaloneServerSupport;
 import com.e1c.g5.dt.applications.IApplication;
 import com.e1c.g5.dt.applications.IApplicationManager;
 import com.e1c.g5.dt.applications.infobases.IInfobaseApplication;

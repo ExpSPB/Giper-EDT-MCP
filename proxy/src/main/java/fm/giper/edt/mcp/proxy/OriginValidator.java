@@ -16,9 +16,10 @@ package fm.giper.edt.mcp.proxy;
  * from {@code evil.example.com} cannot invoke tools. A missing {@code Origin} is allowed:
  * CLI / MCP clients are not browsers and do not send one.
  *
- * <p>Allowed: {@code localhost} / {@code 127.0.0.1} over http or https (optional port),
- * {@code file://}, the literal {@code "null"} (local HTML files), and
- * {@code vscode-webview://}. Look-alike hosts such as {@code localhost.attacker.com}
+ * <p>Only loopback origins are allowed: {@code localhost}, {@code 127.0.0.1} and
+ * {@code [::1]} over http or https (optional port). {@code file://}, the literal
+ * {@code "null"} and {@code vscode-webview://} are no longer accepted — see the plugin's
+ * {@code McpOriginValidator} for why. Look-alike hosts such as {@code localhost.attacker.com}
  * are rejected (exact host match, not a naive {@code startsWith}).
  */
 public final class OriginValidator
@@ -38,11 +39,10 @@ public final class OriginValidator
     {
         return isLoopbackHost(origin, "http://localhost") || //$NON-NLS-1$
                isLoopbackHost(origin, "http://127.0.0.1") || //$NON-NLS-1$
+               isLoopbackHost(origin, "http://[::1]") || //$NON-NLS-1$
                isLoopbackHost(origin, "https://localhost") || //$NON-NLS-1$
                isLoopbackHost(origin, "https://127.0.0.1") || //$NON-NLS-1$
-               origin.startsWith("file://") || //$NON-NLS-1$
-               origin.equals("null") || //$NON-NLS-1$
-               origin.startsWith("vscode-webview://"); //$NON-NLS-1$
+               isLoopbackHost(origin, "https://[::1]"); //$NON-NLS-1$
     }
 
     /**

@@ -23,6 +23,7 @@ import java.util.Map;
 import org.junit.Test;
 
 import fm.giper.edt.mcp.server.protocol.ToolResult;
+import fm.giper.edt.mcp.server.utils.BoundedJob;
 import fm.giper.edt.mcp.server.utils.BuildUtils.DiskExportState;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -493,6 +494,66 @@ public class AbstractMetadataWriteToolTest
             new StubTool(environment).awaitDiskExport(params(PROJECT), successJson(), wroteIn(PROJECT));
 
         assertNull(publishedProjects(answer));
+    }
+
+    @Test
+    public void testTimedOutConfirmedCallWithoutRecordedWriteCarriesUnknownMutationMarker()
+    {
+        String answer = boundedOutcomeAnswer(BoundedJob.Outcome.TIMED_OUT, silent());
+        JsonObject result = JsonParser.parseString(answer).getAsJsonObject();
+
+        assertTrue(result.get("mutationOutcomeUnknown").getAsBoolean()); //$NON-NLS-1$
+        assertFalse(result.has("mutationCommitted")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testTimedOutConfirmedCallWithRecordedWriteCarriesOnlyCommittedMarker()
+    {
+        String answer = boundedOutcomeAnswer(BoundedJob.Outcome.TIMED_OUT, wroteIn(PROJECT));
+        JsonObject result = JsonParser.parseString(answer).getAsJsonObject();
+
+        assertTrue(result.get("mutationCommitted").getAsBoolean()); //$NON-NLS-1$
+        assertFalse(result.has("mutationOutcomeUnknown")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testInterruptedConfirmedCallWithoutRecordedWriteCarriesUnknownMutationMarker()
+    {
+        String answer = boundedOutcomeAnswer(BoundedJob.Outcome.INTERRUPTED, silent());
+        JsonObject result = JsonParser.parseString(answer).getAsJsonObject();
+
+        assertTrue(result.get("mutationOutcomeUnknown").getAsBoolean()); //$NON-NLS-1$
+        assertFalse(result.has("mutationCommitted")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testNeverStartedBoundedOutcomesCarryNoMutationMarker()
+    {
+        StubTool tool = new StubTool(new RecordingEnvironment(DiskExportState.DRAINED));
+        Map<String, String> confirmed = params(PROJECT);
+        confirmed.put("confirm", "true"); //$NON-NLS-1$ //$NON-NLS-2$
+        for (BoundedJob.Outcome outcome : Arrays.asList(
+            BoundedJob.Outcome.TIMED_OUT_BEFORE_START, BoundedJob.Outcome.NOT_RUN))
+        {
+            boolean mayHaveMutated = tool.uiThreadBoundOutcomeMayHaveMutated(confirmed, outcome);
+            String answer = AbstractMetadataWriteTool.markUiThreadBoundOutcomeError(wroteIn(PROJECT),
+                ToolResult.error("UI work never ran").toJson(), mayHaveMutated); //$NON-NLS-1$
+            JsonObject result = JsonParser.parseString(answer).getAsJsonObject();
+
+            assertFalse(outcome + " must not be uncertain", //$NON-NLS-1$
+                result.has("mutationOutcomeUnknown")); //$NON-NLS-1$
+            assertFalse(outcome + " must not claim a commit", result.has("mutationCommitted")); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+    }
+
+    private static String boundedOutcomeAnswer(BoundedJob.Outcome outcome, WriteScope scope)
+    {
+        StubTool tool = new StubTool(new RecordingEnvironment(DiskExportState.DRAINED));
+        Map<String, String> confirmed = params(PROJECT);
+        confirmed.put("confirm", "true"); //$NON-NLS-1$ //$NON-NLS-2$
+        boolean mayHaveMutated = tool.uiThreadBoundOutcomeMayHaveMutated(confirmed, outcome);
+        return AbstractMetadataWriteTool.markUiThreadBoundOutcomeError(scope,
+            ToolResult.error("bounded UI work did not complete").toJson(), mayHaveMutated); //$NON-NLS-1$
     }
 
     /** Overrides ONLY what the base class leaves abstract, plus the seam - nothing else. */

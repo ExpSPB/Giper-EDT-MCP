@@ -36,6 +36,9 @@ log.log
 proxy/target/
 tests/TestConfiguration/.scannerwork/
 
+# Generated check-description copies (maven-resources-plugin from /checks)
+/mcp/bundles/fm.giper.edt.mcp.server/checks/
+
 # Scratch: EDT workspace .metadata dumps pulled in for diagnosis (logs, telemetry)
 tmp/
 

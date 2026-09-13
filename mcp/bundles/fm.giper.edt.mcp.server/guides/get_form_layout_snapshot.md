@@ -33,4 +33,4 @@ EDT must be launched with `-DnativeFormBufferedLayoutRender=true` in the `1cedt.
 - Blank result => the `-DnativeFormBufferedLayoutRender=true` flag is missing (see above), not a failure of this call.
 - `formPath` without `projectName` is rejected: "projectName is required when formPath is specified".
 - Needs a live workbench Display; runs on the UI thread.
-- A "No calculated element bounds were found" warning means the form had not finished rendering yet - retry, or ensure `refresh` is `true`.
+- A "No calculated element bounds were found" warning is mode-specific. In native render mode EDT does not produce Java-side per-element bounds at all (structural, not transient) — retrying will not help; use `get_metadata_details` for the element tree, or relaunch with `-DnativeFormLayoutRender=false` (a trade-off: native render is what `get_form_screenshot`'s image path uses). When native render is off, the warning may mean the form had not finished rendering yet — retry or ensure `refresh` is `true`.

@@ -140,7 +140,28 @@ public final class ProjectStateChecker
     {
         // Utility class
     }
-    
+
+    /**
+     * The derived-data segments a metadata CREATE or MODIFY depends on: the metadata model and the
+     * form model.
+     * <p>
+     * An explicit list, on purpose. EDT's own "important" set is every segment in the SYNC,
+     * AFTER_SYNC and BEFORE_BUILD buckets, and the only way to ask about it is
+     * {@code waitImportantDataComputations} - a WAIT that its own timeout does not bound, which then
+     * needs a job wrapper and a one-in-flight claim whose ownership rules produced a defect on every
+     * attempt. Naming the segments makes this a pure query that cannot block, and makes the
+     * assumption reviewable, which a wait never was.
+     */
+    private static final java.util.List<String> MODEL_SEGMENTS =
+        java.util.Arrays.asList("MD", "FORM"); //$NON-NLS-1$ //$NON-NLS-2$
+
+    /** The DT project behind a workspace project, or {@code null} when it is not an EDT project. */
+    private static IDtProject resolveDtProject(IProject project)
+    {
+        IDtProjectManager dtProjectManager = Activator.getDefault().getDtProjectManager();
+        return dtProjectManager == null ? null : dtProjectManager.getDtProject(project);
+    }
+
     /**
      * Checks if a project is ready for operations.
      * A project is ready when:
@@ -231,7 +252,139 @@ public final class ProjectStateChecker
         
         return new ProjectStateResult(ProjectState.READY, "Project is ready");
     }
-    
+
+    /**
+     * The MODEL-readiness gate: {@code null} when the project's model and index have been computed,
+     * an actionable error otherwise. Unlike {@link #buildingErrorOrNull(IProject)} this does NOT wait
+     * for the validation checks.
+     * <p>
+     * Issue #495: on a large configuration the checks run for HOURS, and they keep both
+     * {@code isIdle()} and {@code isAllComputed()} false - so a gate built on those switched metadata
+     * editing off for that whole time. The checks are not what a metadata edit depends on: a rename
+     * cascade needs the model and the reference index in order to compute the sites it must rewrite,
+     * and the checks produce markers from that model rather than contributing to it.
+     * <p>
+     * Nor can excluding them re-create the batch-session collision {@link
+     * #settleBeforeCascadeOrError(String, long)} exists to avoid: {@code Reactor.executeTask} raises
+     * "Unable to execute task because batch session is active" only for a {@code READ_WRITE}
+     * transaction, and every check computer - {@code ModelCheckDerivedDataComputer},
+     * {@code LanguageCheckDerivedDataComputer}, {@code MarkerCleanerDerivedDataComputer} - runs
+     * through {@code executeReadonlyTask}. The check bundle contains no read-write BM task at all.
+     * <p>
+     * The question is asked through {@code waitImportantDataComputations}, the platform's own wait on
+     * the segments that must be complete during the incremental phase, because that is the ONLY form
+     * of the question that accounts for QUEUED work: it begins with
+     * {@code contextManager.waitAccumulatedContextProcessing}. Inferring readiness from the active
+     * pipeline STAGE does not - a change arriving during a long post-build check enqueues model work
+     * in an earlier bucket while the reported stage stays {@code AFTER_BUILD}. The timeout must stay
+     * POSITIVE: with {@code timeout <= 0} the platform waits on its task condition without a bound.
+     *
+     * @param project the project the caller wants to edit (a {@code null} project skips the check)
+     * @return an actionable error, or {@code null} when the model may be edited
+     */
+    public static String modelBuildingErrorOrNull(IProject project)
+    {
+        if (project == null)
+        {
+            return null;
+        }
+        IDtProject dtProject = resolveDtProject(project);
+        if (dtProject == null)
+        {
+            return null;
+        }
+        IDerivedDataManagerProvider ddProvider = Activator.getDefault().getDerivedDataManagerProvider();
+        IDerivedDataManager ddManager = ddProvider == null ? null : ddProvider.get(dtProject);
+        if (ddManager == null)
+        {
+            // Cannot ask: fall back to the strict gate rather than inventing readiness.
+            return buildingErrorOrNull(project);
+        }
+        if (isModelDataComputed(ddManager))
+        {
+            return null;
+        }
+        return "Project is building: the model or the reference index is still being computed. " //$NON-NLS-1$
+            + "Please wait and retry."; //$NON-NLS-1$
+    }
+
+    /**
+     * Name-addressed {@link #modelBuildingErrorOrNull(IProject)}.
+     *
+     * @param projectName the project the caller wants to edit (null/empty skips the check)
+     * @return an actionable error, or {@code null} when the model may be edited
+     */
+    public static String modelBuildingErrorOrNull(String projectName)
+    {
+        if (projectName == null || projectName.isEmpty())
+        {
+            return null;
+        }
+        return modelBuildingErrorOrNull(org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+            .getRoot().getProject(projectName));
+    }
+
+    /**
+     * Probes whether the platform's IMPORTANT (model and index) computations are complete, without
+     * waiting for validation. See {@link #modelBuildingErrorOrNull(IProject)} for why this shape.
+     *
+     * @param ddManager the project's derived-data manager
+     * @return {@code true} only when the important computations are proven complete
+     */
+    static boolean isModelDataComputed(IDerivedDataManager ddManager)
+    {
+        try
+        {
+            // An ACTIVE model synchronisation is tracked separately from the pipeline, so its model
+            // contexts may not be enqueued yet and the segments below would still read as computed
+            // for the PREVIOUS model.
+            if (isModelSyncActive(ddManager))
+            {
+                return false;
+            }
+            // A PURE query: isComputed takes the pipeline read lock and returns, with no wait, no
+            // job and no claim to hand back. This replaces a waitImportantDataComputations probe
+            // that had to be wrapped in a BoundedJob (the platform call is not bounded by its own
+            // timeout) and guarded against accumulating stuck jobs - machinery whose ownership rules
+            // produced a defect on every attempt. Asking a question that cannot block removes that
+            // whole class instead of patching it again.
+            if (!ddManager.isComputed(MODEL_SEGMENTS))
+            {
+                return false;
+            }
+            return !isModelSyncActive(ddManager);
+        }
+        catch (RuntimeException e)
+        {
+            // isSegmentComputed asserts on a segment this EDT does not register, and anything else
+            // here is equally unanswerable. Never proof of readiness.
+            Activator.logError("Cannot probe model-data readiness; treating it as not ready", e); //$NON-NLS-1$
+            return false;
+        }
+    }
+
+    /**
+     * Whether the model is being synchronised - or whether that cannot be established, which counts
+     * the same way. Synchronisation is tracked separately from the pipeline, so an active one means
+     * model and index contexts that are not enqueued yet.
+     *
+     * @param ddManager the project's derived-data manager
+     * @return {@code true} when a synchronisation is active OR the status could not be read
+     */
+    private static boolean isModelSyncActive(IDerivedDataManager ddManager)
+    {
+        try
+        {
+            DerivedDataStatus status = ddManager.getDerivedDataStatus();
+            return status == null || status.isModelSyncActive();
+        }
+        catch (RuntimeException e)
+        {
+            Activator.logError("Cannot read the derived-data status; treating it as not ready", e); //$NON-NLS-1$
+            return true;
+        }
+    }
+
     /**
      * Checks if a project is ready and returns error message if not.
      * Convenience method for tools that need to check before executing.
@@ -1189,6 +1342,11 @@ public final class ProjectStateChecker
             @Override
             public String buildingErrorOrNull(IProject project)
             {
+                // The cascade stays STRICT. It rewrites BSL occurrences found through EDT's FULL-TEXT
+                // search index, whose FTS_INDEXING_SEGMENT and FTS_CLEANER_SEGMENT sit in the NORMAL
+                // bucket - and initAutoWaitRules builds the "important" set from SYNC, AFTER_SYNC and
+                // BEFORE_BUILD only, so the model wait does NOT cover them. A rename admitted on that
+                // wait could miss an occurrence and leave a stale reference behind.
                 return ProjectStateChecker.buildingErrorOrNull(project);
             }
 

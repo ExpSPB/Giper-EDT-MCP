@@ -5,7 +5,7 @@
  * Licensed under AGPL-3.0-or-later
  */
 
-package fm.giper.edt.mcp.server.tools.impl;
+package fm.giper.edt.mcp.server.utils;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -25,7 +25,7 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.Test;
 
-import fm.giper.edt.mcp.server.tools.impl.StandaloneServerSupport.RegistryCleanup;
+import fm.giper.edt.mcp.server.utils.StandaloneServerSupport.RegistryCleanup;
 
 /**
  * Tests for {@link StandaloneServerSupport}.
