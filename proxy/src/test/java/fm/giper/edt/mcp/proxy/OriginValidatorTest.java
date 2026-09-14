@@ -14,8 +14,9 @@ import org.junit.Test;
 
 /**
  * Tests for {@link OriginValidator}. Locks the same allow-list as the plugin's
- * {@code McpOriginValidator}: loopback / file / {@code "null"} / vscode-webview are
- * admitted; remote and look-alike hosts are rejected.
+ * {@code McpOriginValidator}: only loopback origins are admitted; {@code file://},
+ * the literal {@code "null"}, {@code vscode-webview://}, remote and look-alike
+ * hosts are rejected.
  */
 public class OriginValidatorTest
 {
@@ -42,21 +43,31 @@ public class OriginValidatorTest
     }
 
     @Test
-    public void testFileOriginAllowed()
+    public void testIpv6LoopbackAllowed()
     {
-        assertTrue(OriginValidator.isValidOrigin("file:///C:/page.html"));
+        assertTrue(OriginValidator.isValidOrigin("http://[::1]"));
+        assertTrue(OriginValidator.isValidOrigin("http://[::1]:8764"));
+        assertTrue(OriginValidator.isValidOrigin("https://[::1]"));
+        assertTrue(OriginValidator.isValidOrigin("https://[::1]:8764"));
     }
 
     @Test
-    public void testNullLiteralAllowed()
+    public void testFileOriginRejected()
     {
-        assertTrue(OriginValidator.isValidOrigin("null"));
+        assertFalse(OriginValidator.isValidOrigin("file:///C:/page.html"));
     }
 
     @Test
-    public void testVscodeWebviewAllowed()
+    public void testNullLiteralRejected()
     {
-        assertTrue(OriginValidator.isValidOrigin("vscode-webview://abc123"));
+        // Sandbox iframes, data: URLs and cross-origin redirects send the literal "null" Origin
+        assertFalse(OriginValidator.isValidOrigin("null"));
+    }
+
+    @Test
+    public void testVscodeWebviewRejected()
+    {
+        assertFalse(OriginValidator.isValidOrigin("vscode-webview://abc123"));
     }
 
     @Test
