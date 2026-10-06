@@ -14,24 +14,24 @@ written to the project, and nothing is ever merged.
 
 ## Parameter details
 
-- `projectName` тАФ an open EDT project. The MAIN side is its working tree, not a
+- `projectName` — an open EDT project. The MAIN side is its working tree, not a
   revision, so uncommitted edits are part of the comparison.
-- `otherRevision` / `ancestorRevision` тАФ anything git resolves in that project's
+- `otherRevision` / `ancestorRevision` — anything git resolves in that project's
   repository: a branch, a tag, `HEAD~1`, a full or abbreviated commit id. A value git
   cannot resolve fails the job naming the value; use `list_git_branches` to see what
   exists.
-- `scope` тАФ qualified names to compare, e.g. `["Catalog.Products","Document.Order"]`.
+- `scope` — qualified names to compare, e.g. `["Catalog.Products","Document.Order"]`.
   **Omitting it compares the WHOLE configuration**, which is what a vendor-release
   comparison normally wants; it is not an error and not an empty comparison. Russian
-  type tokens are accepted (`╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л`): every structural segment is
+  type tokens are accepted (`Справочник.Товары`): every structural segment is
   translated to the English token the engine matches on, while object names are kept
   exactly as written.
-- `mergeRulesFile` тАФ a merge-rules file applied to the comparison BEFORE it starts, so
+- `mergeRulesFile` — a merge-rules file applied to the comparison BEFORE it starts, so
   a set of decisions prepared in advance is already in place when a human opens the
   comparison in EDT. The file is read, never written, and the path is checked before
   anything is launched. Use `merge_rules` to read or write one.
   A `.zip` of merge settings is a BAG of them, keyed by an entry NAME, and EDT restores
-  only the entry called `<main>_<other>_<ancestor>` тАФ the three project names of the
+  only the entry called `<main>_<other>_<ancestor>` — the three project names of the
   comparison being launched, joined by `_` in that order. A zip whose entries spell
   something else addresses nothing here and the platform would apply none of it while
   saying nothing; such a zip fails the job before the comparison is started, naming the
@@ -40,25 +40,25 @@ written to the project, and nothing is ever merged.
   it was saved from, so an old file re-applies old decisions rather than being ignored.
   And the name is a plain concatenation over `_`, which is itself legal in a project
   name, so different triples can spell the same entry (main `A_B` with other `C` spells
-  what main `A` with other `B_C` spells) тАФ the file is addressed, not owned, and nothing
+  what main `A` with other `B_C` spells) — the file is addressed, not owned, and nothing
   here promises that only one comparison can restore it. A `.xml` written by
-  `merge_rules` carries no address, so any comparison reads it тАФ but only on
+  `merge_rules` carries no address, so any comparison reads it — but only on
   **EDT 2026.1**. EDT 2026.2 reads merge settings from a `.zip` alone and fails the
   launch with `Can read merge settings from a zip file`, so on 2026.2 write the rules
   with `merge_rules`, giving it a `.zip` filePath and this comparison's id: the
   container comes from that path, and the id both addresses the entry and gets every
-  rule checked. Either way the extension of THIS parameter must be lower case тАФ EDT
+  rule checked. Either way the extension of THIS parameter must be lower case — EDT
   opens the file itself and compares the extension exactly.
-- `waitSeconds` тАФ how long THIS call may wait before returning its job snapshot;
+- `waitSeconds` — how long THIS call may wait before returning its job snapshot;
   0 to 25, default 5. It never extends the job's own budget. A real configuration takes
   minutes, so the normal answer is `Pending` plus the `jobId`.
-- `limit` тАФ how many top objects the report LISTS, `1` to `1000` (default `100`); a value
+- `limit` — how many top objects the report LISTS, `1` to `1000` (default `100`); a value
   outside that range is clamped into it rather than refused. The counters above the table
   always describe the whole comparison, so a truncated list never shrinks a total.
-- `changedOnly` тАФ defaults to `true`: only top objects that differ are listed. Objects
+- `changedOnly` — defaults to `true`: only top objects that differ are listed. Objects
   that have not been compared yet are kept even under this filter, because "not
   answered yet" is not "equal".
-- `releaseComparisonId` тАФ closes a comparison you are finished with and frees EDT's
+- `releaseComparisonId` — closes a comparison you are finished with and frees EDT's
   single slot. It is the WHOLE call: no project, no revisions, nothing is started. Pass
   the `comparisonId` from the report header (the refusal you get from a second launch
   names it too). Answering with an id nothing holds is an error, not a silent success.
@@ -74,7 +74,7 @@ different facts and the report never merges them: an object in the second column
 the engine chose, not one you asked for.
 
 **A scope narrows what is COMPARED, not just what is listed.** With a scope, EDT compares
-an object's own features тАФ module text, form and template content, every plain property тАФ
+an object's own features — module text, form and template content, every plain property —
 only for the objects in the scope, and excludes those features everywhere else. The
 exclusion is applied per FEATURE and spares an object's containment-many collections of
 metadata objects, so an object outside the scope is still matched, still reported as added
@@ -100,7 +100,7 @@ fill them in. Start a new comparison, or expand the objects you care about with
 | Column | Meaning |
 | --- | --- |
 | nodeId | pass it with the `comparisonId` from the header table to `get_comparison_node` |
-| Main / Other / Ancestor | the object's qualified name on that side, `тАФ` when absent |
+| Main / Other / Ancestor | the object's qualified name on that side, `—` when absent |
 | Change | see below |
 | Node status | the platform's own status for the node's subtree |
 
@@ -115,7 +115,7 @@ fill them in. Start a new comparison, or expand the objects you care about with
 | `changed on main` / `changed on other` | one side moved away from the ancestor |
 | `changed on both sides` | both did, without the platform calling it a conflict |
 | `differs between main and other` | the two sides differ, with no ancestor verdict |
-| `identical` | compared, and equal тАФ with a scope, see **Scope**: outside it the object's own features were excluded from the comparison |
+| `identical` | compared, and equal — with a scope, see **Scope**: outside it the object's own features were excluded from the comparison |
 | `not reported by the engine` | the engine attached no verdict to this node at all |
 | `not compared yet` | the tree is lazy and has not reached this node |
 
@@ -128,18 +128,18 @@ differently.
 ## One comparison at a time, and it stays open when it finishes
 
 EDT runs exactly ONE comparison per workbench. A second `compare_configurations` while
-one is live is refused with an error naming the live comparison тАФ it is never queued, so
+one is live is refused with an error naming the live comparison — it is never queued, so
 a refusal means nothing was started.
 
 **A job can also end with `**Not started:**`, and that is not a failure.** EDT schedules a
 comparison rather than running it inline, so a workbench busy with a build or an index can
 take longer than a minute to get to it. The job stops waiting at that point and answers with
-the `comparisonId` тАФ and with a sentence saying what became of the slot. **Read that sentence
+the `comparisonId` — and with a sentence saying what became of the slot. **Read that sentence
 rather than assuming:** usually EDT still has not begun the batch, and ending one in that state
 costs that workbench its comparison support until restart, so nothing is ended and the
 comparison may still start and take the single slot under that id. But the wait can also run
 out in the very instant EDT starts it, and the stop asked for at that point then really does
-end it тАФ the answer says which happened. Poll for it by starting the next comparison (the
+end it — the answer says which happened. Poll for it by starting the next comparison (the
 refusal names the occupant), or give the slot back with `releaseComparisonId` once it is under
 way.
 
@@ -158,12 +158,12 @@ ever running. `cancel_job` is the right call while the comparison is still RUNNI
 only then.
 
 A comparison nobody comes back to is released by the registry's idle TTL (30 minutes
-without a lookup), and that reclaim happens as part of answering the next launch тАФ so a
+without a lookup), and that reclaim happens as part of answering the next launch — so a
 forgotten comparison delays the next one, it does not block it until EDT restarts.
 
 One rule governs every way a comparison can end, and it is deliberate: **the record is
-dropped exactly when the slot is CONFIRMED free.** When the hand-back does not go through тАФ
-EDT's comparison service is momentarily gone, or the stop throws тАФ the record is KEPT
+dropped exactly when the slot is CONFIRMED free.** When the hand-back does not go through —
+EDT's comparison service is momentarily gone, or the stop throws — the record is KEPT
 rather than dropped, and the answer says so instead of claiming the slot is free. Dropping
 it would free a slot that is not actually free, and the next launch would be accepted only
 for the platform to refuse it.
@@ -191,8 +191,8 @@ that did not happen.
 and nothing here can clear it.** EDT ends a comparison by cancelling the background job
 that runs it, and that job is the only thing that reports the comparison finished. Cancel
 before Eclipse has started the job and it never runs, so EDT goes on believing a
-comparison is active while holding no session for one. The comparison really is gone тАФ
-the temporary workspace is released and the `nodeId`s stop resolving тАФ but every later
+comparison is active while holding no session for one. The comparison really is gone —
+the temporary workspace is released and the `nodeId`s stop resolving — but every later
 launch in that workbench is refused, and the refusal says so: this server has nothing
 registered, EDT reports its slot occupied, and only restarting EDT clears it. The
 comparison manager has no public way to withdraw the flag. Leave a moment between the
@@ -228,6 +228,6 @@ Give the slot back when you have finished reading a comparison:
 
 ## What it never does
 
-This tool cannot merge. The plugin holds no merge starter at all тАФ the merge packages
-are not even imported тАФ so the comparison is a read of two revisions and the working
+This tool cannot merge. The plugin holds no merge starter at all — the merge packages
+are not even imported — so the comparison is a read of two revisions and the working
 tree, and the only thing it changes is EDT's own comparison state.

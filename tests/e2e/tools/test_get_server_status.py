@@ -107,18 +107,32 @@ def test_returns_live_server_snapshot_and_does_not_mutate():
                 "expected boolean %s, got %r" % (key, s.get(key)))
 
     # --- formRenderFlags: the blank-screenshot diagnostic. BOTH named keys are the
-    # load-bearing contract; their presence proves the nested object was built.
+    # load-bearing contract; each must expose the render mode at plugin activation.
     flags = s.get("formRenderFlags")
     if not isinstance(flags, dict):
         raise AssertionError("expected formRenderFlags object, got %r" % (flags,))
-    for fk in ("nativeFormBufferedLayoutRender", "nativeFormLayoutRender"):
+    for fk in ("nativeFormLayoutRender", "nativeFormBufferedLayoutRender"):
         if fk not in flags:
             raise AssertionError(
                 "formRenderFlags must contain key %r; got keys %r"
                 % (fk, sorted(flags.keys())))
-        if not isinstance(flags[fk], bool):
+        state = flags[fk]
+        if not isinstance(state, dict):
             raise AssertionError(
-                "formRenderFlags[%r] must be a boolean, got %r" % (fk, flags[fk]))
+                "formRenderFlags[%r] must be an object, got %r" % (fk, state))
+        if state.get("atStartup") not in {"on", "off", "unknown"}:
+            raise AssertionError(
+                "formRenderFlags[%r].atStartup must be on, off, or unknown; got %r"
+                % (fk, state.get("atStartup")))
+        if "effective" in state:
+            raise AssertionError(
+                "formRenderFlags[%r] must NOT claim an effective mode: the renderer binds it at "
+                "HippoLayoutService class-init and this tool cannot observe that moment; got %r"
+                % (fk, state))
+        if "requested" in state and not isinstance(state["requested"], str):
+            raise AssertionError(
+                "formRenderFlags[%r].requested must be a string when present; got %r"
+                % (fk, state["requested"]))
 
     # SECURITY contract: the snapshot must NEVER leak the raw auth token or the
     # checks-folder path — only the derived booleans above. Assert no token/path

@@ -10,21 +10,21 @@ WHAT THIS TOOL ACTUALLY DOES (read ListBreakpointsTool.java):
   OPTIONAL "projectName" argument filters line breakpoints only.
 
   Response type is JSON (getResponseType() == JSON), so the payload is in
-  r.structured (NOT r.text тАФ text is only the bounded success digest).
+  r.structured (NOT r.text — text is only the bounded success digest).
 
-ENVIRONMENT (no debug session / no running infobase тАФ that is the realistic case
+ENVIRONMENT (no debug session / no running infobase — that is the realistic case
 here, and it is FINE for this tool):
   Unlike step/resume/evaluate_expression/wait_for_break, list_breakpoints does
   NOT need an active debug session or a running infobase. Breakpoints are stored
   in the Eclipse BREAKPOINT MANAGER (a workspace-level singleton), not inside the
   TestConfiguration project files and not inside a debug session. So the realistic
   HAPPY contract here is a genuine SUCCESS that reflects the breakpoint-manager
-  state тАФ NOT a "no active debug session" sentinel. (The tool's ONLY error branch
+  state — NOT a "no active debug session" sentinel. (The tool's ONLY error branch
   is `DebugPlugin == null` -> "DebugPlugin not available", which is unreachable in
   a live EDT workbench; there is no required parameter, no enum, no XOR.)
 
   Because of that, the happy path is exercised for real: we SET a breakpoint with
-  the sibling set_breakpoint tool (also session-less тАФ it creates an Eclipse
+  the sibling set_breakpoint tool (also session-less — it creates an Eclipse
   marker) on CommonModules/Calc/Module.bsl line 2, then list_breakpoints must read
   it back. We always REMOVE it again (remove_breakpoint) so the breakpoint manager
   is left as we found it. Throughout, assert_no_diff() holds: breakpoints live in
@@ -59,7 +59,7 @@ from harness import (
 )
 
 # Module + line we set a probe breakpoint on. Line 2 is inside Function Add
-# (lines 1-3) of CommonModule.Calc тАФ a real, resolvable BSL line.
+# (lines 1-3) of CommonModule.Calc — a real, resolvable BSL line.
 PROBE_MODULE = "CommonModules/Calc/Module.bsl"
 PROBE_LINE = 2
 
@@ -134,9 +134,9 @@ def _breakpoints(result):
     return sc, bps
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# HAPPY PATH тАФ real round-trip: set a breakpoint, list it back, then remove it.
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# HAPPY PATH — real round-trip: set a breakpoint, list it back, then remove it.
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="list_breakpoints", kind="read")
 def test_lists_a_breakpoint_we_just_set():
     """The CORE contract: a breakpoint registered in the workspace breakpoint
@@ -177,7 +177,7 @@ def test_lists_a_breakpoint_we_just_set():
         _remove_probe(bid)
 
     # The breakpoint lives in the workspace breakpoint manager, NOT in project
-    # source тАФ neither set, list, nor remove may touch the git-tracked tree.
+    # source — neither set, list, nor remove may touch the git-tracked tree.
     assert_no_diff("list_breakpoints (and the set/remove around it) must not modify project source")
 
 
@@ -246,7 +246,7 @@ def test_returns_wellformed_json_envelope():
 
     Mutation thinking: a tool that errored, returned text instead of JSON, omitted
     `count`, or returned a count inconsistent with the array would FAIL here. We do
-    NOT assert count==0 (a shared live EDT may carry unrelated breakpoints) тАФ we
+    NOT assert count==0 (a shared live EDT may carry unrelated breakpoints) — we
     assert the structural invariant that always holds, which is what catches a
     broken serializer.
     """
@@ -263,9 +263,9 @@ def test_returns_wellformed_json_envelope():
     assert_no_diff("a read of the breakpoint manager must not touch project source")
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# EDGE MATRIX тАФ filter semantics (this tool has no is_error path from input).
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# EDGE MATRIX — filter semantics (this tool has no is_error path from input).
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="list_breakpoints", kind="read")
 def test_filter_matching_project_returns_only_that_project():
     """projectName filter that DOES match: our just-set breakpoint is present, and
@@ -301,16 +301,16 @@ def test_filter_matching_project_returns_only_that_project():
 def test_filter_matching_no_project_returns_only_workspace_wide_entries():
     """EDGE (the closest thing to a 'negative' for an argument-free read tool):
     a projectName that matches NO project must exclude every line breakpoint but
-    retain workspace-wide exception breakpoints тАФ NOT error, NPE, or leak lines.
+    retain workspace-wide exception breakpoints — NOT error, NPE, or leak lines.
 
-    Mutation thinking: three ways the tool could be broken, all caught here тАФ
+    Mutation thinking: three ways the tool could be broken, all caught here —
       (a) it errors on an unknown filter (we assert_ok),
       (b) it ignores the filter and leaks ALL breakpoints (we assert our just-set
           breakpoint is ABSENT and count == 0),
       (c) it crashes resolving a non-existent project (assert_ok again).
 
     AUDIT (negative-matrix shape): list_breakpoints has NO input that can produce
-    `is_error` тАФ there is no required parameter, no enum, no mutually-exclusive
+    `is_error` — there is no required parameter, no enum, no mutually-exclusive
     pair, and the projectName filter is intentionally lenient (an unknown project
     is "matches nothing", not an error). So there is no actionable error message to
     assert here; the audit obligation is satisfied by proving the LENIENT branch is
@@ -343,12 +343,12 @@ def test_filter_matching_no_project_returns_only_workspace_wide_entries():
 def test_empty_filter_is_treated_as_no_filter():
     """Boundary: an EMPTY-string projectName. The Java guards the filter with
     `projectFilter != null && !projectFilter.isEmpty()`, so "" disables filtering
-    and behaves exactly like omitting the argument тАФ our just-set breakpoint must
+    and behaves exactly like omitting the argument — our just-set breakpoint must
     still be listed (it must NOT be silently dropped by a "" that fails to match
     any project name).
 
     Mutation thinking: if "" were (wrongly) compared with .equals against project
-    names, NO project would match and our breakpoint would vanish тАФ this test would
+    names, NO project would match and our breakpoint would vanish — this test would
     FAIL. Asserting presence under "" pins the empty-string-as-no-filter semantics.
     """
     bid = _set_probe()

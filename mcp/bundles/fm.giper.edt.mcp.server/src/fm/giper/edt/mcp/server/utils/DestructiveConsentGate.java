@@ -65,8 +65,9 @@ import fm.giper.edt.mcp.server.ui.DestructiveConsentDialog;
  *       opens directly and a pre-scheduled {@link Display#timerExec} closer fires
  *       inside {@code open()}'s nested event loop to auto-close it on timeout
  *       ({@link #promptOnUiThread}). Otherwise (an MCP worker thread —
- *       {@code delete_project} / {@code delete_infobase} / {@code update_database}
- *       call the gate straight from the worker) the dialog is opened via
+ *       {@code delete_project} / {@code delete_infobase} / {@code update_database} /
+ *       {@code infobase_sessions} / {@code merge_rules} call the gate straight from the worker)
+ *       the dialog is opened via
  *       {@code display.asyncExec} (NOT {@code syncExec}, so the UI thread is never
  *       blocked waiting on the worker) and the worker awaits a decision up to the
  *       timeout ({@link #promptWithTimeout}). Both paths race through the same
@@ -125,7 +126,7 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
     public static final int ALLOW_FOR_SESSION_ID = 1024;
 
     /**
-     * The frozen set of destructive tool NAMEs the gate protects: the five
+     * The frozen set of destructive tool NAMEs the gate protects: the six
      * always-destructive tools plus the conditionally destructive ones —
      * {@code modify_metadata} and {@code dcs} (gated only for a destructive retype),
      * {@code git} (gated per write-capable subcommand) and {@code evaluate_expression}
@@ -147,6 +148,7 @@ public final class DestructiveConsentGate // NOSONAR intentional singleton (Ecli
         "delete_project", //$NON-NLS-1$
         "delete_infobase", //$NON-NLS-1$
         "update_database", //$NON-NLS-1$
+        "infobase_sessions", //$NON-NLS-1$
         "modify_metadata", //$NON-NLS-1$
         "dcs", //$NON-NLS-1$
         // Conditionally destructive like modify_metadata: the tool asks for its WRITE-CAPABLE

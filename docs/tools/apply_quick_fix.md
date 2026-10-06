@@ -1,6 +1,6 @@
 # apply_quick_fix
 
-Apply EDT's official quick-fix (auto-fix) to one validation marker — the headless counterpart of the 'Quick Fix' action in the problems view. Address the marker by the locator get_project_errors prints: its Check code (+ Module path + Line to narrow); its 'Fix registered' column flags rows whose CHECK TYPE has one (not a guarantee for that exact marker - this tool reports when none is applicable). When the locator matches several markers (or the fix has several variants) the error lists them, each with its location, and you re-call with index / variant. Full parameters and examples: call get_tool_guide('apply_quick_fix').
+Apply an EDT quick fix to a validation problem. Parameters and examples: get_tool_guide('apply_quick_fix').
 
 ## Parameters
 | Parameter | Required | Type | Description |
@@ -89,6 +89,9 @@ A JSON result:
   disable this tool alongside the other write-capable ones, even though it sits in the `PROBLEMS` group
   next to read-only tools like `get_project_errors`. An installation that saved one of those presets
   before this tool existed is migrated once, on upgrade, to disable it there too.
+
+## Vendor support
+A configuration on vendor support can lock objects. A fix is refused when the marker's target is locked by its support rule: a BSL marker is judged like write_module_source (the module and the object that owns it), any other marker on the object EDT resolves for it. EDT does not say what a fix variant does - one removes the object through a delete refactoring - so an object-level fix needs the object to be both editable and deletable; a fix on an editable top object of a locked configuration is therefore refused as well. A property-only fix is no exception: being deletable also requires every member of the object to be unlocked, so a fix such as a line-length change on an object with one locked member is refused. A marker whose object cannot be resolved is refused too. Nothing is changed. The way out is a configuration extension (adopt the object with adopt_metadata_object and change the adopted copy) or the user allowing changes in EDT's support settings; this server never changes support settings. A configuration extension and an external data processor/report project are never under vendor support: EDT applies support only to a configuration's own (native) root, never inside an extension, which is why an extension is the way to change a supported configuration.
 
 ## Maintainer note
 After adding/changing this tool, the `tools/list` golden snapshot (`tools_list.golden.json`) MUST be

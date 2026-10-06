@@ -1,12 +1,12 @@
 # ask_workmate
 
-Start a background question to the 1C:Workmate plugin and return its jobId. Poll the job with get_job_status instead of calling ask_workmate again. Requires a compatible Workmate installation in the same EDT JVM. Full parameters and examples: call get_tool_guide('ask_workmate').
+Start a background question to the 1C:Workmate plugin and return its jobId. Hands the question to an EXTERNAL agent: by default (shareMcpTools) Workmate may call EDT-MCP's own tools through this plugin, so it can READ the project and CHANGE code and metadata; workmateTool mode runs a named Workmate tool directly (JShell included). Poll the job with get_job_status instead of calling ask_workmate again. Requires a compatible Workmate installation in the same EDT JVM. Full parameters and examples: call get_tool_guide('ask_workmate').
 
 ## Parameters
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
 | question | — | string | Non-empty question or instruction to send to 1C:Workmate. Required unless workmateTool selects direct tool mode. |
-| projectName | — | string | Optional open EDT project name used as Workmate's context. Omit to use Workmate's default project context. |
+| projectName | — | string | Optional open EDT project name used as Workmate's context. It may be omitted only on builds with a default project context; newer builds require it for conversations. |
 | maxToolRounds | — | integer | Optional positive limit for Workmate's internal tool-call rounds; it applies per assistant turn, so a conversation continued to reach a final answer spends it again on each turn. |
 | skillName | — | string | Optional Workmate skill name. Omit to use 'custom', the skill under which Workmate runs its own tool loop; Workmate's plain 'raw' skill answers from the model alone and inspects nothing. |
 | timeoutSeconds | — | integer | Total wall-clock budget for the background job across all get_job_status polls, in seconds; defaults to 300 and accepts 1 to 3600. After this budget the job is failed - unless the request has already reached Workmate, which cannot be taken back: the job then reports Workmate's own outcome rather than a retryable timeout, because a retry would run the same work twice. This is not the per-call waitSeconds budget. |

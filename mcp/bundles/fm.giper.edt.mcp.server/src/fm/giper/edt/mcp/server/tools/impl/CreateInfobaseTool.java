@@ -41,6 +41,8 @@ import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.utils.ApplicationSupport;
+import fm.giper.edt.mcp.server.utils.BoundedJob;
 import fm.giper.edt.mcp.server.utils.InfobaseAccessSupport;
 import fm.giper.edt.mcp.server.utils.McpJobs;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
@@ -133,6 +135,12 @@ public class CreateInfobaseTool implements IMcpTool
 
     /** Input key: authentication kind (INFOBASE / OS) for the stored credentials (#194). */
     private static final String KEY_ACCESS = "access"; //$NON-NLS-1$
+
+    /** Output key: consumer-facing credential read-back conclusion. */
+    private static final String KEY_VERIFICATION = "verification"; //$NON-NLS-1$
+
+    /** Output key: why credential read-back mismatched or could not prove persistence. */
+    private static final String KEY_VERIFICATION_REASON = "verificationReason"; //$NON-NLS-1$
 
     /** Common prefix of a standalone-server create/register failure message. */
     private static final String STANDALONE_SERVER_MSG_PREFIX = "Standalone-server "; //$NON-NLS-1$
@@ -301,6 +309,12 @@ public class CreateInfobaseTool implements IMcpTool
                 + "is unverified: call get_applications to confirm it.") //$NON-NLS-1$
             .stringProperty(McpKeys.APPLICATION_ID,
                 "ID of the newly created application (for chaining into update_database).") //$NON-NLS-1$
+            .enumProperty(KEY_VERIFICATION,
+                "Credential read-back outcome when credentials were requested: verified, " //$NON-NLS-1$
+                    + "mismatched, or not_verifiable.", //$NON-NLS-1$
+                "verified", "mismatched", "not_verifiable") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            .stringProperty(KEY_VERIFICATION_REASON,
+                "Why credential read-back mismatched or could not prove a stored entry exists.") //$NON-NLS-1$
             .stringProperty(McpKeys.MESSAGE, "Human-readable status message.") //$NON-NLS-1$
             .build();
     }
@@ -579,21 +593,22 @@ public class CreateInfobaseTool implements IMcpTool
         }
 
         // --- 8. Optionally store infobase connection credentials (#194) ---
-        String credNote = storeCredentialsIfRequested(ibRef, credentials, register);
+        CredentialStoreReport credentialStore =
+            storeCredentialsIfRequested(ibRef, credentials, register);
 
         // --- 9. Read back, apply setDefault to what the read-back FOUND, and return ---
         // setDefault is applied AFTER the read-back on purpose (issue #412): it used to run its own
         // one-shot lookup BEFORE the bounded re-poll, so it could report "could not be set as default"
         // for an application the re-poll then found. One observation feeds one report.
         ResultContext rc = new ResultContext(projectName, infobaseDir, infobaseName, appManager, project);
-        return buildSuccessResult(rc, ibRef, setDefault, register, credNote);
+        return buildSuccessResult(rc, ibRef, setDefault, register, credentialStore);
     }
 
     /**
      * Stores infobase connection credentials on the freshly-built {@code ibRef} when the caller
-     * supplied any of {@code user}/{@code password}/{@code access} (#194), returning a note to append
-     * to the result message — a success note, a non-fatal WARNING when the store failed, or
-     * {@code null} when no credentials were requested. Credential storage never fails the
+     * supplied any of {@code user}/{@code password}/{@code access} (#194), returning the note and
+     * three-state verification to add to the create result — or {@code null} when no credentials
+     * were requested. Credential storage never fails the
      * infobase creation itself (the base is already created; whether it is BOUND is established
      * later, by the read-back).
      *
@@ -601,31 +616,21 @@ public class CreateInfobaseTool implements IMcpTool
      * @param credentials the requested connection credentials (any field may be {@code null}/empty)
      * @param register {@code true} for mode='register' (an existing base that already has users),
      *            {@code false} for mode='create' (a brand-new empty base with no users yet)
-     * @return a message note, or {@code null} when no credentials were requested
+     * @return the note and verification, or {@code null} when no credentials were requested
      */
-    private static String storeCredentialsIfRequested(InfobaseReference ibRef, Credentials credentials,
+    private static CredentialStoreReport storeCredentialsIfRequested(InfobaseReference ibRef,
+            Credentials credentials,
             boolean register)
     {
         if (!credentials.any())
         {
             return null;
         }
-        String error = storeSafely(() -> InfobaseAccessSupport.storeCredentials(ibRef, credentials.user,
-            credentials.password, InfobaseAccessSupport.parseAccess(credentials.access)));
-        if (error != null)
-        {
-            return " WARNING: connection credentials were NOT stored: " + error; //$NON-NLS-1$
-        }
-        // mode='create' makes a brand-new EMPTY infobase with NO users, so credentials for a named
-        // user authenticate only once a MATCHING user is added (via the configurator / БСЛ
-        // ПользователиИнформационнойБазы). Surface that so the caller is not surprised when a later
-        // update prompts for credentials (which the MCP server now auto-cancels).
-        String userNote = register
-            ? "" //$NON-NLS-1$
-            : " NOTE: a newly created infobase has no users yet — these credentials authenticate " //$NON-NLS-1$
-                + "only after a matching infobase user is added."; //$NON-NLS-1$
-        return " Stored connection credentials for user '" + (credentials.user == null ? "" : credentials.user) //$NON-NLS-1$ //$NON-NLS-2$
-            + "' (change them later with set_infobase_credentials)." + userNote; //$NON-NLS-1$
+        return storeSafely((publish, writeCommitted, writeAllowed) -> publish.accept(
+            InfobaseAccessSupport.storeCredentials(ibRef, credentials.user,
+                credentials.password, InfobaseAccessSupport.parseAccess(credentials.access),
+                writeCommitted, writeAllowed)),
+            credentials, register);
     }
 
     /**
@@ -637,21 +642,145 @@ public class CreateInfobaseTool implements IMcpTool
      * secure storage refusing, would otherwise turn a completed creation into an internal tool error.
      * Here it is structural (and logged, so a real failure stays visible).
      *
-     * @param store the store call, returning its own error text or {@code null} on success
-     * @return the error text to report, or {@code null} when the credentials were stored
+     * @param store the store call, returning its write and read-back result
+     * @return the non-fatal note and any verification conclusion
      */
-    private static String storeSafely(java.util.function.Supplier<String> store)
+    static CredentialStoreReport storeSafely(
+            InfobaseAccessSupport.BoundedStoreWork<InfobaseAccessSupport.StoreResult> store,
+            Credentials credentials, boolean register)
+    {
+        return storeSafely(store, credentials, register,
+            InfobaseAccessSupport.CREDENTIAL_STORE_TIMEOUT_MS);
+    }
+
+    /** Testable deadline form of the shared bounded credential store/read-back. */
+    static CredentialStoreReport storeSafely(
+            InfobaseAccessSupport.BoundedStoreWork<InfobaseAccessSupport.StoreResult> store,
+            Credentials credentials, boolean register, long timeoutMs)
     {
         try
         {
-            return store.get();
+            InfobaseAccessSupport.BoundedStoreResult<InfobaseAccessSupport.StoreResult> storeRun =
+                InfobaseAccessSupport.runBoundedCredentialStore(
+                    register ? "registered infobase" : "new infobase", timeoutMs, store); //$NON-NLS-1$ //$NON-NLS-2$
+            BoundedJob.Result bounded = storeRun.boundedResult();
+            if (storeRun.publishedResult() != null)
+            {
+                return credentialStoreReport(storeRun.publishedResult(), credentials, register);
+            }
+            if (BoundedJob.isInconclusive(bounded.getOutcome())
+                || bounded.getOutcome() == BoundedJob.Outcome.TIMED_OUT_BEFORE_START)
+            {
+                String interruption = bounded.getOutcome() == BoundedJob.Outcome.INTERRUPTED
+                    ? " was interrupted before it finished" //$NON-NLS-1$
+                    : " did not finish within " + formatCredentialStoreDeadline(timeoutMs); //$NON-NLS-1$
+                return new CredentialStoreReport(" The infobase WAS " //$NON-NLS-1$
+                    + (register ? "registered" : "created") //$NON-NLS-1$ //$NON-NLS-2$
+                    + ", but credential storage" + interruption //$NON-NLS-1$
+                    + "; credential state is UNDETERMINED. Run set_infobase_credentials to " //$NON-NLS-1$
+                    + "settle it.", null); //$NON-NLS-1$
+            }
+            if (bounded.getFailure() != null)
+            {
+                return failedCredentialStoreReport(bounded.getFailure());
+            }
+            return new CredentialStoreReport(
+                " WARNING: connection credentials were NOT stored because the bounded store " //$NON-NLS-1$
+                    + "operation never ran (" + bounded.getOutcome() + ").", null); //$NON-NLS-1$ //$NON-NLS-2$
         }
         catch (Exception e)
         {
-            Activator.logError("create_infobase: storing the connection credentials failed", e); //$NON-NLS-1$
-            String reason = e.getMessage();
-            return (reason != null && !reason.trim().isEmpty()) ? reason : e.getClass().getSimpleName();
+            return failedCredentialStoreReport(e);
         }
+    }
+
+    /** Reports a store failure by type only, so an exception can never echo credential text. */
+    private static CredentialStoreReport failedCredentialStoreReport(Throwable failure)
+    {
+        String failureType = failure == null ? "unknown failure" //$NON-NLS-1$
+            : failure.getClass().getSimpleName();
+        Activator.logError("create_infobase: storing the connection credentials failed (" //$NON-NLS-1$
+            + failureType + ")", null); //$NON-NLS-1$
+        return new CredentialStoreReport(
+            " WARNING: connection credentials were NOT stored because the store operation failed " //$NON-NLS-1$
+                + "(" + failureType + "). Run set_infobase_credentials to retry.", null); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** Human-readable form used only in the non-secret timeout note. */
+    private static String formatCredentialStoreDeadline(long timeoutMs)
+    {
+        return timeoutMs % 1000L == 0L
+            ? (timeoutMs / 1000L) + " seconds" : timeoutMs + "ms"; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** Message plus the structured conclusion of an optional credential store/read-back. */
+    static final class CredentialStoreReport
+    {
+        final String note;
+        final InfobaseAccessSupport.StoreResult storeResult;
+
+        CredentialStoreReport(String note, InfobaseAccessSupport.StoreResult storeResult)
+        {
+            this.note = note;
+            this.storeResult = storeResult;
+        }
+    }
+
+    /**
+     * Converts the shared three-state store result into create_infobase's non-fatal note and
+     * structured verification fields. Package-visible so all three states are unit-testable without
+     * secure storage.
+     */
+    static CredentialStoreReport credentialStoreReport(InfobaseAccessSupport.StoreResult result,
+            Credentials credentials, boolean register)
+    {
+        if (result.error() != null)
+        {
+            return new CredentialStoreReport(
+                " WARNING: connection credentials were NOT stored: " + result.error(), result); //$NON-NLS-1$
+        }
+        if (InfobaseAccessSupport.StoreResult.Verification.MISMATCHED == result.verification())
+        {
+            // Preserve the existing create contract: a mismatch is a warning and does not undo the
+            // database creation/registration that already committed.
+            return new CredentialStoreReport(
+                " WARNING: connection credentials were NOT stored: " //$NON-NLS-1$
+                    + result.verificationReason(), result);
+        }
+
+        String user = credentials.user == null ? "" : credentials.user; //$NON-NLS-1$
+        // mode='create' makes a brand-new EMPTY infobase with NO users, so credentials for a named
+        // user authenticate only once a MATCHING user is added (via the configurator / БСЛ
+        // ПользователиИнформационнойБазы). Surface that so the caller is not surprised when a later
+        // update prompts for credentials (which the MCP server now auto-cancels).
+        String userNote = register
+            ? "" //$NON-NLS-1$
+            : " NOTE: a newly created infobase has no users yet — these credentials authenticate " //$NON-NLS-1$
+                + "only after a matching infobase user is added."; //$NON-NLS-1$
+        if (InfobaseAccessSupport.StoreResult.Verification.NOT_VERIFIABLE == result.verification())
+        {
+            return new CredentialStoreReport(
+                " EDT accepted the connection-credentials update for user '" + user //$NON-NLS-1$
+                    + "', but read-back could not verify a stored entry: " //$NON-NLS-1$
+                    + result.verificationReason()
+                    + " Change the settings later with set_infobase_credentials." + userNote, //$NON-NLS-1$
+                result);
+        }
+        return new CredentialStoreReport(" Stored connection credentials for user '" + user //$NON-NLS-1$
+            + "' (change them later with set_infobase_credentials)." + userNote, result); //$NON-NLS-1$
+    }
+
+    /** Adds credential verification only when a credential store reached read-back. */
+    private static void putCredentialVerification(ToolResult result,
+            CredentialStoreReport credentialStore)
+    {
+        if (credentialStore == null || credentialStore.storeResult == null
+            || credentialStore.storeResult.verification() == null)
+        {
+            return;
+        }
+        result.put(KEY_VERIFICATION, credentialStore.storeResult.verificationName())
+            .put(KEY_VERIFICATION_REASON, credentialStore.storeResult.verificationReason());
     }
 
     /**
@@ -840,6 +969,15 @@ public class CreateInfobaseTool implements IMcpTool
      *
      * <p>Every note here is about {@code setDefault} ONLY. The reason there is no application to set —
      * and whether that is even established — is reported by the caller, not blamed on this flag.
+     *
+     * <p><b>This write has a racing partner (#622).</b> {@code setDefaultApplication} is an
+     * unconditional store, and EDT's own default-application RESOLUTION clears a default it finds
+     * stale with an equally unconditional {@code setDefaultApplication(project, null)} remove — no
+     * compare-and-set on either side. A bounded default-application read that somebody else
+     * abandoned at its deadline keeps running and can land that clear AFTER this store, erasing
+     * the default just set. So a caller that reported a default as "unknown" and then set one must
+     * RE-READ it before trusting it; the window used to be microseconds inside a synchronous call
+     * and now outlives the call that opened it.
      */
     private static String applySetDefault(IApplicationManager appManager, IProject project,
             ApplicationReadBack readBack)
@@ -1986,9 +2124,11 @@ public class CreateInfobaseTool implements IMcpTool
         // the READ-BACK wst-server IApplication (not the FILE ibRef built earlier for the create
         // call) — InfobaseAccessSupport.storeCredentials(IApplication, ...) adapts IT to the
         // InfobaseReference that EDT's own launch path (ServerApplicationBehaviourDelegate) resolves.
-        String credNote = register ? storeStandaloneCredentialsIfRequested(readBack.app, credentials) : null;
+        CredentialStoreReport credentialStore = register
+            ? storeStandaloneCredentialsIfRequested(readBack.app, credentials) : null;
 
-        String note = concatNotes(setDefaultNote, credNote);
+        String note = concatNotes(setDefaultNote,
+            credentialStore == null ? null : credentialStore.note);
         String verb = register ? ACTION_REGISTERED : ACTION_CREATED;
         String subject = standaloneServerSubject(rc.infobaseName, rc.infobaseDir, register);
 
@@ -2000,6 +2140,7 @@ public class CreateInfobaseTool implements IMcpTool
                 notBoundMessage(subject, rc.projectName, register) + note)
                     .put(KEY_APPLICATION_KIND, KIND_STANDALONE_SERVER);
             putStandaloneEndpoint(error, actualPort, webUrl);
+            putCredentialVerification(error, credentialStore);
             return error.toJson();
         }
 
@@ -2010,6 +2151,7 @@ public class CreateInfobaseTool implements IMcpTool
             .put(KEY_INFOBASE_FILE, rc.infobaseDir.toAbsolutePath().toString())
             .put(KEY_INFOBASE_NAME, rc.infobaseName);
         putApplications(result, readBack);
+        putCredentialVerification(result, credentialStore);
 
         putStandaloneEndpoint(result, actualPort, webUrl);
         String newAppId = readBack.appId();
@@ -2078,7 +2220,7 @@ public class CreateInfobaseTool implements IMcpTool
     /**
      * Stores infobase connection credentials against the READ-BACK wst-server application (issue
      * #275) when the caller supplied any of {@code user}/{@code password}/{@code access}, returning
-     * a note to append to the result message — a success note, a non-fatal WARNING when the store
+     * a report to append to the result — a success note, a non-fatal WARNING when the store
      * failed (or the read-back produced no application to store them against), or
      * {@code null} when no credentials were requested. Credential storage never fails the
      * standalone-server registration itself (the server itself is already registered). Mirrors
@@ -2088,9 +2230,9 @@ public class CreateInfobaseTool implements IMcpTool
      * @param application the read-back wst-server application ({@code null} when the read-back
      *            produced none — measured absent, unreadable or interrupted)
      * @param credentials the requested connection credentials (any field may be {@code null}/empty)
-     * @return a message note, or {@code null} when no credentials were requested
+     * @return the note and verification, or {@code null} when no credentials were requested
      */
-    private static String storeStandaloneCredentialsIfRequested(IApplication application,
+    private static CredentialStoreReport storeStandaloneCredentialsIfRequested(IApplication application,
             Credentials credentials)
     {
         if (!credentials.any())
@@ -2101,18 +2243,17 @@ public class CreateInfobaseTool implements IMcpTool
         {
             // Why it was not available (measured absent, unreadable, interrupted) is the read-back's
             // story, told by the message this note is appended to — do not restate it as a fact here.
-            return " WARNING: connection credentials were NOT stored: the new standalone-server " //$NON-NLS-1$
-                + "application was not available from the read-back - check get_applications and " //$NON-NLS-1$
-                + "store them with set_infobase_credentials."; //$NON-NLS-1$
+            return new CredentialStoreReport(
+                " WARNING: connection credentials were NOT stored: the new standalone-server " //$NON-NLS-1$
+                    + "application was not available from the read-back - check get_applications and " //$NON-NLS-1$
+                    + "store them with set_infobase_credentials.", null); //$NON-NLS-1$
         }
-        String error = storeSafely(() -> InfobaseAccessSupport.storeCredentials(application,
-            credentials.user, credentials.password, InfobaseAccessSupport.parseAccess(credentials.access)));
-        if (error != null)
-        {
-            return " WARNING: connection credentials were NOT stored: " + error; //$NON-NLS-1$
-        }
-        return " Stored connection credentials for user '" + (credentials.user == null ? "" : credentials.user) //$NON-NLS-1$ //$NON-NLS-2$
-            + "' (change them later with set_infobase_credentials)."; //$NON-NLS-1$
+        return storeSafely((publish, writeCommitted, writeAllowed) -> publish.accept(
+            InfobaseAccessSupport.storeCredentials(application,
+                credentials.user, credentials.password,
+                InfobaseAccessSupport.parseAccess(credentials.access), writeCommitted,
+                writeAllowed)),
+            credentials, true);
     }
 
     /**
@@ -2445,19 +2586,29 @@ public class CreateInfobaseTool implements IMcpTool
     static String buildSuccessResult(ResultContext rc, InfobaseReference ibRef, boolean setDefault,
             boolean register, String credNote)
     {
+        return buildSuccessResult(rc, ibRef, setDefault, register,
+            credNote == null ? null : new CredentialStoreReport(credNote, null));
+    }
+
+    static String buildSuccessResult(ResultContext rc, InfobaseReference ibRef, boolean setDefault,
+            boolean register, CredentialStoreReport credentialStore)
+    {
         ApplicationReadBack readBack = pollForNewApplication(rc.appManager, rc.project,
             app -> isMatchingNewInfobaseApp(app, ibRef));
 
         String setDefaultNote = setDefault ? applySetDefault(rc.appManager, rc.project, readBack) : null;
-        String note = concatNotes(setDefaultNote, credNote);
+        String note = concatNotes(setDefaultNote,
+            credentialStore == null ? null : credentialStore.note);
         String verb = register ? ACTION_REGISTERED : ACTION_CREATED;
         String subject = "Infobase '" + rc.infobaseName + "' " + verb + " at '" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             + rc.infobaseDir.toAbsolutePath() + "'"; //$NON-NLS-1$
 
         if (readBack.outcome == BindingOutcome.NOT_BOUND)
         {
-            return notBoundResult(rc, verb, readBack, subject,
-                notBoundMessage(subject, rc.projectName, register) + note).toJson();
+            ToolResult error = notBoundResult(rc, verb, readBack, subject,
+                notBoundMessage(subject, rc.projectName, register) + note);
+            putCredentialVerification(error, credentialStore);
+            return error.toJson();
         }
 
         ToolResult result = ToolResult.success()
@@ -2466,6 +2617,7 @@ public class CreateInfobaseTool implements IMcpTool
             .put(KEY_INFOBASE_FILE, rc.infobaseDir.toAbsolutePath().toString())
             .put(KEY_INFOBASE_NAME, rc.infobaseName);
         putApplications(result, readBack);
+        putCredentialVerification(result, credentialStore);
 
         String newAppId = readBack.appId();
         if (newAppId != null)
@@ -2521,6 +2673,11 @@ public class CreateInfobaseTool implements IMcpTool
         String[] newAppIdHolder = new String[1];
         boolean readCompleted = false;
         boolean cutShort = false;
+        // The DEADLINE reason, when a bounded read expired: that story is not the FAILED one. An
+        // abandoned listing keeps running, and this listing initialises every application it
+        // reaches - which for one with no port yet means binding sockets and PERSISTING a debug
+        // port. So it cannot be reported as "nothing happened".
+        String[] deadlineFailure = new String[1];
 
         // Short bounded re-poll: the provision-delegate listener fires asynchronously after
         // associate(), so the new application may not be visible on the first read.
@@ -2531,8 +2688,15 @@ public class CreateInfobaseTool implements IMcpTool
             newAppIdHolder[0] = null;
 
             undecidable[0] = false;
-            readCompleted = readBackApplications(appManager, project, matcher, attempt, newAppHolder,
-                newAppIdHolder, undecidable);
+            ReadBackAttempt attemptOutcome = readBackApplications(appManager, project, matcher,
+                attempt, newAppHolder, newAppIdHolder, undecidable, deadlineFailure);
+            readCompleted = attemptOutcome == ReadBackAttempt.COMPLETED;
+            if (attemptOutcome == ReadBackAttempt.INTERRUPTED)
+            {
+                // The bounded read's WAIT was cut short (#622): the budget was not spent and
+                // nothing failed, so this is the same story the sleep below tells.
+                cutShort = true;
+            }
             if (readCompleted || newAppHolder[0] != null)
             {
                 // Keep the snapshot the answer actually came from. A listing that failed AFTER
@@ -2561,18 +2725,25 @@ public class CreateInfobaseTool implements IMcpTool
             return new ApplicationReadBack(appsArray, newAppHolder[0], newAppIdHolder[0],
                 BindingOutcome.BOUND, null);
         }
-        if (!readCompleted)
-        {
-            return new ApplicationReadBack(appsArray, null, null, BindingOutcome.UNVERIFIED,
-                "the application read-back could not be completed - the failure is in the EDT " //$NON-NLS-1$
-                    + "error log"); //$NON-NLS-1$
-        }
         if (cutShort)
         {
             // Interrupted: the reads that DID run saw no application, but the budget that absorbs the
             // listener race was not spent — and nothing failed, so there is no log entry to point at.
+            // Checked BEFORE the read-failure branch: an interrupted read is also an incomplete one,
+            // and pointing at a log entry nobody wrote would be the wrong story.
             return new ApplicationReadBack(appsArray, null, null, BindingOutcome.UNVERIFIED,
                 "the read-back was interrupted before its budget was spent"); //$NON-NLS-1$
+        }
+        if (!readCompleted)
+        {
+            if (deadlineFailure[0] != null)
+            {
+                return new ApplicationReadBack(appsArray, null, null, BindingOutcome.UNVERIFIED,
+                    readBackDeadlineReason(deadlineFailure[0]));
+            }
+            return new ApplicationReadBack(appsArray, null, null, BindingOutcome.UNVERIFIED,
+                "the application read-back could not be completed - the failure is in the EDT " //$NON-NLS-1$
+                    + "error log"); //$NON-NLS-1$
         }
         if (undecidable[0])
         {
@@ -2583,6 +2754,25 @@ public class CreateInfobaseTool implements IMcpTool
                     + "(an identity could not be read)"); //$NON-NLS-1$
         }
         return new ApplicationReadBack(appsArray, null, null, BindingOutcome.NOT_BOUND, null);
+    }
+
+    /**
+     * The UNVERIFIED reason for a read-back whose bounded listing expired.
+     *
+     * <p>Kept apart from the plain read-failure sentence for one reason: this listing is not a
+     * passive read. {@code getApplications} initialises every application it reaches, and one with
+     * no debug port yet gets a port ASSIGNED and PERSISTED — so an abandoned poll can still change
+     * this project's applications after {@code create_infobase} has answered. Saying only "could
+     * not be completed" would let the caller believe nothing happened.
+     *
+     * @param deadlineFailure the bounded read's own diagnosis
+     * @return the reason sentence, never {@code null}
+     */
+    static String readBackDeadlineReason(String deadlineFailure)
+    {
+        return deadlineFailure + " - the listing may still be running, and EDT assigns a debug " //$NON-NLS-1$
+            + "port while it lists, so the project's applications MAY STILL BE CHANGED after this " //$NON-NLS-1$
+            + "answer; re-read them with get_applications"; //$NON-NLS-1$
     }
 
     /**
@@ -2680,23 +2870,47 @@ public class CreateInfobaseTool implements IMcpTool
      * application the {@code matcher} accepts in {@code newAppHolder[0]}, with its echoed id in
      * {@code newAppIdHolder[0]} (both left {@code null} when not yet visible). Read-only.
      *
-     * @return {@code true} if the read produced a snapshot to inspect (whether or not the new
-     *         application was in it), {@code false} if reading the applications failed or produced no
-     *         snapshot at all (already logged) so the caller stops re-polling and reports UNVERIFIED
+     * @return {@link ReadBackAttempt#COMPLETED} if the read produced a snapshot to inspect (whether
+     *         or not the new application was in it); {@link ReadBackAttempt#FAILED} if reading the
+     *         applications failed or produced no snapshot at all (already logged);
+     *         {@link ReadBackAttempt#INTERRUPTED} if the WAIT was interrupted, which failed nothing.
+     *         The caller stops re-polling on anything but COMPLETED and reports UNVERIFIED.
      */
-    private static boolean readBackApplications(IApplicationManager appManager, IProject project,
+    private static ReadBackAttempt readBackApplications(IApplicationManager appManager, IProject project, // NOSONAR parameter list is the existing out-holder shape; a parameter object would rename it, not shorten it
             ApplicationMatcher matcher, JsonArray appsArray, IApplication[] newAppHolder,
-            String[] newAppIdHolder, boolean[] undecidable)
+            String[] newAppIdHolder, boolean[] undecidable, String[] deadlineFailure)
     {
+        // Bounded (#622). An expired deadline is one more read that established nothing, so it takes
+        // the existing "read failed" path — logged, then reported as UNVERIFIED, never as a MEASURED
+        // absence. The re-poll stops on anything but COMPLETED, so at most one deadline is paid.
+        // The reason is carried out because THIS listing is the one that mutates: it initialises
+        // every application it reaches, and an application with no port yet gets one assigned by a
+        // scan that binds sockets and then flushes the preference store. An abandoned poll can do
+        // all of that after create_infobase has already answered UNVERIFIED.
+        ApplicationSupport.BoundedRead<List<IApplication>> read =
+            ApplicationSupport.getApplicationsBounded(appManager, project,
+                ApplicationSupport.LOOKUP_TIMEOUT_MS);
+        if (!read.concluded())
+        {
+            if (read.interrupted())
+            {
+                // The caller's own wait was cut short; nothing failed, so nothing is logged.
+                return ReadBackAttempt.INTERRUPTED;
+            }
+            Activator.logError("create_infobase: application read-back did not conclude — " //$NON-NLS-1$
+                + read.deadlineFailure(), null);
+            deadlineFailure[0] = read.deadlineFailure();
+            return ReadBackAttempt.FAILED;
+        }
         try
         {
-            List<IApplication> applications = appManager.getApplications(project);
+            List<IApplication> applications = read.valueOrRethrow();
             if (applications == null)
             {
                 // No snapshot at all is not the same as an empty one: it establishes nothing, so it
                 // must not be counted as a read that MEASURED the application to be absent.
                 Activator.logError("create_infobase: application read-back returned no list", null); //$NON-NLS-1$
-                return false;
+                return ReadBackAttempt.FAILED;
             }
             for (IApplication app : applications)
             {
@@ -2706,7 +2920,7 @@ public class CreateInfobaseTool implements IMcpTool
                     undecidable[0] = true;
                 }
             }
-            return true;
+            return ReadBackAttempt.COMPLETED;
         }
         catch (Exception e)
         {
@@ -2716,8 +2930,23 @@ public class CreateInfobaseTool implements IMcpTool
             // a completed read. A single unreadable application does NOT come through here - it is
             // confined by readOneApplication, which keeps the rest of the snapshot.
             Activator.logError("create_infobase: error reading back applications", e); //$NON-NLS-1$
-            return false;
+            return ReadBackAttempt.FAILED;
         }
+    }
+
+    /**
+     * How ONE application read-back attempt ended. {@link #FAILED} and {@link #INTERRUPTED} both
+     * stop the re-poll, but only FAILED has an EDT log entry behind it — an interrupted WAIT is
+     * the caller's own doing and failed nothing, so the two must not share a message.
+     */
+    private enum ReadBackAttempt
+    {
+        /** The read produced a snapshot to inspect. */
+        COMPLETED,
+        /** The read failed or produced no snapshot at all; already logged. */
+        FAILED,
+        /** The caller's wait was interrupted before the read concluded; nothing failed. */
+        INTERRUPTED
     }
 
     /**

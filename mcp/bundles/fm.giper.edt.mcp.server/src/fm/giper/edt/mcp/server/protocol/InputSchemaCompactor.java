@@ -127,6 +127,8 @@ public final class InputSchemaCompactor
     private static Map<String, Set<String>> buildKeepList()
     {
         Map<String, Set<String>> keep = new HashMap<>();
+        // The schema cannot express Name-only versus Name + localized Synonym matching.
+        keep.put("get_metadata_objects", asSet("nameFilter", "textFilter")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // The only statement anywhere that a 'task' marker means TODO/FIXME/XXX/HACK.
         // priority sub-filters the TASK family only - a bookmark has no priority, and the
         // combination is rejected. The enum lists high|normal|low with nothing saying that.
@@ -196,8 +198,15 @@ public final class InputSchemaCompactor
                 "restartIfRunning")); //$NON-NLS-1$
         keep.put("debug_yaxunit_tests", //$NON-NLS-1$
             asSet("updateBeforeLaunch", KEY_EXTERNAL_CHANGES, KEY_PORT_CONFLICT)); //$NON-NLS-1$
+        // ignoreBranchBinding=true writes an infobase the current branch does not bind; the default
+        // (false) lives only in the prose.
         keep.put("update_database", //$NON-NLS-1$
-            asSet("terminateRunningClients", KEY_EXTERNAL_CHANGES, KEY_PORT_CONFLICT)); //$NON-NLS-1$
+            asSet("terminateRunningClients", "checkInfobaseSessions", KEY_EXTERNAL_CHANGES, //$NON-NLS-1$ //$NON-NLS-2$
+                KEY_PORT_CONFLICT, "ignoreBranchBinding")); //$NON-NLS-1$
+        // Defaults and conditional selectors cannot be expressed by this schema builder. Keeping
+        // them prevents a compacted terminate call from losing its target and confirmation rules.
+        keep.put("infobase_sessions", //$NON-NLS-1$
+            asSet(McpKeys.APPLICATION_ID, McpKeys.ACTION, "sessionId", "all", "confirm")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // includeBodies=true returns the recorded request/response JSON VERBATIM, and that
         // path is deliberately not redacted (the redactor only sees the outer tool). The
         // warning that those bodies can carry infobase and personal data is the only thing
@@ -257,6 +266,9 @@ public final class InputSchemaCompactor
         // prose a caller cannot know that a requested root Name may be stored differently.
         keep.put("create_project", asSet("autoSortTopObjects", "scriptVariant", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             "version", "baseProjectName", "externalObject", "normalizeYo")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        // baseProjectName is REQUIRED for a .cfe, optional for .epf/.erf and refused for a .cf - a
+        // requirement conditional on the file extension, which the schema cannot state.
+        keep.put("import_project_from_file", asSet("baseProjectName")); //$NON-NLS-1$ //$NON-NLS-2$
         // The parameter is ACCEPTED and then discarded (execute() reads it only for schema
         // parity; the class doc reserves it for a future release). Stripped to a bare
         // boolean it reads as a working option, and the response says otherwise only after

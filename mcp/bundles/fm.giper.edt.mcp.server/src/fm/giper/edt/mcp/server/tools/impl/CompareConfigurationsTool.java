@@ -71,7 +71,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 
 /**
- * Starts one three-way comparison тАФ the project's working tree against two git revisions тАФ
+ * Starts one three-way comparison — the project's working tree against two git revisions —
  * as a background job and reports the resulting tree.
  * <p>
  * Three measured constraints shape the whole design, and each one is answered here rather
@@ -85,7 +85,7 @@ import com.google.gson.JsonParser;
  * past any transport-safe wait, so the call returns a {@code jobId} and the comparison keeps
  * running. Poll it with {@code get_job_status}; stop it with {@code cancel_job}.</li>
  * <li><b>Failure has no status of its own.</b> {@code ComparisonProcessStatus} has no FAILED
- * literal тАФ a failed comparison keeps its last status forever тАФ so the poll loop reads the
+ * literal — a failed comparison keeps its last status forever — so the poll loop reads the
  * batch's failure cause on EVERY tick. Reading it only at the end would render a dead
  * comparison as "still running" until the job's budget expired.</li>
  * <li><b>A finished comparison stays live, and only this tool can end it.</b> Its session
@@ -133,8 +133,8 @@ public class CompareConfigurationsTool implements IMcpTool
      * At {@link #POLL_INTERVAL_MS} that is about three seconds, and it is deliberately short: a
      * comparison SERVICE that has gone away is already its own failure on the tick that sees it,
      * so what is ridden out here is the narrow window in which EDT still lists the handle but
-     * cannot answer for its session. One such tick is evidence of nothing тАФ failing on it ends a
-     * healthy comparison тАФ while a run of them is a comparison nobody can read, and sitting out
+     * cannot answer for its session. One such tick is evidence of nothing — failing on it ends a
+     * healthy comparison — while a run of them is a comparison nobody can read, and sitting out
      * the two-hour job budget for that helps no one.
      */
     static final int MAX_UNREADABLE_TICKS = 6;
@@ -848,7 +848,7 @@ public class CompareConfigurationsTool implements IMcpTool
         catch (RejectedExecutionException e)
         {
             // ComparisonFailures.describe, not getMessage(): a rejection raised by the worker
-            // pool itself carries that pool's toString() - "тАжThreadPoolExecutor@1b6d3586[тАж]" -
+            // pool itself carries that pool's toString() - "…ThreadPoolExecutor@1b6d3586[…]" -
             // and one thrown with no message renders the literal "null". describe names the
             // exception type when there is no text, and scrubs the leaked object identity when
             // there is.
@@ -885,7 +885,7 @@ public class CompareConfigurationsTool implements IMcpTool
     }
 
     /**
-     * Runs the whole launch тЖТ poll тЖТ read pipeline inside one registry job.
+     * Runs the whole launch → poll → read pipeline inside one registry job.
      * <p>
      * Package-visible for one reason that no public entry point can serve: the ownership protocol
      * with the cancellation handler is decided by WHERE a hand-over lands relative to the launch's
@@ -2225,7 +2225,7 @@ public class CompareConfigurationsTool implements IMcpTool
 
         /**
          * The tick answered nothing: the status read failed, or EDT no longer knows the handle.
-         * Kept apart from {@link #running} and from {@link #failed} alike тАФ it is neither a
+         * Kept apart from {@link #running} and from {@link #failed} alike — it is neither a
          * reason to keep quoting a status nor, on its own, a reason to end the comparison.
          *
          * @param detail what WAS observed, never a status literal
@@ -2490,7 +2490,7 @@ public class CompareConfigurationsTool implements IMcpTool
      * The production backend: the read-only {@link ComparisonEngine} facade plus the session
      * registry that owns the handle.
      * <p>
-     * The registry, not the job record, owns the session on purpose тАФ the background-job
+     * The registry, not the job record, owns the session on purpose — the background-job
      * registry evicts completed records with no dispose hook, so a live handle parked in a job
      * result would leak the comparison's virtual project and its private BM store.
      * <p>

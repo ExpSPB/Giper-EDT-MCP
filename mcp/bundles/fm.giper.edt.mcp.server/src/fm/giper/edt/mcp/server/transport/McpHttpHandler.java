@@ -370,6 +370,7 @@ public class McpHttpHandler implements HttpHandler
 
         Activator.logDebug("MCP request body: " + requestBody); //$NON-NLS-1$
 
+        long startNanos = System.nanoTime();
         JsonRpcRequest parsed = protocolHandler.parse(requestBody);
         Route route = Route.of(parsed);
         boolean isInitialize = route == Route.INITIALIZE;
@@ -389,7 +390,7 @@ public class McpHttpHandler implements HttpHandler
             if (isToolCall)
             {
                 // Handle tool calls with interruptible execution
-                response = interruptibleExecutor.execute(exchange, requestBody, context);
+                response = interruptibleExecutor.execute(exchange, requestBody, parsed, startNanos, context);
                 if (response == null)
                 {
                     // Response was already sent (user interrupted)
@@ -398,7 +399,7 @@ public class McpHttpHandler implements HttpHandler
             }
             else
             {
-                response = protocolHandler.processRequest(requestBody, context);
+                response = protocolHandler.processRequest(requestBody, parsed, startNanos, context);
             }
 
             // null response means notification (no response needed)
@@ -681,16 +682,7 @@ public class McpHttpHandler implements HttpHandler
 
     static ClientCapabilities capabilitiesOf(JsonRpcRequest request)
     {
-        if (request == null || request.getParams() == null)
-        {
-            return ClientCapabilities.ABSENT;
-        }
-        Object capabilities = request.getParams().get("capabilities"); //$NON-NLS-1$
-        if (capabilities == null)
-        {
-            return ClientCapabilities.ABSENT;
-        }
-        return ClientCapabilities.from(GsonProvider.get().toJsonTree(capabilities));
+        return McpProtocolHandler.parseClientCapabilities(request);
     }
 
     static McpRequestContext contextOf(HttpExchange exchange) throws InvalidMcpEndpointException

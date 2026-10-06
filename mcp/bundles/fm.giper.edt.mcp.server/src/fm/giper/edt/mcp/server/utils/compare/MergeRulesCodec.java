@@ -2608,7 +2608,7 @@ public final class MergeRulesCodec
      * The keyed children are RETAINED as they are checked, and the descent walks the retained
      * elements. It used to re-resolve every key through {@code MergeRulesDocument.findNode}, which
      * rebuilds and rescans the whole child list on each call: a flat level of {@code n} uniquely
-     * keyed siblings cost {@code n} rebuilds of an {@code n}-element list and about {@code n┬▓/2}
+     * keyed siblings cost {@code n} rebuilds of an {@code n}-element list and about {@code n²/2}
      * key comparisons - inside the sizes {@link #MAX_DOCUMENT_BYTES} and {@link #MAX_DOCUMENT_NODES}
      * already admit, and merge-settings files ARE flat at the object level, one sibling per top
      * object of a collection.

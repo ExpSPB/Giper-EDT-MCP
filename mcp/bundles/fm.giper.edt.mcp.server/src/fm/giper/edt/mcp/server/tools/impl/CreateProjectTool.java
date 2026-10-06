@@ -33,6 +33,7 @@ import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
 import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.md.extension.adopt.IModelObjectAdopter;
 import com._1c.g5.v8.dt.metadata.mdclass.CompatibilityMode;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.ConfigurationExtensionPurpose;
@@ -42,19 +43,21 @@ import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
 import com._1c.g5.v8.dt.metadata.mdclass.ScriptVariant;
+import com._1c.g5.v8.dt.metadata.mdclass.extension.ConfigurationExtension;
 import com._1c.g5.v8.dt.platform.version.Version;
+import com._1c.g5.wiring.ServiceAccess;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.utils.ExternalObjectRoots;
 import fm.giper.edt.mcp.server.utils.LifecycleWaiter;
 import fm.giper.edt.mcp.server.utils.McpJobs;
 import fm.giper.edt.mcp.server.utils.MdNameNormalizer;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
-import fm.giper.edt.mcp.server.utils.MetadataTypeUtils.MetadataTypeInfo;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 
 /**
@@ -69,8 +72,9 @@ import fm.giper.edt.mcp.server.utils.ProjectContext;
  * fully reviewed machinery from the former extension-only tool:
  * <ol>
  *   <li>Validates inputs and checks that neither the new project nor the base are missing.</li>
- *   <li>Constructs a {@link Configuration}, or an optional external-object root, through the
- *       version-aware {@link IModelObjectFactory}.</li>
+ *   <li>Constructs a standalone {@link Configuration}, or an optional external-object root,
+ *       through the version-aware {@link IModelObjectFactory}; extensions adopt the base
+ *       Configuration through {@link IModelObjectAdopter}, as the EDT extension wizard does.</li>
  *   <li>Calls the appropriate project manager's {@code create()} method in a background
  *       {@link Job} (never on the UI thread — unattended-safety rule) via the shared
  *       {@link #runCreateJob} helper, and joins with a {@link #CREATE_TIMEOUT_MS} timeout.</li>
@@ -252,7 +256,7 @@ public class CreateProjectTool implements IMcpTool
                 "Customization", "AddOn", "Patch") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             .stringProperty("compatibilityMode", //$NON-NLS-1$
                 "Optional extension compatibility-mode string matching a CompatibilityMode enum literal " //$NON-NLS-1$
-                    + "(e.g. 'Version8_3_10'); empty = factory default. Unknown values are rejected. " //$NON-NLS-1$
+                    + "(e.g. 'Version8_3_10'); empty = inherited base compatibility mode. Unknown values are rejected. " //$NON-NLS-1$
                     + "Extension only; REJECTED for other kinds.") //$NON-NLS-1$
             .stringProperty("synonym", //$NON-NLS-1$
                 "Human-readable synonym for the Configuration (configuration and extension only; " //$NON-NLS-1$
@@ -636,17 +640,8 @@ public class CreateProjectTool implements IMcpTool
             return ExternalObjectSpec.failure(invalidExternalObjectShape(value));
         }
 
-        MetadataTypeInfo info = MetadataTypeUtils.resolve(parts[0]);
-        EClass eClass;
-        if (info == MetadataTypeInfo.EXTERNAL_DATA_PROCESSOR)
-        {
-            eClass = MdClassPackage.Literals.EXTERNAL_DATA_PROCESSOR;
-        }
-        else if (info == MetadataTypeInfo.EXTERNAL_REPORT)
-        {
-            eClass = MdClassPackage.Literals.EXTERNAL_REPORT;
-        }
-        else
+        EClass eClass = ExternalObjectRoots.rootEClass(parts[0]);
+        if (eClass == null)
         {
             return ExternalObjectSpec.failure(invalidExternalObjectShape(value));
         }
@@ -661,7 +656,7 @@ public class CreateProjectTool implements IMcpTool
                 + "'ExternalReport.<Name>'.").toJson()); //$NON-NLS-1$
         }
 
-        return ExternalObjectSpec.success(eClass, objectName, info.getEnglishSingular() + "." + objectName, //$NON-NLS-1$
+        return ExternalObjectSpec.success(eClass, objectName, eClass.getName() + "." + objectName, //$NON-NLS-1$
             normReport);
     }
 
@@ -698,7 +693,7 @@ public class CreateProjectTool implements IMcpTool
             return services.error;
         }
         IExtensionProjectManager extMgr = services.extMgr;
-        IModelObjectFactory factory = services.factory;
+        IModelObjectAdopter adopter = services.adopter;
         Configuration baseConfig = services.baseConfig;
         Version version = services.version;
         ScriptVariant scriptVariant = services.scriptVariant;
@@ -719,11 +714,18 @@ public class CreateProjectTool implements IMcpTool
         }
         CompatibilityMode compatMode = compatModeResolution.compatMode;
 
-        // Build the extension Configuration model object
-        Configuration config = (Configuration) factory.create(MdClassPackage.Literals.CONFIGURATION, version);
-        factory.fillDefaultReferences(config);
-
-        config.setObjectBelonging(ObjectBelonging.ADOPTED);
+        // Match ExtensionWizard: the adopter creates property-state extension metadata and
+        // adopts the base's default Language before the detached root enters the new project.
+        Configuration config;
+        try
+        {
+            config = createExtensionConfiguration(adopter, baseConfig, version);
+        }
+        catch (RuntimeException e)
+        {
+            return ToolResult.error("Could not prepare extension from base project '" + baseProjectName //$NON-NLS-1$
+                + "': " + e.getMessage() + ". Ensure the base is ready and retry.").toJson(); //$NON-NLS-1$ //$NON-NLS-2$
+        }
         config.setName(configName);
         config.setNamePrefix(prefix);
         config.setScriptVariant(scriptVariant);
@@ -1179,13 +1181,7 @@ public class CreateProjectTool implements IMcpTool
      */
     static MdObject createExternalObjectRoot(IModelObjectFactory factory, ExternalObjectSpec spec, Version version)
     {
-        MdObject root = factory.create(spec.eClass, version);
-        if (root != null)
-        {
-            factory.fillDefaultReferences(root);
-            root.setName(spec.objectName);
-        }
-        return root;
+        return ExternalObjectRoots.newRootForNewProject(factory, spec.eClass, spec.objectName, version);
     }
 
     /**
@@ -1545,17 +1541,17 @@ public class CreateProjectTool implements IMcpTool
         /** Ready-to-return JSON error, or {@code null} when resolution succeeded. */
         final String error;
         final IExtensionProjectManager extMgr;
-        final IModelObjectFactory factory;
+        final IModelObjectAdopter adopter;
         final Configuration baseConfig;
         final Version version;
         final ScriptVariant scriptVariant;
 
-        private ExtensionServices(String error, IExtensionProjectManager extMgr, IModelObjectFactory factory,
+        private ExtensionServices(String error, IExtensionProjectManager extMgr, IModelObjectAdopter adopter,
             Configuration baseConfig, Version version, ScriptVariant scriptVariant)
         {
             this.error = error;
             this.extMgr = extMgr;
-            this.factory = factory;
+            this.adopter = adopter;
             this.baseConfig = baseConfig;
             this.version = version;
             this.scriptVariant = scriptVariant;
@@ -1566,10 +1562,10 @@ public class CreateProjectTool implements IMcpTool
             return new ExtensionServices(error, null, null, null, null, null);
         }
 
-        static ExtensionServices ok(IExtensionProjectManager extMgr, IModelObjectFactory factory,
+        static ExtensionServices ok(IExtensionProjectManager extMgr, IModelObjectAdopter adopter,
             Configuration baseConfig, Version version, ScriptVariant scriptVariant)
         {
-            return new ExtensionServices(null, extMgr, factory, baseConfig, version, scriptVariant);
+            return new ExtensionServices(null, extMgr, adopter, baseConfig, version, scriptVariant);
         }
     }
 
@@ -1911,7 +1907,7 @@ public class CreateProjectTool implements IMcpTool
     /**
      * Resolves the platform services and base-configuration model handles needed to build the
      * extension Configuration (read-only lookups). Resolves {@link IExtensionProjectManager},
-     * {@link IV8ProjectManager} (to read the base {@link Version}), {@link IModelObjectFactory},
+     * {@link IV8ProjectManager} (to read the base {@link Version}), {@link IModelObjectAdopter},
      * the base {@link Configuration} and its {@link ScriptVariant} (defaulting to
      * {@link ScriptVariant#RUSSIAN} when unset).
      *
@@ -1942,11 +1938,12 @@ public class CreateProjectTool implements IMcpTool
 
         Version version = baseV8Project.getVersion();
 
-        IModelObjectFactory factory = Activator.getDefault().getModelObjectFactory();
-        if (factory == null)
+        IModelObjectAdopter adopter = ServiceAccess.get(IModelObjectAdopter.class);
+        if (adopter == null)
         {
             return ExtensionServices.failure(
-                ToolResult.error("IModelObjectFactory (MD) not available. MdPlugin may not be ready.").toJson()); //$NON-NLS-1$
+                ToolResult.error("Model object adopter service not available " //$NON-NLS-1$
+                    + "(the md.extension bundle may be inactive).").toJson()); //$NON-NLS-1$
         }
 
         // Resolve the base configuration for ScriptVariant and synonym language
@@ -1967,7 +1964,28 @@ public class CreateProjectTool implements IMcpTool
             scriptVariant = ScriptVariant.RUSSIAN;
         }
 
-        return ExtensionServices.ok(extMgr, factory, baseConfig, version, scriptVariant);
+        return ExtensionServices.ok(extMgr, adopter, baseConfig, version, scriptVariant);
+    }
+
+    /**
+     * Prepares a detached extension root using EDT's ExtensionWizard adoption contract.
+     * The adopter supplies the ConfigurationExtension property states and adopted default
+     * Language. The root receives a fresh identity and retains mapping by base-object IDs,
+     * while the caller applies the requested name, prefix, synonym and purpose afterwards.
+     */
+    static Configuration createExtensionConfiguration(IModelObjectAdopter adopter,
+        Configuration baseConfig, Version version)
+    {
+        Configuration config = adopter.adopt(baseConfig, version, new NullProgressMonitor());
+        if (config == null || config == baseConfig
+            || !(config.getExtension() instanceof ConfigurationExtension)
+            || config.getObjectBelonging() != ObjectBelonging.ADOPTED)
+        {
+            throw new IllegalStateException("EDT adopter did not return a configuration extension root."); //$NON-NLS-1$
+        }
+        config.setUuid(UUID.randomUUID());
+        config.setKeepMappingToExtendedConfigurationObjectsByIDs(true);
+        return config;
     }
 
     /**

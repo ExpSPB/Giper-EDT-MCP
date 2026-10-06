@@ -66,9 +66,9 @@ def _form_xml(reg):
     return read_disk("src/InformationRegisters/%s/Forms/RecordForm/Form.form" % reg)
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# #591 тАФ the node itself
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# #591 — the node itself
+# ──────────────────────────────────────────────────────────────────────────────
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_record_form_gets_its_root_ext_info():
@@ -143,9 +143,9 @@ def test_details_lists_a_binding_that_lives_in_the_ext_info():
                     "the handler table must list a binding that lives in the extInfo")
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# #592 тАФ one event, one binding, across both lists
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# #592 — one event, one binding, across both lists
+# ──────────────────────────────────────────────────────────────────────────────
 
 @e2e_test(tool="create_metadata", kind="write-metadata")
 def test_second_binding_of_the_same_write_event_is_refused():
@@ -250,7 +250,7 @@ def test_promoting_a_second_attribute_demotes_the_first():
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_a_retype_and_a_later_list_conversion_leave_the_root_node_alone():
     """Only a `main` write moves the form root's ext-info. In the platform the node is reached from
-    exactly one place тАФ FormAttributeService.setMainAttribute; a retype goes to setTypeDescription,
+    exactly one place — FormAttributeService.setMainAttribute; a retype goes to setTypeDescription,
     which never touches it, and a query edit on some other attribute is not its business either."""
     reg, form = _seed_record_form("Keep")
     poll_diff_contains(EXT_INFO_TYPE, ctx="the seeded form must carry the register-manager ext-info")

@@ -17,7 +17,7 @@ import fm.giper.edt.mcp.server.utils.PlatformFailures;
  * the same thing about the same situation.
  *
  * <h2>Why a shared vocabulary</h2>
- * Three tools observe the same four situations тАФ no comparison service, a comparison already
+ * Three tools observe the same four situations — no comparison service, a comparison already
  * running, an id that no longer names anything, and a platform failure. Written per tool they drift
  * within a release, and the drift is not cosmetic: "already running" is the message that decides
  * whether the caller waits, cancels, or gives up, so it has to name the live comparison and the way
@@ -54,7 +54,7 @@ public final class ComparisonFailures
     }
 
     /**
-     * EDT's comparison service is not registered тАФ the plugin is starting, stopping, or running in
+     * EDT's comparison service is not registered — the plugin is starting, stopping, or running in
      * an EDT build that does not carry the comparison bundles.
      *
      * @return the refusal
@@ -69,10 +69,10 @@ public final class ComparisonFailures
     /**
      * A comparison is already running. EDT allows exactly ONE per instance and a second launch
      * fails rather than queueing, so the caller is told which comparison holds the slot and how to
-     * end it тАФ never left to retry into the same wall.
+     * end it — never left to retry into the same wall.
      * <p>
      * BOTH remedies are named because neither one covers the whole situation: {@code cancel_job}
-     * ends a comparison that is still RUNNING, and it cannot end one that has finished тАФ that
+     * ends a comparison that is still RUNNING, and it cannot end one that has finished — that
      * job is terminal, and a terminal job is answered with ALREADY_TERMINAL without the owning
      * tool's handler ever running. A finished comparison is given back by
      * {@code compare_configurations} with {@code releaseComparisonId}. Naming only the first
@@ -243,7 +243,7 @@ public final class ComparisonFailures
     }
 
     /**
-     * A comparison was registered here but EDT no longer holds it тАФ it was cancelled elsewhere, or
+     * A comparison was registered here but EDT no longer holds it — it was cancelled elsewhere, or
      * EDT restarted its session.
      *
      * @param comparisonId the id the caller quoted

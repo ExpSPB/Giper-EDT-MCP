@@ -194,7 +194,7 @@ public class MarkdownUtilsTest
     {
         String row = MarkdownUtils.tableRow("a | b", "c");
         assertEquals("| a \\| b | c |\n", row);
-        // exactly 3 unescaped column delimiters (leading, middle, trailing) тАФ the
+        // exactly 3 unescaped column delimiters (leading, middle, trailing) — the
         // embedded pipe is escaped, so the row still has 2 logical columns.
         assertEquals(3, countUnescapedPipes(row));
     }

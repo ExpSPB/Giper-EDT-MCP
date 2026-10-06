@@ -11,20 +11,35 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.emf.ecore.EClass;
 import org.junit.Test;
 
 import com._1c.g5.v8.dt.core.model.IModelObjectFactory;
+import com._1c.g5.v8.dt.md.extension.adopt.IModelObjectAdopter;
+import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.Language;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
+import com._1c.g5.v8.dt.metadata.mdclass.extension.ConfigurationExtension;
+import com._1c.g5.v8.dt.metadata.mdclass.extension.MdClassExtensionFactory;
+import com._1c.g5.v8.dt.metadata.mdclass.extension.type.MdPropertyState;
 import com._1c.g5.v8.dt.platform.version.Version;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
 import fm.giper.edt.mcp.server.tools.impl.CreateProjectTool.ExternalObjectSpec;
@@ -39,6 +54,75 @@ import fm.giper.edt.mcp.server.tools.impl.CreateProjectTool.ExternalObjectSpec;
  */
 public class CreateProjectToolTest
 {
+    @Test
+    public void testExtensionRootPreservesAdopterStatesAndLanguageWithFreshIdentity()
+    {
+        Configuration base = MdClassFactory.eINSTANCE.createConfiguration();
+        UUID baseUuid = UUID.randomUUID();
+        base.setUuid(baseUuid);
+        base.setName("Base"); //$NON-NLS-1$
+        Configuration adopted = MdClassFactory.eINSTANCE.createConfiguration();
+        adopted.setUuid(baseUuid);
+        adopted.setObjectBelonging(ObjectBelonging.ADOPTED);
+        ConfigurationExtension extension = MdClassExtensionFactory.eINSTANCE.createConfigurationExtension();
+        extension.setDefaultLanguage(MdPropertyState.CHECKED);
+        extension.setCompatibilityMode(MdPropertyState.CHECKED);
+        adopted.setExtension(extension);
+        Language language = MdClassFactory.eINSTANCE.createLanguage();
+        language.setName("English"); //$NON-NLS-1$
+        language.setLanguageCode("en"); //$NON-NLS-1$
+        adopted.getLanguages().add(language);
+        adopted.setDefaultLanguage(language);
+        IModelObjectAdopter adopter = mock(IModelObjectAdopter.class);
+        doReturn(adopted).when(adopter).adopt(eq(base), eq(Version.LATEST), any(IProgressMonitor.class));
+
+        Configuration result = CreateProjectTool.createExtensionConfiguration(adopter, base, Version.LATEST);
+
+        verify(adopter).adopt(eq(base), eq(Version.LATEST), any(IProgressMonitor.class));
+        assertSame(adopted, result);
+        assertSame(extension, result.getExtension());
+        assertEquals(MdPropertyState.CHECKED, extension.getDefaultLanguage());
+        assertEquals(MdPropertyState.CHECKED, extension.getCompatibilityMode());
+        assertSame(language, result.getDefaultLanguage());
+        assertEquals(1, result.getLanguages().size());
+        assertNotNull(result.getUuid());
+        assertNotEquals(baseUuid, result.getUuid());
+        assertTrue(result.isKeepMappingToExtendedConfigurationObjectsByIDs());
+        assertEquals(baseUuid, base.getUuid());
+        assertEquals("Base", base.getName()); //$NON-NLS-1$
+        assertNull(base.getExtension());
+        assertTrue(base.getLanguages().isEmpty());
+    }
+
+    @Test
+    public void testExtensionRootRejectsAdoptedFlagWithoutExtensionMetadata()
+    {
+        Configuration base = MdClassFactory.eINSTANCE.createConfiguration();
+        Configuration invalid = MdClassFactory.eINSTANCE.createConfiguration();
+        invalid.setObjectBelonging(ObjectBelonging.ADOPTED);
+        IModelObjectAdopter adopter = mock(IModelObjectAdopter.class);
+        doReturn(invalid).when(adopter).adopt(eq(base), eq(Version.LATEST), any(IProgressMonitor.class));
+
+        assertThrows(IllegalStateException.class,
+            () -> CreateProjectTool.createExtensionConfiguration(adopter, base, Version.LATEST));
+        assertNull(invalid.getUuid());
+    }
+
+    @Test
+    public void testExtensionRootRejectsSourceAliasingBeforeChangingBaseIdentity()
+    {
+        Configuration base = MdClassFactory.eINSTANCE.createConfiguration();
+        UUID baseUuid = UUID.randomUUID();
+        base.setUuid(baseUuid);
+        IModelObjectAdopter adopter = mock(IModelObjectAdopter.class);
+        doReturn(base).when(adopter).adopt(eq(base), eq(Version.LATEST), any(IProgressMonitor.class));
+
+        assertThrows(IllegalStateException.class,
+            () -> CreateProjectTool.createExtensionConfiguration(adopter, base, Version.LATEST));
+        assertEquals(baseUuid, base.getUuid());
+        assertFalse(base.isKeepMappingToExtendedConfigurationObjectsByIDs());
+    }
+
     @Test
     public void testName()
     {

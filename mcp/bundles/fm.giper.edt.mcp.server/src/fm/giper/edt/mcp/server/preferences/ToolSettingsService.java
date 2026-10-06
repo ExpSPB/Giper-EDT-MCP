@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import fm.giper.edt.mcp.server.Activator;
+import fm.giper.edt.mcp.server.SseStreamRegistry;
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
 import fm.giper.edt.mcp.server.profiles.ProfileDocumentState;
 import fm.giper.edt.mcp.server.profiles.ReplaceResult;
@@ -34,6 +36,15 @@ import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
  */
 public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {
+    private static final Set<String> STORED_PROFILE_V1_ADDITIONS = Set.of(
+        "git"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V2_ADDITIONS = Set.of(
+        "apply_quick_fix"); //$NON-NLS-1$
+
+    private static final Set<String> STORED_PROFILE_V3_ADDITIONS = Set.of(
+        "ask_workmate"); //$NON-NLS-1$
+
     private static final Set<String> ANALYSIS_ONLY_V4_ADDITIONS = Set.of(
         "adopt_metadata_object", //$NON-NLS-1$
         "build_external_objects", //$NON-NLS-1$
@@ -50,9 +61,64 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
     private static final Set<String> DEVELOPMENT_V4_ADDITIONS = Set.of(
         "stop_profiling"); //$NON-NLS-1$
 
+    private static final Set<String> NO_DEBUG_V7_ADDITIONS = Set.of(
+        "set_error_breakpoint"); //$NON-NLS-1$
+
+    /*
+     * Giper version 5: the two destructive tools a stored read-only profile could not have excluded.
+     * merge_rules is new (its write half creates and REPLACES files); delete_project is not new at
+     * all - it sits in ToolGroup.CORE, which no preset disables, so it has been enabled in both
+     * read-only presets since they existed. Both read-only presets get the same two names, so one
+     * set answers for both.
+     */
     private static final Set<String> READ_ONLY_V5_ADDITIONS = Set.of(
         "merge_rules", //$NON-NLS-1$
         "delete_project"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V8_ADDITIONS = Set.of(
+        "infobase_sessions"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V9_ADDITIONS = Set.of(
+        "cancel_job", //$NON-NLS-1$
+        "delete_infobase", //$NON-NLS-1$
+        "delete_metadata"); //$NON-NLS-1$
+
+    private static final Set<String> NO_DEBUG_V10_ADDITIONS = Set.of(
+        "debug_pause"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V11_ADDITIONS = Set.of(
+        "import_project_from_file"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V12_ADDITIONS = Set.of(
+        "export_configuration_to_file"); //$NON-NLS-1$
+
+    /** Actual disabled-name additions registered for each Analysis Only migration. */
+    static final Map<Integer, Set<String>> ANALYSIS_ONLY_MIGRATION_ADDITIONS_BY_VERSION = Map.ofEntries(
+        Map.entry(1, STORED_PROFILE_V1_ADDITIONS),
+        Map.entry(2, READ_ONLY_V2_ADDITIONS),
+        Map.entry(3, STORED_PROFILE_V3_ADDITIONS),
+        Map.entry(4, ANALYSIS_ONLY_V4_ADDITIONS),
+        Map.entry(5, READ_ONLY_V5_ADDITIONS),
+        Map.entry(7, NO_DEBUG_V7_ADDITIONS),
+        Map.entry(8, READ_ONLY_V8_ADDITIONS),
+        Map.entry(9, READ_ONLY_V9_ADDITIONS),
+        Map.entry(10, NO_DEBUG_V10_ADDITIONS),
+        Map.entry(11, READ_ONLY_V11_ADDITIONS),
+        Map.entry(12, READ_ONLY_V12_ADDITIONS));
+
+    /** Actual disabled-name additions registered for each Code Review migration. */
+    static final Map<Integer, Set<String>> CODE_REVIEW_MIGRATION_ADDITIONS_BY_VERSION = Map.ofEntries(
+        Map.entry(1, STORED_PROFILE_V1_ADDITIONS),
+        Map.entry(2, READ_ONLY_V2_ADDITIONS),
+        Map.entry(3, STORED_PROFILE_V3_ADDITIONS),
+        Map.entry(4, CODE_REVIEW_V4_ADDITIONS),
+        Map.entry(5, READ_ONLY_V5_ADDITIONS),
+        Map.entry(7, NO_DEBUG_V7_ADDITIONS),
+        Map.entry(8, READ_ONLY_V8_ADDITIONS),
+        Map.entry(9, READ_ONLY_V9_ADDITIONS),
+        Map.entry(10, NO_DEBUG_V10_ADDITIONS),
+        Map.entry(11, READ_ONLY_V11_ADDITIONS),
+        Map.entry(12, READ_ONLY_V12_ADDITIONS));
 
     /*
      * Frozen recognition shapes: what any historical stored profile of this preset must contain.
@@ -254,7 +320,7 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
             }
             if (storedVersion < 1)
             {
-                changed |= disabled.add("git"); //$NON-NLS-1$
+                changed |= disabled.addAll(STORED_PROFILE_V1_ADDITIONS);
             }
             if (storedVersion < 2)
             {
@@ -265,7 +331,7 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
                 // ask_workmate ships OFF: it hands the question to an external plugin that
                 // reaches a cloud service and may then change the configuration with its
                 // own tools. That is a decision to opt into, not to inherit on upgrade.
-                changed |= disabled.add("ask_workmate"); //$NON-NLS-1$
+                changed |= disabled.addAll(STORED_PROFILE_V3_ADDITIONS);
             }
             if (storedVersion < 4)
             {
@@ -276,6 +342,38 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
             if (storedVersion < 5)
             {
                 changed |= migrateDestructiveToolsIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 7)
+            {
+                // Giper v6 already renamed debug_launch; this debugging addition is a new step.
+                changed |= migrateErrorBreakpointIntoNoDebugPresets(disabled);
+            }
+            if (storedVersion < 8)
+            {
+                // infobase_sessions is new and destructive, so a stored read-only profile must
+                // not gain it merely because the Applications group now contains it.
+                changed |= migrateInfobaseSessionsIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 9)
+            {
+                // These older tools declare themselves destructive but missed read-only migrations.
+                changed |= migrateLegacyDestructiveToolsIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 10)
+            {
+                // debug_pause is new: a stored no-debug preset cannot name it, and a denylist
+                // would otherwise hand it a tool that suspends a running session.
+                changed |= migrateDebugPauseIntoNoDebugPresets(disabled);
+            }
+            if (storedVersion < 11)
+            {
+                // import_project_from_file is new and creates a project from a file.
+                changed |= migrateProjectFileImportIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 12)
+            {
+                // export_configuration_to_file is new and drives the Designer against an infobase.
+                changed |= migrateConfigurationFileExportIntoReadOnlyPresets(disabled);
             }
             if (changed)
             {
@@ -314,17 +412,54 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
      */
     private static boolean migrateApplyQuickFixIntoReadOnlyPreset(Set<String> disabled)
     {
-        if (disabled.contains("apply_quick_fix")) //$NON-NLS-1$
-        {
-            return false;
-        }
         if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE))
         {
-            return disabled.add("apply_quick_fix"); //$NON-NLS-1$
+            return disabled.addAll(READ_ONLY_V2_ADDITIONS);
         }
         if (disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE))
         {
-            return disabled.add("apply_quick_fix"); //$NON-NLS-1$
+            return disabled.addAll(READ_ONLY_V2_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Adds {@code set_error_breakpoint} to a store that already expresses a NO-DEBUG profile.
+     * <p>
+     * The tool did not exist when those presets were saved, so their stored denylist cannot name
+     * it - and a denylist is an allow-by-default list: without this step, upgrading would hand a
+     * debugging switch to a profile that promised none. Recognition is by containment of the same
+     * frozen historical shapes the earlier migrations use, so a hand-tuned custom selection and
+     * All Tools are left alone.
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when the tool was added
+     */
+    private static boolean migrateErrorBreakpointIntoNoDebugPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+            || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)
+            || disabled.containsAll(DEVELOPMENT_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(NO_DEBUG_V7_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Adds {@code debug_pause} to a store that already expresses a NO-DEBUG profile - the version 7
+     * step again, one debugging tool later, recognized by the same frozen shapes.
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when the tool was added
+     */
+    private static boolean migrateDebugPauseIntoNoDebugPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+            || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)
+            || disabled.containsAll(DEVELOPMENT_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(NO_DEBUG_V10_ADDITIONS);
         }
         return false;
     }
@@ -363,8 +498,69 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         return false;
     }
 
+    /** Adds the v8 session tool only to stored profiles recognized as read-only. */
+    private static boolean migrateInfobaseSessionsIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(READ_ONLY_V5_ADDITIONS)
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            return disabled.addAll(READ_ONLY_V8_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v9 destructive tools only to stored profiles still recognized as read-only. */
+    private static boolean migrateLegacyDestructiveToolsIntoReadOnlyPresets(Set<String> disabled)
+    {
+        // A pristine v8 store has both prior safety sets; a missing name records a re-enable.
+        if (disabled.containsAll(READ_ONLY_V5_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V8_ADDITIONS)
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            // An absent v9 name dates nothing: a stored set is a preset plus arbitrary user edits
+            // in both directions, so this resolves toward the promise the preset makes.
+            return disabled.addAll(READ_ONLY_V9_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v11 project importer only to stored profiles still recognized as read-only. */
+    private static boolean migrateProjectFileImportIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(READ_ONLY_V5_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V8_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V9_ADDITIONS)
+            // A profile that re-enabled the configuration importer wants importers.
+            && disabled.contains("import_configuration_from_xml") //$NON-NLS-1$
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            return disabled.addAll(READ_ONLY_V11_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v12 infobase-dump tool only to stored profiles still recognized as read-only. */
+    private static boolean migrateConfigurationFileExportIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(READ_ONLY_V5_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V8_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V9_ADDITIONS)
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            return disabled.addAll(READ_ONLY_V12_ADDITIONS);
+        }
+        return false;
+    }
+
     /**
-     * Saves the set of disabled tool names to preferences.
+     * Updates the default profile allowlist when profiles are available, using the repository's
+     * session invalidation policy. The legacy preference fallback broadcasts list changes.
+     *
+     * @param disabledTools the tool names to disable
      */
     public void setDisabledTools(Set<String> disabledTools)
     {
@@ -379,8 +575,76 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         {
             return;
         }
+        applyDisabledTools(store, disabledTools);
+    }
+
+    /**
+     * Writes the disabled set into {@code store} and pushes {@code notifications/tools/list_changed}
+     * when that write CHANGED the set.
+     * <p>
+     * Enablement is a {@code tools/list} input: {@code getVisibleTools()} drops a disabled tool, so a
+     * tick on the Tools tab removes a tool from the list a connected client already holds. The server
+     * advertises {@code tools.listChanged: true} in {@code initialize}, so staying silent breaks a
+     * capability it promised and leaves that client calling a tool that now refuses (#576). This is
+     * the legacy write path; profile-backed calls use the repository and its per-path session
+     * invalidation policy instead.
+     * </p>
+     * <p>
+     * Only a real change notifies: Apply with nothing edited must not wake every client. The
+     * comparison is on the parsed SETS, so a reordered or differently-spaced stored value reads as
+     * unchanged. Under progressive disclosure a disabled tool may already be hidden by its toolset,
+     * which makes the notification redundant rather than wrong - over-notifying costs one
+     * {@code tools/list}, under-notifying is the bug.
+     * </p>
+     *
+     * @param store the preference store to write (never {@code null})
+     * @param disabledTools the tool names to disable
+     * @return {@code true} when the stored set changed and clients were notified
+     */
+    boolean applyDisabledTools(IPreferenceStore store, Set<String> disabledTools)
+    {
         String value = serializeDisabledTools(disabledTools);
-        store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, value);
+        boolean changed;
+        // Only the compare-and-write is locked; the notification wait below runs outside it.
+        synchronized (this)
+        {
+            changed = !parseDisabledTools(store.getString(PreferenceConstants.PREF_DISABLED_TOOLS))
+                .equals(parseDisabledTools(value));
+            store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, value);
+        }
+        if (changed)
+        {
+            // Before the preference page's server restart, the only order in which an open stream
+            // can still receive it - but bounded, since this may be the UI thread.
+            notifyToolsListChangedBounded(NOTIFY_WAIT_MS);
+        }
+        return changed;
+    }
+
+    /** How long a caller (possibly the UI thread) waits for the tools/list_changed broadcast. */
+    static final long NOTIFY_WAIT_MS = 1000;
+
+    /**
+     * Broadcasts {@code notifications/tools/list_changed} from its own thread and waits at most
+     * {@code waitMs}: a client that stopped draining its socket blocks the write, and that must
+     * not freeze the caller.
+     *
+     * @param waitMs the longest the caller waits for the broadcast to finish
+     */
+    static void notifyToolsListChangedBounded(long waitMs)
+    {
+        Thread sender = new Thread(() -> SseStreamRegistry.getInstance().notifyToolsListChanged(),
+            "MCP tools/list_changed"); //$NON-NLS-1$
+        sender.setDaemon(true);
+        sender.start();
+        try
+        {
+            sender.join(waitMs);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

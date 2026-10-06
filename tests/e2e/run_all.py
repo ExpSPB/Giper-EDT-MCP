@@ -198,12 +198,11 @@ def abandon_workers(harness):
 
 def _run_test_unit(harness, t):
     """All EDT-touching work for ONE test, timed as a unit: the test fn plus, for a
-    write-metadata test, its model cleanup (reset_fixture reverts disk; reset_model =
-    settle + re-revert + clean_project refreshes the in-memory model and VERIFIES it is
-    back on the baseline — the step that actually hung when EDT's ProjectRestartJob
-    wedged). The pre-test reset_fixture is fast local git and is done by the caller
-    OUTSIDE the timeout; reset_model re-reverts inside it because a metadata write's disk
-    export is async and can land AFTER that pre-test revert."""
+    write-metadata test, its model cleanup. reset_model settles, reverts the disk, restores
+    the in-memory model and VERIFIES its baseline. Refresh mode defers the first cleanup
+    revert until that settle and the export quiet wait; clean mode also reverts immediately
+    after the test. The pre-test reset_fixture is fast local git and is done by the caller
+    OUTSIDE the timeout, after the preceding test's verified cleanup."""
     try:
         t["func"]()
     except harness.E2ECallTimeout:
@@ -212,10 +211,14 @@ def _run_test_unit(harness, t):
         # The runner aborts on this, so no later test inherits the state either.
         raise
     except harness.E2ESkip:
-        # A skip is not a failed write - it is a test that decided there was nothing to do
-        # (an unsupported seed that committed nothing). Paying the full cleanup budget for it
-        # would be waste at best, and at worst would turn a legitimate skip into a
-        # reset-failed / call-timeout if clean_project happens to be refused just then.
+        # A skip before any write committed nothing: paying the full cleanup budget for it would
+        # be waste, and could turn a legitimate skip into a reset-failed if clean_project is
+        # refused just then. A skip AFTER a write is different: the model still carries it, and
+        # the next test's git revert would run under that model with no clean_project behind it.
+        # So reset on EVIDENCE of a mutation, never on the skip alone.
+        if (harness.confirmed_mutation_tools() or harness.mutations_unresolved()
+                or harness.evidenced_mutation_fixture_projects()):
+            _reset_after_write(harness, t)
         raise
     except BaseException:
         # Any OTHER failure still leaves the write applied, exactly like a passing test does.
@@ -227,28 +230,84 @@ def _run_test_unit(harness, t):
 
 
 def _reset_after_write(harness, t):
-    """reset_fixture (disk) + reset_model (in-memory) for a write-metadata test.
+    """Restore after a declared write or an undeclared confirmed fixture-model mutation.
 
-    The model reset is SKIPPED when the model provably did not move. It is the single most
-    expensive thing the suite does - 331 write-metadata tests, ~11 s each, ~84% of the whole
-    run - and most of those tests are negative: they hand a write tool a bad argument, assert
-    the refusal, and then pay a full clean_project to re-import a model that never changed.
+    For a declared write, the model reset is SKIPPED when the model provably did not move. It is
+    the single most expensive thing the suite does - 331 write-metadata tests, ~11 s each, ~84%
+    of the whole run - and most of those tests are negative: they hand a write tool a bad
+    argument, assert the refusal, and then pay a full clean_project to re-import a model that
+    never changed.
 
     "Provably" is the operative word: harness.model_is_pristine() answers only on positive
     evidence (git-clean fixtures AND an unchanged top-object inventory, and no deep-mutation
     tool involved). Anything unclear answers False and the full reset runs, so the shortcut
     can cost time but never correctness."""
-    if _ABANDONED:
+    if _ABANDONED or harness.fixtures_frozen() or harness.calls_aborted():
         # This worker was given up on; the main thread has already decided the fixtures are
         # not safe to touch. Do not undo that decision from a thread nobody is waiting for.
         return
-    if t.get("kind") != "write-metadata" and not harness.mutations_unresolved():
+    refresh = harness._refresh_reset_enabled()
+    kind = t.get("kind")
+    kind_violations = harness.mutation_kind_violation_tools(
+        kind, harness.confirmed_mutation_tools())
+    if (kind != "write-metadata" and not harness.mutations_unresolved()
+            and not kind_violations and not harness.evidenced_mutation_fixture_projects()):
         # The declared kind decides the ROUTINE case: a test that means to write says so, and only
         # those pay the cleanup. It cannot decide the accidental one. A mutating request that died
         # on the wire (connection reset, truncated body) may have been committed by the server
         # anyway, and it can happen to a test of any kind - 17 tests declare kind='write' and 123
         # kind='action', and every one of them would have carried that unknown into the next test.
+        # Cold-reset evidence survives test boundaries and unrelated verified resets. It must
+        # also pass this gate when the unread-request counter is zero, without a kind advisory
+        # against the current test for an earlier mutation.
         # So the kind gate is checked WITH the evidence, never instead of it.
+        return
+    if kind_violations:
+        # Reset on EVIDENCE rather than on the test's declaration - this is what actually closes
+        # the hole. A confirmed fixture write bypasses the pristine shortcut, so restore disk and
+        # model here whatever the test called itself.
+        #
+        # The violating test did not declare its writes, so reset every mandatory fixture. An
+        # optional fixture's model is reset when setup synchronized it or the outcome of a call
+        # that named it supplied mutation evidence.
+        if not refresh and not harness.reset_all_fixtures():
+            return
+        reset_projects = _available_fixture_projects(harness)
+        # A failed optional setup sync does not prove an optional fixture is absent: clean_project or
+        # its readiness wait may only have failed transiently. Include it when the SAME call that
+        # named it succeeded, reported a commit/write target, or said its outcome was unknown. A
+        # refusal merely naming an absent project supplies none of that evidence, so the setup
+        # guard keeps the genuinely absent fixture out of reset_model.
+        harness.reset_model(reset_projects)
+        if refresh:
+            # The selected models own their first scoped revert, after ready + export quiet.
+            # Optional fixtures without a readable/evidenced model still need their disk
+            # cleanup, but must not be included in reset_model merely to obtain that revert.
+            disk_only_rels = tuple(
+                harness.FIXTURE_REL_BY_PROJECT[project]
+                for project in harness.ALL_FIXTURE_PROJECTS
+                if project not in reset_projects)
+            if disk_only_rels and not harness.reset_all_fixtures(disk_only_rels):
+                return
+        # The classification is REPORTED, never raised. Cleanup itself is still mandatory: a disk
+        # revert failure or a reset failure for any selected fixture propagates and can
+        # abort the run. That is an inability to restore evidence of a write, not enforcement of
+        # the advisory. Enforcing the classification would mean asserting, from the client side,
+        # that a given call moved the model - and the server does not say so on a SUCCESS response:
+        # mutationCommitted/mutationOutcomeUnknown are emitted on ERROR paths only. Everything else
+        # is inference from tool + arguments + action, and review found four separate ways for that
+        # inference to be wrong (a build with nothing to build, a dcs read action, an
+        # already-adopted no-op, an import-mode update_database). A wrong inference can therefore
+        # cost an unnecessary reset of selected fixtures plus a line to read, but an optional
+        # model with neither setup-sync nor outcome-correlated mutation evidence is not reset.
+        #
+        # The hole the issue is about is closed above regardless: the reset now runs on EVIDENCE of
+        # a mutation rather than on the test's declaration, so an undeclared write no longer rides
+        # into the next test. Making this an actual build failure needs the server to state the
+        # outcome on success too - tracked separately.
+        print('  [kind-advisory] test "%s" has kind="%s" but its call to %s looks like a '
+              'fixture-model write; consider kind="write-metadata"'
+              % (t.get("name", "?"), kind, ", ".join(kind_violations)), flush=True)
         return
     if harness.model_is_pristine():
         _SKIPPED_RESETS.append(t.get("name", "?"))
@@ -256,11 +315,45 @@ def _reset_after_write(harness, t):
     # model_is_pristine() spends real time in MCP calls (a settle can burn the whole ready
     # timeout), so the main thread may have given up on this worker while it waited. Re-reading
     # the flag here would still be check-then-act - the abandonment can land in the gap - so the
-    # decision belongs to reset_fixture(), which makes it under the freeze lock and answers False
-    # when the tree is off limits. Believe that answer instead of racing it.
-    if not harness.reset_fixture():
+    # decision belongs to each scoped revert, which takes the freeze lock. Refresh mode must
+    # let reset_model perform the FIRST revert after ready + export quiet: deleting metadata
+    # files while EDT is still deriving command interfaces can race the active model.
+    if not refresh and not harness.reset_fixture():
         return
-    harness.reset_model()
+    if harness.mutation_could_have_cascaded():
+        # The server waits for EDT's cascade participants but deliberately leaves them out of
+        # writtenProjects or, for a rename, publishes no write targets at all. Do not invent a
+        # client-side target. Reset every fixture model known to be available instead; an optional
+        # fixture project stays out unless setup synchronized it or call-correlated evidence
+        # says a request may actually have reached it.
+        reset_projects = _available_fixture_projects(harness)
+    else:
+        reset_projects = sorted(
+            {harness.PROJECT} | harness.mutated_fixture_projects()
+            | harness.evidenced_mutation_fixture_projects()
+            | harness.dependent_mutation_fixture_projects())
+    harness.reset_model(reset_projects)
+
+
+def _preserve_failed_fixtures(harness, reason):
+    """Freeze after a failed gate so disk/index/model evidence survives for the owner."""
+    if harness.freeze_fixtures():
+        print("!! left the fixtures untouched for failure preservation: %s" % reason, flush=True)
+    else:
+        print("!! failure preservation is incomplete: an active fixture reset did not stop "
+              "within the freeze budget; archive only after it stops: %s" % reason, flush=True)
+
+
+def _available_fixture_projects(harness):
+    """Every mandatory fixture, plus each OPTIONAL one whose model setup synchronized or whose
+    name a call with mutation evidence carried - an absent optional fixture is never reset."""
+    evidenced_projects = harness.evidenced_mutation_fixture_projects()
+    return [
+        project for project in harness.ALL_FIXTURE_PROJECTS
+        if project not in harness.OPTIONAL_FIXTURE_PROJECTS
+        or harness.optional_model_synced(project)
+        or project in evidenced_projects
+    ]
 
 
 # Names of the tests whose model reset was skipped — reported at the end so the shortcut is
@@ -499,17 +592,16 @@ def main():
     # Final cleanliness guarantee across BOTH fixtures (base + extension). On a normal run,
     # full cleanup (revert + EDT model sync) so a stale model can't autosave changes back
     # after the run. When a live worker may still be running (a per-CALL OR per-TEST timeout),
-    # any reset - even git-only - would race it, so leave the tree alone. Any OTHER abort (e.g.
-    # reset-failed: clean_project came back isError, not hung) has no live worker to race, so a
-    # git-only reset is still safe.
+    # any reset - even git-only - would race it, so leave the tree alone. A RESET-FAILED abort
+    # also leaves disk/index evidence intact; the owner must archive it before any later reset.
     if still_running_in is not None and aborted_after == still_running_in:
         # The server may still be writing these very files (or the abandoned worker may still be
         # inside its own reset_model()): a git reset now races EDT (it can rename/overwrite
         # underneath us, or re-dirty right after). Leave the tree alone - the run is over, and
         # the workspace is disposable.
-        print("!! left the fixtures untouched: %s may still be running server-side" % aborted_after)
+        _preserve_failed_fixtures(harness, "%s may still be running server-side" % aborted_after)
     elif aborted_after:
-        harness.reset_all_fixtures()
+        _preserve_failed_fixtures(harness, "model reset failed at %s" % aborted_after)
     else:
         try:
             harness.final_cleanup()
@@ -519,12 +611,14 @@ def main():
             # can re-dirty the fixture right after the status check below.
             print("!! final cleanup timed out (fixtures may be dirty): %s" % e)
             cleanup_failed = True
+            _preserve_failed_fixtures(harness, "final cleanup timed out")
         except harness.E2EModelResetFailed as e:
             # Same idea, different failure mode: every call RETURNED (nothing hung), but
             # clean_project kept refusing (or the final settle never reported ready), so the
             # model may still be out of sync. Do not call the run green over that either.
             print("!! final cleanup could not sync the model: %s" % e)
             cleanup_failed = True
+            _preserve_failed_fixtures(harness, "final cleanup could not restore its model baseline")
 
     # This is deliberately the LAST MCP-using phase on a normal run. The ratchet's result is
     # appended to the same results list as every other test, so a post-cleanup plugin ERROR is a

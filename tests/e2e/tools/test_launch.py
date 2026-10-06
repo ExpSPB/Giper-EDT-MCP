@@ -6,11 +6,11 @@ What the tool does
 launch starts an EDT session in debug mode (default) or regular run mode. It has
 TWO target-selection forms, selected by which params are present (see LaunchTool.execute):
 
-  Mode 1 тАФ launchConfigurationName: start any existing EDT debug launch
-           configuration by its EXACT name (runtime client OR an
-           "Attach to 1C:Enterprise Debug Server" config). projectName /
-           applicationId are NOT required in this mode.
-  Mode 2 тАФ projectName + applicationId: legacy path that finds the matching
+  Mode 1 — launchConfigurationName: start any existing EDT debug launch
+           configuration by its EXACT name (runtime client, an
+           "Attach to 1C:Enterprise Debug Server" config, OR a standalone-server
+           config). projectName / applicationId are NOT required in this mode.
+  Mode 2 — projectName + applicationId: legacy path that finds the matching
            runtime-client launch config for that project+application and starts it.
 
 ENVIRONMENT (why these are sentinel/negative tests, not a real launch)
@@ -18,12 +18,17 @@ ENVIRONMENT (why these are sentinel/negative tests, not a real launch)
 This is a RUNTIME tool. In THIS EDT there is NO running infobase for
 TestConfiguration, NO registered application, and NO pre-created EDT launch
 configuration. Actually starting a session is heavy, spawns a 1C client,
-and is not configured here тАФ so we deliberately do NOT drive a real launch.
+and is not configured here — so we deliberately do NOT drive a real launch.
+
+The standalone-server start is covered the same way and for one extra reason: it
+needs a configured standalone server, which CI has none of, and starting one would
+leave a running server that the terminate_launch tests read as state. It is verified
+on the EDT stand instead, where the round trip is start -> terminate -> start.
 
 The realistic, CORRECT contract in this environment is that EVERY reachable call
 fails FAST with a CLEAR, ACTIONABLE sentinel that names the missing precondition
 and the next step (which sibling tool to call / what to create in EDT). That is
-exactly what these tests assert тАФ and each assertion is mutation-sensitive: a tool
+exactly what these tests assert — and each assertion is mutation-sensitive: a tool
 that no-oped, returned a bogus success, or emitted a vague/blank error would fail.
 
 Response shape (IMPORTANT)
@@ -36,11 +41,11 @@ reads structuredContent.error first). For a JSON tool r.text is only a placehold
 Gson note: ToolResult.toJson() HTML-/quote-escapes some chars, and several of these
 messages embed a single-quoted value ('NoSuchConfig'). So every error-quality
 assertion below matches DELIMITER-FREE substrings (the bad bareword, "not found",
-"is required", "Use get_applications", "Create it in EDT") тАФ never a raw "'...'"
+"is required", "Use get_applications", "Create it in EDT") — never a raw "'...'"
 or a ">=" that Gson would have rewritten to \\uXXXX.
 
 DIFF: launch operates on the EDT launch manager / a (would-be) running
-infobase тАФ NOT the git-tracked TestConfiguration/ source tree. So a non-destructive
+infobase — NOT the git-tracked TestConfiguration/ source tree. So a non-destructive
 guardrail applies to EVERY test: assert_no_diff() (the project source must never
 change as a side effect of trying to launch a debugger).
 
@@ -83,17 +88,17 @@ from harness import (
 )
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 # HAPPY / SENTINEL
 #
 # There is no precondition-free success path for launch in this environment
-# (no infobase, no application, no launch config тАФ and we must NOT spawn a real
+# (no infobase, no application, no launch config — and we must NOT spawn a real
 # client). The realistic happy contract is therefore the CLEAR SENTINEL: the most
 # common real call (Mode 1 by config name) names the missing config + tells you to
 # create it, and even hands back the list of configurations that DO exist. We
 # assert that actionable shape; a broken tool that silently "succeeded" (claimed a
 # session it could not start) or returned a blank error fails this.
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="launch", kind="read")
 def test_run_mode_is_advertised_accepted_and_echoed():
     """The wire schema exposes debug/run and a run request survives mode validation.
@@ -171,7 +176,7 @@ def test_launch_by_unknown_config_name_returns_actionable_sentinel():
         ctx="unknown config name is named AND the fix is spelled out",
     )
     # The diagnostic list of available configurations is part of the actionable
-    # contract тАФ it tells the caller what they CAN launch. Assert the envelope
+    # contract — it tells the caller what they CAN launch. Assert the envelope
     # carries it (a regression that dropped the discovery aid would slip past a
     # message-only check). structuredContent holds the JSON envelope for a JSON tool.
     sc = r.structured
@@ -214,9 +219,9 @@ def test_mode2_unknown_application_points_at_get_applications():
     assert_no_diff("a rejected launch must not touch the project source")
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# NEGATIVE MATRIX тАФ missing required params
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# NEGATIVE MATRIX — missing required params
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="launch", kind="read")
 def test_no_params_at_all_requires_project_or_config_name():
     """Neither mode selected: no launchConfigurationName AND no projectName.
@@ -242,7 +247,7 @@ def test_no_params_at_all_requires_project_or_config_name():
 def test_empty_project_name_behaves_like_missing():
     """Boundary: projectName="" (and no config name). execute() guards with
     `projectName == null || projectName.isEmpty()`, so the empty string is treated
-    as missing and hits the SAME "projectName is required" sentinel тАФ it must NOT be
+    as missing and hits the SAME "projectName is required" sentinel — it must NOT be
     coerced into a real project. (extractStringArgument returns the raw value, no
     trim, and the guard uses isEmpty(), so "" is caught here.)
     """
@@ -287,9 +292,9 @@ def test_mode2_missing_application_id_points_at_get_applications():
     assert_no_diff("an invalid call must not touch the project source")
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# NEGATIVE MATRIX тАФ invalid / non-existent values
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# NEGATIVE MATRIX — invalid / non-existent values
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="launch", kind="read")
 def test_mode2_nonexistent_project_is_rejected_before_launch():
     """Mode 2 with a syntactically valid but NON-EXISTENT projectName (+ some
@@ -303,7 +308,7 @@ def test_mode2_nonexistent_project_is_rejected_before_launch():
     to launch, fails assert_error outright; and the named bad value pins that the
     sharper downstream branch (not the building gate) is the one that fired.
     The not-found message comes from the shared ProjectContext.notFoundMessage, so it
-    carries the actionable list_projects discovery tail тАФ asserted via suggests below.
+    carries the actionable list_projects discovery tail — asserted via suggests below.
     """
     bad_proj = "NoSuchProject_ZZZ_e2e"
     r = call("launch", {"projectName": bad_proj, "applicationId": "AppId"})
@@ -320,7 +325,7 @@ def test_mode2_nonexistent_project_is_rejected_before_launch():
 @e2e_test(tool="launch", kind="read")
 def test_unknown_config_name_takes_precedence_over_project_mode():
     """Mode selection: when BOTH launchConfigurationName and projectName+applicationId
-    are supplied, execute() takes Mode 1 (config name wins тАФ the `configName != null
+    are supplied, execute() takes Mode 1 (config name wins — the `configName != null
     && !configName.isEmpty()` branch returns before the Mode-2 code). Proof: with a
     BAD config name AND a perfectly valid project+applicationId, the error is the
     Mode-1 "Launch configuration not found: '<name>'." sentinel, NOT a Mode-2
@@ -383,7 +388,7 @@ def test_unknown_standalone_server_port_conflict_value_is_rejected():
                          ctx="unknown standaloneServerPortConflict names the bad value and lists the accepted ones")
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 # PER-LAUNCH OVERRIDES (issue #344): /C startup option + the external data
 # processor / report to run on startup (/Execute).
 #
@@ -392,7 +397,7 @@ def test_unknown_standalone_server_port_conflict_value_is_rejected():
 # producing a launch that looks fine and runs nothing - EDT's own delegate only
 # LOGS when it cannot build the dump. So the refusals are the contract, and they
 # are asserted to happen BEFORE any launch configuration is even resolved.
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="launch", kind="read")
 def test_external_object_half_address_is_refused_and_names_the_missing_half():
     """externalObjectProjectName and externalObjectName are one address in two fields.

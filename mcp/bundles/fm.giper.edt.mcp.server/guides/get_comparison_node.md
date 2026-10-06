@@ -26,8 +26,8 @@ A `comparisonId` belongs to one comparison only. When the session is gone, this 
 ## Bilingual FQNs
 `objectFqn` accepts Russian or English type tokens, and it translates **every** structural segment while keeping every programmatic Name (and its case) verbatim:
 
-- `╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л` -> `Catalog.╨в╨╛╨▓╨░╤А╤Л`
-- `╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л.╨д╨╛╤А╨╝╨░.╨д╨╛╤А╨╝╨░╨н╨╗╨╡╨╝╨╡╨╜╤В╨░` -> `Catalog.╨в╨╛╨▓╨░╤А╤Л.Form.╨д╨╛╤А╨╝╨░╨н╨╗╨╡╨╝╨╡╨╜╤В╨░`
+- `Справочник.Товары` -> `Catalog.Товары`
+- `Справочник.Товары.Форма.ФормаЭлемента` -> `Catalog.Товары.Form.ФормаЭлемента`
 
 The comparison engine itself has no bilingual branch: it matches an all-English qualified name and nothing else. A partially translated address matches no node at all, so the translation happens here, before the lookup.
 
@@ -53,7 +53,7 @@ The same honesty applies one level down: when only one side carries the object, 
 
 ## Examples
 - By FQN: `{comparisonId: "cmp-mn4k7q2x-1", objectFqn: "Catalog.Products"}`.
-- Russian FQN, other side: `{comparisonId: "cmp-mn4k7q2x-1", objectFqn: "╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л", side: "other"}`.
+- Russian FQN, other side: `{comparisonId: "cmp-mn4k7q2x-1", objectFqn: "Справочник.Товары", side: "other"}`.
 - Two levels of children, bigger tables: `{comparisonId: "cmp-mn4k7q2x-1", objectFqn: "Catalog.Products", depth: 2, limit: 300}`.
 - By node id from the report, without waiting: `{comparisonId: "cmp-mn4k7q2x-1", nodeId: 128, waitSeconds: 0}`.
 

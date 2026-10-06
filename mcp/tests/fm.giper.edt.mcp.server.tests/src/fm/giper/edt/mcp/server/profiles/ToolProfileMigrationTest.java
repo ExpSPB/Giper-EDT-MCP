@@ -11,6 +11,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
 import org.eclipse.jface.preference.PreferenceStore;
@@ -18,6 +20,7 @@ import org.junit.After;
 import org.junit.Test;
 
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
+import fm.giper.edt.mcp.server.preferences.ToolPreset;
 import fm.giper.edt.mcp.server.preferences.ToolSettingsService;
 
 /**
@@ -97,13 +100,47 @@ public class ToolProfileMigrationTest
 
         ToolProfileMigration.migrateIfNeeded(repo, Set.of("git", "list_projects"), //$NON-NLS-1$ //$NON-NLS-2$
             ToolSettingsService.getInstance());
-        assertFalse(repo.getSnapshot().getDefault().getAllowedTools().contains("brand_new_tool")); //$NON-NLS-1$
-
+        Set<String> releaseTools = Set.of("infobase_sessions", "debug_pause", //$NON-NLS-1$ //$NON-NLS-2$
+            "import_project_from_file", "export_configuration_to_file"); //$NON-NLS-1$ //$NON-NLS-2$
+        Set<String> updatedCatalog = new HashSet<>(releaseTools);
+        updatedCatalog.addAll(Set.of("git", "list_projects")); //$NON-NLS-1$ //$NON-NLS-2$
+        long documentRevision = repo.getSnapshot().getDocumentRevision();
         ReplaceResult again = ToolProfileMigration.migrateIfNeeded(repo,
-            Set.of("git", "list_projects", "brand_new_tool"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            ToolSettingsService.getInstance());
+            updatedCatalog, ToolSettingsService.getInstance());
         assertEquals(ReplaceResult.Status.NO_OP, again.getStatus());
-        assertFalse(repo.getSnapshot().getDefault().getAllowedTools().contains("brand_new_tool")); //$NON-NLS-1$
+        assertEquals(documentRevision, repo.getSnapshot().getDocumentRevision());
+        assertEquals(Set.of("list_projects"), repo.getSnapshot().getDefault().getAllowedTools()); //$NON-NLS-1$
+        assertTrue(Collections.disjoint(releaseTools,
+            repo.getSnapshot().getDefault().getAllowedTools()));
+        assertTrue("the default mirror must also see every new tool as disabled", //$NON-NLS-1$
+            ToolSettingsService.getInstance().getDisabledTools().containsAll(releaseTools));
+    }
+
+    @Test
+    public void giperVersion6ReadOnlyLegacyStoreExcludesNewReleaseToolsBeforeAllowlistMigration()
+    {
+        Set<String> releaseTools = Set.of("infobase_sessions", "debug_pause", //$NON-NLS-1$ //$NON-NLS-2$
+            "import_project_from_file", "export_configuration_to_file"); //$NON-NLS-1$ //$NON-NLS-2$
+        Set<String> historical = new HashSet<>(ToolPreset.CODE_REVIEW.getDisabledTools());
+        historical.removeAll(releaseTools);
+        historical.remove("set_error_breakpoint"); //$NON-NLS-1$
+        PreferenceStore store = new PreferenceStore();
+        store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, String.join(",", historical)); //$NON-NLS-1$
+        store.setValue(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION, 6);
+        PreferenceToolProfileRepository repo = new PreferenceToolProfileRepository(store);
+        ToolSettingsService.setRepositoryOverrideForTest(repo);
+        ToolSettingsService.setStoreOverrideForTest(store);
+        Set<String> catalog = new HashSet<>(releaseTools);
+        catalog.addAll(Set.of("list_projects", "get_server_status", "set_error_breakpoint")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+        ReplaceResult result = ToolProfileMigration.migrateIfNeeded(repo, catalog,
+            ToolSettingsService.getInstance());
+
+        assertEquals(ReplaceResult.Status.ACCEPTED, result.getStatus());
+        assertEquals(Set.of("list_projects", "get_server_status"), //$NON-NLS-1$ //$NON-NLS-2$
+            repo.getSnapshot().getDefault().getAllowedTools());
+        assertEquals(PreferenceConstants.TOOL_PREFS_MIGRATION_VERSION,
+            store.getInt(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION));
     }
 
     @Test

@@ -7,6 +7,7 @@
 
 package fm.giper.edt.mcp.server.utils;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -76,6 +78,33 @@ public class LaunchLifecycleUtilsUpdateTest
         when(project.isOpen()).thenReturn(true);
         when(project.getName()).thenReturn("MyProject");
         return project;
+    }
+
+    private static Object autoConfirmerLockForTest() throws Exception
+    {
+        Field field = LaunchUpdateDialogAutoConfirmer.class.getDeclaredField("LOCK"); //$NON-NLS-1$
+        field.setAccessible(true);
+        return field.get(null);
+    }
+
+    private static int updateArmCountForTest() throws Exception
+    {
+        Field field = LaunchUpdateDialogAutoConfirmer.class.getDeclaredField("updateArmCount"); //$NON-NLS-1$
+        field.setAccessible(true);
+        synchronized (autoConfirmerLockForTest())
+        {
+            return field.getInt(null);
+        }
+    }
+
+    private static void setUpdateArmCountForTest(int count) throws Exception
+    {
+        Field field = LaunchUpdateDialogAutoConfirmer.class.getDeclaredField("updateArmCount"); //$NON-NLS-1$
+        field.setAccessible(true);
+        synchronized (autoConfirmerLockForTest())
+        {
+            field.setInt(null, count);
+        }
     }
 
     @Test
@@ -276,6 +305,35 @@ public class LaunchLifecycleUtilsUpdateTest
         assertFalse("update returning UPDATED must yield success", result.isPresent());
         verify(mgr, times(1)).update(eq(app), eq(ApplicationUpdateType.INCREMENTAL),
             any(ExecutionContext.class), any());
+    }
+
+    @Test
+    public void testHeadlessPreLaunchUpdateDoesNotReleaseForeignDialogArm() throws Exception
+    {
+        int originalUpdateArms = updateArmCountForTest();
+        setUpdateArmCountForTest(originalUpdateArms + 1);
+        try
+        {
+            IApplication app = mock(IApplication.class);
+            IApplicationManager mgr = mock(IApplicationManager.class);
+            when(mgr.getApplication(any(IProject.class), eq(APP_ID)))
+                .thenReturn(Optional.of(app));
+            when(mgr.getUpdateState(app))
+                .thenReturn(ApplicationUpdateState.INCREMENTAL_UPDATE_REQUIRED);
+            when(mgr.update(eq(app), eq(ApplicationUpdateType.INCREMENTAL),
+                any(ExecutionContext.class), any())).thenReturn(ApplicationUpdateState.UPDATED);
+
+            Optional<String> result = LaunchLifecycleUtils.updateApplicationIfNeeded(
+                mockOpenProject(), APP_ID, mgr, false, null);
+
+            assertFalse("update returning UPDATED must yield success", result.isPresent()); //$NON-NLS-1$
+            assertEquals("a headless no-op arm must not release another operation's update arm", //$NON-NLS-1$
+                originalUpdateArms + 1, updateArmCountForTest());
+        }
+        finally
+        {
+            setUpdateArmCountForTest(originalUpdateArms);
+        }
     }
 
     @Test

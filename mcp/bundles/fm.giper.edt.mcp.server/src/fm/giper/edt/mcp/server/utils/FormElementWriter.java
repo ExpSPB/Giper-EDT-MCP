@@ -169,6 +169,10 @@ public final class FormElementWriter
     /** The concrete form-attribute EClass (the base is not exposed by every model). */
     private static final String ECLASS_FORM_ATTRIBUTE = "FormAttribute"; //$NON-NLS-1$
     private static final String ECLASS_FORM_ITEM = "FormItem"; //$NON-NLS-1$
+    /** The form-model interface that declares {@code items} (Form, every Group, Table, Addition). */
+    private static final String ECLASS_FORM_ITEM_CONTAINER = "FormItemContainer"; //$NON-NLS-1$
+    /** The form-model interface that declares {@code handlers} (Form, FormField, Table, every ext-info). */
+    private static final String ECLASS_EVENT_HANDLER_CONTAINER = "EventHandlerContainer"; //$NON-NLS-1$
     private static final String ECLASS_FORM_FIELD = "FormField"; //$NON-NLS-1$
     private static final String ECLASS_USUAL_GROUP_EXT_INFO = "UsualGroupExtInfo"; //$NON-NLS-1$
     private static final String ECLASS_LABEL_DECORATION_EXT_INFO = "LabelDecorationExtInfo"; //$NON-NLS-1$
@@ -2312,7 +2316,7 @@ public final class FormElementWriter
         EObject attr = createFromFeatureType(formModel, FEATURE_ATTRIBUTES);
         if (attr == null)
         {
-            return "Cannot create a form attribute for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a form attribute for this form model."); //$NON-NLS-1$
         }
         setStringFeature(attr, FEATURE_NAME, name);
         setIntFeature(attr, FEATURE_ID, nextAttributeId(formModel));
@@ -2356,7 +2360,7 @@ public final class FormElementWriter
         EObject parameter = createFromFeatureType(formModel, FEATURE_PARAMETERS);
         if (parameter == null)
         {
-            return "Cannot create a form parameter for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a form parameter for this form model."); //$NON-NLS-1$
         }
         setStringFeature(parameter, FEATURE_NAME, name);
         setDefaultValueType(parameter);
@@ -2408,7 +2412,7 @@ public final class FormElementWriter
         EObject column = createFromFeatureType(owner, FEATURE_COLUMNS);
         if (column == null)
         {
-            return "Cannot create an attribute column for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create an attribute column for this form model."); //$NON-NLS-1$
         }
         setStringFeature(column, FEATURE_NAME, name);
         setIntFeature(column, FEATURE_ID, nextAttributeId(formModel));
@@ -3572,7 +3576,7 @@ public final class FormElementWriter
         EObject cmd = createFromFeatureType(formModel, FEATURE_FORM_COMMANDS);
         if (cmd == null)
         {
-            return "Cannot create a form command for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a form command for this form model."); //$NON-NLS-1$
         }
         setStringFeature(cmd, FEATURE_NAME, name);
         setIntFeature(cmd, FEATURE_ID, nextCommandId(formModel));
@@ -3608,7 +3612,7 @@ public final class FormElementWriter
         EObject item = createFromClassifier(formModel, classifier);
         if (item == null)
         {
-            return "Cannot create a form " + classifier + " for this form model."; //$NON-NLS-1$ //$NON-NLS-2$
+            throw modelLacks("Cannot create a form " + classifier + " for this form model."); //$NON-NLS-1$ //$NON-NLS-2$
         }
         // An explicit group type ({name:'type', value:'Popup'}) is validated against the model's
         // ManagedFormGroupType literals (case-insensitive); the container default applies otherwise.
@@ -3715,7 +3719,7 @@ public final class FormElementWriter
         EObject item = findUniqueItem(formModel, itemName);
         if (item == null)
         {
-            throw new IllegalArgumentException("Form item not found: '" + itemName //$NON-NLS-1$
+            throw Refusals.argument("Form item not found: '" + itemName //$NON-NLS-1$
                 + "'. Use get_metadata_details on the form to inspect its items."); //$NON-NLS-1$
         }
         return moveResolvedItem(formModel, item, itemName, targetParent, position, formName);
@@ -3747,7 +3751,9 @@ public final class FormElementWriter
             EObject container = item.eContainer();
             if (container == null)
             {
-                throw new IllegalStateException("Form item '" + itemName //$NON-NLS-1$
+                // Both raises here are refusals from OUR validation, so they are marked and log
+                // at INFO without a stack; an unmarked failure keeps its ERROR and its stack.
+                throw Refusals.state("Form item '" + itemName //$NON-NLS-1$
                     + "' has no parent container and cannot be moved."); //$NON-NLS-1$
             }
             err = moveItemInto(formModel, item, container, containerLabel(formModel, container),
@@ -3759,7 +3765,9 @@ public final class FormElementWriter
         }
         if (err != null)
         {
-            throw new IllegalArgumentException(err);
+            // A refusal: the move core RAISES a model failure (modelLacks) and only RETURNS a
+            // caller refusal, so a returned string is always the caller being told no.
+            throw Refusals.argument(err);
         }
         return destinationOf(formModel, item);
     }
@@ -3775,7 +3783,14 @@ public final class FormElementWriter
         String parentLabel, String position)
     {
         EClassifier formItem = formModel.eClass().getEPackage().getEClassifier(ECLASS_FORM_ITEM);
-        if (!(formItem instanceof EClass) || !((EClass)formItem).isInstance(item))
+        if (!(formItem instanceof EClass))
+        {
+            // Split from the instance check below: OUR constant not resolving is model drift, and
+            // folding it into the refusal would report a platform break as the caller's mistake.
+            throw modelLacks("The form model does not expose a " + ECLASS_FORM_ITEM //$NON-NLS-1$
+                + " classifier."); //$NON-NLS-1$
+        }
+        if (!((EClass)formItem).isInstance(item))
         {
             return "Only a visual form item (field / button / group / decoration / table) can be " //$NON-NLS-1$
                 + "moved; '" + item.eClass().getName() //$NON-NLS-1$
@@ -3812,6 +3827,12 @@ public final class FormElementWriter
         EStructuralFeature itemsFeature = container.eClass().getEStructuralFeature(FEATURE_ITEMS);
         if (!(itemsFeature instanceof EReference) || !itemsFeature.isMany())
         {
+            if (container == formModel || isOrInherits(container.eClass(), ECLASS_FORM_ITEM_CONTAINER))
+            {
+                // The root and every declared item container always carry the list: the model's shape.
+                throw modelLacks("The form model's " + container.eClass().getName() + "." + FEATURE_ITEMS //$NON-NLS-1$ //$NON-NLS-2$
+                    + " is not an item list."); //$NON-NLS-1$
+            }
             return "The parent '" + parentLabel + "' (" + container.eClass().getName() //$NON-NLS-1$ //$NON-NLS-2$
                 + ") cannot hold nested items."; //$NON-NLS-1$
         }
@@ -3880,14 +3901,14 @@ public final class FormElementWriter
             int idx = Integer.parseInt(position.trim());
             if (idx < 0)
             {
-                throw new IllegalArgumentException("Invalid position index '" + position //$NON-NLS-1$
+                throw Refusals.argument("Invalid position index '" + position //$NON-NLS-1$
                     + "': must be zero or positive."); //$NON-NLS-1$
             }
             return idx;
         }
         catch (NumberFormatException e)
         {
-            throw new IllegalArgumentException("Invalid position '" + position //$NON-NLS-1$
+            throw Refusals.argument("Invalid position '" + position //$NON-NLS-1$
                 + "'. Expected an integer index, 'first', 'last', 'before:<name>' or 'after:<name>'."); //$NON-NLS-1$
         }
     }
@@ -3897,12 +3918,12 @@ public final class FormElementWriter
     {
         if (sibling.isEmpty())
         {
-            throw new IllegalArgumentException("Position reference is missing a sibling name " //$NON-NLS-1$
+            throw Refusals.argument("Position reference is missing a sibling name " //$NON-NLS-1$
                 + "(use 'before:<name>' or 'after:<name>')."); //$NON-NLS-1$
         }
         if (sibling.equalsIgnoreCase(movedName))
         {
-            throw new IllegalArgumentException("Position cannot reference the moved item itself: '" //$NON-NLS-1$
+            throw Refusals.argument("Position cannot reference the moved item itself: '" //$NON-NLS-1$
                 + sibling + "'."); //$NON-NLS-1$
         }
         for (int i = 0; i < destNames.size(); i++)
@@ -3912,7 +3933,7 @@ public final class FormElementWriter
                 return i;
             }
         }
-        throw new IllegalArgumentException("Sibling '" + sibling //$NON-NLS-1$
+        throw Refusals.argument("Sibling '" + sibling //$NON-NLS-1$
             + "' not found in the destination container."); //$NON-NLS-1$
     }
 
@@ -3957,7 +3978,7 @@ public final class FormElementWriter
         collectItemsByName(formModel, name, (EClass)formItem, matches);
         if (matches.size() > 1)
         {
-            throw new IllegalArgumentException("Form item name '" + name //$NON-NLS-1$
+            throw Refusals.argument("Form item name '" + name //$NON-NLS-1$
                 + "' is ambiguous (it matches more than one item)."); //$NON-NLS-1$
         }
         return matches.isEmpty() ? null : matches.get(0);
@@ -4005,7 +4026,9 @@ public final class FormElementWriter
         if (!(feature instanceof EAttribute)
             || !(((EAttribute)feature).getEAttributeType() instanceof EEnum))
         {
-            return null;
+            // The platform model's shape, not the caller's literal: raise it, never refuse it.
+            throw modelLacks("The form model's " + owner.eClass().getName() + "." + featureName //$NON-NLS-1$ //$NON-NLS-2$
+                + " is not an enum attribute."); //$NON-NLS-1$
         }
         for (EEnumLiteral literal : ((EEnum)((EAttribute)feature).getEAttributeType()).getELiterals())
         {
@@ -4129,7 +4152,7 @@ public final class FormElementWriter
         EObject item = createFromClassifier(formModel, ECLASS_FORM_FIELD);
         if (item == null)
         {
-            return "Cannot create a form field for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a form field for this form model."); //$NON-NLS-1$
         }
         setStringFeature(item, FEATURE_NAME, name);
         applyVisibleDefaults(item);
@@ -4211,7 +4234,7 @@ public final class FormElementWriter
         EObject table = createFromClassifier(formModel, ECLASS_TABLE);
         if (table == null)
         {
-            return "Cannot create a form table for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a form table for this form model."); //$NON-NLS-1$
         }
         setStringFeature(table, FEATURE_NAME, name);
         applyVisibleDefaults(table);
@@ -4702,7 +4725,7 @@ public final class FormElementWriter
         EObject item = createFromClassifier(formModel, ELEM_BUTTON);
         if (item == null)
         {
-            return "Cannot create a form button for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a form button for this form model."); //$NON-NLS-1$
         }
         setStringFeature(item, FEATURE_NAME, name);
         applyVisibleDefaults(item);
@@ -5165,11 +5188,27 @@ public final class FormElementWriter
      * its callers only mean to reach INTO the holder - this one is authoritative about the class,
      * because the type just changed.</p>
      *
+     * <p>A kind change CARRIES THE OLD NODE'S DATA OVER, exactly as the form ROOT twin
+     * {@link #syncFormExtInfo} does and as the platform's {@code copyDataOfSameFeatures} does:
+     * every concrete {@code ExtInfo} is an {@code EventHandlerContainer}, so the events an item's
+     * ext-info type publishes bind INSIDE that node ({@code createHandler} puts them there), and a
+     * bare replacement would destroy every one of them - including the ones the new kind still
+     * publishes. Only a type that pairs with NO node has nowhere to carry them to; those are named
+     * back through {@code lostHandlers} rather than disappearing silently (issue #601).</p>
+     *
+     * <p>This method never DROPS a subscription. Deciding which events the item no longer publishes
+     * is {@link #dropUnpublishedItemHandlers}, run ONCE on the kind the whole batch leaves - applied
+     * per change, {@code [type=LabelField, type=InputField]} would drop, at the intermediate kind,
+     * the very subscriptions the final kind publishes.</p>
+     *
      * @param formModel the editable content form (owns the form EPackage the classifier comes from)
      * @param item the form item whose {@code type} has just been set, re-fetched inside the tx
+     * @param lostHandlers collects the bindings that went with a node this change could not carry
+     *            over, as {@code "Event (Procedure)"}; may be {@code null}
      * @return the EClass name of the ext-info now on the item, or {@code null} when it carries none
      */
-    public static String syncItemExtInfo(EObject formModel, EObject item)
+    public static String syncItemExtInfo(EObject formModel, EObject item,
+        List<String> lostHandlers)
     {
         EStructuralFeature feature = item.eClass().getEStructuralFeature(FEATURE_EXT_INFO);
         if (!(feature instanceof EReference) || feature.isMany())
@@ -5184,6 +5223,7 @@ public final class FormElementWriter
             // with none must lose it. Only the latter has a type literal to have decided that.
             if (current != null && enumLiteralOf(item, FEATURE_TYPE) != null)
             {
+                collectBoundHandlers(current, lostHandlers);
                 item.eSet(feature, null);
                 return null;
             }
@@ -5191,10 +5231,194 @@ public final class FormElementWriter
         }
         if (current != null && classifier.equals(current.eClass().getName()))
         {
+            // The node did not change, so neither did anything bound inside it.
             return classifier;
         }
         EObject created = replaceExtInfoClassifier(formModel, item, feature, classifier);
-        return created == null ? null : created.eClass().getName();
+        if (created == null)
+        {
+            // The pairing could not be created, so the slot was cleared: the old node is gone and
+            // there is nothing to carry its bindings into.
+            collectBoundHandlers(current, lostHandlers);
+            return null;
+        }
+        // A CHANGE of kind is not a reason to lose what the old node held - above all the event
+        // handlers bound inside it. The same call syncFormExtInfo makes for the form root.
+        copySameFeatures(current, created);
+        return created.eClass().getName();
+    }
+
+    /**
+     * Names every binding in {@code container} into {@code out} - used where a node is dropped and
+     * its bindings go with it, so the caller can report what it took rather than lose it silently.
+     */
+    private static void collectBoundHandlers(EObject container, List<String> out)
+    {
+        if (container == null || out == null)
+        {
+            return;
+        }
+        for (EObject handler : referenceList(container, KEY_HANDLERS))
+        {
+            String label = describeHandler(handler);
+            if (label != null)
+            {
+                out.add(label);
+            }
+        }
+    }
+
+    /**
+     * Drops the item's handlers for events its kind does not publish, reading the published set off
+     * the item as it stands NOW - so the caller runs this once, after the whole batch.
+     *
+     * <p>A set that cannot be established ("cannot tell", or a union that did not fully resolve)
+     * removes nothing - the carry-over above has already kept every binding. A set established as
+     * EMPTY is the new kind publishing nothing, so every named binding goes.</p>
+     *
+     * @param item the form item whose kind the batch has finished writing
+     * @param version the platform version the published events are resolved for
+     * @return the dropped bindings as {@code "Event (Procedure)"}
+     */
+    public static List<String> dropUnpublishedItemHandlers(EObject item, Version version)
+    {
+        return removeHandlersForUnpublishedEvents(item, publishedEventSpellings(item, version));
+    }
+
+    /**
+     * Removes from {@code item}'s {@code handlers} every binding whose event is absent from
+     * {@code publishedSpellings}, naming each as {@code "Event (Procedure)"} (the event alone when
+     * the procedure cannot be read). The decision taken as DATA, so it is provable without a
+     * platform type registry.
+     *
+     * <p>Two things are deliberately KEPT, because neither is evidence that the new kind stopped
+     * publishing the event: a binding whose event names nothing readable, and every binding at all
+     * when the published set is unknown ({@code null}; see {@link #dropUnpublishedItemHandlers}).</p>
+     *
+     * @param item the form item, after its ext-info was re-paired
+     * @param publishedSpellings every spelling the new kind publishes, lower-cased; {@code null}
+     *            when it cannot be established, empty when the kind publishes nothing
+     * @return the dropped bindings, in the order they were bound
+     */
+    static List<String> removeHandlersForUnpublishedEvents(EObject item,
+        Set<String> publishedSpellings)
+    {
+        List<String> removed = new ArrayList<>();
+        if (publishedSpellings == null)
+        {
+            return removed;
+        }
+        for (EObject container : handlerContainersOf(item))
+        {
+            removed.addAll(removeUnpublishedFrom(container, publishedSpellings));
+        }
+        return removed;
+    }
+
+    /**
+     * The objects an item's bindings can live in: its OWN {@code handlers} list and its ext-info's.
+     * Both, never one: a {@code FormField}'s own list carries the events its BASE type publishes
+     * while everything its ext-info type publishes binds INSIDE the node ({@code createHandler}
+     * routes to {@code matched.owner}, and every concrete {@code ExtInfo} is an
+     * {@code EventHandlerContainer}). Reading only the item answers about the smaller half - and
+     * for a Group / Decoration / Addition, which are NOT {@code EventHandlerContainer}s at all,
+     * about nothing.
+     */
+    private static List<EObject> handlerContainersOf(EObject item)
+    {
+        List<EObject> containers = new ArrayList<>(2);
+        if (holdsHandlerList(item))
+        {
+            containers.add(item);
+        }
+        EObject ext = singleReference(item, FEATURE_EXT_INFO);
+        if (ext != null && holdsHandlerList(ext))
+        {
+            containers.add(ext);
+        }
+        return containers;
+    }
+
+    /** Removes the bindings of {@code container} whose event is absent from the published set. */
+    private static List<String> removeUnpublishedFrom(EObject container,
+        Set<String> publishedSpellings)
+    {
+        List<String> removed = new ArrayList<>();
+        List<EObject> doomed = new ArrayList<>();
+        for (EObject handler : referenceList(container, KEY_HANDLERS))
+        {
+            List<String> spellings = eventSpellings(singleReference(handler, FEATURE_EVENT));
+            if (spellings.isEmpty() || publishesAnyOf(publishedSpellings, spellings))
+            {
+                continue;
+            }
+            doomed.add(handler);
+            removed.add(describeHandler(handler));
+        }
+        if (!doomed.isEmpty())
+        {
+            referenceList(container, KEY_HANDLERS).removeAll(doomed);
+        }
+        return removed;
+    }
+
+    /**
+     * How a binding is named back to the caller: {@code "Event (Procedure)"}, or whichever half is
+     * readable on its own, or {@code null} when neither is - there is nothing to report then.
+     */
+    private static String describeHandler(EObject handler)
+    {
+        List<String> spellings = eventSpellings(singleReference(handler, FEATURE_EVENT));
+        String event = spellings.isEmpty() ? "" : spellings.get(0); //$NON-NLS-1$
+        String procedure = stringFeature(handler, FEATURE_NAME);
+        if (procedure == null || procedure.isEmpty())
+        {
+            return event.isEmpty() ? null : event;
+        }
+        return event.isEmpty() ? procedure : event + " (" + procedure + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** Whether any spelling of the bound event is one the element still publishes. */
+    private static boolean publishesAnyOf(Set<String> publishedSpellings, List<String> spellings)
+    {
+        for (String spelling : spellings)
+        {
+            if (publishedSpellings.contains(spelling.toLowerCase(Locale.ROOT)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Every spelling - English and Russian, lower-cased - of the events {@code container} publishes,
+     * or {@code null} when the set cannot be established. Both spellings are collected because the
+     * bound event carries both and a handler written in either language is the same subscription.
+     *
+     * <p>Same guards as {@link #availableEventNames}, for the same reason: an element whose ext-info
+     * pairing is unreadable, or a union that did not fully resolve, answers nothing.</p>
+     */
+    private static Set<String> publishedEventSpellings(EObject container, Version version)
+    {
+        if (!publishesKnownEventSet(container))
+        {
+            return null;
+        }
+        EventUnion union = availableEvents(container, version);
+        if (!union.complete())
+        {
+            return null;
+        }
+        Set<String> spellings = new HashSet<>();
+        for (AvailableEvent available : union.events())
+        {
+            for (String spelling : eventSpellings(available.event))
+            {
+                spellings.add(spelling.toLowerCase(Locale.ROOT));
+            }
+        }
+        return spellings;
     }
 
     /**
@@ -5326,16 +5550,35 @@ public final class FormElementWriter
             }
             return createCommandAction(container, eventName, procName, createdKind);
         }
-        EStructuralFeature handlersFeat = container.eClass().getEStructuralFeature(KEY_HANDLERS);
-        if (!(handlersFeat instanceof EReference) || !handlersFeat.isMany())
+        // A form ROOT always holds handlers, so there the missing list is the model's shape.
+        if ("Form".equals(container.eClass().getName()) && !holdsHandlerList(container)) //$NON-NLS-1$
         {
+            throw modelLacks("The form model's Form." + KEY_HANDLERS + " is not a handler list."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (!bindsHandlers(container))
+        {
+            raiseIfDeclaredHandlerContainer(container);
             return "The form element '" + container.eClass().getName() //$NON-NLS-1$
                 + "' cannot hold event handlers."; //$NON-NLS-1$
         }
-        List<AvailableEvent> events = availableEvents(container, version).events();
+        EventUnion union = availableEvents(container, version);
+        List<AvailableEvent> events = union.events();
+        // A negative answer is the caller's only when the union is whole: every mapped type resolved
+        // and the element carries the ext-info its kind requires (an unreadable requirement is no proof).
+        ExtInfoRequirement required = extInfoRequirement(container);
+        EObject ext = singleReference(container, FEATURE_EXT_INFO);
+        boolean extInfoMismatch = required.readable()
+            && !Objects.equals(required.classifier(), ext == null ? null : ext.eClass().getName());
+        boolean wholeUnion = union.complete() && !extInfoMismatch;
         if (events.isEmpty())
         {
-            return "Could not resolve the available events for this form element."; //$NON-NLS-1$
+            if (!wholeUnion)
+            {
+                throw modelLacks("Could not resolve the available events for this form element."); //$NON-NLS-1$
+            }
+            // Every type resolved and none publishes an event: the caller picked an element without any.
+            return "The form element '" + container.eClass().getName() //$NON-NLS-1$
+                + "' publishes no events, so no handler can be bound to it."; //$NON-NLS-1$
         }
         AvailableEvent matched = null;
         for (AvailableEvent candidate : events)
@@ -5349,6 +5592,12 @@ public final class FormElementWriter
         }
         if (matched == null)
         {
+            if (!wholeUnion)
+            {
+                // The event may be published by the half that did not resolve: not the caller's fault.
+                throw modelLacks("Could not resolve every available event for this form element, so '" //$NON-NLS-1$
+                    + eventName + "' cannot be judged."); //$NON-NLS-1$
+            }
             boolean ru = "ru".equals(langCode); //$NON-NLS-1$
             StringBuilder sb = new StringBuilder();
             for (AvailableEvent candidate : events)
@@ -5399,7 +5648,7 @@ public final class FormElementWriter
         EClass baseEhType = ((EReference)handlersFeat).getEReferenceType();
         if (baseEhType == null || baseEhType.getEPackage() == null)
         {
-            return "Cannot create an event handler for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create an event handler for this form model."); //$NON-NLS-1$
         }
         // Resolve the extension type and call-type literal UP FRONT - a wrong literal must fail loudly,
         // never silently produce an extension handler whose callType is left unset.
@@ -5411,8 +5660,8 @@ public final class FormElementWriter
                 baseEhType.getEPackage().getEClassifier(ECLASS_EVENT_HANDLER_EXTENSION);
             if (!(extClassifier instanceof EClass))
             {
-                return "This form model has no '" + ECLASS_EVENT_HANDLER_EXTENSION //$NON-NLS-1$
-                    + "' type; extension event interception is not available here."; //$NON-NLS-1$
+                throw modelLacks("This form model has no '" + ECLASS_EVENT_HANDLER_EXTENSION //$NON-NLS-1$
+                    + "' type; extension event interception is not available here."); //$NON-NLS-1$
             }
             ehType = (EClass)extClassifier;
             callTypeLiteral = resolveEventCallType(ehType, callType);
@@ -5462,7 +5711,7 @@ public final class FormElementWriter
             EStructuralFeature ctFeat = handler.eClass().getEStructuralFeature(FEATURE_CALL_TYPE);
             if (ctFeat == null)
             {
-                return "The form model's EventHandlerExtension has no 'callType' attribute."; //$NON-NLS-1$
+                throw modelLacks("The form model's EventHandlerExtension has no 'callType' attribute."); //$NON-NLS-1$
             }
             handler.eSet(ctFeat, callTypeLiteral.getInstance());
         }
@@ -5482,14 +5731,12 @@ public final class FormElementWriter
     static EEnumLiteral resolveEventCallType(EClass eventHandlerExtType, String token)
     {
         EStructuralFeature feature = eventHandlerExtType.getEStructuralFeature(FEATURE_CALL_TYPE);
-        if (!(feature instanceof EAttribute))
-        {
-            return null;
-        }
-        EClassifier type = ((EAttribute)feature).getEAttributeType();
+        EClassifier type = feature instanceof EAttribute ? ((EAttribute)feature).getEAttributeType() : null;
         if (!(type instanceof EEnum))
         {
-            return null;
+            // The platform model's shape, not the caller's token: raise it, never refuse it.
+            throw modelLacks("The form model's " + eventHandlerExtType.getName() + "." + FEATURE_CALL_TYPE //$NON-NLS-1$ //$NON-NLS-2$
+                + " is not an enum attribute."); //$NON-NLS-1$
         }
         String want = token.trim();
         if (CALL_TYPE_UI_INSTEAD.equalsIgnoreCase(want))
@@ -5547,7 +5794,7 @@ public final class FormElementWriter
         EStructuralFeature actionFeat = command.eClass().getEStructuralFeature(FEATURE_ACTION);
         if (!(actionFeat instanceof EReference))
         {
-            return "This form model does not support a command action handler."; //$NON-NLS-1$
+            throw modelLacks("This form model does not support a command action handler."); //$NON-NLS-1$
         }
         if (command.eGet(actionFeat) != null)
         {
@@ -5560,7 +5807,7 @@ public final class FormElementWriter
             container != null ? container.eClass().getEStructuralFeature(FEATURE_HANDLER) : null;
         if (handler == null || !(handlerFeat instanceof EReference))
         {
-            return "Cannot create a command action handler for this form model."; //$NON-NLS-1$
+            throw modelLacks("Cannot create a command action handler for this form model."); //$NON-NLS-1$
         }
         String proc = (procName == null || procName.isEmpty())
             ? stringFeature(command, FEATURE_NAME) : procName;
@@ -5781,7 +6028,8 @@ public final class FormElementWriter
      * item itself, but a form root's {@code extInfo} is an {@code EventHandlerContainer} of its own
      * and the events it publishes bind INSIDE it - that is where EDT puts a record form's
      * {@code BeforeWriteAtServer} (issue #592, and {@code EventHandlerCollectionModel} does the same
-     * split). Item ext-infos hold no handler list, so they keep answering with the item.</p>
+     * split). Item ext-infos hold handler lists too, so an ext-info event binds inside the ext-info -
+     * for a Group or a Decoration, which hold no list of their own, that is the only place.</p>
      *
      * <p>The union is incomplete when a non-null mapped type cannot be resolved. Validators then
      * receive no union, while writer callers retain the successfully resolved events.</p>
@@ -5798,8 +6046,10 @@ public final class FormElementWriter
         {
             return new EventUnion(Collections.emptyList(), false);
         }
+        // Like EDT's EventHandlerCollectionModel, the element's own type offers events only when the
+        // element can hold their bindings; a Group's or a Decoration's events come from its ext-info.
         List<EObject> base = new ArrayList<>();
-        boolean complete = addTypeEvents(provider, element,
+        boolean complete = !holdsHandlerList(element) || addTypeEvents(provider, element,
             PLATFORM_TYPE_BY_ECLASS.get(element.eClass().getName()), base);
         List<AvailableEvent> events = new ArrayList<>();
         for (EObject event : base)
@@ -5845,6 +6095,46 @@ public final class FormElementWriter
     {
         EStructuralFeature feature = object.eClass().getEStructuralFeature(KEY_HANDLERS);
         return feature instanceof EReference && feature.isMany();
+    }
+
+    /**
+     * Whether handlers can be bound around {@code element}: in its own list, or in its ext-info's. A
+     * Group or a Decoration holds none itself; its events bind inside its ext-info (issue #651).
+     */
+    static boolean bindsHandlers(EObject element)
+    {
+        if (holdsHandlerList(element))
+        {
+            return true;
+        }
+        EObject ext = singleReference(element, FEATURE_EXT_INFO);
+        return ext != null && holdsHandlerList(ext);
+    }
+
+    /**
+     * Where {@link #bindsHandlers} said no: a declared handler container (element or ext-info) without
+     * its list is the model's shape and raises; otherwise the caller's refusal stands.
+     */
+    private static void raiseIfDeclaredHandlerContainer(EObject element)
+    {
+        EObject declared = declaresHandlers(element) ? element : null;
+        EObject ext = declared == null ? singleReference(element, FEATURE_EXT_INFO) : null;
+        if (ext != null && declaresHandlers(ext))
+        {
+            declared = ext;
+        }
+        if (declared != null)
+        {
+            throw modelLacks("The form model's " + declared.eClass().getName() + "." + KEY_HANDLERS //$NON-NLS-1$ //$NON-NLS-2$
+                + " is not a handler list."); //$NON-NLS-1$
+        }
+    }
+
+    /** Whether the form model declares {@code object}'s class a holder of {@code handlers}. */
+    private static boolean declaresHandlers(EObject object)
+    {
+        return "Form".equals(object.eClass().getName()) //$NON-NLS-1$
+            || isOrInherits(object.eClass(), ECLASS_EVENT_HANDLER_CONTAINER);
     }
 
     /**
@@ -5899,10 +6189,11 @@ public final class FormElementWriter
         }
         EStructuralFeature eventsFeat = type.eClass().getEStructuralFeature("events"); //$NON-NLS-1$
         Object value = eventsFeat != null ? type.eGet(eventsFeat) : null;
-        if (value instanceof List<?>)
+        if (!(value instanceof List<?>))
         {
-            accumulator.addAll((List<EObject>)value);
+            return false; // a resolved type without an events list is the model's shape, not "none"
         }
+        accumulator.addAll((List<EObject>)value);
         return true;
     }
 
@@ -6026,6 +6317,26 @@ public final class FormElementWriter
     }
 
     // ---- element factories (reflective, via the form EPackage) ----------------------------------
+
+    /**
+     * The form metamodel does not expose a classifier or feature this writer needs: one of OUR OWN
+     * constants failed to resolve against the form EPackage. That is PLATFORM DRIFT, never caller
+     * input, so it is raised UNMARKED and keeps its ERROR and its stack.
+     * <p>
+     * Raised rather than returned on purpose. These writers answer a caller REFUSAL with a message
+     * string, and the calling tool marks whatever string comes back as a refusal; a model failure
+     * travelling that same channel would be demoted along with them, which is the swallowed
+     * API-change class a green suite hides. Raising separates the two at the point of detection
+     * instead of guessing later from the text. The wording is unchanged, so the caller still sees
+     * the same message via {@code unwrapCauseMessage}.
+     *
+     * @param message the existing wording
+     * @return the exception to throw
+     */
+    private static IllegalStateException modelLacks(String message)
+    {
+        return new IllegalStateException(message);
+    }
 
     /** Creates an instance of a mono-typed collection's element EType (attributes / formCommands). */
     private static EObject createFromFeatureType(EObject formModel, String featureName)
@@ -7221,8 +7532,7 @@ public final class FormElementWriter
      */
     private static boolean ownerAcceptsHandlerLeaf(EObject owner, String leaf, Version version)
     {
-        EStructuralFeature handlersFeat = owner.eClass().getEStructuralFeature(KEY_HANDLERS);
-        if (!(handlersFeat instanceof EReference) || !handlersFeat.isMany())
+        if (!bindsHandlers(owner))
         {
             return owner.eClass().getEStructuralFeature(FEATURE_ACTION) != null && isActionToken(leaf);
         }
@@ -7393,11 +7703,13 @@ public final class FormElementWriter
             }
             return singleReference(container, FEATURE_ACTION);
         }
-        EStructuralFeature handlersFeat = container.eClass().getEStructuralFeature(KEY_HANDLERS);
-        if (!(handlersFeat instanceof EReference) || !handlersFeat.isMany())
+        if (!bindsHandlers(container))
         {
             return null;
         }
+        EObject listOwner = holdsHandlerList(container) ? container
+            : singleReference(container, FEATURE_EXT_INFO);
+        EStructuralFeature handlersFeat = listOwner.eClass().getEStructuralFeature(KEY_HANDLERS);
         EClass ehType = ((EReference)handlersFeat).getEReferenceType();
         EStructuralFeature evFeat = ehType != null ? ehType.getEStructuralFeature(FEATURE_EVENT) : null;
         for (EObject handler : handlersAroundContainer(container))
@@ -7565,9 +7877,9 @@ public final class FormElementWriter
             setStringFeature(handler, FEATURE_NAME, procName);
             return null;
         }
-        EStructuralFeature handlersFeat = container.eClass().getEStructuralFeature(KEY_HANDLERS);
-        if (!(handlersFeat instanceof EReference) || !handlersFeat.isMany())
+        if (!bindsHandlers(container))
         {
+            raiseIfDeclaredHandlerContainer(container);
             return "The form element '" + container.eClass().getName() //$NON-NLS-1$
                 + "' cannot hold event handlers."; //$NON-NLS-1$
         }
@@ -7603,6 +7915,12 @@ public final class FormElementWriter
         EStructuralFeature cmdFeat = button.eClass().getEStructuralFeature("commandName"); //$NON-NLS-1$
         if (!(cmdFeat instanceof EReference))
         {
+            if (isOrInherits(button.eClass(), ELEM_BUTTON))
+            {
+                // A Button always refers its command: a missing reference is the model's shape.
+                throw modelLacks("The form model's " + button.eClass().getName() //$NON-NLS-1$
+                    + ".commandName is not a reference."); //$NON-NLS-1$
+            }
             return "The form item '" + button.eClass().getName() //$NON-NLS-1$
                 + "' has no 'commandName' reference; only a Button runs a form command."; //$NON-NLS-1$
         }

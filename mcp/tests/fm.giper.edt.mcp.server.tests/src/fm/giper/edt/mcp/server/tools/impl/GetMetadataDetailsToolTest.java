@@ -30,6 +30,7 @@ import org.eclipse.emf.ecore.EcoreFactory;
 import org.eclipse.emf.ecore.EcorePackage;
 import org.junit.Test;
 
+import com._1c.g5.v8.dt.mcore.McoreFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogCodeType;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogForm;
@@ -106,6 +107,33 @@ public class GetMetadataDetailsToolTest
         String desc = new GetMetadataDetailsTool().getDescription();
         assertNotNull(desc);
         assertTrue(desc.length() > 0);
+    }
+
+    @Test
+    public void testDescriptionAdvertisesTheCommandInterface()
+    {
+        assertTrue(new GetMetadataDetailsTool().getDescription().contains("command interface")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testMisaddressedCommandInterfaceIsRecognizedInBothLanguages()
+    {
+        assertTrue(GetMetadataDetailsTool.isMisaddressedCommandInterface("Catalog.Products.CommandInterface")); //$NON-NLS-1$
+        assertTrue(GetMetadataDetailsTool.isMisaddressedCommandInterface("Справочник.Товары.КомандныйИнтерфейс")); //$NON-NLS-1$
+        assertTrue(GetMetadataDetailsTool.isMisaddressedCommandInterface("Configuration.Sales.CommandInterface")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testRealAndUnrelatedAddressesAreNotMisaddressed()
+    {
+        // A real section address takes the command-interface view instead.
+        assertFalse(GetMetadataDetailsTool.isMisaddressedCommandInterface("Subsystem.Sales.CommandInterface")); //$NON-NLS-1$
+        assertFalse(GetMetadataDetailsTool.isMisaddressedCommandInterface("Подсистема.Продажи.КомандныйИнтерфейс")); //$NON-NLS-1$
+        // An object or a member whose Name is CommandInterface is an ordinary address.
+        assertFalse(GetMetadataDetailsTool.isMisaddressedCommandInterface("Catalog.CommandInterface")); //$NON-NLS-1$
+        assertFalse(GetMetadataDetailsTool.isMisaddressedCommandInterface("Catalog.Products.Attribute.CommandInterface")); //$NON-NLS-1$
+        assertFalse(GetMetadataDetailsTool.isMisaddressedCommandInterface("Catalog.Products.Attribute")); //$NON-NLS-1$
+        assertFalse(GetMetadataDetailsTool.isMisaddressedCommandInterface(null));
     }
 
     @Test
@@ -898,11 +926,13 @@ public class GetMetadataDetailsToolTest
         ChartOfCharacteristicTypes types = MdClassFactory.eINSTANCE.createChartOfCharacteristicTypes();
         types.setName("Properties"); //$NON-NLS-1$
         types.setCodeLength(5);
+        types.setType(McoreFactory.eINSTANCE.createTypeDescription());
 
         PredefinedWriter.ItemProps props = new PredefinedWriter.ItemProps();
         props.code = new JsonPrimitive("W001"); //$NON-NLS-1$
         props.codeSet = true;
-        PredefinedWriter.create(types, "Weight", props, false); //$NON-NLS-1$
+        PredefinedWriter.WriteResult created = PredefinedWriter.create(types, "Weight", props, false); //$NON-NLS-1$
+        assertFalse("seed the CCT item: " + created.error, created.isError()); //$NON-NLS-1$
 
         String md = GetMetadataDetailsTool.formatTypeSpecificProperties(types, false);
         assertTrue(md.contains("### Predefined items")); //$NON-NLS-1$

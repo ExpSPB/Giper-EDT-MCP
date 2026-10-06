@@ -14,6 +14,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -54,6 +55,7 @@ public final class ProxyServer
     private static final String CONTEXT_ADMIN_SHUTDOWN = "/admin/shutdown"; //$NON-NLS-1$
 
     private static final int WORKER_THREADS = 32;
+    static final int MAX_SSE_STREAMS = 64;
 
     private final ProxyConfig cfg;
     private final BackendRegistry registry;
@@ -61,6 +63,7 @@ public final class ProxyServer
 
     private HttpServer httpServer;
     private ThreadPoolExecutor executor;
+    private ThreadPoolExecutor sseExecutor;
 
     /**
      * Cleanup run once {@code POST /admin/shutdown} has been accepted and its response flushed;
@@ -88,7 +91,7 @@ public final class ProxyServer
 
     /**
      * Binds {@code cfg.port} (0 = ephemeral), registers the {@code /health} and {@code /mcp}
-     * contexts and starts serving requests on a cached thread pool.
+     * contexts and starts serving requests on separate HTTP and bounded SSE pools.
      *
      * <p>Binds loopback only ({@link InetAddress#getLoopbackAddress()}) unless
      * {@code cfg.allowRemote} is set, in which case it binds {@code cfg.bindHost} instead -
@@ -130,6 +133,15 @@ public final class ProxyServer
                 return thread;
             });
         executor.allowCoreThreadTimeOut(true);
+        AtomicInteger streamCounter = new AtomicInteger();
+        sseExecutor = new ThreadPoolExecutor(
+            0, MAX_SSE_STREAMS, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(),
+            r -> {
+                Thread thread = new Thread(r, "edt-mcp-proxy-sse-" + streamCounter.incrementAndGet()); //$NON-NLS-1$
+                thread.setDaemon(true);
+                return thread;
+            });
+        handler.setSsePool(sseExecutor);
         httpServer.setExecutor(executor);
         handler.setWorkerPool(executor);
         httpServer.createContext("/health", this::handleHealth); //$NON-NLS-1$
@@ -153,10 +165,19 @@ public final class ProxyServer
      */
     public synchronized void stop()
     {
+        // Detach stream admission before closing connections. HttpServer.stop closes the
+        // underlying sockets first, so an exchange close cannot wait behind a blocked write.
+        handler.setSsePool(null);
         if (httpServer != null)
         {
             httpServer.stop(0);
             httpServer = null;
+        }
+        handler.stopSseStreams();
+        if (sseExecutor != null)
+        {
+            sseExecutor.shutdownNow();
+            sseExecutor = null;
         }
         if (executor != null)
         {

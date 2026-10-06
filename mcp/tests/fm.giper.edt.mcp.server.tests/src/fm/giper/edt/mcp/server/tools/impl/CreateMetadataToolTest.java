@@ -11,23 +11,52 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EObject;
+import org.eclipse.emf.ecore.EStructuralFeature;
+import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.junit.Test;
 
+import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmTransaction;
+import com._1c.g5.v8.dt.core.model.IModelObjectFactory;
+import com._1c.g5.v8.dt.core.platform.IV8Project;
+import com._1c.g5.v8.dt.metadata.mdclass.ExternalDataProcessor;
+import com._1c.g5.v8.dt.metadata.mdclass.ExternalReport;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
+import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.RegisterDimension;
 import com._1c.g5.v8.dt.metadata.mdclass.ReturnValuesReuse;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com._1c.g5.v8.dt.mcore.McoreFactory;
+import com._1c.g5.v8.dt.mcore.TypeDescription;
+import com._1c.g5.v8.dt.platform.version.Version;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
 import fm.giper.edt.mcp.server.tools.impl.CreateMetadataTool.CommonModuleFlags;
 import fm.giper.edt.mcp.server.tools.impl.CreateMetadataTool.CommonModuleKind;
+import fm.giper.edt.mcp.server.tools.impl.CreateMetadataTool.MemberChildSpec;
+import fm.giper.edt.mcp.server.tools.impl.CreateMetadataTool.Props;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.PredefinedWriter;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 /**
  * Lightweight contract tests for {@link CreateMetadataTool}: tool metadata and JSON schema,
@@ -60,18 +89,229 @@ public class CreateMetadataToolTest
     }
 
     @Test
-    public void testStandaloneRootRefusalPointsToCreateProjectExternalObject()
+    public void testMissingFqnGeneratorHasADistinctRoleCreationRefusal() throws Exception
     {
-        String fqn = "ExternalDataProcessor.MyProc"; //$NON-NLS-1$
-        String result = CreateMetadataTool.standaloneTopLevelRefusal(fqn);
-        assertNotNull(result);
-        assertTrue("refusal must point to create_project", result.contains("create_project")); //$NON-NLS-1$ //$NON-NLS-2$
-        assertTrue("refusal must name the externalObjects project kind", //$NON-NLS-1$
-            result.contains("projectKind=externalObjects")); //$NON-NLS-1$
-        assertTrue("refusal must give the new externalObject parameter value", //$NON-NLS-1$
-            result.contains("externalObject='" + fqn + "'")); //$NON-NLS-1$ //$NON-NLS-2$
-        assertFalse("refusal must no longer send the caller to the EDT UI", //$NON-NLS-1$
-            result.contains("Create it in EDT")); //$NON-NLS-1$
+        String formMessage = privateStringConstant("ERR_NO_FQN_GENERATOR"); //$NON-NLS-1$
+        String roleMessage = privateStringConstant("ERR_NO_ROLE_FQN_GENERATOR"); //$NON-NLS-1$
+
+        assertEquals("ITopObjectFqnGenerator not available (needed to attach the content form under " //$NON-NLS-1$
+            + "its canonical FQN)", formMessage); //$NON-NLS-1$
+        assertFalse("the role guard must not reuse the form-specific refusal", //$NON-NLS-1$
+            roleMessage.equals(formMessage));
+        assertTrue("the role refusal must say that the role was not created", //$NON-NLS-1$
+            roleMessage.contains("The role was not created")); //$NON-NLS-1$
+        assertTrue("the role refusal must name the missing rights-model registration", //$NON-NLS-1$
+            roleMessage.contains("register the role's rights model under its canonical FQN")); //$NON-NLS-1$
+        assertTrue("the role refusal must explain the configurator-wide consequence", //$NON-NLS-1$
+            roleMessage.contains("incremental configuration load would fail for the " //$NON-NLS-1$
+                + "whole configuration")); //$NON-NLS-1$
+        assertFalse("the role refusal must not name a content form", //$NON-NLS-1$
+            roleMessage.contains("content form")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testRoleCreationFailureAddsCreateContextWithoutNestingJson()
+    {
+        String writerMessage = "The registration is stale; run clean_project and retry the same call."; //$NON-NLS-1$
+
+        JsonObject result = JsonParser.parseString(
+            CreateMetadataTool.roleCreationFailure("Reader", writerMessage)).getAsJsonObject(); //$NON-NLS-1$
+
+        assertEquals("Role 'Reader' was not created. " + writerMessage, //$NON-NLS-1$
+            result.get("error").getAsString()); //$NON-NLS-1$
+    }
+
+    private static String privateStringConstant(String name) throws Exception
+    {
+        Field field = CreateMetadataTool.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return (String)field.get(null);
+    }
+
+    @Test
+    public void testTopObjectIsCreatedThroughTheProjectAwareFactoryOverload()
+    {
+        // Issue #644: the version-only overload hands the type initializer a NULL project, so
+        // project-dependent defaults (a catalog's data lock control mode, ...) are skipped.
+        IModelObjectFactory factory = mock(IModelObjectFactory.class);
+        IV8Project project = mock(IV8Project.class);
+        EClass eClass = MdClassPackage.Literals.CATALOG;
+        MdObject catalog = MdClassFactory.eINSTANCE.createCatalog();
+        doReturn(catalog).when(factory).create(eClass, project);
+
+        MdObject created = CreateMetadataTool.newTopObject(factory, eClass, project);
+
+        assertSame("the object the project-aware overload built must be returned", catalog, created); //$NON-NLS-1$
+        verify(factory).create(eClass, project);
+        verify(factory, never()).create(any(EClass.class), any(Version.class));
+    }
+
+    private static final EClass[][] REGISTER_DIMENSION_TYPES = {
+        { MdClassPackage.Literals.INFORMATION_REGISTER, MdClassPackage.Literals.INFORMATION_REGISTER_DIMENSION },
+        { MdClassPackage.Literals.ACCUMULATION_REGISTER, MdClassPackage.Literals.ACCUMULATION_REGISTER_DIMENSION },
+        { MdClassPackage.Literals.ACCOUNTING_REGISTER, MdClassPackage.Literals.ACCOUNTING_REGISTER_DIMENSION },
+        { MdClassPackage.Literals.CALCULATION_REGISTER, MdClassPackage.Literals.CALCULATION_REGISTER_DIMENSION }
+    };
+
+    @Test
+    public void testRegisterDimensionsUseOwnerAwareFactoryAndPreserveDefaultsAndOverrides()
+    {
+        for (EClass[] types : REGISTER_DIMENSION_TYPES)
+        {
+            IModelObjectFactory factory = mock(IModelObjectFactory.class);
+            EObject owner = EcoreUtil.create(types[0]);
+            RegisterDimension dimension = (RegisterDimension)EcoreUtil.create(types[1]);
+            TypeDescription defaultType = McoreFactory.eINSTANCE.createTypeDescription();
+            dimension.setType(defaultType);
+            UUID defaultUuid = UUID.randomUUID();
+            dimension.setUuid(defaultUuid);
+            dimension.setName("FactoryName"); //$NON-NLS-1$
+            dimension.setComment("Factory comment"); //$NON-NLS-1$
+            dimension.getSynonym().put("en", "Factory title"); //$NON-NLS-1$ //$NON-NLS-2$
+            doReturn(dimension).when(factory).create(types[1], owner, Version.V8_3_27);
+            Props props = new Props();
+            props.comment = "Requested comment"; //$NON-NLS-1$
+            props.synonym = "Requested title"; //$NON-NLS-1$
+            EStructuralFeature feature = owner.eClass().getEStructuralFeature("dimensions"); //$NON-NLS-1$
+
+            MdObject created = CreateMetadataTool.createMemberChild(new MemberChildSpec(factory,
+                types[1], owner, Version.V8_3_27, "RequestedName", props, "en", feature)); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertSame("must attach the initialized child, not a bare replacement", dimension, created); //$NON-NLS-1$
+            assertSame(defaultType, dimension.getType());
+            assertEquals(defaultUuid, created.getUuid());
+            assertEquals("RequestedName", created.getName()); //$NON-NLS-1$
+            assertEquals(props.comment, created.getComment());
+            assertEquals(props.synonym, created.getSynonym().get("en")); //$NON-NLS-1$
+            assertSame(owner, created.eContainer());
+            assertSame(feature, created.eContainmentFeature());
+            verify(factory).create(types[1], owner, Version.V8_3_27);
+            verify(factory, never()).create(any(EClass.class), any(Version.class));
+            verify(factory, never()).create(any(EClass.class), any(IV8Project.class));
+            verify(factory).fillDefaultReferences(dimension);
+        }
+    }
+
+    @Test
+    public void testRegisterDimensionFactoryDeclineDoesNotAttachABareFallback()
+    {
+        for (EClass[] types : REGISTER_DIMENSION_TYPES)
+        {
+            assertDimensionFactoryRefusal(types, null);
+        }
+    }
+
+    @Test
+    public void testRegisterDimensionFactoryWithoutTypeDoesNotAttachAnInvalidChild()
+    {
+        for (EClass[] types : REGISTER_DIMENSION_TYPES)
+        {
+            assertDimensionFactoryRefusal(types, (RegisterDimension)EcoreUtil.create(types[1]));
+        }
+    }
+
+    private static void assertDimensionFactoryRefusal(EClass[] types, RegisterDimension factoryChild)
+    {
+        IModelObjectFactory factory = mock(IModelObjectFactory.class);
+        EObject owner = EcoreUtil.create(types[0]);
+        doReturn(factoryChild).when(factory).create(types[1], owner, Version.V8_3_27);
+        EStructuralFeature feature = owner.eClass().getEStructuralFeature("dimensions"); //$NON-NLS-1$
+
+        try
+        {
+            CreateMetadataTool.createMemberChild(new MemberChildSpec(factory, types[1], owner,
+                Version.V8_3_27, "Dimension", new Props(), null, feature)); //$NON-NLS-1$
+            fail("A missing SDK default type must fail before attaching an invalid dimension"); //$NON-NLS-1$
+        }
+        catch (IllegalStateException expected)
+        {
+            assertTrue(expected.getMessage().contains(types[1].getName()));
+            assertTrue(expected.getMessage().contains("default type")); //$NON-NLS-1$
+        }
+        assertTrue(((List<?>)owner.eGet(feature)).isEmpty());
+        if (factoryChild != null)
+        {
+            assertNull(factoryChild.eContainer());
+        }
+        verify(factory).create(types[1], owner, Version.V8_3_27);
+        verify(factory, never()).fillDefaultReferences(any(EObject.class));
+    }
+
+    @Test
+    public void testExternalRootAddressIsRecognizedOnlyInAnExternalObjectsProject()
+    {
+        assertEquals(MdClassPackage.Literals.EXTERNAL_DATA_PROCESSOR,
+            CreateMetadataTool.externalRootEClass(true, "ExternalDataProcessor.MyProc")); //$NON-NLS-1$
+        assertEquals(MdClassPackage.Literals.EXTERNAL_REPORT,
+            CreateMetadataTool.externalRootEClass(true, "ExternalReport.MyReport")); //$NON-NLS-1$
+        assertNull("a configuration project never takes this branch", //$NON-NLS-1$
+            CreateMetadataTool.externalRootEClass(false, "ExternalDataProcessor.MyProc")); //$NON-NLS-1$
+        assertNull("a member address is not a new root", //$NON-NLS-1$
+            CreateMetadataTool.externalRootEClass(true, "ExternalDataProcessor.MyProc.Attribute.A")); //$NON-NLS-1$
+        assertNull("a configuration type is not an external root", //$NON-NLS-1$
+            CreateMetadataTool.externalRootEClass(true, "Catalog.Products")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testExternalRootAddressAcceptsTheRussianTypeTokens()
+    {
+        assertEquals(MdClassPackage.Literals.EXTERNAL_DATA_PROCESSOR,
+            CreateMetadataTool.externalRootEClass(true, "\u0412\u043D\u0435\u0448\u043D\u044F\u044F\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430.MyProc")); //$NON-NLS-1$
+        assertEquals(MdClassPackage.Literals.EXTERNAL_REPORT,
+            CreateMetadataTool.externalRootEClass(true, "\u0412\u043D\u0435\u0448\u043D\u0438\u0439\u041E\u0442\u0447\u0435\u0442.MyReport")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testExternalRootNameClashRefusesEveryTypeCaseInsensitively()
+    {
+        ExternalDataProcessor proc = MdClassFactory.eINSTANCE.createExternalDataProcessor();
+        proc.setName("Loader"); //$NON-NLS-1$
+        ExternalReport report = MdClassFactory.eINSTANCE.createExternalReport();
+        report.setName("Summary"); //$NON-NLS-1$
+        List<MdObject> roots = Arrays.asList(proc, report);
+        EClass edp = MdClassPackage.Literals.EXTERNAL_DATA_PROCESSOR;
+
+        assertNull("a free name must pass", CreateMetadataTool.externalRootNameClash(roots, edp, //$NON-NLS-1$
+            "Fresh", "ExternalDataProcessor.Fresh", "P", false)); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+        String sameType = CreateMetadataTool.externalRootNameClash(roots, edp, "LOADER", //$NON-NLS-1$
+            "ExternalDataProcessor.LOADER", "P", false); //$NON-NLS-1$ //$NON-NLS-2$
+        assertNotNull("the same name in another case is a duplicate", sameType); //$NON-NLS-1$
+        assertTrue(sameType, sameType.contains("\"success\":false")); //$NON-NLS-1$
+        assertTrue(sameType, sameType.contains("already exists: ExternalDataProcessor.LOADER")); //$NON-NLS-1$
+
+        String stale = CreateMetadataTool.externalRootNameClash(roots, edp, "Loader", //$NON-NLS-1$
+            "ExternalDataProcessor.Loader", "P", true); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(stale, stale.contains("Precondition failed")); //$NON-NLS-1$
+
+        String otherType = CreateMetadataTool.externalRootNameClash(roots, edp, "Summary", //$NON-NLS-1$
+            "ExternalDataProcessor.Summary", "P", false); //$NON-NLS-1$ //$NON-NLS-2$
+        assertNotNull("a report of the same name blocks a data processor too", otherType); //$NON-NLS-1$
+        assertTrue(otherType, otherType.contains("ExternalReport.Summary")); //$NON-NLS-1$
+        assertTrue(otherType, otherType.contains("distinct names")); //$NON-NLS-1$
+        assertFalse(otherType, otherType.contains("already exists")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testTakenRootIsReadFromTheWriteTransactionForBothRootTypes()
+    {
+        // The in-transaction re-check must ask the BM for BOTH root FQNs of the name, ignoring case:
+        // the project's own root registry can lag a commit.
+        IBmTransaction tx = mock(IBmTransaction.class);
+        IBmObject report = mock(IBmObject.class);
+        doReturn("ExternalReport.Loader").when(report).bmGetFqn(); //$NON-NLS-1$
+        doReturn(Collections.emptyIterator()).when(tx)
+            .getTopObjectsByFqnIgnoreCase("ExternalDataProcessor.LOADER"); //$NON-NLS-1$
+        doReturn(Collections.singletonList(report).iterator()).when(tx)
+            .getTopObjectsByFqnIgnoreCase("ExternalReport.LOADER"); //$NON-NLS-1$
+
+        assertEquals("ExternalReport.Loader", CreateMetadataTool.takenRootFqn(tx, "LOADER")); //$NON-NLS-1$ //$NON-NLS-2$
+        verify(tx).getTopObjectsByFqnIgnoreCase("ExternalDataProcessor.LOADER"); //$NON-NLS-1$
+        verify(tx).getTopObjectsByFqnIgnoreCase("ExternalReport.LOADER"); //$NON-NLS-1$
+
+        IBmTransaction empty = mock(IBmTransaction.class);
+        doReturn(Collections.emptyIterator()).when(empty).getTopObjectsByFqnIgnoreCase(any(String.class));
+        assertNull("a free name must pass", CreateMetadataTool.takenRootFqn(empty, "Fresh")); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     @Test
@@ -533,45 +773,5 @@ public class CreateMetadataToolTest
         assertNotNull(ref);
         assertNull("ChartOfAccounts predefined items are now supported (gate must return null)", //$NON-NLS-1$
             PredefinedWriter.unsupportedOwnerTypeError(ref.ownerType));
-    }
-
-    @Test
-    public void testMissingFqnGeneratorHasADistinctRoleCreationRefusal() throws Exception
-    {
-        String formMessage = privateStringConstant("ERR_NO_FQN_GENERATOR"); //$NON-NLS-1$
-        String roleMessage = privateStringConstant("ERR_NO_ROLE_FQN_GENERATOR"); //$NON-NLS-1$
-
-        assertEquals("ITopObjectFqnGenerator not available (needed to attach the content form under " //$NON-NLS-1$
-            + "its canonical FQN)", formMessage); //$NON-NLS-1$
-        assertFalse("the role guard must not reuse the form-specific refusal", //$NON-NLS-1$
-            roleMessage.equals(formMessage));
-        assertTrue("the role refusal must say that the role was not created", //$NON-NLS-1$
-            roleMessage.contains("The role was not created")); //$NON-NLS-1$
-        assertTrue("the role refusal must name the missing rights-model registration", //$NON-NLS-1$
-            roleMessage.contains("register the role's rights model under its canonical FQN")); //$NON-NLS-1$
-        assertTrue("the role refusal must explain the configurator-wide consequence", //$NON-NLS-1$
-            roleMessage.contains("incremental configuration load would fail for the " //$NON-NLS-1$
-                + "whole configuration")); //$NON-NLS-1$
-        assertFalse("the role refusal must not name a content form", //$NON-NLS-1$
-            roleMessage.contains("content form")); //$NON-NLS-1$
-    }
-
-    @Test
-    public void testRoleCreationFailureAddsCreateContextWithoutNestingJson()
-    {
-        String writerMessage = "The registration is stale; run clean_project and retry the same call."; //$NON-NLS-1$
-
-        JsonObject result = JsonParser.parseString(
-            CreateMetadataTool.roleCreationFailure("Reader", writerMessage)).getAsJsonObject(); //$NON-NLS-1$
-
-        assertEquals("Role 'Reader' was not created. " + writerMessage, //$NON-NLS-1$
-            result.get("error").getAsString()); //$NON-NLS-1$
-    }
-
-    private static String privateStringConstant(String name) throws Exception
-    {
-        Field field = CreateMetadataTool.class.getDeclaredField(name);
-        field.setAccessible(true);
-        return (String)field.get(null);
     }
 }

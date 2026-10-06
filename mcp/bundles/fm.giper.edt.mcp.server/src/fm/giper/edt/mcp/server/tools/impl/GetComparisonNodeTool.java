@@ -330,7 +330,7 @@ public class GetComparisonNodeTool implements IMcpTool
                 "Comparison id reported by compare_configurations.", true) //$NON-NLS-1$
             .stringProperty(KEY_OBJECT_FQN,
                 "FQN of the object to expand, e.g. 'Catalog.Products' or " //$NON-NLS-1$
-                    + "'╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л'. " //$NON-NLS-1$
+                    + "'Справочник.Товары'. " //$NON-NLS-1$
                     + "Supply this or nodeId, not both.") //$NON-NLS-1$
             .integerProperty(KEY_NODE_ID,
                 "Node id from the comparison report. Supply this or objectFqn, not both.") //$NON-NLS-1$

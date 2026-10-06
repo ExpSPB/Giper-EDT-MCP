@@ -8,8 +8,11 @@
 package fm.giper.edt.mcp.server.tools.impl;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
@@ -27,6 +30,7 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.BoundedJob;
 import fm.giper.edt.mcp.server.utils.BuildUtils;
+import fm.giper.edt.mcp.server.utils.BuildUtils.DerivedDataCompletion;
 import fm.giper.edt.mcp.server.utils.LifecycleWaiter;
 import fm.giper.edt.mcp.server.utils.LifecycleWaiter.ProjectRestartWaiter;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
@@ -53,6 +57,20 @@ public class CleanProjectTool implements IMcpTool
      * Raise it (parameter or preference) for very large configurations.
      */
     static final int DEFAULT_CLEAN_TIMEOUT_SECONDS = 120;
+
+    /**
+     * How long to wait for a DT project to (re)appear before refusing a named project as one EDT
+     * never started.
+     *
+     * <p>{@code DtProjectManager} REMOVES its entry while a project context is being disposed, so
+     * a project whose context is restarting - the state {@code clean_project} itself leaves a
+     * project in, and therefore the state a second call lands on - answers {@code null} for a
+     * moment. Refusing on that instant would turn a transient into a hard "not an EDT project".
+     */
+    private static final long DT_PROJECT_SETTLE_TIMEOUT_MS = 10_000;
+
+    /** How often the settle re-asks {@code IDtProjectManager}. */
+    private static final long DT_PROJECT_SETTLE_POLL_MS = 250;
 
     /** Smallest accepted clean-build bound, in seconds. */
     private static final int MIN_CLEAN_TIMEOUT_SECONDS = 10;
@@ -181,7 +199,6 @@ public class CleanProjectTool implements IMcpTool
      */
     public static String cleanProject(String projectName, long cleanTimeoutMs)
     {
-        boolean cleanCommitted = false;
         try
         {
             IDtProjectManager dtProjectManager = Activator.getDefault().getDtProjectManager();
@@ -193,54 +210,75 @@ public class CleanProjectTool implements IMcpTool
             {
                 return collection.error;
             }
-            List<ProjectCleanInfo> projectsToClean = collection.projectsToClean;
-            List<String> projectNamesList = collection.projectNamesList;
-
             // Phase 1: Register lifecycle listeners BEFORE triggering clean builds
             // This avoids race condition where STOPPED event could be missed
-            List<ProjectRestartWaiter> waiters = registerRestartWaiters(projectsToClean);
-
-            try
+            List<IRestartWait> waiters = registerRestartWaiters(collection);
+            if (collection.error != null)
             {
-                // Phase 2: Trigger clean build for all projects, under a hard deadline. Without it
-                // a single wedged platform call holds the MCP request open forever (#349): the
-                // caller eventually dies on its own transport timeout with no answer, no cleanup.
-                String cleanError = runCleanPhase(projectsToClean, cleanTimeoutMs,
-                    (info, monitor) -> cleanSingleProject(info.project, monitor));
-                if (cleanError != null)
-                {
-                    return cleanError;
-                }
-                cleanCommitted = !projectsToClean.isEmpty();
-
-                // Phase 3: Wait for lifecycle restarts (STOPPED -> STARTED)
-                for (ProjectRestartWaiter waiter : waiters)
-                {
-                    waiter.await(DEFAULT_LIFECYCLE_TIMEOUT_MS);
-                }
-
-                // Phase 4: Wait for derived data computations
-                for (ProjectCleanInfo info : projectsToClean)
-                {
-                    BuildUtils.waitForDerivedData(info.project);
-                }
-
-                return ToolResult.success()
-                    .put("projectsCleaned", projectNamesList.size()) //$NON-NLS-1$
-                    .put("projects", projectNamesList) //$NON-NLS-1$
-                    .put("message", "Clean and revalidation completed.") //$NON-NLS-1$ //$NON-NLS-2$
-                    .toJson();
+                return collection.error;
             }
-            finally
+
+            return runRegisteredClean(collection, waiters, cleanTimeoutMs,
+                (info, monitor) -> cleanSingleProject(info.project, monitor),
+                info -> BuildUtils.waitForDerivedDataCompletion(info.project));
+        }
+        catch (Exception e)
+        {
+            Activator.logError("Error preparing project clean", e); //$NON-NLS-1$
+            return ToolResult.error(e.getMessage()).toJson();
+        }
+    }
+
+    /** Runs the registered clean and checks both completion barriers before reporting success. */
+    static String runRegisteredClean(CleanCollection collection, List<IRestartWait> waiters,
+        long cleanTimeoutMs, ICleanAction cleanAction, IDerivedDataWait derivedDataWait)
+    {
+        boolean cleanCommitted = false;
+        try
+        {
+            List<ProjectCleanInfo> projectsToClean = collection.projectsToClean;
+            // Phase 2: Trigger clean builds under the existing hard deadline.
+            String cleanError = runCleanPhase(projectsToClean, cleanTimeoutMs, cleanAction);
+            if (cleanError != null)
             {
-                // A path that never reaches await() (clean timeout, clean failure, an early return
-                // added later) would otherwise leave the lifecycle listener registered for the rest
-                // of the session. cleanup() is idempotent, so the normal await() path is unaffected.
-                for (ProjectRestartWaiter waiter : waiters)
+                return cleanError;
+            }
+            cleanCommitted = !projectsToClean.isEmpty();
+
+            // Phase 3: STARTED is required, but is not itself proof that derived data completed.
+            for (IRestartWait waiter : waiters)
+            {
+                if (!waiter.await(DEFAULT_LIFECYCLE_TIMEOUT_MS))
                 {
-                    waiter.cleanup();
+                    return incompleteClean("Lifecycle restart did not complete" + onProject(waiter.projectName())); //$NON-NLS-1$
                 }
             }
+
+            // Phase 4: a timeout or an unavailable predicate must not become a successful clean.
+            for (ProjectCleanInfo info : projectsToClean)
+            {
+                if (!info.requiresEdtCompletion)
+                {
+                    continue;
+                }
+                DerivedDataCompletion completion = derivedDataWait.await(info);
+                if (completion != DerivedDataCompletion.COMPLETE)
+                {
+                    String reason = completion == DerivedDataCompletion.PENDING
+                        ? "Derived data did not complete within its wait" //$NON-NLS-1$
+                        : "Derived data completion could not be observed"; //$NON-NLS-1$
+                    return incompleteClean(reason + onProject(info.name));
+                }
+            }
+            return cleanCompletedResult(collection.projectNamesList, collection.skippedUnstarted);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            String message = "Clean completion wait was interrupted; EDT may still be rebuilding. " //$NON-NLS-1$
+                + "Check list_projects before relying on the model."; //$NON-NLS-1$
+            Activator.logInfo(message);
+            return (cleanCommitted ? ToolResult.errorAfterMutation(message) : ToolResult.error(message)).toJson();
         }
         catch (Exception e)
         {
@@ -248,6 +286,23 @@ public class CleanProjectTool implements IMcpTool
             return (cleanCommitted ? ToolResult.errorAfterMutation(e.getMessage())
                 : ToolResult.error(e.getMessage())).toJson();
         }
+        finally
+        {
+            // Also release listeners whose await was never reached. SDK cleanup is idempotent.
+            for (IRestartWait waiter : waiters)
+            {
+                waiter.cleanup();
+            }
+        }
+    }
+
+    private static String incompleteClean(String reason)
+    {
+        String message = reason + ". The clean was scheduled and the model may still be rebuilding; " //$NON-NLS-1$
+            + "check list_projects before relying on it. The clean-build 'timeout' does not extend " //$NON-NLS-1$
+            + "this completion wait."; //$NON-NLS-1$
+        Activator.logInfo(message);
+        return ToolResult.errorAfterMutation(message).toJson();
     }
     
     /**
@@ -292,39 +347,192 @@ public class CleanProjectTool implements IMcpTool
         CleanCollection collection)
     {
         ProjectContext ctx = ProjectContext.of(projectName);
-        if (!ctx.exists())
+        collectResolvedNamedProject(projectName, ctx.project(), ctx.exists(), ctx.isOpen(),
+            dtProjectManager, platformSettle(dtProjectManager), collection);
+    }
+
+    /**
+     * Validates and records one RESOLVED named project, or refuses it.
+     *
+     * <p>Split from {@link ProjectContext#of} above so every verdict below it - closed, missing,
+     * un-started, cleanable - is exercisable headless. Only the three lines that turn a NAME into
+     * a handle are outside this seam.
+     *
+     * @param projectName      the requested project name (non-empty)
+     * @param project          the resolved project handle (may be {@code null})
+     * @param exists           whether the workspace holds it
+     * @param isOpen           whether it is open
+     * @param dtProjectManager the DT project manager (may be {@code null})
+     * @param settle           waits out a context that is restarting before a refusal
+     * @param collection       the accumulator to populate (mutated)
+     */
+    static void collectResolvedNamedProject(String projectName, IProject project, boolean exists,
+        boolean isOpen, IDtProjectManager dtProjectManager, IDtProjectSettle settle,
+        CleanCollection collection)
+    {
+        if (!exists)
         {
             collection.error = ToolResult.error(ProjectContext.notFoundMessage(projectName)).toJson();
             return;
         }
 
-        if (!ctx.isOpen())
+        if (!isOpen)
         {
             collection.error = ToolResult.error("Project is closed: " + projectName).toJson(); //$NON-NLS-1$
             return;
         }
 
-        IProject project = ctx.project();
-
         IDtProject dtProject = dtProjectManager != null ?
             dtProjectManager.getDtProject(project) : null;
 
-        collection.projectsToClean.add(new ProjectCleanInfo(project, dtProject, projectName));
+        collectNamedObservation(projectName, project, dtProject, dtProjectManager != null,
+            ProjectStateChecker.hasBmModelProjectNature(project), settle, collection);
+    }
+
+    /**
+     * Records one RESOLVED named project into {@code collection}, or refuses it because EDT never
+     * started it.
+     *
+     * @param projectName      the requested project name (non-empty)
+     * @param project          the resolved project handle
+     * @param dtProject        the DT project EDT reports for it, or {@code null}
+     * @param managerAvailable whether {@code IDtProjectManager} answered at all
+     * @param hasV8Nature      whether the project carries a BM-model nature ({@code null} when the
+     *                         natures could not be read)
+     * @param settle           waits out a context that is restarting before a refusal
+     * @param collection       the accumulator to populate (mutated)
+     */
+    static void collectNamedObservation(String projectName, IProject project, IDtProject dtProject,
+        boolean managerAvailable, Boolean hasV8Nature, IDtProjectSettle settle,
+        CleanCollection collection)
+    {
+        IDtProject resolved = dtProject;
+        if (resolved == null && managerAvailable && Boolean.TRUE.equals(hasV8Nature))
+        {
+            // Asked again over a short window before refusing: a context being disposed and
+            // restarted has no DT project for a moment, and that transient is not the permanent
+            // "EDT never started this project" the refusal below describes. The settle is paid
+            // ONLY on the path that would otherwise refuse as unstarted. Unknown natures cannot
+            // support that verdict; their completion evidence is checked before scheduling below.
+            resolved = settle.awaitDtProject(project);
+        }
+
+        String refusal = unstartedProjectRefusalOrNull(projectName, managerAvailable,
+            resolved != null, hasV8Nature);
+        if (refusal != null)
+        {
+            collection.error = ToolResult.error(refusal).toJson();
+            return;
+        }
+
+        // Only a positive nature observation permits a resource-only clean. Missing services or
+        // unknown natures are not evidence that this target has no EDT completion barriers.
+        boolean requiresEdtCompletion = resolved != null || !Boolean.FALSE.equals(hasV8Nature);
+        collection.projectsToClean.add(new ProjectCleanInfo(project, resolved, projectName, requiresEdtCompletion));
         collection.projectNamesList.add(projectName);
     }
 
     /**
-     * Collects every open EDT project into {@code collection} (the "clean all" path). No-op when the
-     * DT project manager is unavailable; otherwise each DT project whose workspace project exists and
-     * is open is recorded. Behaviour-identical to the original inline {@code else} block.
+     * The production settle: re-asks {@code IDtProjectManager} until it answers or the bound
+     * elapses.
+     *
+     * @param dtProjectManager the DT project manager (may be {@code null})
+     * @return the settle to use
+     */
+    private static IDtProjectSettle platformSettle(IDtProjectManager dtProjectManager)
+    {
+        return project -> {
+            if (dtProjectManager == null || project == null)
+            {
+                return null;
+            }
+            long deadline = System.currentTimeMillis() + DT_PROJECT_SETTLE_TIMEOUT_MS;
+            while (System.currentTimeMillis() < deadline)
+            {
+                try
+                {
+                    Thread.sleep(DT_PROJECT_SETTLE_POLL_MS);
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+                IDtProject dtProject = dtProjectManager.getDtProject(project);
+                if (dtProject != null)
+                {
+                    return dtProject;
+                }
+            }
+            return null;
+        };
+    }
+
+    /**
+     * The refusal for a project EDT never started, or {@code null} when the clean may proceed.
+     *
+     * <p>A clean of such a project does refresh its files and schedule an Eclipse CLEAN_BUILD, but
+     * both the lifecycle-restart wait and the derived-data wait are SKIPPED - not exhausted,
+     * skipped, because the object they wait on does not exist - so "Clean and revalidation
+     * completed" would describe work that never happened (issue #647). The sibling tools already
+     * refuse on exactly this predicate ({@code revalidate_objects},
+     * {@code translate_configuration}).
+     *
+     * <p>Refused only when all three hold: the manager ANSWERED (a manager we could not ask is not
+     * evidence of anything), it reported no DT project, and the project carries a BM-model nature
+     * (a plain Eclipse project never had a DT project and stays out of scope exactly as before).
+     *
+     * @param projectName      the project the caller named
+     * @param managerAvailable whether {@code IDtProjectManager} answered at all
+     * @param dtProjectPresent whether it reported a DT project
+     * @param hasV8Nature      whether the project carries a BM-model nature ({@code null} when the
+     *                         natures could not be read)
+     * @return the refusal text, or {@code null} when the clean may proceed
+     */
+    static String unstartedProjectRefusalOrNull(String projectName, boolean managerAvailable,
+        boolean dtProjectPresent, Boolean hasV8Nature)
+    {
+        if (!managerAvailable || dtProjectPresent || !Boolean.TRUE.equals(hasV8Nature))
+        {
+            return null;
+        }
+        return "Not an EDT project: " + projectName //$NON-NLS-1$
+            + ". EDT has not started this project right now (no DtProject), so there is nothing " //$NON-NLS-1$
+            + "to rebuild " //$NON-NLS-1$
+            + "and a clean would report success over work that never happened. If it was just " //$NON-NLS-1$
+            + "imported, wait for list_projects to report it 'ready'; otherwise close and reopen " //$NON-NLS-1$
+            + "the project in EDT, or import it again."; //$NON-NLS-1$
+    }
+
+    /**
+     * Collects every open EDT project into {@code collection} (the "clean all" path). An unavailable
+     * DT project manager is refused before mutation because the selected set cannot be observed.
+     * Otherwise each DT project whose workspace project exists and is open is recorded.
      *
      * @param dtProjectManager  the DT project manager (may be {@code null})
      * @param collection        the accumulator to populate (mutated)
      */
     private static void collectAllEdtProjects(IDtProjectManager dtProjectManager, CleanCollection collection)
     {
+        collectAllEdtProjects(dtProjectManager, collection, ProjectContext::allProjects);
+    }
+
+    /**
+     * The "clean all" collection with the workspace enumeration supplied rather than read, so the
+     * skipped-project scan is exercisable headless.
+     *
+     * @param dtProjectManager   the DT project manager (may be {@code null})
+     * @param collection         the accumulator to populate (mutated)
+     * @param workspaceProjects  every project in the workspace, open or closed
+     */
+    static void collectAllEdtProjects(IDtProjectManager dtProjectManager, CleanCollection collection,
+        Supplier<IProject[]> workspaceProjects)
+    {
         if (dtProjectManager == null)
         {
+            collection.error = ToolResult.error("Cannot clean all projects: IDtProjectManager is unavailable, " //$NON-NLS-1$
+                + "so the EDT project set cannot be observed. Nothing was cleaned. " //$NON-NLS-1$
+                + "Wait for EDT to finish starting up and retry.").toJson(); //$NON-NLS-1$
             return;
         }
         for (IDtProject dtProject : dtProjectManager.getDtProjects())
@@ -336,6 +544,79 @@ public class CleanProjectTool implements IMcpTool
                 collection.projectNamesList.add(project.getName());
             }
         }
+
+        // The enumeration above is over DT projects, so an EDT project EDT never started is not in
+        // it at all - and 'clean all' used to answer "completed" without ever mentioning it. Name
+        // the ones it skipped instead of leaving them out of the account (issue #647).
+        List<String> openV8Projects = new ArrayList<>();
+        for (IProject project : workspaceProjects.get())
+        {
+            if (project != null && project.isOpen()
+                && Boolean.TRUE.equals(ProjectStateChecker.hasBmModelProjectNature(project)))
+            {
+                openV8Projects.add(project.getName());
+            }
+        }
+        collection.skippedUnstarted.addAll(
+            unstartedProjectNames(collection.projectNamesList, openV8Projects));
+    }
+
+    /**
+     * The open BM-model projects EDT has NOT started: present in the workspace, absent from the
+     * DT-project enumeration the clean-all path works from.
+     *
+     * <p>Clean-all does not settle the way the named path does, so a project whose context is
+     * mid-restart at the instant of the scan is listed as skipped although it would have answered
+     * a moment later; that is accepted, because the listing is a report and not a refusal, and
+     * the project can be cleaned by name once it has settled.
+     *
+     * @param startedProjectNames the names EDT reports a DT project for (the clean work list)
+     * @param openV8ProjectNames  the names of every OPEN workspace project with a BM-model nature
+     * @return the names to report as skipped, in workspace order (never {@code null})
+     */
+    static List<String> unstartedProjectNames(Collection<String> startedProjectNames,
+        Collection<String> openV8ProjectNames)
+    {
+        List<String> skipped = new ArrayList<>();
+        for (String name : openV8ProjectNames)
+        {
+            if (!startedProjectNames.contains(name))
+            {
+                skipped.add(name);
+            }
+        }
+        return skipped;
+    }
+
+    /**
+     * Builds the completion payload.
+     *
+     * <p>{@code projectsCleaned} counts the projects that were actually cleaned, and nothing else:
+     * a project EDT never started is named in the {@code message} as skipped rather than counted,
+     * because counting it would restate the very claim issue #647 is about.
+     *
+     * @param cleanedProjects  the projects the clean phases ran for
+     * @param skippedUnstarted the open BM-model projects skipped because EDT never started them
+     * @return the success JSON
+     */
+    static String cleanCompletedResult(List<String> cleanedProjects, List<String> skippedUnstarted)
+    {
+        StringBuilder message = new StringBuilder("Clean and revalidation completed."); //$NON-NLS-1$
+        if (!skippedUnstarted.isEmpty())
+        {
+            message.append(" Skipped ").append(skippedUnstarted.size()) //$NON-NLS-1$
+                .append(skippedUnstarted.size() == 1 ? " project that EDT has not started " //$NON-NLS-1$
+                    : " projects that EDT has not started ") //$NON-NLS-1$
+                .append("(no DtProject), so nothing was rebuilt for them: ") //$NON-NLS-1$
+                .append(String.join(", ", skippedUnstarted)) //$NON-NLS-1$
+                .append(". Wait for list_projects to report them 'ready', or close and reopen " //$NON-NLS-1$
+                    + "them in EDT."); //$NON-NLS-1$
+        }
+        return ToolResult.success()
+            .put("projectsCleaned", cleanedProjects.size()) //$NON-NLS-1$
+            .put("projects", cleanedProjects) //$NON-NLS-1$
+            .put("message", message.toString()) //$NON-NLS-1$
+            .toJson();
     }
 
     /**
@@ -343,25 +624,107 @@ public class CleanProjectTool implements IMcpTool
      * a DT project, BEFORE any clean build is triggered, so the STOPPED event cannot be
      * missed. Returns the waiters to {@code await} after the clean builds are scheduled.
      *
-     * @param projectsToClean the projects being cleaned
-     * @return the registered restart waiters (one per DT project that produced a waiter)
+     * @param collection the projects being cleaned; receives a refusal when registration is unavailable
+     * @return the registered restart waiters, or released waiters when registration failed
      */
-    private static List<ProjectRestartWaiter> registerRestartWaiters(
-        List<ProjectCleanInfo> projectsToClean)
+    private static List<IRestartWait> registerRestartWaiters(CleanCollection collection)
     {
-        List<ProjectRestartWaiter> waiters = new ArrayList<>();
-        for (ProjectCleanInfo info : projectsToClean)
-        {
-            if (info.dtProject != null)
+        return registerRestartWaiters(collection, info -> {
+            ProjectRestartWaiter waiter = LifecycleWaiter.prepareForRestart(info.dtProject);
+            if (waiter == null)
             {
-                ProjectRestartWaiter waiter = LifecycleWaiter.prepareForRestart(info.dtProject);
-                if (waiter != null)
+                return null;
+            }
+            return new IRestartWait()
+            {
+                @Override
+                public String projectName()
                 {
-                    waiters.add(waiter);
+                    return info.name;
+                }
+
+                @Override
+                public boolean await(long timeoutMs)
+                {
+                    return waiter.await(timeoutMs);
+                }
+
+                @Override
+                public void cleanup()
+                {
+                    waiter.cleanup();
+                }
+            };
+        });
+    }
+
+    /** Registers every required barrier before scheduling, releasing earlier listeners on failure. */
+    static List<IRestartWait> registerRestartWaiters(CleanCollection collection,
+        Function<ProjectCleanInfo, IRestartWait> registration)
+    {
+        List<IRestartWait> waiters = new ArrayList<>();
+        boolean registered = false;
+        try
+        {
+            for (ProjectCleanInfo info : collection.projectsToClean)
+            {
+                if (!info.requiresEdtCompletion)
+                {
+                    continue;
+                }
+                if (info.dtProject == null)
+                {
+                    collection.error = registrationRefusal(info.name,
+                        "the EDT project could not be observed"); //$NON-NLS-1$
+                    return waiters;
+                }
+                IRestartWait waiter = registration.apply(info);
+                if (waiter == null)
+                {
+                    collection.error = registrationRefusal(info.name,
+                        "the lifecycle restart listener is unavailable"); //$NON-NLS-1$
+                    return waiters;
+                }
+                waiters.add(waiter);
+            }
+            registered = true;
+            return waiters;
+        }
+        finally
+        {
+            if (!registered)
+            {
+                for (IRestartWait waiter : waiters)
+                {
+                    waiter.cleanup();
                 }
             }
         }
-        return waiters;
+    }
+
+    private static String registrationRefusal(String projectName, String reason)
+    {
+        String message = "Cannot observe the lifecycle restart" + onProject(projectName) + ": " + reason //$NON-NLS-1$ //$NON-NLS-2$
+            + "; no clean was scheduled. Restore EDT project and lifecycle services before retrying."; //$NON-NLS-1$
+        Activator.logInfo(message);
+        return ToolResult.error(message).toJson();
+    }
+
+    /** Production wraps registered SDK listeners; tests control their completion and cleanup. */
+    interface IRestartWait
+    {
+        String projectName();
+
+        boolean await(long timeoutMs);
+
+        void cleanup();
+    }
+
+    /** Post-clean all-derived-data barrier, independent of the clean-build action. */
+    @FunctionalInterface
+    interface IDerivedDataWait
+    {
+        DerivedDataCompletion await(ProjectCleanInfo info) throws InterruptedException;
     }
 
     /**
@@ -509,6 +872,23 @@ public class CleanProjectTool implements IMcpTool
     }
 
     /**
+     * Waits out a project context that is being restarted before the caller concludes EDT never
+     * started the project. Production polls {@code IDtProjectManager}; tests substitute an
+     * immediate answer so no test ever sleeps.
+     */
+    @FunctionalInterface
+    interface IDtProjectSettle
+    {
+        /**
+         * Re-asks for the project's DT project over a short window.
+         *
+         * @param project the workspace project
+         * @return the DT project once EDT registers one, or {@code null} when it never did
+         */
+        IDtProject awaitDtProject(IProject project);
+    }
+
+    /**
      * The per-project clean action. Production passes {@link #cleanSingleProject}; tests
      * substitute a controllable action to exercise the deadline without a live workspace.
      */
@@ -554,10 +934,12 @@ public class CleanProjectTool implements IMcpTool
      * Holder for the result of {@link #collectProjectsToClean}: the parallel work lists,
      * or an {@code error} JSON payload that the caller should return as-is.
      */
-    private static class CleanCollection
+    static class CleanCollection
     {
         final List<ProjectCleanInfo> projectsToClean = new ArrayList<>();
         final List<String> projectNamesList = new ArrayList<>();
+        /** Open BM-model projects skipped because EDT never started them (clean-all only). */
+        final List<String> skippedUnstarted = new ArrayList<>();
         String error;
     }
 
@@ -573,12 +955,20 @@ public class CleanProjectTool implements IMcpTool
          * touching a project the wedged clean may have left mid-lifecycle.
          */
         final String name;
+        /** False only for a positively observed plain Eclipse resource project. */
+        final boolean requiresEdtCompletion;
 
         ProjectCleanInfo(IProject project, IDtProject dtProject, String name)
+        {
+            this(project, dtProject, name, true);
+        }
+
+        ProjectCleanInfo(IProject project, IDtProject dtProject, String name, boolean requiresEdtCompletion)
         {
             this.project = project;
             this.dtProject = dtProject;
             this.name = name;
+            this.requiresEdtCompletion = requiresEdtCompletion;
         }
     }
 }

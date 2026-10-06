@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.emf.common.notify.Notification;
 import org.eclipse.emf.common.util.Enumerator;
 import org.eclipse.emf.common.util.TreeIterator;
@@ -45,6 +46,7 @@ import org.eclipse.emf.ecore.util.EContentAdapter;
 import org.eclipse.emf.ecore.util.EcoreEList;
 import org.junit.Test;
 
+import com._1c.g5.v8.dt.mcore.Event;
 import com._1c.g5.v8.dt.mcore.McoreFactory;
 import com._1c.g5.v8.dt.mcore.Type;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
@@ -645,6 +647,10 @@ public class FormElementWriterTest
             assertNotNull(e.getMessage());
             assertTrue("message should mention '" + fragment + "' but was: " + e.getMessage(), //$NON-NLS-1$ //$NON-NLS-2$
                 e.getMessage().contains(fragment));
+            // A malformed 'position' is the CALLER's input being rejected, so it must be MARKED:
+            // unmarked, an ordinary bad argument keeps logging ERROR with a stack (issue #593).
+            assertEquals("a position refusal must be marked, or it logs as a server error", //$NON-NLS-1$
+                e.getMessage(), Refusals.messageOf(e));
         }
     }
 
@@ -1179,6 +1185,363 @@ public class FormElementWriterTest
         assertNull(FormElementWriter.resolveEventCallType(ehExt, "")); //$NON-NLS-1$
     }
 
+    @Test
+    public void testResolveEventCallTypeRaisesOnAModelWithoutAnEnumCallType()
+    {
+        // A model without the enum is the platform's shape, never a bad token, so it must not be refused.
+        EClass bare = EcoreFactory.eINSTANCE.createEClass();
+        bare.setName("EventHandlerExtension"); //$NON-NLS-1$
+        try
+        {
+            FormElementWriter.resolveEventCallType(bare, "Before"); //$NON-NLS-1$
+            fail("a model lacking callType must raise, not answer null"); //$NON-NLS-1$
+        }
+        catch (IllegalStateException expected)
+        {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("callType")); //$NON-NLS-1$
+        }
+    }
+
+    /** A synthetic element class named {@code name}, optionally carrying a many-valued handlers list. */
+    private static EObject syntheticElement(String name, boolean withHandlers)
+    {
+        EPackage pkg = EcoreFactory.eINSTANCE.createEPackage();
+        pkg.setName("synthetic"); //$NON-NLS-1$
+        pkg.setNsURI("http://synthetic/" + name); //$NON-NLS-1$
+        EClass cls = EcoreFactory.eINSTANCE.createEClass();
+        cls.setName(name);
+        if (withHandlers)
+        {
+            EReference handlers = EcoreFactory.eINSTANCE.createEReference();
+            handlers.setName("handlers"); //$NON-NLS-1$
+            handlers.setEType(EcorePackage.Literals.EOBJECT);
+            handlers.setContainment(true);
+            handlers.setUpperBound(-1);
+            cls.getEStructuralFeatures().add(handlers);
+        }
+        pkg.getEClassifiers().add(cls);
+        return pkg.getEFactoryInstance().create(cls);
+    }
+
+    @Test
+    public void testCreateHandlerOnAnElementPublishingNoEventsIsARefusal()
+    {
+        // Every mapped type resolved (there is none) and none publishes an event: the caller's choice.
+        String err = FormElementWriter.createHandler(syntheticElement("NoEventsItem", true), "OnClick", //$NON-NLS-1$ //$NON-NLS-2$
+            "Proc", Version.LATEST, "en", null, null); //$NON-NLS-1$ //$NON-NLS-2$
+        assertNotNull(err);
+        assertTrue(err, err.contains("publishes no events")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testCreateHandlerOnAStaleExtInfoNeverRefusesTheCaller()
+    {
+        // A Pages group missing its required node publishes an unknown share of its events, so
+        // neither "no events" nor "not valid" may be put on the caller.
+        for (String ext : new String[] { null, "UsualGroupExtInfo" }) //$NON-NLS-1$
+        {
+            try
+            {
+                String err = FormElementWriter.createHandler(typedElement("FormGroup", "Pages", ext, true), //$NON-NLS-1$ //$NON-NLS-2$
+                    "NoSuchEvent", "Proc", Version.LATEST, "en", null, null); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                fail("a stale ext-info (" + ext + ") must raise, not refuse: " + err); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            catch (IllegalStateException expected)
+            {
+                // the model's state, logged as a failure
+            }
+        }
+    }
+
+    @Test
+    public void testCreateHandlerOnAFormRootWithoutAHandlerListRaises()
+    {
+        // A form ROOT always holds handlers, so a missing list is the model's shape, not a refusal.
+        try
+        {
+            FormElementWriter.createHandler(syntheticElement("Form", false), "OnOpen", "Proc", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Version.LATEST, "en", null, null); //$NON-NLS-1$
+            fail("a form root without handlers must raise"); //$NON-NLS-1$
+        }
+        catch (IllegalStateException expected)
+        {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Form.handlers")); //$NON-NLS-1$
+        }
+        // An ITEM without handlers is still the caller's refusal.
+        assertTrue(FormElementWriter.createHandler(syntheticElement("SomeDecoration", false), "OnClick", //$NON-NLS-1$ //$NON-NLS-2$
+            "Proc", Version.LATEST, "en", null, null).contains("cannot hold event handlers")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    // ---- feature-shape splits (issue #650): a declared class lacking its list raises; a kind the
+    // caller chose that has no such list is refused. The refusal side runs on the REAL form model.
+
+    /** The shipped form EPackage, reached the way the writer reaches it (no compile-time import). */
+    private static EPackage realFormPackage()
+    {
+        return FormElementWriter.contentFormEClass().getEPackage();
+    }
+
+    /** A fresh instance of the named classifier of the shipped form EPackage, named {@code name}. */
+    private static EObject realFormObject(String classifier, String name)
+    {
+        EClass eClass = (EClass)realFormPackage().getEClassifier(classifier);
+        EObject object = realFormPackage().getEFactoryInstance().create(eClass);
+        object.eSet(feature(object, "name"), name); //$NON-NLS-1$
+        return object;
+    }
+
+    /** Asserts {@code e} is an UNMARKED failure (ERROR with its stack), never a refusal. */
+    private static void assertRaisedUnmarked(RuntimeException e, String expectedFragment)
+    {
+        assertTrue(e.getMessage(), e.getMessage().contains(expectedFragment));
+        assertNull("a model-shape failure must not be marked as a refusal", Refusals.messageOf(e)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testTheShippedFormModelDeclaresWhatTheSplitsAssume()
+    {
+        // The splits below rest on these facts of Form.xcore (identical in 2026.1.1 and 2026.2.1):
+        // FormItemContainer declares 'contains FormItem[] items', EventHandlerContainer declares
+        // 'contains EventHandler[] handlers', and Button 'refers Command commandName'.
+        EPackage pkg = realFormPackage();
+        for (String name : new String[] { "Form", "FormGroup", "Table", "AutoCommandBar", "ContextMenu" }) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+        {
+            EClass eClass = (EClass)pkg.getEClassifier(name);
+            assertTrue(name, FormElementWriter.isOrInherits(eClass, "FormItemContainer")); //$NON-NLS-1$
+            EStructuralFeature items = eClass.getEStructuralFeature("items"); //$NON-NLS-1$
+            assertTrue(name, items instanceof EReference && items.isMany());
+        }
+        for (String name : new String[] { "Form", "FormField", "Table", "UsualGroupExtInfo", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            "InputFieldExtInfo", "LabelDecorationExtInfo" }) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            EClass eClass = (EClass)pkg.getEClassifier(name);
+            assertTrue(name, FormElementWriter.isOrInherits(eClass, "EventHandlerContainer")); //$NON-NLS-1$
+            EStructuralFeature handlers = eClass.getEStructuralFeature("handlers"); //$NON-NLS-1$
+            assertTrue(name, handlers instanceof EReference && handlers.isMany());
+        }
+        EClass button = (EClass)pkg.getEClassifier("Button"); //$NON-NLS-1$
+        assertTrue(button.getEStructuralFeature("commandName") instanceof EReference); //$NON-NLS-1$
+        for (String leaf : new String[] { "Button", "FormField", "Decoration" }) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        {
+            assertFalse(leaf, FormElementWriter.isOrInherits((EClass)pkg.getEClassifier(leaf), "FormItemContainer")); //$NON-NLS-1$
+        }
+        assertFalse(FormElementWriter.isOrInherits(button, "EventHandlerContainer")); //$NON-NLS-1$
+    }
+
+    /**
+     * A drifted form model: {@code FormItemContainer} is still FormGroup's declared supertype but no
+     * longer carries {@code items}; the root keeps its own list and holds group {@code G} and item
+     * {@code P}. With {@code rootHasItems} false the ROOT lost its list instead, and G keeps one.
+     */
+    private static EObject driftedItemsForm(boolean rootHasItems)
+    {
+        EcoreFactory f = EcoreFactory.eINSTANCE;
+        EPackage pkg = f.createEPackage();
+        pkg.setName("drift"); //$NON-NLS-1$
+        pkg.setNsURI("http://ditrix.com/test/drift-items-" + rootHasItems); //$NON-NLS-1$
+        EClass formItem = f.createEClass();
+        formItem.setName("FormItem"); //$NON-NLS-1$
+        formItem.setAbstract(true);
+        EAttribute name = f.createEAttribute();
+        name.setName("name"); //$NON-NLS-1$
+        name.setEType(EcorePackage.Literals.ESTRING);
+        formItem.getEStructuralFeatures().add(name);
+        EClass containerInterface = f.createEClass();
+        containerInterface.setName("FormItemContainer"); //$NON-NLS-1$
+        containerInterface.setAbstract(true);
+        containerInterface.setInterface(true);
+        EClass group = f.createEClass();
+        group.setName("FormGroup"); //$NON-NLS-1$
+        group.getESuperTypes().add(formItem);
+        group.getESuperTypes().add(containerInterface);
+        EClass probe = f.createEClass();
+        probe.setName("Probe"); //$NON-NLS-1$
+        probe.getESuperTypes().add(formItem);
+        EClass form = f.createEClass();
+        form.setName("Form"); //$NON-NLS-1$
+        EClass itemsOwner = rootHasItems ? form : group;
+        EReference items = f.createEReference();
+        items.setName("items"); //$NON-NLS-1$
+        items.setEType(formItem);
+        items.setContainment(true);
+        items.setUpperBound(-1);
+        itemsOwner.getEStructuralFeatures().add(items);
+        pkg.getEClassifiers().addAll(Arrays.asList(formItem, containerInterface, group, probe, form));
+
+        EObject formObject = pkg.getEFactoryInstance().create(form);
+        EObject groupObject = pkg.getEFactoryInstance().create(group);
+        groupObject.eSet(name, "G"); //$NON-NLS-1$
+        EObject probeObject = pkg.getEFactoryInstance().create(probe);
+        probeObject.eSet(name, "P"); //$NON-NLS-1$
+        if (rootHasItems)
+        {
+            addTo(formObject, "items", groupObject); //$NON-NLS-1$
+            addTo(formObject, "items", probeObject); //$NON-NLS-1$
+        }
+        else
+        {
+            // The root cannot contain anything without its list, so G sits in a detached tree.
+            addTo(groupObject, "items", probeObject); //$NON-NLS-1$
+        }
+        return rootHasItems ? formObject : groupObject;
+    }
+
+    @Test
+    public void testMoveIntoADeclaredItemContainerWithoutItsListRaises()
+    {
+        EObject form = driftedItemsForm(true);
+        EObject probe = FormElementWriter.findFormItem(form, "P"); //$NON-NLS-1$
+        try
+        {
+            String err = FormElementWriter.moveItem(form, probe, "G"); //$NON-NLS-1$
+            fail("a FormGroup without items is the model's shape and must raise, not refuse: " + err); //$NON-NLS-1$
+        }
+        catch (IllegalStateException e)
+        {
+            assertRaisedUnmarked(e, "FormGroup.items"); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void testMoveToAFormRootWithoutItsListRaises()
+    {
+        // P sits in group G; the ROOT lost its list, and a blank parent targets that root.
+        EObject group = driftedItemsForm(false);
+        EObject probe = FormElementWriter.findFormItem(group, "P"); //$NON-NLS-1$
+        EPackage pkg = group.eClass().getEPackage();
+        EObject rootWithoutItems = pkg.getEFactoryInstance().create((EClass)pkg.getEClassifier("Form")); //$NON-NLS-1$
+        try
+        {
+            String err = FormElementWriter.moveItem(rootWithoutItems, probe, null);
+            fail("a form root without items must raise, not refuse: " + err); //$NON-NLS-1$
+        }
+        catch (IllegalStateException e)
+        {
+            assertRaisedUnmarked(e, "Form.items"); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void testMoveIntoALeafTheCallerChoseStaysARefusalOnTheShippedModel()
+    {
+        EObject form = FormElementWriter.createContentForm(null, null, null, false);
+        EObject field = realFormObject("FormField", "F"); //$NON-NLS-1$ //$NON-NLS-2$
+        EObject decoration = realFormObject("Decoration", "D"); //$NON-NLS-1$ //$NON-NLS-2$
+        addTo(form, "items", field); //$NON-NLS-1$
+        addTo(form, "items", decoration); //$NON-NLS-1$
+
+        assertEquals("The parent 'F' (FormField) cannot hold nested items.", //$NON-NLS-1$
+            FormElementWriter.moveItem(form, decoration, "F")); //$NON-NLS-1$
+    }
+
+    /** A drifted element: {@code className} declares EventHandlerContainer, which lost {@code handlers}. */
+    private static EObject driftedHandlerElement(String className, String extClassName)
+    {
+        EcoreFactory f = EcoreFactory.eINSTANCE;
+        EPackage pkg = f.createEPackage();
+        pkg.setName("drift"); //$NON-NLS-1$
+        pkg.setNsURI("http://ditrix.com/test/drift-handlers-" + className + "-" + extClassName); //$NON-NLS-1$ //$NON-NLS-2$
+        EClass handlerContainer = f.createEClass();
+        handlerContainer.setName("EventHandlerContainer"); //$NON-NLS-1$
+        handlerContainer.setAbstract(true);
+        handlerContainer.setInterface(true);
+        EClass element = f.createEClass();
+        element.setName(className);
+        pkg.getEClassifiers().add(handlerContainer);
+        pkg.getEClassifiers().add(element);
+        EClass ext = null;
+        if (extClassName == null)
+        {
+            element.getESuperTypes().add(handlerContainer);
+        }
+        else
+        {
+            ext = f.createEClass();
+            ext.setName(extClassName);
+            ext.getESuperTypes().add(handlerContainer);
+            pkg.getEClassifiers().add(ext);
+            EReference extInfo = f.createEReference();
+            extInfo.setName("extInfo"); //$NON-NLS-1$
+            extInfo.setEType(ext);
+            extInfo.setContainment(true);
+            element.getEStructuralFeatures().add(extInfo);
+        }
+        EObject object = pkg.getEFactoryInstance().create(element);
+        if (ext != null)
+        {
+            object.eSet(element.getEStructuralFeature("extInfo"), pkg.getEFactoryInstance().create(ext)); //$NON-NLS-1$
+        }
+        return object;
+    }
+
+    @Test
+    public void testHandlersOnADeclaredHandlerContainerWithoutItsListRaise()
+    {
+        // The element itself (a FormField) or the ext-info that holds its bindings (a group's
+        // UsualGroupExtInfo) is declared an EventHandlerContainer: a missing list is drift.
+        String[][] cases = { { "FormField", null, "FormField.handlers" }, //$NON-NLS-1$ //$NON-NLS-2$
+            { "FormGroup", "UsualGroupExtInfo", "UsualGroupExtInfo.handlers" } }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        for (String[] one : cases)
+        {
+            EObject element = driftedHandlerElement(one[0], one[1]);
+            try
+            {
+                String err = FormElementWriter.createHandler(element, "OnChange", "Proc", //$NON-NLS-1$ //$NON-NLS-2$
+                    Version.LATEST, "en", null, null); //$NON-NLS-1$
+                fail(one[0] + ": createHandler must raise, not refuse: " + err); //$NON-NLS-1$
+            }
+            catch (IllegalStateException e)
+            {
+                assertRaisedUnmarked(e, one[2]);
+            }
+            try
+            {
+                String err = FormElementWriter.rebindHandler(element, "OnChange", "Proc"); //$NON-NLS-1$ //$NON-NLS-2$
+                fail(one[0] + ": rebindHandler must raise, not refuse: " + err); //$NON-NLS-1$
+            }
+            catch (IllegalStateException e)
+            {
+                assertRaisedUnmarked(e, one[2]);
+            }
+        }
+    }
+
+    @Test
+    public void testHandlersOnAKindWithoutAnyListStayARefusalOnTheShippedModel()
+    {
+        // A real Button holds no handlers and has no ext-info: the caller picked the wrong element.
+        EObject button = realFormObject("Button", "B"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("The form element 'Button' cannot hold event handlers.", //$NON-NLS-1$
+            FormElementWriter.createHandler(button, "OnClick", "Proc", Version.LATEST, "en", null, null)); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertEquals("The form element 'Button' cannot hold event handlers.", //$NON-NLS-1$
+            FormElementWriter.rebindHandler(button, "OnClick", "Proc")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testRebindCommandOnAButtonWithoutCommandNameRaises()
+    {
+        EObject button = syntheticElement("Button", false); //$NON-NLS-1$
+        try
+        {
+            String err = FormElementWriter.rebindButtonCommand(button, button, "Refresh"); //$NON-NLS-1$
+            fail("a Button without commandName is the model's shape and must raise: " + err); //$NON-NLS-1$
+        }
+        catch (IllegalStateException e)
+        {
+            assertRaisedUnmarked(e, "Button.commandName"); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void testRebindCommandOnANonButtonStaysARefusalOnTheShippedModel()
+    {
+        EObject form = FormElementWriter.createContentForm(null, null, null, false);
+        EObject field = realFormObject("FormField", "F"); //$NON-NLS-1$ //$NON-NLS-2$
+        addTo(form, "items", field); //$NON-NLS-1$
+        assertEquals("The form item 'FormField' has no 'commandName' reference; only a Button runs a " //$NON-NLS-1$
+            + "form command.", FormElementWriter.rebindButtonCommand(form, field, "Refresh")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
     /**
      * A self-contained dynamic EMF model shaped like the form metamodel's handler containment: a
      * {@code FormField} container with a {@code handlers} containment list typed to base
@@ -1376,14 +1739,30 @@ public class FormElementWriterTest
     }
 
     @Test
-    public void testBindEventHandlerWithoutExtensionTypeErrors()
+    public void testBindEventHandlerWithoutExtensionTypeRaisesAnUnmarkedModelFailure()
     {
         // A form model lacking the EventHandlerExtension type cannot host extension interception.
+        // That is one of OUR constants failing to resolve - PLATFORM DRIFT, not caller input - so it
+        // is RAISED, not returned: returning it would send it down the same string channel as the
+        // caller refusals, where the calling tool marks everything it gets back and the drift would
+        // be logged at INFO with no stack. Issue #593; this is the TextSearcher failure class.
         HandlerModel m = newHandlerModel(false);
-        String err = FormElementWriter.bindEventHandler(m.container, m.handlersFeat, m.event,
-            "OnChange", "x", "After", new String[1]); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        assertNotNull(err);
-        assertTrue(err.contains("EventHandlerExtension")); //$NON-NLS-1$
+        try
+        {
+            FormElementWriter.bindEventHandler(m.container, m.handlersFeat, m.event,
+                "OnChange", "x", "After", new String[1]); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            fail("a model that cannot represent an extension handler must raise, not answer"); //$NON-NLS-1$
+        }
+        catch (IllegalStateException e)
+        {
+            assertTrue("the caller's message is unchanged", //$NON-NLS-1$
+                e.getMessage().contains("EventHandlerExtension")); //$NON-NLS-1$
+            assertNull("a MODEL failure must NOT be marked as a refusal, or it goes quiet", //$NON-NLS-1$
+                Refusals.messageOf(e));
+            assertEquals("...so it keeps ERROR", //$NON-NLS-1$
+                IStatus.ERROR, Refusals.statusFor("ctx", e).getSeverity()); //$NON-NLS-1$
+            assertSame("...and its stack", e, Refusals.statusFor("ctx", e).getException()); //$NON-NLS-1$ //$NON-NLS-2$
+        }
         // The base path still works on the same model.
         assertNull(FormElementWriter.bindEventHandler(m.container, m.handlersFeat, m.event,
             "OnChange", "x", null, new String[1])); //$NON-NLS-1$ //$NON-NLS-2$
@@ -1613,12 +1992,103 @@ public class FormElementWriterTest
             FormElementWriter.publishesKnownEventSet(tooltip));
     }
 
+    @Test
+    public void testAGroupBindsHandlersThroughItsExtInfo()
+    {
+        // #651: FormGroup holds no handler list; its GroupExtInfo does, and that is where EDT binds.
+        EObject group = groupWithHandlerExtInfo("OnCurrentPageChange", "PagesOnChange"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertTrue("a group whose ext-info holds a handler list binds handlers", //$NON-NLS-1$
+            FormElementWriter.bindsHandlers(group));
+        EObject found = FormElementWriter.findFormHandler(group, "oncurrentpagechange"); //$NON-NLS-1$
+        assertNotNull("a binding inside the ext-info must be addressable from the group", found); //$NON-NLS-1$
+        assertEquals("PagesOnChange", found.eGet(found.eClass().getEStructuralFeature("name"))); //$NON-NLS-1$ //$NON-NLS-2$
+        assertNull(FormElementWriter.findFormHandler(group, "OnCollapse")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAnElementWithNoHandlerListAnywhereBindsNone()
+    {
+        assertFalse("no list on the element and none on its ext-info", //$NON-NLS-1$
+            FormElementWriter.bindsHandlers(typedElement("FormGroup", "Pages", "PagesGroupExtInfo"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertFalse("no ext-info at all", //$NON-NLS-1$
+            FormElementWriter.bindsHandlers(typedElement("FormGroup", "Pages", null))); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("an element holding its own list still binds", //$NON-NLS-1$
+            FormElementWriter.bindsHandlers(typedElement("FormField", "InputField", null, true))); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * A {@code FormGroup} with no handler list of its own, whose {@code PagesGroupExtInfo} holds one
+     * binding of {@code eventName} to {@code procedure}.
+     */
+    private static EObject groupWithHandlerExtInfo(String eventName, String procedure)
+    {
+        EPackage pack = EcoreFactory.eINSTANCE.createEPackage();
+        pack.setName("probe"); //$NON-NLS-1$
+        EClass event = namedClass(pack, "Event"); //$NON-NLS-1$
+        EClass handler = namedClass(pack, "EventHandler"); //$NON-NLS-1$
+        EReference eventRef = EcoreFactory.eINSTANCE.createEReference();
+        eventRef.setName("event"); //$NON-NLS-1$
+        eventRef.setEType(event);
+        eventRef.setContainment(true);
+        handler.getEStructuralFeatures().add(eventRef);
+        EClass ext = EcoreFactory.eINSTANCE.createEClass();
+        ext.setName("PagesGroupExtInfo"); //$NON-NLS-1$
+        pack.getEClassifiers().add(ext);
+        EReference handlers = EcoreFactory.eINSTANCE.createEReference();
+        handlers.setName("handlers"); //$NON-NLS-1$
+        handlers.setEType(handler);
+        handlers.setContainment(true);
+        handlers.setUpperBound(-1);
+        ext.getEStructuralFeatures().add(handlers);
+        EClass groupClass = EcoreFactory.eINSTANCE.createEClass();
+        groupClass.setName("FormGroup"); //$NON-NLS-1$
+        pack.getEClassifiers().add(groupClass);
+        EReference extInfo = EcoreFactory.eINSTANCE.createEReference();
+        extInfo.setName("extInfo"); //$NON-NLS-1$
+        extInfo.setEType(ext);
+        extInfo.setContainment(true);
+        groupClass.getEStructuralFeatures().add(extInfo);
+
+        EObject eventObject = pack.getEFactoryInstance().create(event);
+        eventObject.eSet(event.getEStructuralFeature("name"), eventName); //$NON-NLS-1$
+        EObject handlerObject = pack.getEFactoryInstance().create(handler);
+        handlerObject.eSet(handler.getEStructuralFeature("name"), procedure); //$NON-NLS-1$
+        handlerObject.eSet(eventRef, eventObject);
+        EObject extObject = pack.getEFactoryInstance().create(ext);
+        @SuppressWarnings("unchecked")
+        List<EObject> list = (List<EObject>)extObject.eGet(handlers);
+        list.add(handlerObject);
+        EObject group = pack.getEFactoryInstance().create(groupClass);
+        group.eSet(extInfo, extObject);
+        return group;
+    }
+
+    /** An EClass in {@code pack} carrying a single String {@code name} attribute. */
+    private static EClass namedClass(EPackage pack, String className)
+    {
+        EClass eClass = EcoreFactory.eINSTANCE.createEClass();
+        eClass.setName(className);
+        EAttribute name = EcoreFactory.eINSTANCE.createEAttribute();
+        name.setName("name"); //$NON-NLS-1$
+        name.setEType(EcorePackage.Literals.ESTRING);
+        eClass.getEStructuralFeatures().add(name);
+        pack.getEClassifiers().add(eClass);
+        return eClass;
+    }
+
     /**
      * A dynamic element of {@code eClassName} whose {@code type} reads {@code typeLiteral}, carrying
      * an {@code extInfo} of {@code extClassName} - or none when that is {@code null}. The type
      * matters: the classifier an element REQUIRES is read from it.
      */
     private static EObject typedElement(String eClassName, String typeLiteral, String extClassName)
+    {
+        return typedElement(eClassName, typeLiteral, extClassName, false);
+    }
+
+    private static EObject typedElement(String eClassName, String typeLiteral, String extClassName,
+        boolean withHandlers)
     {
         EPackage pack = EcoreFactory.eINSTANCE.createEPackage();
         pack.setName("probe"); //$NON-NLS-1$
@@ -1649,6 +2119,15 @@ public class FormElementWriterTest
         extInfo.setEType(extClass != null ? extClass : EcorePackage.Literals.EOBJECT);
         extInfo.setContainment(true);
         eClass.getEStructuralFeatures().add(extInfo);
+        if (withHandlers)
+        {
+            EReference handlers = EcoreFactory.eINSTANCE.createEReference();
+            handlers.setName("handlers"); //$NON-NLS-1$
+            handlers.setEType(EcorePackage.Literals.EOBJECT);
+            handlers.setContainment(true);
+            handlers.setUpperBound(-1);
+            eClass.getEStructuralFeatures().add(handlers);
+        }
         EObject element = pack.getEFactoryInstance().create(eClass);
         element.eSet(type, literal.getInstance());
         if (extClass != null)
@@ -6321,12 +6800,12 @@ public class FormElementWriterTest
         ItemModel model = new ItemModel("Decoration", DECORATION_EXT_INFO_MATRIX); //$NON-NLS-1$
         model.setType("Label"); //$NON-NLS-1$
         assertEquals("LabelDecorationExtInfo", //$NON-NLS-1$
-            FormElementWriter.syncItemExtInfo(model.form, model.item));
+            FormElementWriter.syncItemExtInfo(model.form, model.item, null));
 
         model.dropClassifier("PictureDecorationExtInfo"); //$NON-NLS-1$
         model.setType("Picture"); //$NON-NLS-1$
 
-        assertNull(FormElementWriter.syncItemExtInfo(model.form, model.item));
+        assertNull(FormElementWriter.syncItemExtInfo(model.form, model.item, null));
         assertNull("a Picture decoration must not keep the LabelDecorationExtInfo", //$NON-NLS-1$
             model.item.eGet(feature(model.item, "extInfo"))); //$NON-NLS-1$
     }
@@ -6477,7 +6956,7 @@ public class FormElementWriterTest
             ItemModel model = new ItemModel(eClassName, matrix);
             model.setType(pair[0]);
 
-            String applied = FormElementWriter.syncItemExtInfo(model.form, model.item);
+            String applied = FormElementWriter.syncItemExtInfo(model.form, model.item, null);
 
             assertEquals(eClassName + " type " + pair[0], pair[1], applied); //$NON-NLS-1$
             EObject extInfo = (EObject)model.item.eGet(feature(model.item, "extInfo")); //$NON-NLS-1$
@@ -6500,11 +6979,11 @@ public class FormElementWriterTest
         // with, so every extInfo property then resolved against the wrong EClass.
         ItemModel model = new ItemModel("Decoration", DECORATION_EXT_INFO_MATRIX); //$NON-NLS-1$
         model.setType("Label"); //$NON-NLS-1$
-        FormElementWriter.syncItemExtInfo(model.form, model.item);
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
 
         model.setType("Picture"); //$NON-NLS-1$
         assertEquals("PictureDecorationExtInfo", //$NON-NLS-1$
-            FormElementWriter.syncItemExtInfo(model.form, model.item));
+            FormElementWriter.syncItemExtInfo(model.form, model.item, null));
         assertEquals("PictureDecorationExtInfo", ((EObject)model.item.eGet( //$NON-NLS-1$
             feature(model.item, "extInfo"))).eClass().getName()); //$NON-NLS-1$
     }
@@ -6514,11 +6993,11 @@ public class FormElementWriterTest
     {
         ItemModel model = new ItemModel(ITEM_ECLASS_GROUP, GROUP_EXT_INFO_MATRIX);
         model.setType("UsualGroup"); //$NON-NLS-1$
-        FormElementWriter.syncItemExtInfo(model.form, model.item);
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
         assertNotNull(model.item.eGet(feature(model.item, "extInfo"))); //$NON-NLS-1$
 
         model.setType("ContextMenu"); //$NON-NLS-1$
-        assertNull(FormElementWriter.syncItemExtInfo(model.form, model.item));
+        assertNull(FormElementWriter.syncItemExtInfo(model.form, model.item, null));
         assertNull("a ContextMenu must not keep the UsualGroupExtInfo", //$NON-NLS-1$
             model.item.eGet(feature(model.item, "extInfo"))); //$NON-NLS-1$
     }
@@ -6529,10 +7008,10 @@ public class FormElementWriterTest
         // Re-creating it would reset the layout properties already set on the holder.
         ItemModel model = new ItemModel(ITEM_ECLASS_GROUP, GROUP_EXT_INFO_MATRIX);
         model.setType("Pages"); //$NON-NLS-1$
-        FormElementWriter.syncItemExtInfo(model.form, model.item);
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
         Object first = model.item.eGet(feature(model.item, "extInfo")); //$NON-NLS-1$
 
-        FormElementWriter.syncItemExtInfo(model.form, model.item);
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
 
         assertSame(first, model.item.eGet(feature(model.item, "extInfo"))); //$NON-NLS-1$
     }
@@ -6547,7 +7026,7 @@ public class FormElementWriterTest
             model.extInfoClass("LabelDecorationExtInfo")); //$NON-NLS-1$
 
         assertEquals("LabelDecorationExtInfo", //$NON-NLS-1$
-            FormElementWriter.syncItemExtInfo(model.form, model.item));
+            FormElementWriter.syncItemExtInfo(model.form, model.item, null));
         assertNotNull("a Table's extInfo must survive an item sync", //$NON-NLS-1$
             model.item.eGet(feature(model.item, "extInfo"))); //$NON-NLS-1$
     }
@@ -6565,6 +7044,7 @@ public class FormElementWriterTest
         final EObject form;
         final EObject item;
         private final EPackage pkg;
+        private final EClass handlerClass;
 
         ItemModel(String itemEClassName, String[][] matrix)
         {
@@ -6631,6 +7111,30 @@ public class FormElementWriterTest
             extInfoRef.setContainment(true);
             extInfoRef.setUpperBound(1);
             itemClass.getEStructuralFeatures().add(extInfoRef);
+            handlerClass = f.createEClass();
+            handlerClass.setName("EventHandler"); //$NON-NLS-1$
+            EAttribute handlerName = f.createEAttribute();
+            handlerName.setName("name"); //$NON-NLS-1$
+            handlerName.setEType(EcorePackage.Literals.ESTRING);
+            handlerClass.getEStructuralFeatures().add(handlerName);
+            EReference handlerEvent = f.createEReference();
+            handlerEvent.setName("event"); //$NON-NLS-1$
+            handlerEvent.setEType(EcorePackage.Literals.EOBJECT);
+            handlerEvent.setUpperBound(1);
+            handlerClass.getEStructuralFeatures().add(handlerEvent);
+            pkg.getEClassifiers().add(handlerClass);
+            // EVERY concrete ExtInfo in the form model is an EventHandlerContainer, so the list
+            // goes on the ext-info BASE class - that is where the events an item's ext-info type
+            // publishes are bound. Putting it only on the item is what let issue #601 ship inert.
+            extInfoBase.getEStructuralFeatures().add(handlerList(f, handlerClass));
+            // Of the kinds whose `type` decides their ext-info, only FormField is an
+            // EventHandlerContainer itself; FormGroup / Decoration / Addition are NOT, so their
+            // bindings can live nowhere but the node. (Table is one too, but its ext-info follows
+            // its dataPath, not a `type`.)
+            if (ITEM_ECLASSES_WITH_OWN_HANDLERS.contains(itemEClassName))
+            {
+                itemClass.getEStructuralFeatures().add(handlerList(f, handlerClass));
+            }
             pkg.getEClassifiers().add(itemClass);
 
             EClass formClass = f.createEClass();
@@ -6665,8 +7169,333 @@ public class FormElementWriterTest
         {
             pkg.getEClassifiers().remove(pkg.getEClassifier(name));
         }
+
+        /**
+         * Subscribes {@code procedure} to an event spelled {@code eventName} (and {@code eventNameRu}
+         * when given) ON {@code container} - a real mcore {@code Event}, because that is what the
+         * writer reads the spellings off. A {@code null} English name leaves the event nameless.
+         */
+        void bindOn(EObject container, String eventName, String eventNameRu, String procedure)
+        {
+            Event event = McoreFactory.eINSTANCE.createEvent();
+            event.setName(eventName);
+            event.setNameRu(eventNameRu);
+            EObject handler = pkg.getEFactoryInstance().create(handlerClass);
+            handler.eSet(handlerClass.getEStructuralFeature("name"), procedure); //$NON-NLS-1$
+            handler.eSet(handlerClass.getEStructuralFeature("event"), event); //$NON-NLS-1$
+            addTo(container, "handlers", handler); //$NON-NLS-1$
+        }
+
+        /** The item's live {@code extInfo} node, or {@code null}. */
+        EObject extInfo()
+        {
+            return (EObject)item.eGet(feature(item, "extInfo")); //$NON-NLS-1$
+        }
+
+        /** The ENGLISH event name of every binding on {@code container}, in order. */
+        @SuppressWarnings("unchecked")
+        List<String> eventsIn(EObject container)
+        {
+            List<String> names = new ArrayList<>();
+            for (EObject handler : (List<EObject>)container.eGet(feature(container, "handlers"))) //$NON-NLS-1$
+            {
+                Event event = (Event)handler.eGet(handlerClass.getEStructuralFeature("event")); //$NON-NLS-1$
+                names.add(event == null ? null : event.getName());
+            }
+            return names;
+        }
+
+        /** The PROCEDURE of every binding on {@code container}, in order. */
+        @SuppressWarnings("unchecked")
+        List<String> proceduresIn(EObject container)
+        {
+            List<String> names = new ArrayList<>();
+            for (EObject handler : (List<EObject>)container.eGet(feature(container, "handlers"))) //$NON-NLS-1$
+            {
+                names.add((String)handler.eGet(handlerClass.getEStructuralFeature("name"))); //$NON-NLS-1$
+            }
+            return names;
+        }
     }
 
+    /**
+     * The item EClasses that are {@code EventHandlerContainer}s in the real form model - checked
+     * against the decompiled {@code com._1c.g5.v8.dt.form.model} hierarchy, where {@code FormGroup},
+     * {@code Decoration} and {@code Addition} are not.
+     */
+    private static final Set<String> ITEM_ECLASSES_WITH_OWN_HANDLERS =
+        Set.of("FormField", "Table"); //$NON-NLS-1$ //$NON-NLS-2$
+
+    /** A fresh containment {@code handlers} list feature. */
+    private static EReference handlerList(EcoreFactory f, EClass handlerClass)
+    {
+        EReference handlers = f.createEReference();
+        handlers.setName("handlers"); //$NON-NLS-1$
+        handlers.setEType(handlerClass);
+        handlers.setContainment(true);
+        handlers.setUpperBound(-1);
+        return handlers;
+    }
+
+    // ---- what a kind change does to the bindings (issue #601) -----------------------------------
+    //
+    // Two halves, and the first is the one that was missing: an item's ext-info node IS an
+    // EventHandlerContainer, so the events its ext-info TYPE publishes are bound inside the node -
+    // a bare replacement destroys them all, including the ones the new kind still publishes. Only
+    // after they are carried over does "drop the ones the new kind cannot publish" mean anything.
+
+    /** The Russian spelling of OnChange - ASCII source, like every other 1C token in this repo. */
+    private static final String RU_ON_CHANGE =
+        "\u041F\u0440\u0438\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0438"; //$NON-NLS-1$
+
+    /**
+     * The regression this whole commit exists for. A kind change used to {@code eSet} a FRESH
+     * ext-info node over the old one with no carry-over, so every binding inside it was destroyed -
+     * in a real ERP configuration that is 11093 InputField bindings, 8798 label-decoration ones and
+     * every other ext-published event. The form ROOT twin has always called {@code copySameFeatures}
+     * for exactly this reason; the item twin now does too.
+     */
+    @Test
+    public void testAKindChangeCarriesTheExtNodeBindingsOverToTheNewNode()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        assertEquals("InputFieldExtInfo", //$NON-NLS-1$
+            FormElementWriter.syncItemExtInfo(model.form, model.item, null));
+        model.bindOn(model.extInfo(), "Clearing", null, "GoodsClearing"); //$NON-NLS-1$ //$NON-NLS-2$
+        model.bindOn(model.item, "OnChange", RU_ON_CHANGE, "GoodsOnChange"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        List<String> lost = new ArrayList<>();
+        model.setType("CheckBoxField"); //$NON-NLS-1$
+        assertEquals("CheckBoxFieldExtInfo", //$NON-NLS-1$
+            FormElementWriter.syncItemExtInfo(model.form, model.item, lost));
+
+        assertEquals("nothing was dropped, so nothing may be reported as taken", //$NON-NLS-1$
+            List.of(), lost);
+        assertEquals("the binding moved INTO the new node, with its procedure", //$NON-NLS-1$
+            List.of("GoodsClearing"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+        assertEquals(List.of("Clearing"), model.eventsIn(model.extInfo())); //$NON-NLS-1$
+        assertEquals("and the item's own binding is untouched", //$NON-NLS-1$
+            List.of("GoodsOnChange"), model.proceduresIn(model.item)); //$NON-NLS-1$
+    }
+
+    /**
+     * The ordering rule, pinned at the mechanism rather than at the loop: the sync itself may never
+     * drop a binding, because it runs ONCE PER CHANGE. If it dropped, {@code [type=LabelField,
+     * type=InputField]} would delete, at the intermediate kind, exactly what the final kind
+     * publishes - the mistake the retype verdict already folds the batch to avoid.
+     */
+    @Test
+    public void testSyncingAKindNeverDropsABindingByItself()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Clearing", null, "GoodsClearing"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        List<String> lost = new ArrayList<>();
+        model.setType("LabelField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, lost);
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, lost);
+
+        assertEquals("the round trip through an intermediate kind may not cost a binding", //$NON-NLS-1$
+            List.of("GoodsClearing"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+        assertEquals(List.of(), lost);
+    }
+
+    /**
+     * The assertion whose absence let the first attempt ship inert: the cleanup must reach a binding
+     * that lives in the EXT NODE. Both edges at once - the un-published one goes, the published one
+     * stays with its procedure, and so does the item's own list.
+     */
+    @Test
+    public void testTheCleanupReachesABindingInTheExtNode()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Clearing", null, "GoodsClearing"); //$NON-NLS-1$ //$NON-NLS-2$
+        model.bindOn(model.extInfo(), "AutoComplete", null, "GoodsAutoComplete"); //$NON-NLS-1$ //$NON-NLS-2$
+        model.bindOn(model.item, "OnChange", RU_ON_CHANGE, "GoodsOnChange"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        List<String> removed = FormElementWriter.removeHandlersForUnpublishedEvents(model.item,
+            Set.of("onchange", "clearing")); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals("only the un-published one, named with its procedure", //$NON-NLS-1$
+            List.of("AutoComplete (GoodsAutoComplete)"), removed); //$NON-NLS-1$
+        assertEquals("the published one stays IN THE NODE with its procedure", //$NON-NLS-1$
+            List.of("GoodsClearing"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+        assertEquals(List.of("Clearing"), model.eventsIn(model.extInfo())); //$NON-NLS-1$
+        assertFalse("the dropped binding must be gone, not merely re-pointed", //$NON-NLS-1$
+            model.proceduresIn(model.extInfo()).contains("GoodsAutoComplete")); //$NON-NLS-1$
+        assertEquals("and the item's own list is untouched", //$NON-NLS-1$
+            List.of("GoodsOnChange"), model.proceduresIn(model.item)); //$NON-NLS-1$
+    }
+
+    /**
+     * A Decoration is NOT an {@code EventHandlerContainer} - nor is a FormGroup or an Addition - so
+     * its bindings can live nowhere but the node. Reading the item's own list answers about nothing
+     * at all for three of the four kinds whose {@code type} decides their ext-info.
+     */
+    @Test
+    public void testAnItemKindWithNoOwnHandlerListIsStillCleaned()
+    {
+        ItemModel model = new ItemModel("Decoration", DECORATION_EXT_INFO_MATRIX); //$NON-NLS-1$
+        assertNull("the fixture must model the metamodel: a Decoration holds no handlers", //$NON-NLS-1$
+            model.item.eClass().getEStructuralFeature("handlers")); //$NON-NLS-1$
+        model.setType("Label"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Click", null, "LabelClick"); //$NON-NLS-1$ //$NON-NLS-2$
+        model.bindOn(model.extInfo(), "URLProcessing", null, "LabelUrl"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        List<String> removed = FormElementWriter.removeHandlersForUnpublishedEvents(model.item,
+            Set.of("click")); //$NON-NLS-1$
+
+        assertEquals(List.of("URLProcessing (LabelUrl)"), removed); //$NON-NLS-1$
+        assertEquals(List.of("LabelClick"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+    }
+
+    /**
+     * A type that pairs with NO node has nowhere to carry the bindings to, so they really are lost -
+     * which is the platform's own behaviour. They must still be NAMED, or the call silently deletes
+     * a user's subscription.
+     */
+    @Test
+    public void testClearingTheExtInfoNamesTheBindingsThatGoWithIt()
+    {
+        ItemModel model = new ItemModel(ITEM_ECLASS_GROUP, GROUP_EXT_INFO_MATRIX);
+        model.setType("Pages"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "OnCurrentPageChange", null, "PagesChanged"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        List<String> lost = new ArrayList<>();
+        model.setType("ContextMenu"); //$NON-NLS-1$
+        assertNull(FormElementWriter.syncItemExtInfo(model.form, model.item, lost));
+
+        assertNull("a ContextMenu pairs with no node", model.extInfo()); //$NON-NLS-1$
+        assertEquals("what the node took must be named back", //$NON-NLS-1$
+            List.of("OnCurrentPageChange (PagesChanged)"), lost); //$NON-NLS-1$
+    }
+
+    /**
+     * The same duty on the other path that loses a node: the classifier exists in the mapping but
+     * not in this form model, so the slot is CLEARED rather than left stale - and the bindings go
+     * with it.
+     */
+    @Test
+    public void testAPairingThatCannotBeCreatedNamesWhatItTook()
+    {
+        ItemModel model = new ItemModel("Decoration", DECORATION_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("Label"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Click", null, "LabelClick"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        model.dropClassifier("PictureDecorationExtInfo"); //$NON-NLS-1$
+        List<String> lost = new ArrayList<>();
+        model.setType("Picture"); //$NON-NLS-1$
+        assertNull(FormElementWriter.syncItemExtInfo(model.form, model.item, lost));
+
+        assertEquals(List.of("Click (LabelClick)"), lost); //$NON-NLS-1$
+    }
+
+    /** A set that cannot be established ("cannot tell", an unresolved union) deletes no binding. */
+    @Test
+    public void testAnUnestablishedEventSetRemovesNothing()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Clearing", null, "GoodsClearing"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals(List.of(), FormElementWriter.removeHandlersForUnpublishedEvents(model.item, null));
+        assertEquals(List.of("GoodsClearing"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+    }
+
+    /** A set established as EMPTY is a kind publishing nothing: every named binding goes, and is named. */
+    @Test
+    public void testAKnownEmptyEventSetRemovesEveryNamedBinding()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Clearing", null, "GoodsClearing"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals(List.of("Clearing (GoodsClearing)"), //$NON-NLS-1$
+            FormElementWriter.removeHandlersForUnpublishedEvents(model.item, Collections.emptySet()));
+        assertEquals(List.of(), model.proceduresIn(model.extInfo()));
+    }
+
+    /** A binding whose event names nothing readable is not evidence of an un-published event. */
+    @Test
+    public void testABindingWithANamelessEventIsKept()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), null, null, "GoodsMystery"); //$NON-NLS-1$
+
+        assertEquals(List.of(), FormElementWriter.removeHandlersForUnpublishedEvents(model.item,
+            Set.of("onchange"))); //$NON-NLS-1$
+        assertEquals(List.of("GoodsMystery"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+    }
+
+    /**
+     * 1C publishes every event under two spellings and a binding may carry either, so the match is
+     * made on BOTH - and on case, because the two sides are read from different objects.
+     */
+    @Test
+    public void testEitherSpellingOfTheEventKeepsTheBinding()
+    {
+        assertEquals("matched on the RUSSIAN spelling alone", List.of(), //$NON-NLS-1$
+            removeAgainst(Set.of(RU_ON_CHANGE.toLowerCase(java.util.Locale.ROOT))));
+        assertEquals("and on the ENGLISH one in a different case", List.of(), //$NON-NLS-1$
+            removeAgainst(Set.of("onchange"))); //$NON-NLS-1$
+        assertEquals("a set carrying neither spelling drops it", //$NON-NLS-1$
+            List.of("OnChange (GoodsOnChange)"), removeAgainst(Set.of("clearing"))); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** One OnChange binding in the ext node, run against the given published set. */
+    private static List<String> removeAgainst(Set<String> published)
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "OnChange", RU_ON_CHANGE, "GoodsOnChange"); //$NON-NLS-1$ //$NON-NLS-2$
+        return FormElementWriter.removeHandlersForUnpublishedEvents(model.item, published);
+    }
+
+    /** A binding with no procedure name is reported by its event alone, never as "Event (null)". */
+    @Test
+    public void testABindingWithNoProcedureIsReportedByItsEvent()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "AutoComplete", null, null); //$NON-NLS-1$
+
+        assertEquals(List.of("AutoComplete"), //$NON-NLS-1$
+            FormElementWriter.removeHandlersForUnpublishedEvents(model.item,
+                Set.of("onchange"))); //$NON-NLS-1$
+    }
+
+    /**
+     * The whole drop, not just the decision: without a platform version no event set can be
+     * established, and then nothing may be removed. The carry-over has already kept every binding,
+     * so this is the safe end of the one direction a headless model can drive.
+     */
+    @Test
+    public void testDroppingWithNoResolvableEventSetKeepsEveryBinding()
+    {
+        ItemModel model = new ItemModel("FormField", FIELD_EXT_INFO_MATRIX); //$NON-NLS-1$
+        model.setType("InputField"); //$NON-NLS-1$
+        FormElementWriter.syncItemExtInfo(model.form, model.item, null);
+        model.bindOn(model.extInfo(), "Clearing", null, "GoodsClearing"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals("nothing may be removed on an event set that could not be read", //$NON-NLS-1$
+            List.of(), FormElementWriter.dropUnpublishedItemHandlers(model.item, null));
+        assertEquals(List.of("GoodsClearing"), model.proceduresIn(model.extInfo())); //$NON-NLS-1$
+    }
     /** Gives {@code member} a real mcore {@code TypeDescription} carrying one {@code Type} per name. */
     private static void setValueType(EObject member, String... typeNames)
     {

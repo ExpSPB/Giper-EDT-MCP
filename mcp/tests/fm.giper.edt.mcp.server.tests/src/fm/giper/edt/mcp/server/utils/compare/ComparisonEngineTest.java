@@ -40,7 +40,7 @@ import com._1c.g5.v8.dt.compare.settings.model.RestoredMergeSettings;
 /**
  * Unit tests for {@link ComparisonEngine}, the read-only facade over EDT's comparison engine.
  * <p>
- * Everything here runs headlessly against a recording fake of {@code ComparisonEngine.Backend} тАФ
+ * Everything here runs headlessly against a recording fake of {@code ComparisonEngine.Backend} —
  * the package-scoped, merge-free shape of {@code IComparisonManager}. That is not a convenience: a
  * fake of {@code IComparisonManager} itself would have to declare its merging methods, whose types
  * live in a package this bundle deliberately does not import, so the interface that keeps merging
@@ -339,6 +339,24 @@ public class ComparisonEngineTest
 
         backend.status = ComparisonProcessStatus.COMPARISON_MERGE_PROCESS_CANCELLED;
         assertEquals(ComparisonEngine.Phase.CANCELLED, engine.progress(batch, handle).phase());
+    }
+
+    /**
+     * A status literal this feature never produces (they all belong to merging) is reported as
+     * UNEXPECTED with the literal attached, rather than folded into a comparison phase. Guessing
+     * would turn "somebody else is merging on this handle" into "still comparing".
+     */
+    @Test
+    public void anUnexpectedStatusIsNotFoldedIntoAComparisonPhase()
+    {
+        RecordingBackend backend = new RecordingBackend();
+        backend.status = ComparisonProcessStatus.MERGE_PROCESS_STARTED;
+
+        ComparisonEngine.Progress progress = engineOver(backend).progress(new CompareMergeProcessBatch(Collections.emptyList()),
+            handle("Main", "Other")); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals(ComparisonEngine.Phase.UNEXPECTED, progress.phase());
+        assertEquals(ComparisonProcessStatus.MERGE_PROCESS_STARTED, progress.status());
     }
 
     /**

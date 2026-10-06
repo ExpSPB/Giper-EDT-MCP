@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Licensed under AGPL-3.0-or-later
@@ -6,19 +6,14 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
+import java.util.function.BooleanSupplier;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.debug.core.DebugPlugin;
 import org.eclipse.debug.core.ILaunchConfiguration;
 import org.eclipse.debug.core.ILaunchManager;
@@ -31,10 +26,12 @@ import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.ApplicationSupport;
+import fm.giper.edt.mcp.server.utils.BoundedJob;
 import fm.giper.edt.mcp.server.utils.InfobaseAccessSupport;
+import fm.giper.edt.mcp.server.utils.InfobaseAccessSupport.BoundedStoreResult;
+import fm.giper.edt.mcp.server.utils.InfobaseAccessSupport.StoreResult;
 import fm.giper.edt.mcp.server.utils.LaunchConfigUtils;
 import fm.giper.edt.mcp.server.utils.LaunchLifecycleUtils;
-import fm.giper.edt.mcp.server.utils.McpJobs;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
 import com.e1c.g5.dt.applications.IApplication;
 import com.e1c.g5.dt.applications.IApplicationManager;
@@ -43,22 +40,22 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  * Stores the <em>infobase connection credentials</em> (user/password) EDT uses
  * to authenticate the designer agent for {@code update_database} and
  * {@code launch} against an infobase that requires user authentication
- * (issue #194) тАФ including a standalone-server ({@code wst-server}) application
+ * (issue #194) — including a standalone-server ({@code wst-server}) application
  * wrapping an already-registered infobase (issue #275).
  *
  * <p>Without stored credentials the update agent is started without the infobase
  * user and fails to authenticate, popping a blocking "Configure Infobase access
- * Settings" dialog that hangs the unattended call. After this tool the headless
- * update authenticates as the given user.
+ * Settings" dialog that hangs the unattended call. This tool reports the UUID-keyed
+ * storage target and what the same consumer-facing resolver reads back.
  *
- * <p>These credentials select an <b>existing</b> infobase user тАФ they do NOT
+ * <p>These credentials select an <b>existing</b> infobase user — they do NOT
  * create users. Demo bases typically have a user with an empty password, so an
  * empty {@code password} is valid.
  *
  * <p><strong>Two consumers, two stores (issue #359).</strong> The infobase access
  * settings above are read by the designer AGENT. The 1C CLIENT a launch starts is a
  * different process and reads its user from the launch configuration's own attributes,
- * so a target given as {@code launchConfigurationName} configures BOTH тАФ see
+ * so a target given as {@code launchConfigurationName} configures BOTH — see
  * {@link #configureClient}. A target given as {@code projectName} + {@code applicationId}
  * names no launch configuration, so only the agent is configured and the success message
  * says so: otherwise a caller reads {@code success:true} and is surprised by the
@@ -66,16 +63,16 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  *
  * <p><strong>Unattended-safety:</strong> the model work (resolve application -&gt;
  * {@link InfobaseAccessSupport#storeCredentials(IApplication, String, String, InfobaseAccess)}
- * -&gt; {@code IInfobaseAccessManager.updateSettings} -&gt; read-back display name) runs in a
+ * -&gt; settings read-back -&gt; display-name read-back) runs in a
  * bounded background Eclipse Job joined with a short {@link #CREDENTIALS_TIMEOUT_SECONDS}-second
- * timeout тАФ never on the UI thread. Resolving an application can provoke EDT's background
+ * timeout — never on the UI thread. Resolving an application can provoke EDT's background
  * application-update-state recompute, which can loop for a long time on an unbounded worker
- * thread; the bounded Job guarantees the call returns. The credentials are recorded as a success
- * the instant {@code updateSettings} commits (before the cosmetic name read-back), so a timeout
- * AFTER the commit still reports success.
+ * thread; the bounded Job guarantees the call returns. The persistent write is recorded before
+ * read-back begins, and a conclusive or honestly inconclusive verification refines it before the
+ * cosmetic name read-back.
  *
  * <p>A Job that outran the deadline is cancelled, but cancellation is cooperative and this one has
- * no monitor poll to honour it, so it keeps running. It therefore checks тАФ on the writing side тАФ
+ * no monitor poll to honour it, so it keeps running. It therefore checks — on the writing side —
  * whether the caller has already been answered before it touches the launch configuration: a call
  * that reported a failure must not leave a user and a password behind it.
  */
@@ -84,7 +81,8 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     public static final String NAME = "set_infobase_credentials"; //$NON-NLS-1$
 
     /** Bounded-Job timeout for the credential store + read-back (model work off the worker thread). */
-    private static final int CREDENTIALS_TIMEOUT_SECONDS = 30;
+    private static final int CREDENTIALS_TIMEOUT_SECONDS =
+        (int)(InfobaseAccessSupport.CREDENTIAL_STORE_TIMEOUT_MS / 1000L);
 
     /** Output key: display name of the target application. */
     private static final String KEY_APPLICATION_NAME = "applicationName"; //$NON-NLS-1$
@@ -101,10 +99,10 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      * Stand-in "client write failed" reason for the persist-first record taken BEFORE the client
      * half runs. It only ever reaches the caller when the call ends between the agent commit and
      * the moment the client's outcome is recorded (the bounded Job's deadline), so the agent
-     * credentials really are stored. The launch-configuration save is skipped once the caller has
-     * been answered (see {@link #configureClient}), but the two events can interleave, so this
-     * deliberately UNDER-claims: reporting a client that turns out to be configured is harmless,
-     * the reverse is the bug issue #359 is about.
+     * credentials really are stored. The launch-configuration save is skipped once the bounded
+     * runner closes write permission (see {@link #configureClient}), but the two events can
+     * interleave, so this deliberately UNDER-claims: reporting a client that turns out to be
+     * configured is harmless, the reverse is the bug issue #359 is about.
      */
     private static final String CLIENT_WRITE_UNFINISHED =
         "the call ended before the launch configuration's outcome was known"; //$NON-NLS-1$
@@ -112,7 +110,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     /**
      * Reason recorded when the client half is skipped because the caller has already been answered.
      * It is what keeps a call that reported a failure from mutating a launch configuration behind
-     * the caller's back тАФ see {@link #configureClient}.
+     * the caller's back — see {@link #configureClient}.
      */
     private static final String CLIENT_WRITE_ABANDONED =
         "the call had already returned, so the launch configuration was left untouched"; //$NON-NLS-1$
@@ -160,7 +158,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     public String getOutputSchema()
     {
         return JsonSchemaBuilder.object()
-            .booleanProperty("success", "Whether the credentials were stored", true) //$NON-NLS-1$ //$NON-NLS-2$
+            .booleanProperty("success", "Whether storage and its required read-back checks succeeded", true) //$NON-NLS-1$ //$NON-NLS-2$
             .stringProperty(McpKeys.PROJECT, "Target EDT project name.") //$NON-NLS-1$
             .stringProperty(McpKeys.APPLICATION_ID, "Target application ID.") //$NON-NLS-1$
             .stringProperty(KEY_APPLICATION_NAME,
@@ -168,6 +166,15 @@ public class SetInfobaseCredentialsTool implements IMcpTool
             .stringProperty(KEY_USER, "Stored infobase user name.") //$NON-NLS-1$
             .stringProperty(KEY_ACCESS, "Stored access kind (INFOBASE or OS).") //$NON-NLS-1$
             .booleanProperty(KEY_PASSWORD_SET, "True when a non-empty password was stored.") //$NON-NLS-1$
+            .objectProperty("storedFor", //$NON-NLS-1$
+                "Infobase name and UUID key used by EDT secure preferences.") //$NON-NLS-1$
+            .enumProperty("verification", //$NON-NLS-1$
+                "Read-back outcome: verified, mismatched, or not_verifiable.", //$NON-NLS-1$
+                "verified", "mismatched", "not_verifiable") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            .stringProperty("verificationReason", //$NON-NLS-1$
+                "Why read-back mismatched or could not prove a stored entry exists.") //$NON-NLS-1$
+            .booleanProperty("passwordMatched", //$NON-NLS-1$
+                "Whether the read-back password matched; omitted when no comparison ran.") //$NON-NLS-1$
             .booleanProperty(KEY_CLIENT_CONFIGURED,
                 "True when THIS call also wrote the launched client's own authentication onto a " //$NON-NLS-1$
                 + "launch configuration - only possible when the target was given as " //$NON-NLS-1$
@@ -194,7 +201,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         String access = JsonUtils.extractStringArgument(params, KEY_ACCESS);
 
         // Reject an out-of-enum access value (the schema declares a closed enum, but a client need
-        // not validate against it before sending) тАФ a typo must not silently store a different mode.
+        // not validate against it before sending) — a typo must not silently store a different mode.
         String accessError = InfobaseAccessSupport.accessError(access);
         if (accessError != null)
         {
@@ -203,7 +210,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
 
         boolean hasName = configName != null && !configName.isEmpty();
         // Stays null for a projectName + applicationId target: there is then no launch
-        // configuration in play, which is an ANSWER configureClient returns тАФ not a skipped step.
+        // configuration in play, which is an ANSWER configureClient returns — not a skipped step.
         ILaunchConfiguration clientConfig = null;
         boolean derivedApplicationId = false;
         if (hasName)
@@ -239,12 +246,12 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     }
 
     /**
-     * Configures the launched CLIENT тАФ when there is a launch configuration to configure.
+     * Configures the launched CLIENT — when there is a launch configuration to configure.
      *
      * <p>The credentials {@link #store} writes below are the <em>infobase access settings</em>, and
      * those are read by the designer AGENT. The client 1C launches is a different process and takes
      * its user from the launch configuration's own attributes, so writing only the former leaves the
-     * client popping the platform's "Infobase access" dialog at every launch тАФ a call that reported
+     * client popping the platform's "Infobase access" dialog at every launch — a call that reported
      * {@code success:true} while the very next {@code run_yaxunit_tests} still blocked on a login
      * prompt (issue #359).
      *
@@ -253,24 +260,21 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      * decides whether the client is configured is testable for both answers.
      *
      * <p>It runs only AFTER the agent's credentials have committed. There is no transaction across
-     * EDT's secure storage and a launch configuration, so one of the two writes is always second тАФ
+     * EDT's secure storage and a launch configuration, so one of the two writes is always second —
      * but this way the second one's failure is REPORTED ({@code clientConfigured:false} plus the
      * reason), whereas the reverse order would leave a launch configuration silently rewritten by a
      * call that answered {@code success:false}.
      *
      * <p><strong>It also runs only while the caller is still waiting.</strong> The store Job is
      * joined with a bounded timeout; when that deadline elapses the caller is answered and
-     * {@link #awaitStoreJob} cancels the Job тАФ but cancellation is COOPERATIVE and cannot stop a
-     * Job that is inside {@code getApplication}/{@code storeCredentials}. The Job therefore reaches
-     * this point regardless, which is why the check lives HERE, on the side that writes: an answered
-     * call must not go on to put a user and a password into a launch configuration behind the
-     * caller's back. In the case the answer was an ERROR (the deadline elapsed before the agent
-     * credentials committed) the flag is set long before this method runs, so the write cannot
-     * happen at all; in the case the answer was the persist-first success the two can still
-     * interleave, and its message already says the client's outcome was unknown.
+     * the shared bounded-store runner cancels the Job — but cancellation is COOPERATIVE and cannot
+     * stop a Job that is inside {@code getApplication}/{@code storeCredentials}. The Job therefore
+     * reaches this point regardless, which is why the check lives HERE, on the side that writes: an
+     * answered call must not go on to put a user and a password into a launch configuration behind
+     * the caller's back. The same permission also gates result publication and closes before the
+     * bounded runner returns, so there is no second flag or hand-off window before result mapping.
      *
-     * @param callerAnswered raised the moment the bounded join stops waiting; {@code null} is
-     *     treated as "still waiting"
+     * @param writeAllowed the bounded runner's deadline state; {@code null} is treated as allowed
      * @param configName the launch configuration named as the target, or {@code null}/empty when the
      *     target was given as projectName + applicationId
      * @param config the resolved launch configuration to write to; only read when {@code configName}
@@ -278,10 +282,10 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      * @param user the infobase user the client connects as (may be {@code null}/empty for OS auth)
      * @param password the user's password (may be {@code null}; an empty password is legitimate)
      * @param osAuth {@code true} to select OS authentication instead of an explicit user
-     * @return {@code null} when nothing failed тАФ including the case where no launch configuration
+     * @return {@code null} when nothing failed — including the case where no launch configuration
      *     was named and nothing was written; otherwise the reason the write failed
      */
-    static String configureClient(AtomicBoolean callerAnswered, String configName,
+    static String configureClient(BooleanSupplier writeAllowed, String configName,
             ILaunchConfiguration config, String user, String password, boolean osAuth)
     {
         if (configName == null || configName.isEmpty())
@@ -291,7 +295,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
             // caller read "credentials stored" as "a launch will now work".
             return null;
         }
-        if (callerAnswered != null && callerAnswered.get())
+        if (writeAllowed != null && !writeAllowed.getAsBoolean())
         {
             return CLIENT_WRITE_ABANDONED;
         }
@@ -338,12 +342,12 @@ public class SetInfobaseCredentialsTool implements IMcpTool
                 + "'. Use list_configurations to see what's available.").toJson()); //$NON-NLS-1$
         }
         // findLaunchConfigByName also matches Attach/debug configs, not just runtime-client ones.
-        // Credentials target a runtime-client config тАФ the same guard update_database applies тАФ and
+        // Credentials target a runtime-client config — the same guard update_database applies — and
         // an attach config has no project or applicationId to derive from.
         if (!LaunchConfigUtils.LAUNCH_CONFIG_TYPE_ID.equals(LaunchConfigUtils.getConfigTypeId(cfg)))
         {
             return TargetResolution.error(ToolResult.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' is not a runtime-client config тАФ set_infobase_credentials requires one.").toJson()); //$NON-NLS-1$
+                + "' is not a runtime-client config — set_infobase_credentials requires one.").toJson()); //$NON-NLS-1$
         }
         return resolveLaunchConfigTarget(cfg, LaunchLifecycleUtils::resolveDelegateApplicationId);
     }
@@ -372,7 +376,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         {
             return TargetResolution.error(ToolResult.error("The project binding could not be " //$NON-NLS-1$
                 + "read from launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' тАФ refusing to derive a credential target. Fix the configuration, or pass " //$NON-NLS-1$
+                + "' — refusing to derive a credential target. Fix the configuration, or pass " //$NON-NLS-1$
                 + "projectName + applicationId explicitly.").toJson()); //$NON-NLS-1$
         }
         String cfgAppId;
@@ -387,14 +391,14 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         {
             return TargetResolution.error(ToolResult.error("The application binding could not be " //$NON-NLS-1$
                 + "read from launch configuration '" + cfg.getName() //$NON-NLS-1$
-                + "' тАФ refusing to derive a credential target. Fix the configuration, or pass " //$NON-NLS-1$
+                + "' — refusing to derive a credential target. Fix the configuration, or pass " //$NON-NLS-1$
                 + "projectName + applicationId explicitly.").toJson()); //$NON-NLS-1$
         }
         if (cfgProject.isEmpty())
         {
             return TargetResolution.error(ToolResult.error("Launch configuration '" + cfg.getName() //$NON-NLS-1$
                 + "' is missing ATTR_PROJECT_NAME (read project='', applicationId='" + cfgAppId //$NON-NLS-1$
-                + "') тАФ cannot derive the target. Bind it to a project in EDT, or pass " //$NON-NLS-1$
+                + "') — cannot derive the target. Bind it to a project in EDT, or pass " //$NON-NLS-1$
                 + "projectName + applicationId explicitly.").toJson()); //$NON-NLS-1$
         }
         if (!cfgAppId.isEmpty())
@@ -533,65 +537,62 @@ public class SetInfobaseCredentialsTool implements IMcpTool
         // Job. Resolving an application can provoke EDT's background application-update-state recompute,
         // which can loop indefinitely on an unbounded worker thread (DesignerSessionPool retries); the
         // Job + short join keeps the call unattended-safe (the UI thread is never blocked).
-        final AtomicReference<String> jobResult = new AtomicReference<>();
-        // Raised the moment the join stops waiting, and read by the Job before it writes the launch
-        // configuration. The Job outlives the call whenever the deadline elapses (cancellation is
-        // cooperative), so this is what keeps an answered - possibly FAILED - call from mutating a
-        // launch configuration afterwards.
-        final AtomicBoolean callerAnswered = new AtomicBoolean();
-
-        Job storeJob = new Job("Store infobase credentials: " + finalApplicationId) //$NON-NLS-1$
-        {
-            @Override
-            protected IStatus run(IProgressMonitor monitor)
-            {
+        BoundedStoreResult<String> storeRun = InfobaseAccessSupport.runBoundedCredentialStore(
+            finalApplicationId, InfobaseAccessSupport.CREDENTIAL_STORE_TIMEOUT_MS,
+            (publish, writeCommitted, writeAllowed) -> {
                 Optional<IApplication> appOpt;
                 try
                 {
                     appOpt = appManager.getApplication(project, finalApplicationId);
                 }
-                catch (Exception e) // NOSONAR EDT application lookup тАФ surface as an actionable error
+                catch (Exception e) // NOSONAR EDT application lookup — surface as an actionable error
                 {
-                    jobResult.set(ToolResult.error("Error resolving application '" + finalApplicationId //$NON-NLS-1$
+                    publish.accept(ToolResult.error("Error resolving application '" + finalApplicationId //$NON-NLS-1$
                         + "': " + e.getMessage()).toJson()); //$NON-NLS-1$
-                    return Status.OK_STATUS;
+                    return;
                 }
                 if (!appOpt.isPresent())
                 {
-                    jobResult.set(ToolResult.error("Application not found: " + finalApplicationId //$NON-NLS-1$
+                    publish.accept(ToolResult.error("Application not found: " + finalApplicationId //$NON-NLS-1$
                         + ". Use get_applications to get valid application IDs.").toJson()); //$NON-NLS-1$
-                    return Status.OK_STATUS;
+                    return;
                 }
                 IApplication application = appOpt.get();
 
                 InfobaseAccess accessKind = InfobaseAccessSupport.parseAccess(finalAccess);
-                String error =
-                    InfobaseAccessSupport.storeCredentials(application, finalUser, finalPassword, accessKind);
-                if (error != null)
+                StoreResult storeResult =
+                    InfobaseAccessSupport.storeCredentials(application, finalUser, finalPassword,
+                        accessKind, writeCommitted, writeAllowed);
+                if (storeResult.error() != null)
                 {
-                    jobResult.set(ToolResult.error(error).toJson());
-                    return Status.OK_STATUS;
+                    publish.accept(ToolResult.error(storeResult.error()).toJson());
+                    return;
+                }
+                if (StoreResult.Verification.MISMATCHED == storeResult.verification())
+                {
+                    publish.accept(buildVerificationError(finalProjectName, finalApplicationId,
+                        storeResult));
+                    return;
                 }
 
-                // Persist-first: the credentials have committed (updateSettings returned null). Record the
-                // success NOW, keyed on the applicationId as the display name, so a later read-back or a
-                // timeout cannot lose the persisted success. The client half has not been attempted yet,
-                // so this provisional record says so rather than claiming a configured client.
+                // The credentials have committed and verification has concluded. Record the result
+                // before the cosmetic display-name read-back and before the client half starts.
                 boolean passwordSet = finalPassword != null && !finalPassword.isEmpty();
                 String storedUser = finalUser == null ? "" : finalUser; //$NON-NLS-1$
-                jobResult.set(buildSuccess(finalProjectName, finalApplicationId,
+                publish.accept(buildSuccess(finalProjectName, finalApplicationId,
                     finalDerivedApplicationId, finalApplicationId,
-                    storedUser, passwordSet, accessKind, finalClientConfigName, CLIENT_WRITE_UNFINISHED));
+                    storedUser, passwordSet, accessKind, storeResult, finalClientConfigName,
+                    CLIENT_WRITE_UNFINISHED));
 
-                // The agent half has committed, so now тАФ and only now тАФ the CLIENT half. Writing it
+                // The agent half has committed, so now — and only now — the CLIENT half. Writing it
                 // after the commit means a failure of the agent half leaves the launch configuration
                 // untouched instead of silently rewritten by a call that answered success:false.
-                String clientError = configureClient(callerAnswered, finalClientConfigName,
+                String clientError = configureClient(writeAllowed, finalClientConfigName,
                     finalClientConfig, finalUser, finalPassword,
                     InfobaseAccessSupport.isOsAccess(finalAccess));
-                jobResult.set(buildSuccess(finalProjectName, finalApplicationId,
+                publish.accept(buildSuccess(finalProjectName, finalApplicationId,
                     finalDerivedApplicationId, finalApplicationId,
-                    storedUser, passwordSet, accessKind, finalClientConfigName, clientError));
+                    storedUser, passwordSet, accessKind, storeResult, finalClientConfigName, clientError));
 
                 // Best-effort enrich: replace the applicationId-named success with the real display name.
                 try
@@ -599,23 +600,47 @@ public class SetInfobaseCredentialsTool implements IMcpTool
                     String name = application.getName();
                     if (name != null && !name.isEmpty())
                     {
-                        jobResult.set(buildSuccess(finalProjectName, finalApplicationId,
+                        publish.accept(buildSuccess(finalProjectName, finalApplicationId,
                             finalDerivedApplicationId, name, storedUser, passwordSet, accessKind,
-                            finalClientConfigName, clientError));
+                            storeResult, finalClientConfigName, clientError));
                     }
                 }
-                catch (Exception e) // NOSONAR cosmetic read-back тАФ keep the applicationId-named success
+                catch (Exception e) // NOSONAR cosmetic read-back — keep the applicationId-named success
                 {
                     // The credentials are already stored; keep the success recorded above.
                 }
-                return Status.OK_STATUS;
-            }
-        };
-        storeJob.setUser(false);
-        storeJob.setSystem(true);
-        McpJobs.schedule(storeJob);
+            });
+        return finishBoundedStore(storeRun, projectName, applicationId);
+    }
 
-        return awaitStoreJob(storeJob, jobResult, callerAnswered, projectName, applicationId);
+    /** Maps the shared bounded-store snapshot after its write permission has closed. */
+    static String finishBoundedStore(BoundedStoreResult<String> storeRun, String projectName,
+        String applicationId)
+    {
+        return boundedStoreOutcome(storeRun, projectName, applicationId);
+    }
+
+    /** Maps the shared bounded credential-store outcome onto this tool's existing result contract. */
+    private static String boundedStoreOutcome(BoundedStoreResult<String> storeRun,
+        String projectName, String applicationId)
+    {
+        BoundedJob.Result bounded = storeRun.boundedResult();
+        if (bounded.getOutcome() == BoundedJob.Outcome.INTERRUPTED)
+        {
+            if (storeRun.publishedResult() != null)
+            {
+                return storeRun.publishedResult();
+            }
+            return storeRun.writeCommitted()
+                ? ToolResult.errorAfterMutation("Storing infobase credentials was interrupted " //$NON-NLS-1$
+                    + "after the credentials write committed; EDT may still be verifying the " //$NON-NLS-1$
+                    + "read-back.").toJson() //$NON-NLS-1$
+                : ToolResult.error("Storing infobase credentials was interrupted.").toJson(); //$NON-NLS-1$
+        }
+        boolean finished = bounded.getOutcome() == BoundedJob.Outcome.COMPLETED
+            || bounded.getOutcome() == BoundedJob.Outcome.NOT_RUN;
+        return storeOutcome(finished, storeRun.publishedResult(), storeRun.writeCommitted(),
+            projectName, applicationId);
     }
 
     /**
@@ -628,7 +653,7 @@ public class SetInfobaseCredentialsTool implements IMcpTool
      *
      * <p>It reports what THIS call did, not what a launch will do. A launch configuration nobody
      * touched here may already carry a user somebody set by hand, and one this call did write can
-     * still fail at connect on a user that does not exist or a wrong password тАФ so the wording says
+     * still fail at connect on a user that does not exist or a wrong password — so the wording says
      * "not configured by this call", never "will fail".
      *
      * @param clientConfigName the launch configuration that was updated, or {@code null} when the
@@ -659,29 +684,36 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     }
 
     /**
-     * Builds the SUCCESS tool-result JSON. The same field set (success + clientConfigured + project
-     * + applicationId + applicationName + user + access + passwordSet + message) is emitted whether
+     * Builds the SUCCESS tool-result JSON. The same field set, including storage and verification,
+     * is emitted whether
      * the display name is the applicationId (persist-first) or the real read-back name, so the
      * output shape is identical across branches.
      */
     static String buildSuccess(String projectName, String applicationId, String displayName,
-            String storedUser, boolean passwordSet, InfobaseAccess accessKind, String clientConfigName,
-            String clientError)
+            String storedUser, boolean passwordSet, InfobaseAccess accessKind, StoreResult storeResult,
+            String clientConfigName, String clientError)
     {
         return buildSuccess(projectName, applicationId, false, displayName, storedUser,
-            passwordSet, accessKind, clientConfigName, clientError);
+            passwordSet, accessKind, storeResult, clientConfigName, clientError);
     }
 
     /** Same success payload, explicitly reporting a project-default application derivation. */
     static String buildSuccess(String projectName, String applicationId,
             boolean derivedApplicationId, String displayName, String storedUser, boolean passwordSet,
-            InfobaseAccess accessKind, String clientConfigName, String clientError)
+            InfobaseAccess accessKind, StoreResult storeResult, String clientConfigName,
+            String clientError)
     {
         String derivedNote = derivedApplicationId
             ? " The launch configuration had no applicationId attribute, so EDT's project-default " //$NON-NLS-1$
                 + "application '" + applicationId + "' was derived for project '" + projectName + "'." //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             : ""; //$NON-NLS-1$
-        return ToolResult.success()
+        String storageStatement = StoreResult.Verification.VERIFIED == storeResult.verification()
+            ? "Stored infobase access credentials" //$NON-NLS-1$
+            : "EDT accepted the infobase access-settings update"; //$NON-NLS-1$
+        String locationConnector = StoreResult.Verification.VERIFIED == storeResult.verification()
+            ? ") in EDT secure preferences keyed by infobase '" //$NON-NLS-1$
+            : ") targeting EDT secure preferences keyed by infobase '"; //$NON-NLS-1$
+        ToolResult result = ToolResult.success()
             .put(KEY_CLIENT_CONFIGURED, clientConfigName != null && clientError == null)
             .put(McpKeys.PROJECT, projectName)
             .put(McpKeys.APPLICATION_ID, applicationId)
@@ -689,85 +721,67 @@ public class SetInfobaseCredentialsTool implements IMcpTool
             .put(KEY_USER, storedUser)
             .put(KEY_ACCESS, accessKind.getName())
             .put(KEY_PASSWORD_SET, passwordSet)
-            .put(McpKeys.MESSAGE, "Stored infobase access credentials for application '" //$NON-NLS-1$
+            .put("storedFor", storedFor(storeResult)) //$NON-NLS-1$
+            .put("verification", verificationName(storeResult)) //$NON-NLS-1$
+            .put("verificationReason", storeResult.verificationReason()); //$NON-NLS-1$
+        if (storeResult.passwordMatched() != null)
+        {
+            result.put("passwordMatched", storeResult.passwordMatched().booleanValue()); //$NON-NLS-1$
+        }
+        return result.put(McpKeys.MESSAGE, storageStatement + " for application '" //$NON-NLS-1$
                 + displayName + "' (user '" + storedUser + "', access " //$NON-NLS-1$ //$NON-NLS-2$
-                + accessKind.getName() + ")." + derivedNote //$NON-NLS-1$
-                + " The update agent used by update_database / " //$NON-NLS-1$
-                + "launch will now authenticate with them. " //$NON-NLS-1$
+                + accessKind.name() + locationConnector //$NON-NLS-1$
+                + storeResult.storedForName() + "' (UUID " + storeResult.storedForUuid() + ")." //$NON-NLS-1$ //$NON-NLS-2$
+                + derivedNote + verificationNote(storeResult) //$NON-NLS-1$
+                + " A wrong credential value is reported only when EDT connects. " //$NON-NLS-1$
                 + clientNote(clientConfigName, clientError))
             .toJson();
     }
 
-    /**
-     * Joins the store Job with the bounded {@link #CREDENTIALS_TIMEOUT_SECONDS} timeout and maps the
-     * outcome through the pure {@link #storeOutcome} seam: on a clean finish returns the recorded JSON;
-     * on timeout cancels the Job and returns the recorded success (persist-first) or a graceful timeout
-     * error; on interruption restores the interrupt flag and returns the recorded JSON (if any) or a
-     * graceful interrupted error.
-     *
-     * <p>Every exit raises {@code callerAnswered} FIRST, before the answer is even built. A Job that
-     * outran the deadline keeps running тАФ {@link Job#cancel()} only asks it to stop, and this one has
-     * no monitor poll to honour it тАФ so the flag is the one thing that stops it from writing a launch
-     * configuration for a call that has already reported a failure (see {@link #configureClient}).
-     *
-     * @param job the scheduled store Job
-     * @param jobResult the JSON the Job records; read only after the flag is raised
-     * @param callerAnswered raised here, read by the Job before the client write
-     * @param projectName the target project name (for the timeout message)
-     * @param applicationId the target application ID (for the timeout message)
-     * @return the tool-result JSON
-     */
-    static String awaitStoreJob(Job job, AtomicReference<String> jobResult, AtomicBoolean callerAnswered,
-            String projectName, String applicationId)
+    static String buildVerificationError(String projectName, String applicationId,
+            StoreResult storeResult)
     {
-        return awaitStoreJob(job, jobResult, callerAnswered, projectName, applicationId,
-            TimeUnit.SECONDS.toMillis(CREDENTIALS_TIMEOUT_SECONDS));
+        ToolResult result = ToolResult.errorAfterMutation(
+            "Infobase access-settings read-back did not match the requested values: " //$NON-NLS-1$
+                + storeResult.verificationReason())
+            .put(McpKeys.PROJECT, projectName)
+            .put(McpKeys.APPLICATION_ID, applicationId)
+            .put("storedFor", storedFor(storeResult)) //$NON-NLS-1$
+            .put("verification", verificationName(storeResult)) //$NON-NLS-1$
+            .put("passwordMatched", storeResult.passwordMatched().booleanValue()); //$NON-NLS-1$
+        return result.toJson();
     }
 
-    /**
-     * {@link #awaitStoreJob(Job, AtomicReference, AtomicBoolean, String, String)} with the deadline
-     * spelled out, so the behaviour AT the deadline can be driven without waiting
-     * {@link #CREDENTIALS_TIMEOUT_SECONDS} seconds for it. The overload above is the production
-     * entry point and supplies that constant.
-     *
-     * @param job the scheduled store Job
-     * @param jobResult the JSON the Job records; read only after the flag is raised
-     * @param callerAnswered raised here, read by the Job before the client write
-     * @param projectName the target project name (for the timeout message)
-     * @param applicationId the target application ID (for the timeout message)
-     * @param timeoutMillis how long to wait for the Job before answering without it
-     * @return the tool-result JSON
-     */
-    static String awaitStoreJob(Job job, AtomicReference<String> jobResult, AtomicBoolean callerAnswered,
-            String projectName, String applicationId, long timeoutMillis)
+    private static Map<String, String> storedFor(StoreResult storeResult)
     {
-        try
+        Map<String, String> storedFor = new LinkedHashMap<>();
+        storedFor.put("name", storeResult.storedForName()); //$NON-NLS-1$
+        storedFor.put("uuid", storeResult.storedForUuid()); //$NON-NLS-1$
+        return storedFor;
+    }
+
+    private static String verificationName(StoreResult storeResult)
+    {
+        return storeResult.verificationName();
+    }
+
+    private static String verificationNote(StoreResult storeResult)
+    {
+        if (StoreResult.Verification.NOT_VERIFIABLE == storeResult.verification())
         {
-            boolean finished = job.join(timeoutMillis, null);
-            callerAnswered.set(true);
-            if (!finished)
-            {
-                job.cancel();
-                return storeOutcome(false, jobResult.get(), projectName, applicationId);
-            }
-            return storeOutcome(true, jobResult.get(), projectName, applicationId);
+            return " Verification could not distinguish the stored settings from EDT's fallback: " //$NON-NLS-1$
+                + storeResult.verificationReason();
         }
-        catch (InterruptedException e)
-        {
-            callerAnswered.set(true);
-            job.cancel();
-            Thread.currentThread().interrupt();
-            return jobResult.get() != null ? jobResult.get()
-                : ToolResult.error("Storing infobase credentials was interrupted.").toJson(); //$NON-NLS-1$
-        }
+        return " The access kind, user name, and password matched when read back; the password " //$NON-NLS-1$
+            + "itself is not returned."; //$NON-NLS-1$
     }
 
     /**
      * Pure, headless-testable seam mapping the bounded-Job outcome to the tool-result JSON. When the
-     * Job recorded a result it is returned verbatim тАФ this covers both a clean finish AND the
-     * persist-first timeout case where the credentials already committed before the deadline. Otherwise
-     * a graceful error is produced: a timeout message when the Job did not finish, or a "no result"
-     * message when it finished without recording anything.
+     * Job recorded a result it is returned verbatim. Otherwise a graceful error is produced: a
+     * post-mutation timeout when the write committed but read-back did not finish, the original
+     * uncertainty wording when the write had not committed, or a "no result" message when the Job
+     * finished without recording anything.
      *
      * @param finished whether the Job completed within the timeout budget
      * @param recordedJson the JSON the Job recorded (success or error), or {@code null} if none
@@ -778,12 +792,28 @@ public class SetInfobaseCredentialsTool implements IMcpTool
     static String storeOutcome(boolean finished, String recordedJson, String projectName,
             String applicationId)
     {
+        return storeOutcome(finished, recordedJson, recordedJson != null, projectName, applicationId);
+    }
+
+    /** Same mapper with the persistent-write boundary represented independently of final JSON. */
+    static String storeOutcome(boolean finished, String recordedJson, boolean writeCommitted,
+            String projectName, String applicationId)
+    {
         if (recordedJson != null)
         {
             return recordedJson;
         }
         if (!finished)
         {
+            if (writeCommitted)
+            {
+                return ToolResult.errorAfterMutation("Storing infobase credentials timed out after " //$NON-NLS-1$
+                    + CREDENTIALS_TIMEOUT_SECONDS + " seconds for application " + applicationId //$NON-NLS-1$
+                    + " in project " + projectName //$NON-NLS-1$
+                    + ". The credentials write did commit, but EDT did not finish read-back " //$NON-NLS-1$
+                    + "verification before the deadline; do not retry based on this timeout.") //$NON-NLS-1$
+                    .toJson();
+            }
             return ToolResult.error("Storing infobase credentials timed out after " //$NON-NLS-1$
                 + CREDENTIALS_TIMEOUT_SECONDS + " seconds for application " + applicationId //$NON-NLS-1$
                 + " in project " + projectName //$NON-NLS-1$

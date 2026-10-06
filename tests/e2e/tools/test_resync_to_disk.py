@@ -75,6 +75,7 @@ REAL ERROR / SENTINEL PATHS (read from the Java)
 """
 
 import os
+import shutil
 import time
 
 from harness import (
@@ -83,11 +84,15 @@ from harness import (
     assert_error,
     assert_error_quality,
     assert_no_diff,
+    assert_no_diff_rel,
     e2e_test,
     reset_model,
     settle_or_fail,
     PROJECT,
     PROJECT_DIR,
+    REPO_ROOT,
+    EXT_OBJECTS_PROJECT,
+    EXT_OBJECTS_REL,
 )
 
 
@@ -309,6 +314,73 @@ def test_revalidate_flag_is_echoed():
 # ──────────────────────────────────────────────────────────────────────────────
 # REPAIR PATH (the tool's reason to exist: restore a .mdo the model still has)
 # ──────────────────────────────────────────────────────────────────────────────
+@e2e_test(tool="resync_to_disk", kind="action")
+def test_external_project_skips_foreign_configuration_in_both_modes():
+    """An external project has own roots but no own Configuration. Its linked base's BM
+    id must never be looked up in the external model, even with cleanup requested: on
+    EDT 2025.2 that id can name an ExternalReport and the old cast logged an ERROR while
+    still returning success. Assert no warning as well as no foreign disk mutation."""
+    settle_or_fail("the external-project resync")
+    for remove in (False, True):
+        r = call("resync_to_disk", {
+            "projectName": EXT_OBJECTS_PROJECT,
+            "cleanDanglingReferences": remove,
+        })
+        assert_ok(r, "external-project resync, cleanDanglingReferences=%s" % remove)
+        sc = _success_envelope(r, "external-project resync")
+        _assert_clean_dangling_scan(sc, "external projects have no own Configuration")
+        if "danglingWarning" in sc:
+            raise AssertionError("a linked Configuration must be skipped without warning: %r" % sc)
+        if sc.get("totalTopObjects") != 2:
+            raise AssertionError("resync must enumerate the two OWN external roots: %r" % sc)
+        if sc.get("objectsExported") != 0 or sc.get("missingBeforeCount") != 0:
+            raise AssertionError("an in-sync external fixture must remain a no-op: %r" % sc)
+        assert_no_diff("external resync must never rewrite the linked base configuration")
+        assert_no_diff_rel(EXT_OBJECTS_REL, "an in-sync external resync must not touch own files")
+
+
+@e2e_test(tool="resync_to_disk", kind="write-metadata")
+def test_external_project_still_repairs_its_own_missing_root():
+    """Skipping the foreign Configuration must not skip the project's own export repair.
+    Seed an external processor, remove only its .mdo, request cleanup, and verify both
+    the actual restored root file and a model read-back while the linked base stays clean."""
+    name = "E2EResyncOwnRoot"
+    fqn = "ExternalDataProcessor." + name
+    settle_or_fail("the external-project repair")
+    assert_ok(call("create_metadata", {"projectName": EXT_OBJECTS_PROJECT, "fqn": fqn}),
+              "seed the own external root")
+    mdo_abs = os.path.join(REPO_ROOT, *EXT_OBJECTS_REL.split("/"),
+                           "src", "ExternalDataProcessors", name, name + ".mdo")
+    if not _poll(lambda: os.path.isfile(mdo_abs)):
+        raise AssertionError("setup failed: the own external root was never exported: %s" % mdo_abs)
+    settle_or_fail("the external root seed")
+    os.remove(mdo_abs)
+
+    r = call("resync_to_disk", {
+        "projectName": EXT_OBJECTS_PROJECT,
+        "cleanDanglingReferences": True,
+    })
+    assert_ok(r, "resync restores the own external root")
+    sc = _success_envelope(r, "external own-root repair")
+    _assert_clean_dangling_scan(sc, "no foreign Configuration cleanup during own-root repair")
+    if "danglingWarning" in sc:
+        raise AssertionError("own-root repair must not attempt the foreign Configuration: %r" % sc)
+    if fqn not in (sc.get("missingBefore") or []):
+        raise AssertionError("the deleted OWN external root must be detected: %r" % sc)
+    if sc.get("objectsExported") != sc.get("missingBeforeCount") or sc.get("stillMissingCount") != 0:
+        raise AssertionError("the missing subset must be restored completely: %r" % sc)
+    if not _poll(lambda: os.path.isfile(mdo_abs)):
+        raise AssertionError("the own external root file was not restored: %s" % mdo_abs)
+    with open(mdo_abs, encoding="utf-8") as restored:
+        if "<name>%s</name>" % name not in restored.read():
+            raise AssertionError("the restored .mdo must contain the own external root's name")
+    read_back = call("get_metadata_details", {"projectName": EXT_OBJECTS_PROJECT, "objectFqns": [fqn]})
+    assert_ok(read_back, "the repaired root remains accessible in its OWN model")
+    if name not in (read_back.text or ""):
+        raise AssertionError("the own root must remain visible in the model: %r" % read_back.text)
+    assert_no_diff("repairing an external root must not rewrite the linked base configuration")
+
+
 @e2e_test(tool="resync_to_disk", kind="write-metadata")
 def test_repair_restores_a_deleted_mdo_from_the_model():
     """End-to-end desync repair: create a Catalog (model + .mdo on disk), delete its
@@ -423,3 +495,113 @@ def test_full_export_without_confirm_is_rejected():
                          ctx="the fullExport guard names overwriteDiskEdits and tells the caller to confirm")
     # The guard early-returns before the export, so a rejected fullExport must write nothing.
     assert_no_diff("a fullExport rejected by the confirm guard must not touch the project tree")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ORPHANED ROLE RIGHTS (issue #462)
+# ──────────────────────────────────────────────────────────────────────────────
+def _rights_path(role):
+    return os.path.join(PROJECT_DIR, "src", "Roles", role, "Rights.rights")
+
+
+def _read(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _orphan_entries(sc, role_fqn):
+    return [e for e in (sc.get("orphanRoleRights") or []) if e.get("role") == role_fqn]
+
+
+@e2e_test(tool="resync_to_disk", kind="write-metadata")
+def test_orphaned_role_rights_are_reported_then_removed_on_request():
+    """An object deleted OUTSIDE EDT (a git merge, a file removed on disk) leaves its block in
+    the role's Rights.rights; on load EDT keeps it as an unresolved proxy, and EDT's own rights
+    tasks then fail on the role. resync_to_disk must REPORT it by default (verdict absent, the
+    real address, the RLS flag) without touching the file, the reader must name it instead of
+    printing its EClass, a rights edit on the role must be refused up front, and only
+    cleanOrphanRoleRights=true may remove it - leaving the live entry alone.
+
+    Mutation thinking: a sweep that judged by resolution alone would also flag the live entry;
+    one that removed in report mode would change the file on the first call; one that ignored
+    the verdict would remove the stale-but-present entry too (not seeded here - unit-covered)."""
+    gone, keep, role = "E2EOrphanGone", "E2EOrphanKeep", "E2EOrphanRole"
+    role_fqn = "Role." + role
+    settle_or_fail("this orphan sweep")
+    for fqn in ("Catalog." + gone, "Catalog." + keep, role_fqn):
+        assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": fqn}), "seed " + fqn)
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": role_fqn, "rights": [
+        {"object": "Catalog." + gone, "right": "Read"},
+        {"object": "Catalog." + gone, "right": "Update", "rls": "WHERE TRUE"},
+        {"object": "Catalog." + keep, "right": "Read"},
+    ]})
+    assert_ok(r, "seed the role's rights")
+    rights = _rights_path(role)
+    if not _poll(lambda: gone in _read(rights) and keep in _read(rights), timeout=30):
+        raise AssertionError("setup failed: Rights.rights never carried both catalogs: %r" % _read(rights))
+    settle_or_fail("the seed")
+
+    # Delete the catalog the way a merge would: its files and its Configuration.mdo line, then
+    # re-read the project from disk.
+    shutil.rmtree(os.path.join(PROJECT_DIR, "src", "Catalogs", gone))
+    cfg = os.path.join(PROJECT_DIR, "src", "Configuration", "Configuration.mdo")
+    text = _read(cfg)
+    line = "<catalogs>Catalog.%s</catalogs>" % gone
+    if line not in text:
+        raise AssertionError("setup failed: Configuration.mdo does not register %s" % gone)
+    with open(cfg, "w", encoding="utf-8", newline="") as f:
+        f.write("".join(l for l in text.splitlines(True) if line not in l))
+    assert_ok(call("clean_project", {"projectName": PROJECT}), "re-read the project from disk")
+    settle_or_fail("the re-read")
+
+    # 1. Report only: found, addressed, and the file untouched.
+    r = call("resync_to_disk", {"projectName": PROJECT})
+    assert_ok(r, "report the orphan")
+    sc = _success_envelope(r, "orphan report")
+    entries = _orphan_entries(sc, role_fqn)
+    if len(entries) != 1:
+        raise AssertionError("exactly the deleted catalog's entry must be reported: %r" % entries)
+    e = entries[0]
+    if (e.get("target"), e.get("verdict"), e.get("hasRls")) != ("Catalog." + gone, "absent", True):
+        raise AssertionError("the entry must name its target, be judged absent and carry its RLS: %r" % e)
+    if sc.get("orphanRoleRightsFound") != 1 or sc.get("orphanRoleRightsRemovedCount") != 0:
+        raise AssertionError("report mode must count 1 and remove 0: %r" % sc)
+    if sc.get("orphanRlsFieldsFound") != len(sc.get("orphanRlsFields") or []):
+        raise AssertionError("the RLS field total must match the (uncapped here) list: %r" % sc)
+    if gone not in _read(rights):
+        raise AssertionError("a report-only run must not rewrite Rights.rights")
+
+    # 2. The reader names the address, not the EClass.
+    r = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [role_fqn]})
+    assert_ok(r, "read the role")
+    if ("Catalog.%s (unresolved)" % gone) not in (r.text or ""):
+        raise AssertionError("the matrix must name the unresolved target: %s" % (r.text or "")[:800])
+
+    # 3. A rights edit is refused before anything is written, and says how to get out.
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": role_fqn,
+                                 "rights": [{"object": "Catalog." + keep, "right": "Update"}]})
+    err = assert_error(r, "rights edit on a role holding an orphan")
+    assert_error_quality(err, names=["Catalog." + gone], suggests=["cleanOrphanRoleRights"],
+                         ctx="the refusal names the orphan and the sweep")
+
+    # 4. Removal on request: only the absent entry goes.
+    r = call("resync_to_disk", {"projectName": PROJECT, "cleanOrphanRoleRights": True})
+    assert_ok(r, "remove the orphan")
+    sc = _success_envelope(r, "orphan removal")
+    if sc.get("orphanRoleRightsRemovedCount") != 1 or sc.get("cleanOrphanRoleRights") is not True:
+        raise AssertionError("the removal must report exactly one entry removed: %r" % sc)
+    if not _poll(lambda: gone not in _read(rights), timeout=30):
+        raise AssertionError("Rights.rights still names the deleted catalog: %r" % _read(rights))
+    if keep not in _read(rights):
+        raise AssertionError("the live entry must survive the sweep: %r" % _read(rights))
+
+    # 5. Idempotent, and the role is editable again.
+    sc = _success_envelope(call("resync_to_disk", {"projectName": PROJECT}), "second report")
+    if _orphan_entries(sc, role_fqn):
+        raise AssertionError("nothing may be left to report: %r" % sc.get("orphanRoleRights"))
+    assert_ok(call("modify_metadata", {"projectName": PROJECT, "fqn": role_fqn,
+                                       "rights": [{"object": "Catalog." + keep, "right": "Update"}]}),
+              "the role takes a rights edit once the orphan is gone")

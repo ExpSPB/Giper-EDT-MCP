@@ -9,11 +9,15 @@ package fm.giper.edt.mcp.server.tools.impl;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.emf.common.util.EList;
@@ -22,6 +26,7 @@ import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EEnumLiteral;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
+import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EStructuralFeature;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 
@@ -63,6 +68,7 @@ import com._1c.g5.v8.dt.moxel.sheet.SheetFactory;
 import com._1c.g5.v8.dt.xdto.model.ObjectType;
 import com._1c.g5.v8.dt.xdto.model.Package;
 import com._1c.g5.v8.dt.xdto.model.Property;
+import com._1c.g5.v8.dt.platform.IEObjectProvider;
 import com._1c.g5.v8.dt.platform.version.Version;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
@@ -72,6 +78,9 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.base.AbstractMetadataWriteTool;
 import fm.giper.edt.mcp.server.tools.base.WriteScope;
 import fm.giper.edt.mcp.server.utils.BmTransactions;
+import fm.giper.edt.mcp.server.utils.CommandInterfaceAddress;
+import fm.giper.edt.mcp.server.utils.CommandInterfaceSection;
+import fm.giper.edt.mcp.server.utils.CommandInterfaceSupport;
 import fm.giper.edt.mcp.server.utils.CommonAttributeContentWriter;
 import fm.giper.edt.mcp.server.utils.ConsentPreview;
 import fm.giper.edt.mcp.server.utils.DestructiveConsentGate;
@@ -81,6 +90,7 @@ import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
 import fm.giper.edt.mcp.server.utils.FormStructureReader;
 import fm.giper.edt.mcp.server.utils.FormValidationException;
+import fm.giper.edt.mcp.server.utils.Refusals;
 import fm.giper.edt.mcp.server.utils.MdNameNormalizer;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.McoreValueListBuilder;
@@ -90,6 +100,7 @@ import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector.PropertyInfo;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
 import fm.giper.edt.mcp.server.utils.MetadataTypeBuilder;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
+import fm.giper.edt.mcp.server.utils.StandardCommandGroupResolver;
 import fm.giper.edt.mcp.server.utils.MethodReferenceValidator;
 import fm.giper.edt.mcp.server.utils.PictureValueBuilder;
 import fm.giper.edt.mcp.server.utils.PredefinedWriter;
@@ -98,8 +109,11 @@ import fm.giper.edt.mcp.server.utils.RoleRightsWriter;
 import fm.giper.edt.mcp.server.utils.SpreadsheetTemplateWriter;
 import fm.giper.edt.mcp.server.utils.StyleValueBuilder;
 import fm.giper.edt.mcp.server.utils.SubsystemUtils;
+import fm.giper.edt.mcp.server.utils.VendorSupportGuard;
 import fm.giper.edt.mcp.server.utils.XdtoWriteException;
 import fm.giper.edt.mcp.server.utils.XdtoWriter;
+import fm.giper.edt.mcp.server.utils.WrittenObjectMarkers;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -203,6 +217,15 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
     /** Output result key: whether the change was exported to disk. */
     private static final String KEY_PERSISTED = "persisted"; //$NON-NLS-1$
 
+    /**
+     * Output result key: the event handlers a form item's KIND change took with it, each named
+     * {@code "Event (Procedure)"} (issue #601) - the ones the new kind publishes no event for, plus
+     * any that went with an ext-info node the new type pairs with nothing to replace. Reported only
+     * when non-empty, like {@code demotedMainAttributes}: a change to something the caller did not
+     * address. The BSL procedure is never touched, only the subscription.
+     */
+    static final String KEY_REMOVED_EVENT_HANDLERS = "removedEventHandlers"; //$NON-NLS-1$
+
     /** Echoes the locale a localized property was actually written under (#298). */
     private static final String KEY_LANGUAGE = "language"; //$NON-NLS-1$
 
@@ -238,6 +261,18 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
 
     /** Payload / output key: the SpreadsheetDocument template content spec / applied-counts object. */
     private static final String KEY_TEMPLATE = "template"; //$NON-NLS-1$
+
+    /** Payload / output key: the command-interface changes array / applied-counts object. */
+    static final String KEY_COMMANDS = "commands"; //$NON-NLS-1$
+
+    /** Output key: what a command interface stores after a {@link #KEY_COMMANDS} change. */
+    private static final String KEY_STORED = "stored"; //$NON-NLS-1$
+
+    /** Output key: the commands of {@link #KEY_COMMANDS} entries that changed nothing. */
+    private static final String KEY_UNCHANGED = "unchanged"; //$NON-NLS-1$
+
+    /** How long a command-interface edit waits for EDT to finish recomputing the section. */
+    private static final long COMMAND_INTERFACE_WAIT_MS = 15_000L;
 
     /** Actual-kind stem in the "payload only for X FQN" refusals (java:S1192). */
     private static final String ERR_IS_A = "is a "; //$NON-NLS-1$
@@ -285,7 +320,8 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
     public String getDescription()
     {
         return "Set properties of any metadata node, including managed-form roots, items, " //$NON-NLS-1$
-            + "attributes, commands, and handlers. Parameters and examples: " //$NON-NLS-1$
+            + "attributes, commands, and handlers, and edit a section's command interface. " //$NON-NLS-1$
+            + "Parameters and examples: " //$NON-NLS-1$
             + "get_tool_guide('modify_metadata')."; //$NON-NLS-1$
     }
 
@@ -341,15 +377,34 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 + "plain reference is a no-op). Valid only for a CommonAttribute / ExchangePlan / " //$NON-NLS-1$
                 + "Catalog / Document / Subsystem FQN (a Subsystem FQN may be nested); cannot be " //$NON-NLS-1$
                 + "combined with 'properties'.") //$NON-NLS-1$
+            .objectArrayProperty(KEY_COMMANDS,
+                "COMMAND INTERFACE FQN only ('Subsystem.<Name>.CommandInterface' or " //$NON-NLS-1$
+                + "'Configuration.MainSectionCommandInterface'): section commands to change, as [{command, " //$NON-NLS-1$
+                + "visible?, roles?, group?, after? | before?}], applied in order and validated as one " //$NON-NLS-1$
+                + "batch. 'command' is the command FQN, e.g. 'Report.Sales.StandardCommand.Open' or " //$NON-NLS-1$
+                + "'CommonCommand.Print'; 'visible' the common visibility; 'roles' [{role: 'Role.<Name>', " //$NON-NLS-1$
+                + "visible: true | false | 'default' (drops the override)}]; 'group' the panel group to move it " //$NON-NLS-1$
+                + "to, e.g. 'NavigationPanelImportant', 'ActionsPanelReports' or 'CommandGroup.<Name>'; " //$NON-NLS-1$
+                + "'after' / 'before' another command of that group to order it by. get_metadata_details " //$NON-NLS-1$
+                + "on the same FQN lists the section's commands and groups. Cannot be combined with other " //$NON-NLS-1$
+                + "payloads.") //$NON-NLS-1$
             .objectProperty(KEY_TEMPLATE,
                 "SpreadsheetDocument (print form / макет) TEMPLATE FQN only: the spreadsheet content to " //$NON-NLS-1$
                 + "author, instead of 'properties'. An object with any of: 'cells' [{row, col (both " //$NON-NLS-1$
                 + "0-based, required), text? OR parameter? (a print-time parameter name), bold?, " //$NON-NLS-1$
                 + "fontSize?, hAlign? ('Left'/'Center'/'Right'/'Auto'/'Width'), vAlign? " //$NON-NLS-1$
-                + "('Top'/'Center'/'Bottom'), wrap? (true word-wraps the cell text)}]; 'merges' " //$NON-NLS-1$
+                + "('Top'/'Center'/'Bottom'), wrap? (true word-wraps the cell text), textOrientation? " //$NON-NLS-1$
+                + "(rotation in the platform's own unit - TENTHS of a degree, 0..3600, so 90 degrees is " //$NON-NLS-1$
+                + "900), autoIndent? (0..100), autoMarkIncomplete?}]; 'merges' " //$NON-NLS-1$
                 + "[{fromRow, fromCol, toRow, toCol}] merged cell ranges; 'areas' [{name, fromRow, " //$NON-NLS-1$
                 + "fromCol, toRow, toCol}] named areas (for ПолучитьОбласть / Вывести output); " //$NON-NLS-1$
-                + "'columnWidths' [{col, width}] and 'rowHeights' [{row, height}] column / row sizes. " //$NON-NLS-1$
+                + "'columnWidths' [{col, width?, autoWidthCalculation?, widthWeightFactor? - the share " //$NON-NLS-1$
+                + "of the free width, only alongside autoWidthCalculation:true}] and 'rowHeights' " //$NON-NLS-1$
+                + "[{row, height}] column / row sizes. An omitted formatting key leaves that property " //$NON-NLS-1$
+                + "UNSET (the cell inherits it). For textOrientation / autoIndent / autoMarkIncomplete / " //$NON-NLS-1$
+                + "autoWidthCalculation / widthWeightFactor an explicit 0 / false overrides that " //$NON-NLS-1$
+                + "inheritance and null counts as omitted; bold:false alone and wrap:false are the same as " //$NON-NLS-1$
+                + "omitting them. " //$NON-NLS-1$
                 + "Setting a cell overwrites that (row, col); the rest of the content is kept. Valid " //$NON-NLS-1$
                 + "only for a SpreadsheetDocument template FQN; cannot be combined with 'properties' / " //$NON-NLS-1$
                 + "'content' / a Role payload.") //$NON-NLS-1$
@@ -365,9 +420,10 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
     @Override
     public String getOutputSchema()
     {
-        return JsonSchemaBuilder.object()
+        return WrittenObjectMarkers.declareOutput(JsonSchemaBuilder.object()
             .booleanProperty("success", "Whether the properties were set", true) //$NON-NLS-1$ //$NON-NLS-2$
-            .stringProperty(McpKeys.ACTION, "'modified' on success") //$NON-NLS-1$
+            .stringProperty(McpKeys.ACTION, "'modified' on success; 'unchanged' when a 'commands' change " //$NON-NLS-1$
+                + "requested only what the section already had") //$NON-NLS-1$
             .stringProperty("fqn", "Normalized FQN of the modified node") //$NON-NLS-1$ //$NON-NLS-2$
             .stringArrayProperty(KEY_APPLIED, "Names of the properties that were set (for a Role " //$NON-NLS-1$
                 + "rights change this is instead an object {rights, templates, roleProperties} with " //$NON-NLS-1$
@@ -404,6 +460,14 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 + "reference list, no per-entry flag) reports {added, removed}") //$NON-NLS-1$
             .objectProperty(KEY_TEMPLATE, "For a template content change: the applied counts object " //$NON-NLS-1$
                 + "{cells, merges, areas, columnWidths, rowHeights}") //$NON-NLS-1$
+            .objectProperty(KEY_COMMANDS, "For a command-interface change: how many commands changed " //$NON-NLS-1$
+                + "visibility / group, and how many groups got an explicit order {visibility, placement, " //$NON-NLS-1$
+                + "order}") //$NON-NLS-1$
+            .objectProperty(KEY_STORED, "For a command-interface change: what the section now stores - " //$NON-NLS-1$
+                + "{commands: {<command>: {visible: 'default' | {common, roles}, group: 'default' | " //$NON-NLS-1$
+                + "<group>}}, order: {<group>: [commands]}}; 'default' means the platform's own value") //$NON-NLS-1$
+            .stringArrayProperty(KEY_UNCHANGED, "For a command-interface change: the commands whose " //$NON-NLS-1$
+                + "entries requested what the section already had") //$NON-NLS-1$
             .booleanProperty(KEY_PERSISTED, //$NON-NLS-1$
                 "Whether the platform accepted a save task for the change. The tool then waits for the " //$NON-NLS-1$
                     + "export queue to drain before answering, so a success normally means the write has "
@@ -416,8 +480,21 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 "Where a moved form item ended up (when 'parent'/'position' moved a form item), e.g. " //$NON-NLS-1$
                 + "\"group 'Main' at index 1\"") //$NON-NLS-1$
             .stringProperty(McpKeys.MESSAGE, "Human-readable confirmation message") //$NON-NLS-1$
-            .stringArrayProperty(WriteScope.RESULT_MEMBER, WriteScope.OUTPUT_SCHEMA_DESCRIPTION)
+            .stringArrayProperty(WriteScope.RESULT_MEMBER, WriteScope.OUTPUT_SCHEMA_DESCRIPTION))
             .build();
+    }
+
+    /** Vendor support is checked when the context is resolved (issue #642). */
+    @Override
+    protected VendorSupportGuard.Intent writeIntent()
+    {
+        return VendorSupportGuard.Intent.MODIFY;
+    }
+
+    @Override
+    protected boolean reportsWrittenObjectMarkers()
+    {
+        return true;
     }
 
     @Override
@@ -438,6 +515,14 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         if (ctx.hasError())
         {
             return ctx.error;
+        }
+
+        // A command interface is its own top object with its own payload; the 'commands' payload is
+        // refused everywhere else.
+        String commandInterfaceResult = dispatchCommandInterface(ctx, args);
+        if (commandInterfaceResult != null)
+        {
+            return commandInterfaceResult;
         }
 
         // A FQN that addresses a FORM member (item / attribute / command) is dispatched to its own
@@ -552,6 +637,8 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         boolean hasContentPayload;
         JsonObject templateSpec;
         boolean hasTemplatePayload;
+        List<JsonObject> commands;
+        boolean hasCommandsPayload;
         MdNameNormalizer.Report normReport;
     }
 
@@ -610,14 +697,25 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         args.templateSpec = templateArg.spec;
         args.hasTemplatePayload = args.templateSpec != null;
 
+        // Command-interface payload (commands[]): only for a section's command interface FQN.
+        args.commands = new ArrayList<>();
+        String commandsError = parseCommandsArg(params, args.commands);
+        if (commandsError != null)
+        {
+            args.error = commandsError;
+            return args;
+        }
+        args.hasCommandsPayload = !args.commands.isEmpty();
+
         if (args.properties.isEmpty() && !args.hasRolePayload && !args.hasContentPayload
-            && !args.hasTemplatePayload)
+            && !args.hasTemplatePayload && !args.hasCommandsPayload)
         {
             args.error = ToolResult.error("properties is required: provide at least one {name, value} to " //$NON-NLS-1$
                 + "set, e.g. [{name: 'comment', value: 'Goods'}]. For a Role FQN, provide 'rights', " //$NON-NLS-1$
                 + "'templates' or 'roleProperties' instead; for a CommonAttribute / ExchangePlan / " //$NON-NLS-1$
                 + "Catalog / Document / Subsystem FQN, provide 'content' instead; for a template FQN, " //$NON-NLS-1$
-                + "provide 'template' instead.").toJson(); //$NON-NLS-1$
+                + "provide 'template' instead; for a command interface FQN " //$NON-NLS-1$
+                + "('Subsystem.<Name>.CommandInterface'), provide 'commands' instead.").toJson(); //$NON-NLS-1$
             return args;
         }
 
@@ -859,14 +957,15 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 PredefinedWriter.WriteResult result = PredefinedWriter.modify(txOwner, itemName, props);
                 if (result.isError())
                 {
-                    throw new IllegalStateException(result.error);
+                    // A refusal: the message is OUR validation's, so mark it and keep the log quiet.
+                    throw Refusals.state(result.error);
                 }
                 return null;
             });
         }
         catch (Exception e)
         {
-            Activator.logError("Error modifying predefined item", e); //$NON-NLS-1$
+            Refusals.log("Error modifying predefined item", e); //$NON-NLS-1$
             return ToolResult.error("Failed to modify: " + unwrapCauseMessage(e)).toJson(); //$NON-NLS-1$
         }
 
@@ -964,6 +1063,193 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         }
         return modifySubsystemContent(ctx, normFqn, subsystem, args.properties, args.content,
             args.hasRolePayload);
+    }
+
+    // ===== Section command interface (issue #666) ===================================================
+
+    /**
+     * Waits, off the UI thread, until EDT has recomputed the command interface a 'commands' change is
+     * validated against - a content change made a moment earlier is not in it before that.
+     */
+    @Override
+    protected String beforeUiThreadOrError(Map<String, String> params)
+    {
+        CommandInterfaceAddress address =
+            CommandInterfaceAddress.parse(JsonUtils.extractStringArgument(params, "fqn")); //$NON-NLS-1$
+        if (address == null || JsonUtils.extractObjectArray(params, KEY_COMMANDS).isEmpty())
+        {
+            return null;
+        }
+        fm.giper.edt.mcp.server.utils.ProjectContext project = fm.giper.edt.mcp.server.utils.ProjectContext
+            .of(JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME));
+        // A missing project is named by the regular resolution on the UI thread.
+        if (!project.exists() || CommandInterfaceSupport.awaitComputed(project.project(), COMMAND_INTERFACE_WAIT_MS))
+        {
+            return null;
+        }
+        return "EDT is still computing the command interface of project '" + project.name() //$NON-NLS-1$
+            + "', which a 'commands' change is validated against. Nothing was changed; retry in a few " //$NON-NLS-1$
+            + "seconds."; //$NON-NLS-1$
+    }
+
+    /**
+     * Dispatches a command-interface FQN and the 'commands' payload, which only go together.
+     * Returns {@code null} when the call is neither, so the caller continues down the normal path.
+     */
+    private String dispatchCommandInterface(ProjectContext ctx, ModifyArgs args)
+    {
+        CommandInterfaceAddress address = CommandInterfaceAddress.parse(args.fqn);
+        if (address == null)
+        {
+            return args.hasCommandsPayload ? ToolResult.error(commandsOnlyForCommandInterfaceError(args.fqn))
+                .toJson() : null;
+        }
+        if (address.kind() == CommandInterfaceAddress.Kind.SECTIONS_PANEL)
+        {
+            return ToolResult.error(CommandInterfaceSupport.sectionsPanelRefusal()).toJson();
+        }
+        String fqn = address.canonicalFqn();
+        if (!args.hasCommandsPayload)
+        {
+            return ToolResult.error("'" + fqn + "' is a command interface, which has no 'properties' of " //$NON-NLS-1$ //$NON-NLS-2$
+                + "its own: change its commands with 'commands' = [{command, visible?, roles?, group?, " //$NON-NLS-1$
+                + "after? | before?}]. get_metadata_details on the same FQN lists them.").toJson(); //$NON-NLS-1$
+        }
+        if (!args.properties.isEmpty() || args.hasRolePayload || args.hasContentPayload
+            || args.hasTemplatePayload)
+        {
+            return ToolResult.error("'commands' cannot be combined with 'properties', a Role payload, " //$NON-NLS-1$
+                + "'content' or 'template' in one call. Change the command interface alone, and its owner (" //$NON-NLS-1$
+                + address.ownerFqn() + ") in a separate call.").toJson(); //$NON-NLS-1$
+        }
+        if (ctx.scope.isExternalObjects())
+        {
+            return ToolResult.error("Project '" + ctx.project.getName() + "' is an external-objects " //$NON-NLS-1$ //$NON-NLS-2$
+                + "project, which has no command interface. Address " + fqn //$NON-NLS-1$
+                + " in the configuration project it belongs to.").toJson(); //$NON-NLS-1$
+        }
+        if (ExtensionOriginUtils.isExtensionProject(ctx.project))
+        {
+            return ToolResult.error(CommandInterfaceSupport.extensionRefusal(ctx.project.getName())).toJson();
+        }
+        return modifyCommandInterface(ctx, address, args.commands);
+    }
+
+    /**
+     * Reads the 'commands' payload strictly: a skipped entry would apply part of a batch that is
+     * validated as a whole.
+     *
+     * @param params the tool parameters
+     * @param into receives the entries
+     * @return a ready JSON error, or {@code null}
+     */
+    static String parseCommandsArg(Map<String, String> params, List<JsonObject> into)
+    {
+        String raw = params.get(KEY_COMMANDS);
+        if (raw == null || raw.trim().isEmpty())
+        {
+            return null;
+        }
+        JsonElement parsed;
+        try
+        {
+            parsed = JsonParser.parseString(raw.trim());
+        }
+        catch (RuntimeException e)
+        {
+            parsed = null;
+        }
+        if (parsed != null && parsed.isJsonNull())
+        {
+            return null;
+        }
+        if (parsed == null || !parsed.isJsonArray())
+        {
+            return ToolResult.error("'commands' must be an array of {command, visible?, roles?, group?, " //$NON-NLS-1$
+                + "after? | before?} objects, e.g. [{command:'Report.Sales.StandardCommand.Open', " //$NON-NLS-1$
+                + "visible:false}].").toJson(); //$NON-NLS-1$
+        }
+        JsonArray array = parsed.getAsJsonArray();
+        for (int i = 0; i < array.size(); i++)
+        {
+            JsonElement entry = array.get(i);
+            if (!entry.isJsonObject())
+            {
+                return ToolResult.error("commands[" + i + "] must be an object {command, visible?, roles?, " //$NON-NLS-1$ //$NON-NLS-2$
+                    + "group?, after? | before?}, got " + entry + ".").toJson(); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            into.add(entry.getAsJsonObject());
+        }
+        return null;
+    }
+
+    /** The refusal for a 'commands' payload addressed to anything but a section's command interface. */
+    static String commandsOnlyForCommandInterfaceError(String fqn)
+    {
+        String why = CommandInterfaceAddress.hasCommandInterfaceTail(fqn)
+            ? " only a subsystem and the configuration have a section command interface." //$NON-NLS-1$
+            : " it is not a command interface address."; //$NON-NLS-1$
+        return "'commands' applies only to a section's command interface - 'Subsystem.<Name>.CommandInterface' " //$NON-NLS-1$
+            + "(nested: 'Subsystem.<Parent>.Subsystem.<Child>.CommandInterface') or " //$NON-NLS-1$
+            + "'Configuration.MainSectionCommandInterface'. '" + fqn + "' does not qualify:" + why; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * Validates the whole 'commands' batch against the section, applies it in one BM write through
+     * EDT's own command interface tasks and exports the command interface's own file.
+     */
+    private String modifyCommandInterface(ProjectContext ctx, CommandInterfaceAddress address,
+        List<JsonObject> entries)
+    {
+        IBmModelManager bmModelManager = Activator.getDefault().getBmModelManager();
+        if (bmModelManager == null)
+        {
+            return ToolResult.error(ERR_NO_BM_MANAGER).toJson();
+        }
+        IBmModel bmModel = bmModelManager.getModel(ctx.project);
+        if (bmModel == null)
+        {
+            return ToolResult.error(ERR_NO_BM_MODEL + ctx.project.getName()).toJson();
+        }
+        CommandInterfaceSupport.EditResult edit = CommandInterfaceSupport.edit(bmModel, address, entries);
+        if (edit.error != null)
+        {
+            return ToolResult.error(edit.error).toJson();
+        }
+        boolean persisted = edit.writtenFqn != null
+            && BmTransactions.forceExportToDisk(ctx.project, edit.writtenFqn);
+        return buildCommandInterfaceResult(address.canonicalFqn(), edit, persisted);
+    }
+
+    /** The success JSON of a 'commands' change. Package-visible for tests. */
+    static String buildCommandInterfaceResult(String fqn, CommandInterfaceSupport.EditResult edit,
+        boolean persisted)
+    {
+        CommandInterfaceSection.Plan plan = edit.plan;
+        JsonObject counts = new JsonObject();
+        counts.addProperty("visibility", plan.visibility().size()); //$NON-NLS-1$
+        counts.addProperty("placement", plan.placement().size()); //$NON-NLS-1$
+        counts.addProperty("order", plan.order().size()); //$NON-NLS-1$
+        ToolResult result = ToolResult.success()
+            .put(McpKeys.ACTION, plan.isEmpty() ? "unchanged" : VAL_MODIFIED) //$NON-NLS-1$
+            .put("fqn", fqn) //$NON-NLS-1$
+            .put(KEY_COMMANDS, counts)
+            .put(KEY_PERSISTED, persisted);
+        if (edit.stored != null)
+        {
+            result.put(KEY_STORED, edit.stored);
+        }
+        if (!plan.unchanged().isEmpty())
+        {
+            JsonArray unchanged = new JsonArray();
+            plan.unchanged().forEach(unchanged::add);
+            result.put(KEY_UNCHANGED, unchanged);
+        }
+        String message = plan.isEmpty()
+            ? "Nothing to change in " + fqn + ": every entry requested what the section already has" //$NON-NLS-1$ //$NON-NLS-2$
+            : MSG_MODIFIED_PREFIX + fqn + " (visibility: " + plan.visibility().size() + ", placement: " //$NON-NLS-1$ //$NON-NLS-2$
+                + plan.placement().size() + ", order: " + plan.order().size() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+        return result.put(McpKeys.MESSAGE, message).toJson();
     }
 
     // ===== XDTO package member editing (issue #183 stream 1) ==========================================
@@ -1512,6 +1798,12 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         /** Nullable: a null project still yields a templateMode=true document. */
         IDtProject dtProject;
         ITopObjectFqnGenerator fqnGenerator;
+        /**
+         * The project's 1C:Enterprise runtime version (the DT project manifest's {@code Runtime-Version},
+         * which is what the moxel serializer gates its version-dependent members on). Nullable: a version
+         * that cannot be resolved skips the version check rather than refusing a legal write.
+         */
+        Version projectVersion;
     }
 
     /**
@@ -1570,6 +1862,14 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         writeCtx.dtProject =
             dtProjectManager == null ? null : dtProjectManager.getDtProject(ctx.project);
 
+        // The moxel serializer gates autoWidthCalculation / widthWeightFactor on the project's RUNTIME
+        // version (the DT manifest's Runtime-Version, which is exactly what IV8Project.getVersion()
+        // returns) - not on the configuration's compatibilityMode. Below 8.3.10 it writes neither, so the
+        // writer refuses them there instead of reporting success for a dropped value.
+        IV8ProjectManager v8ProjectManager = Activator.getDefault().getV8ProjectManager();
+        IV8Project v8Project = v8ProjectManager == null ? null : v8ProjectManager.getProject(ctx.project);
+        writeCtx.projectVersion = v8Project == null ? null : v8Project.getVersion();
+
         // The moxel content is a transient @ExternalProperty of the template - its own .mxlx resource, NOT
         // an inline BM reference. A freshly-materialized content doc must be ATTACHED as a BM top object
         // under its generated external-property FQN (the same machinery FormElementWriter uses for a form's
@@ -1609,7 +1909,8 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         // materialized + attachTopObject'd inside resolveSpreadsheetContent), so its own resource
         // FQN resolves and is force-exported alongside the template so the sibling .mxlx drains.
         contentFqnHolder[0] = contentResourceExportFqn(doc);
-        SpreadsheetTemplateWriter.Result applied = SpreadsheetTemplateWriter.apply(doc, templateSpec);
+        SpreadsheetTemplateWriter.Result applied =
+            SpreadsheetTemplateWriter.apply(doc, templateSpec, writeCtx.projectVersion);
         if (applied.hasError())
         {
             // Roll the whole write back so a validation failure leaves nothing on disk.
@@ -2134,10 +2435,30 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         }
         Configuration cfg = (Configuration)cfgObj;
         long changedPkgBmId = ((IBmObject)changedPkg).bmGetId();
+        List<XDTOPackage> siblings = new ArrayList<>();
         for (XDTOPackage other : cfg.getXDTOPackages())
         {
-            if (!(other instanceof IBmObject) || ((IBmObject)other).bmGetId() == changedPkgBmId)
+            if (other instanceof IBmObject && ((IBmObject)other).bmGetId() != changedPkgBmId)
             {
+                siblings.add(other);
+            }
+        }
+        // Vendor support (#642), before any sibling is touched: a locked sibling that references the
+        // old namespace refuses the whole modify (the throw rolls back the target's own change too).
+        List<String> locked = lockedReferrers(siblings, oldNamespace, ModifyMetadataTool::attachedContent,
+            VendorSupportGuard::allowsEdit);
+        if (!locked.isEmpty())
+        {
+            throw new XdtoWriteException(ToolResult.error(VendorSupportGuard.cascadeRefusal(
+                "XDTOPackage." + changedPkg.getName(), "changed", //$NON-NLS-1$ //$NON-NLS-2$
+                "its namespace change would rewrite the XDTO packages that reference '" + oldNamespace //$NON-NLS-1$
+                    + "':", locked)).toJson()); //$NON-NLS-1$
+        }
+        for (XDTOPackage other : siblings)
+        {
+            if (attachedContent(other) != null && !VendorSupportGuard.allowsEdit(other))
+            {
+                // Locked and not referencing the old namespace: not even the self-repair below.
                 continue;
             }
             // A sibling with NO attached content cannot reference any namespace - skip it WITHOUT
@@ -2185,6 +2506,39 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 cascadedNamesOut.add(other.getName());
             }
         }
+    }
+
+    /**
+     * The locked siblings a namespace cascade would rewrite: those whose content references
+     * {@code oldNamespace} and that {@code editable} does not allow changing. Read-only.
+     *
+     * @param siblings the other XDTO packages of the configuration
+     * @param oldNamespace the namespace being replaced
+     * @param contentOf a sibling's attached content, or {@code null} when it has none
+     * @param editable whether a package may be changed
+     * @return the FQNs of the locked referrers, in configuration order
+     */
+    static List<String> lockedReferrers(List<XDTOPackage> siblings, String oldNamespace,
+        Function<XDTOPackage, com._1c.g5.v8.dt.xdto.model.Package> contentOf,
+        Predicate<XDTOPackage> editable)
+    {
+        List<String> locked = new ArrayList<>();
+        for (XDTOPackage other : siblings)
+        {
+            com._1c.g5.v8.dt.xdto.model.Package content = contentOf.apply(other);
+            if (content != null && XdtoWriter.referencesNamespace(content, oldNamespace) && !editable.test(other))
+            {
+                locked.add("XDTOPackage." + other.getName()); //$NON-NLS-1$
+            }
+        }
+        return locked;
+    }
+
+    /** A package's content when it is attached as a top object (what the cascade may rewrite). */
+    private static com._1c.g5.v8.dt.xdto.model.Package attachedContent(XDTOPackage pkg)
+    {
+        com._1c.g5.v8.dt.xdto.model.Package content = pkg.getPackage();
+        return content instanceof IBmObject && ((IBmObject)content).bmIsTop() ? content : null;
     }
 
     /**
@@ -2330,9 +2684,14 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      * decoration's benign enum {@code type} never prompts, mirroring the ATTRIBUTE guard the
      * dynamic-list-query branch uses. Reads only the request (no model access).
      *
+     * <p>This is the cheap PRE-FILTER deciding whether the model is worth opening at all, not the
+     * verdict: a request may name {@code valueType} and still leave the member's type exactly as it
+     * was. Whether anything is really retyped is answered by {@link #retypesMember} against the
+     * prepared batch, inside the pre-check's read transaction (issue #599).</p>
+     *
      * @param ref the parsed form-member ref
      * @param properties the requested property changes
-     * @return {@code true} when the request changes the member's data type
+     * @return {@code true} when the request WRITES the member's data type
      */
     private static boolean isFormRetypeRequest(FormElementWriter.FormMemberRef ref,
         List<JsonObject> properties)
@@ -2362,11 +2721,18 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         return v8Project != null ? v8Project.getVersion() : null;
     }
 
-    /** What the user authorizes when a form attribute (or column) changes its data type. */
+    /**
+     * What the user authorizes when a form attribute (or column) changes its data type. BOTH facts
+     * come from the pre-check, never from the request: a batch may name {@code valueType} and leave
+     * the type untouched (issue #599), and a {@code main} write may take nothing with it - a dialog
+     * that names a loss which will not happen teaches the reader to ignore it.
+     *
+     * @param retype whether the batch really changes the member's data type
+     * @param extInfoLoss whether the batch really empties the form root's ext-info
+     */
     static ConsentPreview formRetypePreview(String normFqn,
-        FormElementWriter.FormMemberRef ref, List<JsonObject> properties, boolean extInfoLoss)
+        FormElementWriter.FormMemberRef ref, boolean retype, boolean extInfoLoss)
     {
-        boolean retype = isFormRetypeRequest(ref, properties);
         if (retype && extInfoLoss)
         {
             // One batch, two different losses - the dialog has to name both, or the answer
@@ -2483,11 +2849,11 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      */
     private String formRetypePreflight(ProjectContext ctx, Version version, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
         FormElementWriter.FormEditContext fctx, FormElementWriter.FormMemberRef ref,
-        List<JsonObject> properties, MdNameNormalizer.Report normReport, boolean[] extInfoLossOut)
+        List<JsonObject> properties, MdNameNormalizer.Report normReport, boolean[] gateFlags)
     {
-        boolean retype = isFormRetypeRequest(ref, properties);
+        final boolean writesType = isFormRetypeRequest(ref, properties);
         Boolean mainFlag = requestedMainFlag(ref, properties);
-        if (!retype && mainFlag == null)
+        if (!writesType && mainFlag == null)
         {
             return ""; //$NON-NLS-1$
         }
@@ -2506,14 +2872,76 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                     // A refusal, or "" for a member the write path answers "not found" for.
                     return refusal;
                 }
-                // Prepared cleanly: ask when the request retypes stored data, or when the main
-                // flag it LEAVES would take the root ext-info and the handlers bound in it. WHICH
-                // of the two it is decides what the dialog says, so it is reported back.
-                extInfoLossOut[0] = mainFlag != null && FormElementWriter.clearsBoundFormExtInfo(
-                    formModel, member, mainFlag.booleanValue(), categoryAfter(prepared, member),
-                    mainPromotedIn(properties));
-                return retype || extInfoLossOut[0] ? null : ""; //$NON-NLS-1$
+                // Prepared cleanly: ask when the batch really retypes stored data - the type it
+                // LEAVES, against the one the member carries (issue #599) - or when the main flag
+                // it leaves would take the root ext-info and the handlers bound in it. WHICH of
+                // the two it is decides what the dialog says, so both are reported back.
+                gateFlags[GATE_RETYPE] = writesType && retypesMember(prepared, member);
+                gateFlags[GATE_EXT_INFO_LOSS] = mainFlag != null
+                    && FormElementWriter.clearsBoundFormExtInfo(formModel, member,
+                        mainFlag.booleanValue(), categoryAfter(prepared, member),
+                        mainPromotedIn(properties));
+                return gateFlags[GATE_RETYPE] || gateFlags[GATE_EXT_INFO_LOSS] ? null : ""; //$NON-NLS-1$
             });
+    }
+
+    /** Index into the gate's flag array: the batch really changes the member's data type. */
+    static final int GATE_RETYPE = 0;
+
+    /** Index into the gate's flag array: the write really empties the form root's ext-info. */
+    static final int GATE_EXT_INFO_LOSS = 1;
+
+    /**
+     * Whether the prepared batch really RETYPES {@code member}: the {@code TypeDescription} it
+     * LEAVES behind differs from the one the member carries now (issue #599).
+     *
+     * <p>The question is about the batch's END STATE, not about any single entry, so the list is
+     * folded first - {@code [valueType=String, valueType=CatalogObject]} on an attribute already
+     * typed {@code CatalogObject} ends where it started and destroys nothing. That is the same
+     * last-write-wins rule {@link #mainFlagIn} and {@link #categoryAfter} follow.</p>
+     *
+     * <p>Answering "no retype" wrongly SILENCES a destructive-consent gate, so the comparison never
+     * assumes equality: {@link MetadataTypeBuilder#describesSameType} answers {@code true} only for
+     * two descriptions it can read end to end, and this method asks anyway whenever it cannot find
+     * the type write it was told about.</p>
+     *
+     * @param prepared the whole batch, already prepared against the current model
+     * @param member the form member, on the tx-bound model
+     * @return {@code true} when the batch leaves a different type - or when that cannot be decided
+     */
+    static boolean retypesMember(List<HolderChange> prepared, EObject member)
+    {
+        HolderChange last = lastValueTypeWrite(prepared);
+        if (last == null || member == null)
+        {
+            // The request named a type property, yet there is no prepared type write to compare it
+            // against (or no member to compare it with). Not knowing is not knowing that nothing
+            // changes, and the only safe answer to not knowing here is to ask.
+            return true;
+        }
+        EStructuralFeature feature = member.eClass().getEStructuralFeature(PROP_VALUE_TYPE);
+        Object stored = feature == null ? null : member.eGet(feature);
+        return !MetadataTypeBuilder.describesSameType(stored, last.change.value());
+    }
+
+    /**
+     * The {@code valueType} write the batch is LEFT with, or {@code null} when it writes none. The
+     * batch is applied in ORDER, so a repeated property is decided by its LAST write - the same rule
+     * {@link #mainFlagIn} follows for the main flag. Single owner of that fold: both the ext-info
+     * decision ({@link #categoryAfter}) and the retype verdict ({@link #retypesMember}) key on it.
+     */
+    private static HolderChange lastValueTypeWrite(List<HolderChange> prepared)
+    {
+        HolderChange last = null;
+        for (HolderChange hc : prepared)
+        {
+            if (!hc.onExtInfo && hc.change.isTypeChange()
+                && PROP_VALUE_TYPE.equalsIgnoreCase(hc.change.featureName()))
+            {
+                last = hc;
+            }
+        }
+        return last;
     }
 
     /**
@@ -2580,20 +3008,8 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      */
     static String categoryAfter(List<HolderChange> prepared, EObject member)
     {
-        Object lastType = null;
-        boolean retyped = false;
-        for (HolderChange hc : prepared)
-        {
-            if (!hc.onExtInfo && hc.change.isTypeChange()
-                && PROP_VALUE_TYPE.equalsIgnoreCase(hc.change.featureName()))
-            {
-                // The batch is applied in ORDER, so a repeated property is decided by its LAST
-                // write - the same rule mainFlagIn follows for the main flag.
-                lastType = hc.change.value();
-                retyped = true;
-            }
-        }
-        return retyped ? FormElementWriter.typeCategoryOf(lastType)
+        HolderChange last = lastValueTypeWrite(prepared);
+        return last != null ? FormElementWriter.typeCategoryOf(last.change.value())
             : FormElementWriter.valueTypeCategoryOf(member);
     }
 
@@ -3259,10 +3675,12 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
             final Version version = platformVersionOf(ctx);
             // Written by the pre-check, read by the preview - in that order, which is the order
             // gateFormRetype runs them in.
-            final boolean[] extInfoLoss = new boolean[1];
-            return gateFormRetype(() -> formRetypePreview(normFqn, ref, properties, extInfoLoss[0]),
+            final boolean[] gateFlags = new boolean[2];
+            return gateFormRetype(
+                () -> formRetypePreview(normFqn, ref, gateFlags[GATE_RETYPE],
+                    gateFlags[GATE_EXT_INFO_LOSS]),
                 () -> formRetypePreflight(ctx, version, fctx, ref, properties, normReport,
-                    extInfoLoss),
+                    gateFlags),
                 () -> applyFormMemberProperties(ctx, normFqn, ref, properties, normReport, fctx,
                     version));
         }
@@ -3346,6 +3764,9 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         // Attributes this call took the main flag AWAY from - a change to a member the caller did
         // not address, so it is reported rather than left to be discovered.
         final List<String> demotedMains = new ArrayList<>();
+        // Same rule for the bindings a KIND change took with it (issue #601): the caller addressed
+        // the item's type, not its subscriptions, so a removal it did not ask for is reported.
+        final List<String> removedHandlers = new ArrayList<>();
 
         // Validate + apply inside ONE BM write transaction: resolve the target, validate every
         // property (a failure throws FormValidationException carrying the JSON error BEFORE any eSet,
@@ -3365,6 +3786,8 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 List<EObject> localizedHolders = new ArrayList<>();
                 List<PreparedChange> localizedChanges = new ArrayList<>();
                 boolean mainFlagWritten = false;
+                boolean itemKindWritten = false;
+                final List<Object> pairingBefore = itemPairingOf(target);
                 for (HolderChange hc : changes)
                 {
                     // A direct feature lands on the target; a property on the nested <extInfo> lands
@@ -3377,11 +3800,12 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                     localizedReport.rememberPreState(holder, List.of(hc.change));
                     hc.change.applyTo(holder, tx);
                     applied.add(hc.change.featureName());
-                    if (syncExtInfoAfter(hc, formModel, target))
+                    if (syncExtInfoAfter(hc, formModel, target, removedHandlers))
                     {
                         applied.add("extInfo"); //$NON-NLS-1$
                     }
                     mainFlagWritten = mainFlagWritten || decidesFormExtInfo(hc);
+                    itemKindWritten = itemKindWritten || writesItemKind(hc);
                     if (hc.change.isLocalized())
                     {
                         // Remember the receiver the change actually landed on: a title on the
@@ -3389,6 +3813,16 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                         localizedHolders.add(holder);
                         localizedChanges.add(hc.change);
                     }
+                }
+                // Which events the item still publishes is decided ONCE, on the kind the batch
+                // LEAVES. Per change it would answer about an intermediate kind: applied in order,
+                // [type=LabelField, type=InputField] would drop, at the LabelField step, the very
+                // subscriptions InputField publishes. Same last-write-wins rule the retype verdict
+                // and the main flag follow.
+                if (pairingChanged(itemKindWritten, pairingBefore, target))
+                {
+                    removedHandlers.addAll(
+                        FormElementWriter.dropUnpublishedItemHandlers(target, version));
                 }
                 // A main-attribute promotion is the platform's setMainAttribute: it demotes the
                 // previous main first, then re-derives the root ext-info from the FINAL state of
@@ -3425,6 +3859,10 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         if (!demotedMains.isEmpty())
         {
             result.put("demotedMainAttributes", demotedMains); //$NON-NLS-1$
+        }
+        if (!removedHandlers.isEmpty())
+        {
+            result.put(KEY_REMOVED_EVENT_HANDLERS, removedHandlers);
         }
         return result
             .put(McpKeys.MESSAGE, MSG_MODIFIED_PREFIX + normFqn + " (" + String.join(", ", applied) + ")") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -3859,9 +4297,12 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      * @param hc the change that was just applied
      * @param formModel the editable content form
      * @param member the form member the change landed on
+     * @param lostHandlers collects the bindings an ext-info node took with it when the new type
+     *            pairs with none to carry them into (issue #601)
      * @return {@code true} when an extInfo is now attached (so the caller can report it as applied)
      */
-    private static boolean syncExtInfoAfter(HolderChange hc, EObject formModel, EObject member)
+    private static boolean syncExtInfoAfter(HolderChange hc, EObject formModel, EObject member,
+        List<String> lostHandlers)
     {
         if (hc.onExtInfo)
         {
@@ -3873,9 +4314,40 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         }
         if ("type".equalsIgnoreCase(hc.change.featureName())) //$NON-NLS-1$
         {
-            return FormElementWriter.syncItemExtInfo(formModel, member) != null;
+            return FormElementWriter.syncItemExtInfo(formModel, member, lostHandlers) != null;
         }
         return false;
+    }
+
+    /** The item's display kind (its {@code type} enum value), or {@code null} when it has none. */
+    static Object itemKindOf(EObject item)
+    {
+        EStructuralFeature feature = item == null ? null : item.eClass().getEStructuralFeature("type"); //$NON-NLS-1$
+        return feature instanceof EAttribute && !feature.isMany() ? item.eGet(feature) : null;
+    }
+
+    /** The item's kind and its ext-info class together: the two decide which events it publishes. */
+    static List<Object> itemPairingOf(EObject item)
+    {
+        EStructuralFeature extFeature = item == null ? null : item.eClass().getEStructuralFeature("extInfo"); //$NON-NLS-1$
+        Object ext = extFeature instanceof EReference && !extFeature.isMany() ? item.eGet(extFeature) : null;
+        return Arrays.asList(itemKindOf(item), ext instanceof EObject ? ((EObject)ext).eClass().getName() : null);
+    }
+
+    /**
+     * Whether a kind write really changed what the item publishes: a new kind, or the same kind whose
+     * stale ext-info was repaired. Rewriting an already-consistent pairing prunes no binding.
+     */
+    static boolean pairingChanged(boolean kindWritten, List<Object> pairingBefore, EObject item)
+    {
+        return kindWritten && !Objects.equals(pairingBefore, itemPairingOf(item));
+    }
+
+    /** Whether this change writes a form ITEM's display KIND - the {@code type} enum on the item. */
+    private static boolean writesItemKind(HolderChange hc)
+    {
+        return !hc.onExtInfo && !hc.change.isTypeChange()
+            && "type".equalsIgnoreCase(hc.change.featureName()); //$NON-NLS-1$
     }
 
     /**
@@ -3913,7 +4385,8 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      */
     static String formTypeExtInfoComboError(EObject member, List<JsonObject> properties)
     {
-        boolean hasDirectTypeChange = false;
+        int directTypeChanges = 0;
+        String typeName = null;
         boolean hasExtInfoChange = false;
         for (JsonObject prop : properties)
         {
@@ -3932,9 +4405,20 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
                 // has already rewritten its `type` to `valueType` by the time this reads the name, and a
                 // guard that only knew the enum spelling let the attribute case straight through
                 // (issue #369 review). A value type decides the ext-info exactly as an item's enum does.
-                hasDirectTypeChange = true;
+                directTypeChanges++;
+                typeName = name;
             }
         }
+        if (directTypeChanges > 1)
+        {
+            // Each write rebuilds the ext-info, so an intermediate value would drop what the final
+            // one keeps, while the retype gate and the guards judge a state the batch never reaches.
+            return ToolResult.error("A form member's '" + typeName + "' can be set only ONCE per " //$NON-NLS-1$ //$NON-NLS-2$
+                + "call: each write rebuilds its <extInfo>, so an intermediate value would drop what " //$NON-NLS-1$
+                + "the final one keeps (a ValueList's item type, a Pages group's event handlers). " //$NON-NLS-1$
+                + "Pass only the final value.").toJson(); //$NON-NLS-1$
+        }
+        boolean hasDirectTypeChange = directTypeChanges > 0;
         if (hasDirectTypeChange && hasExtInfoChange)
         {
             return ToolResult.error("Changing a form member's 'type' cannot be combined with a " //$NON-NLS-1$
@@ -4635,7 +5119,7 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
         {
             return validationJson;
         }
-        Activator.logError("Error moving form item", e); //$NON-NLS-1$
+        Refusals.log("Error moving form item", e); //$NON-NLS-1$
         return ToolResult.error("Failed to move form item: " + unwrapCauseMessage(e)).toJson(); //$NON-NLS-1$
     }
 
@@ -5083,7 +5567,7 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
             case TYPE_DESCRIPTION:
                 return prepareTypeDescription(ctx, name, prop, info, out, isExtensionProject);
             case REFERENCE:
-                return prepareReference(ctx.scope, target, name, value, info, out);
+                return prepareReference(ctx, target, name, value, info, out);
             case MANY_REFERENCE:
                 return prepareManyReference(ctx.scope, name, prop, info, out);
             case MCORE_VALUE_LIST:
@@ -5385,7 +5869,7 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      * MetadataTypeBuilder.TypeTarget)} so an unresolved reference target's error can append the
      * extension-adopt hint (issue #262); {@code ctx.typeTarget} rides along so the in-memory collection
      * kinds are admitted on a form attribute and refused on a stored metadata feature (issue #295),
-     * with the one feature-level exception for an event subscription's runtime-object source (#543).
+     * with the feature-level exceptions of {@link #typeTargetForFeature}.
      */
     private String prepareTypeDescription(PrepareContext ctx, String name,
         JsonObject prop, PropertyInfo info, List<PreparedChange> out, boolean isExtensionProject)
@@ -5400,19 +5884,38 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
             ctx.scope, ctx.version, isExtensionProject, typeTarget);
         if (tr.error != null)
         {
-            return ToolResult.error("Invalid 'type' for '" + name + "': " + tr.error).toJson(); //$NON-NLS-1$ //$NON-NLS-2$
+            String message = "Invalid 'type' for '" + name + "': " + tr.error; //$NON-NLS-1$ //$NON-NLS-2$
+            if (tr.platformFailure)
+            {
+                // Not the caller's spec: the platform failed, so it reaches the log as an ERROR with a stack.
+                Activator.logError("Error building the type for '" + name + "'", tr.asException(message)); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            return ToolResult.error(message).toJson();
         }
         out.add(PreparedChange.typeDescription(info.feature, tr.typeDescription));
         return null;
     }
 
-    /** Adds the sole feature-level exception on top of the call site's form-vs-mdclass target. */
+    /**
+     * Adds the feature-level exceptions on top of the call site's form-vs-mdclass target: an event
+     * subscription's source (#543) and a session parameter's type (#646).
+     */
     static MetadataTypeBuilder.TypeTarget typeTargetForFeature(
         MetadataTypeBuilder.TypeTarget contextTarget, EStructuralFeature feature)
     {
-        return contextTarget == MetadataTypeBuilder.TypeTarget.METADATA
-            && feature == MdClassPackage.Literals.EVENT_SUBSCRIPTION__SOURCE
-                ? MetadataTypeBuilder.TypeTarget.EVENT_SOURCE : contextTarget;
+        if (contextTarget != MetadataTypeBuilder.TypeTarget.METADATA)
+        {
+            return contextTarget;
+        }
+        if (feature == MdClassPackage.Literals.EVENT_SUBSCRIPTION__SOURCE)
+        {
+            return MetadataTypeBuilder.TypeTarget.EVENT_SOURCE;
+        }
+        if (feature == MdClassPackage.Literals.SESSION_PARAMETER__TYPE)
+        {
+            return MetadataTypeBuilder.TypeTarget.SESSION_PARAMETER;
+        }
+        return contextTarget;
     }
 
     /**
@@ -5422,22 +5925,107 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
      * mutation). {@code owner} is the element the property is being set on (e.g. the DataProcessor a
      * {@code defaultForm} is set on) - passed to {@link #resolveReferenceTarget} so a bare short form
      * Name (no dots) can resolve against the owner's OWN {@code getForms()} collection (issue #262).
+     *
+     * <p>A command's {@code group} additionally admits a platform STANDARD command group by its bare
+     * name - see {@link #queueStandardCommandGroup} (issue #508).</p>
      */
-    private String prepareReference(MetadataScope scope, EObject owner, String name, String value,
+    private String prepareReference(PrepareContext ctx, EObject owner, String name, String value,
         PropertyInfo info, List<PreparedChange> out)
+    {
+        // The catalogue is fetched only for a command-group reference, so no other property pays a
+        // platform lookup for it.
+        return prepareReferenceWith(isCommandGroupReference(info.feature)
+            ? StandardCommandGroupResolver.providerFor(ctx.version) : null,
+            ctx.scope, owner, name, value, info, out);
+    }
+
+    /**
+     * The whole single-reference path with the platform command-group catalogue supplied rather than
+     * fetched, so a headless test can drive it end to end - including the ORDER of its two resolution
+     * attempts, which is what makes a standard group reachable at all.
+     *
+     * @param groupCatalogue the platform command-group catalogue, {@code null} for every reference
+     *     that is not a command group and when the platform supplied none
+     * @param scope the resolution root an FQN resolves against
+     * @param owner the element the property is being set on, or {@code null}
+     * @param name the property name
+     * @param value the reference value as supplied by the caller
+     * @param info the resolved property
+     * @param out collects the prepared change
+     * @return a JSON error, or {@code null} on success
+     */
+    static String prepareReferenceWith(IEObjectProvider groupCatalogue, MetadataScope scope, // NOSONAR the parameter list is the reference path's own inputs; folding it would hide the injected catalogue
+        EObject owner, String name, String value, PropertyInfo info, List<PreparedChange> out)
     {
         if (value == null || value.isEmpty())
         {
             return requireValueError(name);
         }
+        if (queueStandardCommandGroup(info.feature, value, groupCatalogue, out))
+        {
+            return null;
+        }
         MdObject targetMd = resolveReferenceTarget(scope, owner, value);
-        String vErr = validateReferenceTarget(name, info.feature, targetMd, value);
+        String vErr = validateReferenceTarget(name, info.feature, targetMd, value, groupCatalogue);
         if (vErr != null)
         {
             return vErr;
         }
         out.add(PreparedChange.reference(info.feature, ((IBmObject)targetMd).bmGetId()));
         return null;
+    }
+
+    /**
+     * Queues a platform STANDARD command group ({@code ActionsPanelTools},
+     * {@code NavigationPanelSeeAlso}, ... - English or Russian identifier, any case) as a SCALAR set
+     * of the platform's own proxy, and answers whether it did (issue #508).
+     *
+     * <p>It is a SCALAR and not a {@link PreparedChange#reference}: a standard group is not an
+     * {@code MdObject} and carries no BM id, so there is nothing to re-fetch inside the write
+     * transaction - the proxy itself is the persistable value, and the exporter spells it back out as
+     * the group's English name.</p>
+     *
+     * <p>Answers {@code false} - leaving the caller on the unchanged FQN path - for every reference
+     * that is not a command group, for a DOTTED value (that is the {@code CommandGroup.<Name>}
+     * address space), when the platform supplied no catalogue, and for an identifier the catalogue
+     * does not know.</p>
+     *
+     * <p>A bare identifier that answers {@code false} is NOT short-circuited: it goes on through
+     * {@link #resolveReferenceTarget} like any other value, which for a dotless value includes the
+     * owner's-own-form probe ({@code owner instanceof MdObject && no dot}). That probe cannot match
+     * here - {@code group} is declared only on commands, and a command owns no forms - so the value
+     * arrives at the shared not-found refusal, which names both accepted forms. The probe is passed
+     * through rather than skipped: this branch adds an address space, it does not remove one.</p>
+     *
+     * <p>Package-visible so a headless test can drive the branch with an injected catalogue; the live
+     * path takes one from the versioned platform registry.</p>
+     */
+    static boolean queueStandardCommandGroup(EStructuralFeature feature, String value,
+        IEObjectProvider catalogue, List<PreparedChange> out)
+    {
+        if (catalogue == null || value == null || value.indexOf('.') >= 0
+            || !isCommandGroupReference(feature))
+        {
+            return false;
+        }
+        EObject group = StandardCommandGroupResolver.resolve(catalogue, value).group;
+        if (group == null)
+        {
+            return false;
+        }
+        out.add(PreparedChange.scalar(feature, group));
+        return true;
+    }
+
+    /**
+     * Whether a reference feature's declared target is the mcore {@code CommandGroup} interface - the
+     * base both a configuration {@code CommandGroup} (an {@code MdObject}, FQN-addressed) and a
+     * platform {@code StandardCommandGroup} (name-addressed) implement.
+     */
+    private static boolean isCommandGroupReference(EStructuralFeature feature)
+    {
+        return feature instanceof EReference
+            && ((EReference)feature).getEReferenceType() == McorePackage.Literals.COMMAND_GROUP;
     }
 
     /**
@@ -5800,10 +6388,30 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
     static String validateReferenceTarget(String prop, EStructuralFeature feature,
         MdObject target, String fqn)
     {
+        return validateReferenceTarget(prop, feature, target, fqn, null);
+    }
+
+    /**
+     * The {@link #validateReferenceTarget(String, EStructuralFeature, MdObject, String)} variant that
+     * also carries the platform command-group catalogue, so a {@code group} refusal can name the
+     * standard groups the caller may use instead (issue #508). {@code groupCatalogue} is {@code null}
+     * for every other reference, and on a command group when the platform supplied none - the refusal
+     * then still names both accepted forms.
+     *
+     * @param prop the property name
+     * @param feature the reference feature
+     * @param target the resolved target, or {@code null} when nothing resolved
+     * @param fqn the reference value as supplied by the caller
+     * @param groupCatalogue the platform command-group catalogue, may be {@code null}
+     * @return a JSON error, or {@code null} when the target is usable
+     */
+    static String validateReferenceTarget(String prop, EStructuralFeature feature,
+        MdObject target, String fqn, IEObjectProvider groupCatalogue)
+    {
         if (target == null)
         {
             return ToolResult.error(MSG_REFERENCE_TARGET + fqn + MSG_FOR_PROP + prop + "' was not found. " //$NON-NLS-1$
-                + referenceNotFoundHint(feature)).toJson();
+                + referenceNotFoundHint(feature, groupCatalogue)).toJson();
         }
         if (!(target instanceof IBmObject))
         {
@@ -5830,19 +6438,18 @@ public class ModifyMetadataTool extends AbstractMetadataWriteTool
     /**
      * The "how to address this reference" hint appended to a not-found error: a {@code group} feature
      * (declared against the mcore {@code CommandGroup} interface - see
-     * {@link MetadataPropertyIntrospector} class doc) points specifically at the supported
-     * {@code CommandGroup.<Name>} FQN shape and names the UNSUPPORTED shape (a platform STANDARD
-     * command group, a different enum-addressed value space - issue #262 P3: "do not fake support");
-     * every other reference feature gets the generic FQN hint.
+     * {@link MetadataPropertyIntrospector} class doc) gets ONE merged hint naming BOTH forms it
+     * accepts - the {@code CommandGroup.<Name>} FQN of a configuration group and the bare name of a
+     * platform STANDARD group - plus the standard groups themselves, in both identifiers, because the
+     * Russian one is discoverable nowhere else (issue #508). Every other reference feature gets the
+     * generic FQN hint.
      */
-    private static String referenceNotFoundHint(EStructuralFeature feature)
+    private static String referenceNotFoundHint(EStructuralFeature feature,
+        IEObjectProvider groupCatalogue)
     {
-        EClass targetType = feature instanceof EReference ? ((EReference)feature).getEReferenceType() : null;
-        if (targetType == McorePackage.Literals.COMMAND_GROUP)
+        if (isCommandGroupReference(feature))
         {
-            return "Use a 'CommandGroup.<Name>' FQN (a top-level metadata object; create it with " //$NON-NLS-1$
-                + "create_metadata). The platform's built-in STANDARD command groups are a " //$NON-NLS-1$
-                + "different, enum-addressed value space and are not supported here."; //$NON-NLS-1$
+            return StandardCommandGroupResolver.addressingHint(groupCatalogue);
         }
         return "Use a valid FQN (e.g. 'Catalog.Products'); check with get_metadata_objects."; //$NON-NLS-1$
     }

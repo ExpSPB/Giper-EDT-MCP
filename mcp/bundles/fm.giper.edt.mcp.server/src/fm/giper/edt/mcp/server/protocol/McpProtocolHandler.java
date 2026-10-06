@@ -47,6 +47,8 @@ import com.google.gson.JsonSyntaxException;
  */
 public class McpProtocolHandler
 {
+    /** Maximum per-session capabilities declaration retained in full. */
+    private static final int MAX_RETAINED_CAPABILITIES_CHARS = 4096;
     /**
      * A tools/call slower than this (wall-clock, ms) is logged at WARNING so an
      * operator can spot it in the EDT log without enabling debug. Failed calls are
@@ -122,10 +124,23 @@ public class McpProtocolHandler
     public String processRequest(String requestBody, McpRequestContext context)
     {
         long startNanos = System.nanoTime();
-        // Parse once at the choke point; parse() swallows a JSON syntax error and
-        // returns null, and dispatch() treats a null request as an invalid request —
-        // exactly as before, when the parse happened inside dispatch.
-        JsonRpcRequest request = parse(requestBody);
+        return processRequest(requestBody, parse(requestBody), startNanos, context);
+    }
+
+    /**
+     * Processes the caller's parsed request while retaining the original body for history.
+     * The caller's clock starts before parsing, so history includes parsing and dispatch.
+     * Request metadata and capabilities stay on the supplied context.
+     *
+     * @param requestBody original body
+     * @param request parsed request, or null on a syntax error
+     * @param startNanos caller's clock before parsing
+     * @param context path-bound request context
+     * @return JSON-RPC response, or null for a notification
+     */
+    public String processRequest(String requestBody, JsonRpcRequest request, long startNanos,
+        McpRequestContext context)
+    {
         McpRequestContext bound = context == null ? McpRequestContext.legacyDefault() : context;
         McpCallHistory.bindRequestMeta(bound);
         String response = null;
@@ -668,18 +683,16 @@ public class McpProtocolHandler
             // Parse JSON and add userSignal field
             result = addUserSignalToJson(result, signal);
         }
-        // In plain text mode, return markdown as plain text instead of structured content. A FAILED
-        // payload keeps isError:true (with the real message in the text channel) - suppressing the
-        // structured payload must never make a failure look like a success.
-        if (plainTextMode)
+        switch (jsonDeliveryFor(plainTextMode, capabilitiesOf(context)))
         {
-            return buildTextOnlyJsonResponse(result, requestId);
+            case TEXT_ONLY:
+                return buildTextOnlyJsonResponse(result, requestId);
+            case TEXT_PAYLOAD_AND_STRUCTURED:
+                return buildPlainTextJsonResponse(result, requestId);
+            case STRUCTURED:
+            default:
+                return buildToolCallJsonResponse(result, requestId, tool.getName());
         }
-        if (!capabilitiesOf(context).allowsStructuredContent())
-        {
-            return buildTextOnlyJsonResponse(result, requestId);
-        }
-        return buildToolCallJsonResponse(result, requestId, tool.getName());
     }
 
     private ClientCapabilities capabilitiesOf(McpRequestContext context)
@@ -688,8 +701,8 @@ public class McpProtocolHandler
     }
 
     /**
-     * Delivers a JSON tool payload as TEXT (no {@code structuredContent}) for the two suppression
-     * cases on the JSON path - plain-text mode and a client that opted out of structuredContent -
+     * Delivers a JSON tool payload as TEXT (no {@code structuredContent}) for a client
+     * that opted out of structuredContent
      * while PRESERVING the tool-level outcome: a {@code ToolResult.error} payload keeps
      * {@code isError:true} with the real message in the text channel, so a suppressed structured
      * payload can never make a failure look like a success. A success is delivered exactly as before.
@@ -708,6 +721,85 @@ public class McpProtocolHandler
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, errorResult));
     }
     
+    /**
+     * Delivers a JSON tool payload in BOTH channels: the whole payload as text, for a client that
+     * reads only {@code content[0].text}, and the same payload as {@code structuredContent}, for a
+     * client that enforces the declared {@code outputSchema}. A {@code ToolResult.error} payload
+     * keeps {@code isError:true}, so the text-reading client still sees a failure as one.
+     *
+     * @param result the tool's JSON payload
+     * @param requestId the JSON-RPC request id to echo
+     * @return the serialized JSON-RPC response
+     */
+    private String buildPlainTextJsonResponse(String result, Object requestId)
+    {
+        ToolCallResult payload =
+            ToolCallResult.textWithStructured(JsonParser.parseString(result), isJsonErrorPayload(result));
+        return GsonProvider.toJson(JsonRpcResponse.success(requestId, payload));
+    }
+
+    /** Which channels a JSON tool's payload is delivered in. See {@link #jsonDeliveryFor}. */
+    enum JsonDelivery
+    {
+        /** structuredContent carries the payload; the text channel gets a bounded digest. */
+        STRUCTURED,
+        /** Both channels carry the whole payload (plain-text mode). */
+        TEXT_PAYLOAD_AND_STRUCTURED,
+        /** Only the text channel; the client refused structuredContent. */
+        TEXT_ONLY
+    }
+
+    /**
+     * How a JSON tool's payload is delivered for this call.
+     * <p>
+     * Two responses have to agree: {@code tools/call} fills {@code structuredContent}, and
+     * {@code tools/list} advertises an {@code outputSchema} declaring its shape. MCP binds them -
+     * a tool that declares an output schema must return structured content - and a client that
+     * enforces the binding throws the whole call away, which is what Cursor's
+     * {@code -32600 "has an output schema but did not return structured content"} is (#574).
+     * </p>
+     * <p>
+     * So exactly ONE input may withhold structuredContent, and it is the client's own explicit
+     * {@code experimental.structuredContent:false}: it is declared at initialize and cannot change
+     * for the life of that session, so a schema advertised to that client is never contradicted by
+     * a later call. {@link #advertisesOutputSchema} reads the same input, and nothing else.
+     * </p>
+     * <p>
+     * Plain-text mode is deliberately NOT such an input, though it used to be. It exists because
+     * some clients read only {@code content[0].text} (#39), so it moves the payload INTO the text
+     * channel - it has no reason to take it out of the structured one, and doing so tied the
+     * advertised schema to a preference the user can flip mid-session, which no notification can
+     * make safe for a client that has already been given the list.
+     * </p>
+     *
+     * @param plainTextMode whether Cursor-compatible plain-text mode is enabled
+     * @param capabilities the capabilities the client declared, never {@code null}
+     * @return the delivery for this call
+     */
+    static JsonDelivery jsonDeliveryFor(boolean plainTextMode, ClientCapabilities capabilities)
+    {
+        if (!capabilities.allowsStructuredContent())
+        {
+            return JsonDelivery.TEXT_ONLY;
+        }
+        return plainTextMode ? JsonDelivery.TEXT_PAYLOAD_AND_STRUCTURED : JsonDelivery.STRUCTURED;
+    }
+
+    /**
+     * Whether {@code tools/list} may advertise a JSON tool's {@code outputSchema} to this client.
+     * <p>
+     * True exactly when {@link #jsonDeliveryFor} will produce structuredContent, for every value of
+     * the other input - which is what makes the promise keepable. A test pins that equivalence.
+     * </p>
+     *
+     * @param capabilities the capabilities the client declared, never {@code null}
+     * @return {@code true} when the schema may be advertised
+     */
+    static boolean advertisesOutputSchema(ClientCapabilities capabilities)
+    {
+        return capabilities.allowsStructuredContent();
+    }
+
     /**
      * Emits the single per-call completion log line. Routed to WARNING when the
      * outcome is an error or the call was slow (so an operator sees it without
@@ -962,7 +1054,7 @@ public class McpProtocolHandler
      * @param request the parsed initialize request (may be {@code null})
      * @return the parsed capabilities, never {@code null}
      */
-    private ClientCapabilities parseClientCapabilities(JsonRpcRequest request)
+    public static ClientCapabilities parseClientCapabilities(JsonRpcRequest request)
     {
         Map<String, Object> params = request != null ? request.getParams() : null;
         if (params == null)
@@ -977,6 +1069,13 @@ public class McpProtocolHandler
         try
         {
             JsonElement tree = GsonProvider.get().toJsonTree(capabilities);
+            int declaredSize = tree.toString().length();
+            if (declaredSize > MAX_RETAINED_CAPABILITIES_CHARS)
+            {
+                Activator.logInfo("Client declared a " + declaredSize //$NON-NLS-1$
+                    + "-character capabilities object; retaining consulted flags only"); //$NON-NLS-1$
+                return ClientCapabilities.distill(tree);
+            }
             return ClientCapabilities.from(tree);
         }
         catch (RuntimeException e)
@@ -1013,7 +1112,7 @@ public class McpProtocolHandler
             // which case the shared Gson omits the field entirely. The shape goes over
             // the wire but its prose does not — see OutputSchemaCompactor for why.
             String outputSchemaJson = tool.getOutputSchema();
-            JsonElement outputSchema = outputSchemaJson != null
+            JsonElement outputSchema = outputSchemaJson != null && advertisesOutputSchema(capabilitiesOf(context))
                 ? OutputSchemaCompactor.compact(JsonParser.parseString(outputSchemaJson))
                 : null;
             result.addTool(tool.getName(), tool.getDescription(), schema, annotations, outputSchema);
@@ -1144,7 +1243,7 @@ public class McpProtocolHandler
      */
     private String buildDeniedToolCallResponse(String message, Object requestId)
     {
-        ToolCallResult toolResult = ToolCallResult.errorText(OutputSizeGuard.cap(message));
+        ToolCallResult toolResult = ToolCallResult.refusal(OutputSizeGuard.cap(message));
         return GsonProvider.toJson(JsonRpcResponse.success(requestId, toolResult));
     }
 

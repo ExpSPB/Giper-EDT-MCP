@@ -39,6 +39,7 @@ after each test.
 
 import os
 import time
+import xml.etree.ElementTree as ET
 
 from harness import (
     call,
@@ -74,6 +75,49 @@ def _seed_characteristic_types(name):
     assert_ok(r, "seed ChartOfCharacteristicTypes." + name)
     wait_for_project_ready()
     return "ChartOfCharacteristicTypes." + name
+
+
+def _xml_children(node, name):
+    return [child for child in node if child.tag.rsplit("}", 1)[-1] == name]
+
+
+def _characteristic_types_on_disk(owner_name, item_name):
+    """Read the exported model before another MCP call can hide an export failure.
+
+    Accept inline or sibling XML serialization, but require the actual item type
+    containment and the owner's persisted type, not a name/payload substring.
+    """
+    base = os.path.join(PROJECT_DIR, "src", "ChartsOfCharacteristicTypes", owner_name)
+    assert os.path.isdir(base), "characteristic owner was not exported: %s" % base
+    items, owners = [], []
+    for directory, _dirs, files in os.walk(base):
+        for filename in files:
+            if not filename.endswith((".mdo", ".xml")):
+                continue
+            root = ET.parse(os.path.join(directory, filename)).getroot()
+            for node in root.iter():
+                names = _xml_children(node, "name")
+                if len(names) != 1:
+                    continue
+                if names[0].text == item_name:
+                    items.append(node)
+                if names[0].text == owner_name:
+                    owners.append(node)
+    assert len(items) == 1, "expected one exported item %s, got %d" % (item_name, len(items))
+    assert len(owners) == 1, "expected one exported owner %s, got %d" % (owner_name, len(owners))
+    item_types = _xml_children(items[0], "type")
+    owner_types = _xml_children(owners[0], "type")
+    assert len(item_types) == 1, "exported item must retain a non-null type description"
+    assert len(owner_types) == 1, "exported owner must retain its type description"
+    return item_types[0], owner_types[0]
+
+
+def _type_contents(node):
+    """Compare concrete dictionary references and qualifier structure, excluding indentation."""
+    def content(child):
+        return (child.tag.rsplit("}", 1)[-1], tuple(sorted(child.attrib.items())),
+                (child.text or "").strip(), tuple(content(value) for value in child))
+    return tuple(content(child) for child in node)
 
 
 def _poll_name_under_catalog_dir(catalog_name, needle, timeout=15):
@@ -267,10 +311,45 @@ def test_characteristic_types_predefined_item():
     assert r.structured.get("kind") == "ChartOfCharacteristicTypesPredefinedItem", \
         "kind must be the concrete EClass: %r" % (r.structured,)
 
+    item_type, owner_type = _characteristic_types_on_disk(types, "Weight")
+    assert _type_contents(item_type) == _type_contents(owner_type), \
+        "omitted valueType must persist the SDK owner's default, including qualifiers"
+
     details = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [owner]})
     assert_ok(details, "get_metadata_details on ChartOfCharacteristicTypes owner")
     assert_contains(details.text, "Weight", "must list the new item")
     assert_contains(details.text, "W1", "must show its code")
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_characteristic_types_omitted_type_preserves_constrained_owner_ru():
+    types = "E2EPredefDefaultConstrained"
+    owner = _seed_characteristic_types(types)
+    changed = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": owner,
+        "properties": [{"name": "type", "value": {
+            "types": [{"kind": "Number", "precision": 7, "scale": 2, "nonNegative": True}],
+        }}],
+    })
+    assert_ok(changed, "constrain the owner's supported characteristic value type")
+    wait_for_project_ready()
+    item_fqn = "ПланВидовХарактеристик." + types + ".Предопределённые.Вес"
+    created = call("create_metadata", {"projectName": PROJECT, "fqn": item_fqn})
+    assert_ok(created, "create a Russian predefined item using the owner's default type")
+    item_type, owner_type = _characteristic_types_on_disk(types, "Вес")
+    assert _type_contents(item_type) == _type_contents(owner_type), \
+        "omitted type must preserve the owner's exact constrained type on disk"
+    assert [node.text for node in _xml_children(item_type, "types")] == ["Number"]
+    qualifiers = _xml_children(item_type, "numberQualifiers")
+    assert len(qualifiers) == 1, "Number qualifiers must be exported on the predefined item"
+    values = {node.tag.rsplit("}", 1)[-1]: node.text for node in qualifiers[0]}
+    assert values.get("precision") == "7", values
+    assert values.get("scale") == "2", values
+    assert values.get("nonNegative") == "true", values
+    details = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [item_fqn]})
+    assert_ok(details, "read the inherited characteristic type through the Russian FQN")
+    assert_contains(details.text, "Вес", "the real Russian item name must survive")
+    assert_contains(details.text, "Number", "model readback must show the inherited Number type")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -396,7 +475,11 @@ def test_characteristic_types_value_type_create_details_modify():
         "properties": [{"name": "valueType", "value": {"types": [{"kind": "String", "length": 50}]}}],
     })
     assert_ok(rc, "create CCT predefined item with a valueType")
-    poll_diff_contains("Weight", ctx="the new item must land on disk")
+    item_type, _owner_type = _characteristic_types_on_disk(types, "Weight")
+    assert [node.text for node in _xml_children(item_type, "types")] == ["String"]
+    qualifiers = _xml_children(item_type, "stringQualifiers")
+    assert len(qualifiers) == 1, "explicit String qualifiers must be exported"
+    assert [node.text for node in _xml_children(qualifiers[0], "length")] == ["50"]
 
     # 2) The owner's "Predefined items" table renders a Type column carrying the value type.
     details = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [owner]})
@@ -419,6 +502,9 @@ def test_characteristic_types_value_type_create_details_modify():
     assert_ok(rm, "modify predefined item valueType via the 'type' alias")
     assert "valueType" in (rm.structured.get("applied") or []), \
         "valueType must be reported applied: %r" % (rm.structured,)
+    item_type, owner_type = _characteristic_types_on_disk(types, "Weight")
+    assert [node.text for node in _xml_children(item_type, "types")] == ["Boolean"]
+    owner_before_clear = _type_contents(owner_type)
 
     item_details_after = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [item_fqn]})
     assert_ok(item_details_after, "get_metadata_details after modify")
@@ -431,11 +517,16 @@ def test_characteristic_types_value_type_create_details_modify():
         "properties": [{"name": "valueType", "value": None}],
     })
     assert_ok(r_clear, "clear the value type with an explicit null")
+    item_type, owner_type = _characteristic_types_on_disk(types, "Weight")
+    assert len(item_type) == 0, "clear must export an empty type containment, not null or stale qualifiers"
+    assert _type_contents(owner_type) == owner_before_clear, "clearing an item must preserve its owner's type"
 
     item_details_cleared = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [item_fqn]})
     assert_ok(item_details_cleared, "get_metadata_details after clearing valueType")
     assert_not_contains(item_details_cleared.text, "Boolean",
                         "the cleared value type must no longer be shown")
+    assert_contains(item_details_cleared.text, "| Value type | - |",
+                    "the empty SDK type must preserve the public cleared-value display")
 
 
 @e2e_test(tool="create_metadata", kind="write-metadata")

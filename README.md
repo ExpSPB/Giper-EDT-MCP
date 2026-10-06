@@ -18,6 +18,25 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 <details>
+<summary><strong>1.0.12</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.12-SNAPSHOT`). Port of upstream `master` through `c99edaf3`, preserving the EDT **2025.2.5** compatibility baseline, Java 17, Giper identity, named tool profiles, and profile exchange.
+
+New tools: `debug_pause`, `infobase_sessions`, `import_project_from_file`, and `export_configuration_to_file`. Updates cover bounded launch/debug waits, import state reporting, branch infobase bindings, role-right orphan handling, command interfaces, DCS charts, spreadsheet layout, and vendor-support write guards.
+
+Fix inherited encoding damage in bilingual inputs and guides, and isolate external-object resync from a linked base configuration's BM model. Existing stored tool profiles keep their allowlists.
+
+Use EDT 2025.2.5's typed extension adoption and owner-aware register-dimension factory, preserving language mappings and default dimension types.
+
+XML import now accepts `runtimeVersion` and `baseProjectName`; nonempty legacy `projectNature` and `xmlVersion` overrides are refused because EDT infers the nature and XML format. Predefined characteristic items inherit a separate copy of their owner's effective type when `valueType` is omitted.
+
+CLEAN reports failure when lifecycle or derived-data completion cannot be confirmed, and refuses clean-all when the EDT project service is unavailable. The Java bridge retains a status-only policy when its live profile repository disappears.
+
+Port scope, platform adaptations and verification: [1.0.12 port record](docs/e2e/port-1.0.12.md).
+
+</details>
+
+<details>
 <summary><strong>1.0.11</strong></summary>
 
 Plugin OSGi/Tycho version (`1.0.11-SNAPSHOT`). p2 Check for Updates compares `major.minor.micro` only.
@@ -78,7 +97,7 @@ Direct jumps:
 > For 1C business projects see the [agent skills pack](agent/README.md) and the [rules pack](rules/README.md).
 
 > [!IMPORTANT]
-> Supports 1C:EDT **2025.2.5** (Ruby). Compiled against the 2025.2 p2 (Java 17 / Eclipse 2023-12). E2E and conformance run on the same line.
+> The compatibility baseline is 1C:EDT **2025.2.5** (Ruby), Java 17 / Eclipse 2023-12. Verify that exact SDK with `source/compile.sh --edt-install <installed-2025.2.5>` and its live gates. The public 2025.2 p2 channel and cloud CI currently resolve **2025.2.6**; those results do not replace the exact-.5 gate. See [Building from source](EDT-MCP.md#building-from-source).
 
 ## What this fork adds: tool-set profiles
 
