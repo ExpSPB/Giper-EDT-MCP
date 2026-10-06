@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
@@ -7,13 +7,20 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.MultiStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.debug.core.DebugPlugin;
@@ -29,10 +36,13 @@ import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.utils.ApplicationSupport;
 import fm.giper.edt.mcp.server.utils.AsyncLaunchOutcomes;
+import fm.giper.edt.mcp.server.utils.BoundedJob;
 import fm.giper.edt.mcp.server.utils.DebugServerTargetSupport;
 import fm.giper.edt.mcp.server.utils.ExternalInfobaseChangesPolicy;
 import fm.giper.edt.mcp.server.utils.InfobaseAuthDialogSuppressor;
+import fm.giper.edt.mcp.server.utils.LaunchAbortReason;
 import fm.giper.edt.mcp.server.utils.LaunchConfigUtils;
 import fm.giper.edt.mcp.server.utils.LaunchOverrides;
 import fm.giper.edt.mcp.server.utils.LaunchLifecycleUtils;
@@ -44,23 +54,25 @@ import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
 import fm.giper.edt.mcp.server.utils.StandaloneServerPortConflictPolicy;
 import fm.giper.edt.mcp.server.utils.StandaloneServerStateRecovery;
+import fm.giper.edt.mcp.server.utils.StandaloneServerSupport;
 import com.e1c.g5.dt.applications.ApplicationException;
 import com.e1c.g5.dt.applications.IApplication;
 import com.e1c.g5.dt.applications.IApplicationManager;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 /**
  * Tool to launch an EDT session in debug or run mode.
  *
  * <p>Two target-selection forms:
  * <ul>
- *   <li>{@code launchConfigurationName} тАФ start an existing EDT launch configuration
- *       by its exact name. Works for both runtime-client configs (spawns 1cv8c) and
- *       Attach configurations (attaches to {@code ragent}/{@code rphost} for
- *       server-side code). Does not require {@code applicationId}.</li>
- *   <li>{@code projectName} + {@code applicationId} тАФ legacy path: searches the
+ *   <li>{@code launchConfigurationName} — start an existing EDT launch configuration
+ *       by its exact name. Runtime-client configs spawn 1cv8c, Attach configurations connect
+ *       to {@code ragent}/{@code rphost}, and standalone-server configurations start their
+ *       server through EDT's server service. Does not require {@code applicationId}.</li>
+ *   <li>{@code projectName} + {@code applicationId} — legacy path: searches the
  *       runtime-client configs for a match and launches it.</li>
  * </ul>
  */
@@ -89,8 +101,17 @@ public class LaunchTool implements IMcpTool
     /** Output key: launch status (e.g. "launching"). */
     private static final String KEY_STATUS = "status"; //$NON-NLS-1$
 
+    /** Output key: EDT reassigned a standalone server's ports during this call. */
+    private static final String KEY_STANDALONE_SERVER_PORTS_REASSIGNED =
+        "standaloneServerPortsReassigned"; //$NON-NLS-1$
+
     /** Error-log prefix for an asynchronous launch failure. */
     private static final String ERR_ASYNC_PREFIX = "launch failed asynchronously: "; //$NON-NLS-1$
+
+    /** Recovery advice retained when the standalone-server start itself fails. */
+    private static final String STANDALONE_THIN_CLIENT_FALLBACK =
+        "Try launch with the project's thin-client configuration instead: launching that client " //$NON-NLS-1$
+            + "has been observed to bring its standalone server up with it."; //$NON-NLS-1$
 
     /**
      * Input param AND response field: the {@code /C} startup option applied to this launch only.
@@ -132,15 +153,19 @@ public class LaunchTool implements IMcpTool
             .stringProperty(McpKeys.APPLICATION_ID,
                 "Application ID from get_applications; required in the projectName+applicationId mode.") //$NON-NLS-1$
             .stringProperty("launchConfigurationName", //$NON-NLS-1$
-                "Exact name of an EDT launch config (runtime client or Attach); skips projectName/applicationId.") //$NON-NLS-1$
+                "Exact name of an EDT launch config (runtime client, Attach, or standalone server); " //$NON-NLS-1$
+                    + "skips projectName/applicationId.") //$NON-NLS-1$
             .enumProperty(KEY_MODE,
-                "Launch mode: debug (default) or run. Attach configurations support debug only.", //$NON-NLS-1$
+                "Launch mode: debug (default) or run. Attach configurations support debug only; " //$NON-NLS-1$
+                    + "standalone servers always start in debug mode.", //$NON-NLS-1$
                 MODE_DEBUG, MODE_RUN)
             .booleanProperty("updateBeforeLaunch", //$NON-NLS-1$
                 "Default true: silently apply the configuration->DB update before launching so no " //$NON-NLS-1$
                     + "'Update database?' modal blocks the call (even on a Russian-locale EDT the dialog " //$NON-NLS-1$
                     + "is auto-confirmed); false skips the update and the platform may then show that " //$NON-NLS-1$
-                    + "modal. Ignored for Attach.") //$NON-NLS-1$
+                    + "modal. Ignored for Attach. A standalone-server configuration performs no database " //$NON-NLS-1$
+                    + "update on this route even when omitted, and an explicit true is refused - run " //$NON-NLS-1$
+                    + "update_database separately.") //$NON-NLS-1$
             .stringProperty("externalInfobaseChanges", //$NON-NLS-1$
                 "How to answer EDT's blocking 'Infobase configuration changes' modal when the infobase " //$NON-NLS-1$
                     + "was changed outside EDT (Designer, ibcmd, a CLI pipeline) since the last EDT " //$NON-NLS-1$
@@ -167,7 +192,7 @@ public class LaunchTool implements IMcpTool
             .booleanProperty("restartIfRunning", //$NON-NLS-1$
                 "Default false: if a matching session is already running, short-circuit with " //$NON-NLS-1$
                     + "alreadyRunning:true and do NOT relaunch (call terminate_launch to restart). " //$NON-NLS-1$
-                    + "true: non-interactively terminate the existing session, then relaunch тАФ no " //$NON-NLS-1$
+                    + "true: non-interactively terminate the existing session, then relaunch — no " //$NON-NLS-1$
                     + "'Debug session already exists' modal blocks the call.") //$NON-NLS-1$
             .build();
     }
@@ -190,9 +215,12 @@ public class LaunchTool implements IMcpTool
             .stringProperty(KEY_EXTERNAL_OBJECT_NAME,
                 "The external data processor / report this launch runs; absent when none was requested.") //$NON-NLS-1$
             .stringProperty(KEY_MODE,
-                "Requested launch mode, or the existing session mode when alreadyRunning is true") //$NON-NLS-1$
+                "Effective launch mode; standalone servers report debug because EDT always starts them in debug mode") //$NON-NLS-1$
             .stringProperty(KEY_STATUS, "\"launching\" when the launch was dispatched asynchronously and is " //$NON-NLS-1$
-                + "still starting; absent on the alreadyRunning short-circuit. Poll debug_status for readiness.") //$NON-NLS-1$
+                + "still starting, or \"running\" after a bounded standalone-server start; absent on the " //$NON-NLS-1$
+                + "alreadyRunning short-circuit. Poll debug_status for asynchronous-launch readiness.") //$NON-NLS-1$
+            .booleanProperty(KEY_STANDALONE_SERVER_PORTS_REASSIGNED,
+                "True when EDT moved a standalone server to free ports and rewrote its configuration") //$NON-NLS-1$
             .stringProperty(McpKeys.MESSAGE, "Human-readable status message") //$NON-NLS-1$
             .build();
     }
@@ -206,8 +234,7 @@ public class LaunchTool implements IMcpTool
     @Override
     public boolean connectsToInfobase()
     {
-        // config.launch(...) connects a runtime client to the infobase, synchronously or
-        // via the fire-and-forget background launch Job (issue #270).
+        // Runtime-client launches and standalone-server starts both connect to an infobase.
         return true;
     }
 
@@ -225,8 +252,10 @@ public class LaunchTool implements IMcpTool
         String applicationId = JsonUtils.extractStringArgument(params, McpKeys.APPLICATION_ID);
         String configName = JsonUtils.extractStringArgument(params, "launchConfigurationName"); //$NON-NLS-1$
         boolean updateBeforeLaunch = JsonUtils.extractBooleanArgument(params, "updateBeforeLaunch", true); //$NON-NLS-1$
+        boolean updateRequested = explicitUpdateRequest(params);
         boolean restartIfRunning = extractRestartIfRunning(params);
         String rawPolicy = JsonUtils.extractStringArgument(params, "externalInfobaseChanges"); //$NON-NLS-1$
+        boolean policyRequested = explicitPolicyRequest(params);
         ExternalInfobaseChangesPolicy policy = ExternalInfobaseChangesPolicy.parse(rawPolicy);
         if (policy == null)
         {
@@ -250,20 +279,21 @@ public class LaunchTool implements IMcpTool
             JsonUtils.extractStringArgument(params, KEY_STARTUP_OPTION),
             JsonUtils.extractStringArgument(params, KEY_EXTERNAL_OBJECT_PROJECT_NAME),
             JsonUtils.extractStringArgument(params, KEY_EXTERNAL_OBJECT_NAME));
-        // Validated up front, alongside the enum parses above and before EITHER launch mode: both
-        // of them can terminate a live client session and update the infobase on the way to the
-        // launch, and a mistyped external object must not cost the caller those.
+        // Validated up front, before EITHER launch route: both can terminate a live client
+        // session and update the infobase on the way to the launch, and a mistyped external object
+        // must not cost the caller those. The standalone-server refusal stays after type
+        // resolution, where the type is known.
         LaunchOverrides.Prepared prepared = overrides.prepare();
         if (prepared.errorJson != null)
         {
             return prepared.errorJson;
         }
 
-        // Target form 1: explicit config name тАФ no project/application required.
+        // Target form 1: explicit config name — no project/application required.
         if (configName != null && !configName.isEmpty())
         {
-            return launchByConfigName(configName, updateBeforeLaunch, restartIfRunning, policy,
-                portPolicy, overrides, prepared, mode);
+            return launchByConfigName(configName, updateBeforeLaunch, updateRequested, policyRequested,
+                restartIfRunning, policy, portPolicy, overrides, prepared, mode);
         }
 
         // Target form 2: project + application (runtime-client only).
@@ -315,7 +345,7 @@ public class LaunchTool implements IMcpTool
 
     /**
      * Extracts the {@code restartIfRunning} flag with its documented default:
-     * {@code false} тАФ an already-running session short-circuits with
+     * {@code false} — an already-running session short-circuits with
      * {@code alreadyRunning:true} rather than being terminated. Package-private
      * seam so the default is unit-assertable headlessly; the launch path that
      * consumes the flag needs a live workbench.
@@ -330,8 +360,8 @@ public class LaunchTool implements IMcpTool
      * Works for both runtime-client and Attach configuration types.
      */
     private String launchByConfigName(String configName, boolean updateBeforeLaunch, // NOSONAR one argument per independent caller-visible decision; a parameter object would only rename them
-        boolean restartIfRunning, ExternalInfobaseChangesPolicy policy,
-        StandaloneServerPortConflictPolicy portPolicy, LaunchOverrides overrides,
+        boolean updateRequested, boolean policyRequested, boolean restartIfRunning,
+        ExternalInfobaseChangesPolicy policy, StandaloneServerPortConflictPolicy portPolicy, LaunchOverrides overrides,
         LaunchOverrides.Prepared prepared, String mode)
     {
         try
@@ -364,6 +394,23 @@ public class LaunchTool implements IMcpTool
                 LaunchConfigUtils.ATTR_PROJECT_NAME, ""); //$NON-NLS-1$
             String effectiveAppId = LaunchConfigUtils.getApplicationIdFor(config);
 
+            if (isStandaloneServerConfiguration(typeId))
+            {
+                String updateRefusal = standaloneUpdateRefusal(config.getName(),
+                    updateRequested, policyRequested, policy);
+                if (updateRefusal != null)
+                {
+                    return updateRefusal;
+                }
+                String refusal = standaloneOverridesRefusal(config.getName(), overrides);
+                if (refusal != null)
+                {
+                    return refusal;
+                }
+                return launchStandaloneServer(config, config.getName(), typeId, configProject,
+                    portPolicy);
+            }
+
             if (isAttach && MODE_RUN.equals(mode))
             {
                 return ToolResult.error("mode 'run' is not supported for Attach launch " //$NON-NLS-1$
@@ -381,13 +428,13 @@ public class LaunchTool implements IMcpTool
             }
 
             // Unified existing-session decision. One
-            // (project, app-id) тЖТ at most one live CLIENT session, with the
+            // (project, app-id) → at most one live CLIENT session, with the
             // CLIENT-typed-thread discriminator applied so a standalone-SERVER /
-            // profiling session sharing this app id тАФ including a debug-mode server
-            // whose live thread is typed SERVER тАФ NEVER short-circuits the client.
+            // profiling session sharing this app id — including a debug-mode server
+            // whose live thread is typed SERVER — NEVER short-circuits the client.
             // Covers both a live DEBUG target and a debug-target-less RUN-mode launch
             // (the legacy already-running guard). restartIfRunning is honored here exactly as in
-            // the target-manager path: false тЖТ alreadyRunning, true тЖТ non-interactive
+            // the target-manager path: false → alreadyRunning, true → non-interactive
             // terminate + relaunch.
             ExistingClientSession existingByName =
                 LaunchLifecycleUtils.resolveExistingClientSession(effectiveAppId);
@@ -404,7 +451,7 @@ public class LaunchTool implements IMcpTool
                 {
                     return shortCircuit;
                 }
-                // restartIfRunning=true: the old client was terminated тАФ fall through
+                // restartIfRunning=true: the old client was terminated — fall through
                 // and relaunch.
             }
 
@@ -414,7 +461,7 @@ public class LaunchTool implements IMcpTool
             // IRuntimeDebugClientTargetManager.listDebugTargets() (NOT ILaunchManager)
             // and keys on ATTR_PROJECT_NAME + (ATTR_APPLICATION_ID else default app).
             // Our findActiveTarget/findActiveLaunch guards above scan ILaunchManager
-            // and key on getApplicationIdFor() тАФ so a UI-started ("Debug As") session,
+            // and key on getApplicationIdFor() — so a UI-started ("Debug As") session,
             // or a config with no readable ATTR_APPLICATION_ID (we mint a synthetic
             // launch:<name> the delegate never uses), slips past them and the unattended
             // call then hangs on the human modal. This supplements them with the
@@ -442,7 +489,7 @@ public class LaunchTool implements IMcpTool
             // configuration changes" dialog appearing during an Attach is somebody else's.
             // An Attach neither updates the DB nor STARTS a server, so it must leave BOTH modals
             // to their owners: a port policy forwarded here would arm the matcher for the whole
-            // Attach window and could cancel тАФ or, with reassign, re-address тАФ a server some other
+            // Attach window and could cancel — or, with reassign, re-address — a server some other
             // launch or a human is starting (review of #435).
             // Last step before the launch, so every guard above still reads the SAVED
             // configuration: the overrides change what the client is told to run, never the
@@ -473,20 +520,7 @@ public class LaunchTool implements IMcpTool
         }
     }
 
-    /**
-     * Resolves a by-name launch target without changing the supported launch domain.
-     *
-     * <p>The existing runtime-client/Attach lookup runs first and is returned unchanged. Only when
-     * it finds nothing do we inspect the standalone-server type, solely to replace the false
-     * "not found; create it" advice with the real capability boundary and measured workaround.
-     * The standalone type is intentionally not added to
-     * {@link LaunchConfigUtils#ALL_DEBUG_CONFIG_TYPE_IDS}, because the other callers of the shared
-     * lookup do not thereby gain standalone-server support.
-     *
-     * @param launchManager Eclipse launch manager
-     * @param configName exact configuration name
-     * @return the supported configuration, an honest standalone refusal, or neither when absent
-     */
+    /** Resolves by-name targets supported here without expanding the shared debug lookup. */
     static NamedConfigurationResolution resolveNamedConfiguration(ILaunchManager launchManager,
             String configName)
     {
@@ -502,18 +536,798 @@ public class LaunchTool implements IMcpTool
         {
             return NamedConfigurationResolution.notFound();
         }
-        String typeId = LaunchConfigUtils.getConfigTypeId(standalone);
-        return NamedConfigurationResolution.error(ToolResult.error("Launch configuration '" //$NON-NLS-1$
-            + standalone.getName() + "' has type '" + typeId + "'. " + NAME //$NON-NLS-1$ //$NON-NLS-2$
-            + " starts runtime " //$NON-NLS-1$
-            + "CLIENT configurations; it does not start standalone-server configurations " //$NON-NLS-1$
-            + "directly. Try " + NAME //$NON-NLS-1$
-            + " with the project's thin-client configuration instead: " //$NON-NLS-1$
-            + "launching that client has been observed to bring its standalone server up with " //$NON-NLS-1$
-            + "it. " //$NON-NLS-1$
-            + TerminateLaunchTool.NAME
-            + " does accept this same standalone-server configuration when it " //$NON-NLS-1$
-            + "is running.").toJson()); //$NON-NLS-1$
+        return NamedConfigurationResolution.config(standalone);
+    }
+
+    /** Whether the configuration type routes to the standalone-server service. */
+    static boolean isStandaloneServerConfiguration(String typeId)
+    {
+        return LaunchConfigUtils.STANDALONE_SERVER_LAUNCH_CONFIG_TYPE_ID.equals(typeId);
+    }
+
+    /** Refuses parameters that require a runtime client before a standalone server is started. */
+    static String standaloneOverridesRefusal(String configName, LaunchOverrides overrides)
+    {
+        if (overrides == null || overrides.isEmpty())
+        {
+            return null;
+        }
+        List<String> parameters = new ArrayList<>();
+        if (!LaunchOverrides.blank(overrides.startupOption()))
+        {
+            parameters.add(KEY_STARTUP_OPTION);
+        }
+        if (!LaunchOverrides.blank(overrides.externalObjectProjectName()))
+        {
+            parameters.add(KEY_EXTERNAL_OBJECT_PROJECT_NAME);
+        }
+        if (!LaunchOverrides.blank(overrides.externalObjectName()))
+        {
+            parameters.add(KEY_EXTERNAL_OBJECT_NAME);
+        }
+        String names = parameters.stream().map(name -> "'" + name + "'") //$NON-NLS-1$ //$NON-NLS-2$
+            .collect(java.util.stream.Collectors.joining(", ")); //$NON-NLS-1$
+        String subject = parameters.size() == 1 ? "Parameter " : "Parameters "; //$NON-NLS-1$ //$NON-NLS-2$
+        String remove = parameters.size() == 1 ? "Remove it" : "Remove them"; //$NON-NLS-1$ //$NON-NLS-2$
+        return ToolResult.error(subject + names + " cannot be used with standalone-server " //$NON-NLS-1$
+            + "launch configuration '" + configName + "' because a standalone server starts " //$NON-NLS-1$ //$NON-NLS-2$
+            + "no client. " + remove + " or use a runtime-client configuration.") //$NON-NLS-1$ //$NON-NLS-2$
+            .toJson();
+    }
+
+    /**
+     * Whether the caller ASKED for a pre-launch update. The schema default is true, so reading
+     * the defaulted value would refuse every plain standalone start; only an explicit value counts.
+     */
+    static boolean explicitUpdateRequest(Map<String, String> params)
+    {
+        return params != null && params.containsKey("updateBeforeLaunch") //$NON-NLS-1$
+            && JsonUtils.extractBooleanArgument(params, "updateBeforeLaunch", false); //$NON-NLS-1$
+    }
+
+    /** Whether the caller explicitly supplied a non-blank external-change policy. */
+    static boolean explicitPolicyRequest(Map<String, String> params)
+    {
+        String value = JsonUtils.extractStringArgument(params, "externalInfobaseChanges"); //$NON-NLS-1$
+        return params != null && params.containsKey("externalInfobaseChanges") //$NON-NLS-1$
+            && value != null && !value.trim().isEmpty();
+    }
+
+    /** Refuses update options that the direct standalone-server start cannot honour. */
+    static String standaloneUpdateRefusal(String configName, boolean updateRequested,
+        boolean policyRequested, ExternalInfobaseChangesPolicy policy)
+    {
+        if (!updateRequested && !policyRequested)
+        {
+            return null;
+        }
+        if (updateRequested && policyRequested)
+        {
+            return ToolResult.error("Parameters 'updateBeforeLaunch' and " //$NON-NLS-1$
+                + "'externalInfobaseChanges' cannot be honoured for standalone-server launch " //$NON-NLS-1$
+                + "configuration '" + configName + "'. This direct route only starts the server " //$NON-NLS-1$ //$NON-NLS-2$
+                + "and performs no database update. Run update_database with " //$NON-NLS-1$
+                + "externalInfobaseChanges='" + policy.wireValue() //$NON-NLS-1$
+                + "' first, then call launch with updateBeforeLaunch=false and omit " //$NON-NLS-1$
+                + "externalInfobaseChanges.").toJson(); //$NON-NLS-1$
+        }
+        if (updateRequested)
+        {
+            return ToolResult.error("Parameter 'updateBeforeLaunch' cannot be true for " //$NON-NLS-1$
+                + "standalone-server launch configuration '" + configName + "'. This direct " //$NON-NLS-1$ //$NON-NLS-2$
+                + "route only starts the server and performs no database update. Run " //$NON-NLS-1$
+                + "update_database first, then call launch with updateBeforeLaunch=false.") //$NON-NLS-1$
+                .toJson();
+        }
+        return ToolResult.error("Parameter 'externalInfobaseChanges'='" + policy.wireValue() //$NON-NLS-1$
+            + "' cannot be honoured for standalone-server launch configuration '" + configName //$NON-NLS-1$
+            + "' because this direct route performs no database update. Run update_database " //$NON-NLS-1$
+            + "with externalInfobaseChanges='" + policy.wireValue() //$NON-NLS-1$
+            + "' first, then call launch with updateBeforeLaunch=false and omit " //$NON-NLS-1$
+            + "externalInfobaseChanges.").toJson(); //$NON-NLS-1$
+    }
+
+    /** Starts a standalone server through its self-contained EDT service operation. */
+    private String launchStandaloneServer(ILaunchConfiguration config, String configName,
+        String typeId, String projectName, StandaloneServerPortConflictPolicy portPolicy)
+    {
+        StandalonePreparation preparation = null;
+        try
+        {
+            preparation = prepareStandaloneLaunch(config, configName, projectName, portPolicy,
+                StandaloneServerSupport.SERVER_OPERATION_TIMEOUT_MS);
+            StandalonePreparation preparedLaunch = preparation;
+            if (preparedLaunch.failure != null)
+            {
+                return standalonePreconditionError(configName, preparedLaunch.failure);
+            }
+            StartOutcome start = startStandaloneServerGuarded(configName, preparedLaunch.project,
+                () -> preparedLaunch.applyPreflight(
+                    StandaloneServerStateRecovery::retainPreparedStop),
+                () -> startStandaloneServerWithPolicy(preparedLaunch.service,
+                    preparedLaunch.lookup.server(), configName,
+                    // EDT ignores this argument and always starts standalone servers in debug.
+                    ILaunchManager.DEBUG_MODE, preparedLaunch.lookup.infobaseName(),
+                    preparedLaunch.lookup.serverName(), preparedLaunch.portPolicy,
+                    preparedLaunch.startClaim));
+            if (start.failure() != null)
+            {
+                return standaloneStartFailure(start.failure(), start.portsReassigned(),
+                    start.portReassignmentOutcomeUnknown());
+            }
+            return standaloneStartSuccess(configName, typeId, projectName,
+                preparedLaunch.applicationId, start.portsReassigned());
+        }
+        finally
+        {
+            if (preparation != null && preparation.startClaim != null)
+            {
+                preparation.startClaim.closeIfNotHandedOff();
+            }
+        }
+    }
+
+    /** Resolves every standalone start prerequisite under one caller deadline. */
+    private static StandalonePreparation prepareStandaloneLaunch(ILaunchConfiguration config,
+        String configName, String projectName, StandaloneServerPortConflictPolicy requestedPortPolicy,
+        long timeoutMs)
+    {
+        AtomicReference<StandalonePreparation> prepared = new AtomicReference<>();
+        AtomicReference<StandalonePreparationStage> stage =
+            new AtomicReference<>(StandalonePreparationStage.PROJECT);
+        AtomicReference<IProject> resolvedProject = new AtomicReference<>();
+        AtomicReference<String> applicationId = new AtomicReference<>();
+        AtomicBoolean staleServerStopped = new AtomicBoolean();
+        Object publicationLock = new Object();
+        AtomicBoolean acceptingPreparation = new AtomicBoolean(true);
+        Consumer<StandalonePreparation> publish = candidate -> publishStandalonePreparation(
+            prepared, publicationLock, acceptingPreparation, candidate);
+        BoundedJob.Result bounded;
+        try
+        {
+            bounded = runStandalonePreparationBounded(configName, timeoutMs, monitor -> {
+                ProjectContext context = ProjectContext.of(projectName);
+                if (!context.exists())
+                {
+                    publish.accept(StandalonePreparation.failed(
+                        ProjectContext.notFoundMessage(projectName)));
+                    return;
+                }
+                if (!context.isOpen())
+                {
+                    publish.accept(StandalonePreparation.failed(
+                        "Project is closed: " + projectName)); //$NON-NLS-1$
+                    return;
+                }
+                resolvedProject.set(context.project());
+                if (monitor.isCanceled())
+                {
+                    return;
+                }
+
+                stage.set(StandalonePreparationStage.APPLICATION_MANAGER);
+                Activator activator = Activator.getDefault();
+                IApplicationManager manager =
+                    activator == null ? null : activator.getApplicationManager();
+                if (monitor.isCanceled())
+                {
+                    return;
+                }
+                stage.set(StandalonePreparationStage.DELEGATE_APPLICATION);
+                String resolvedId = LaunchLifecycleUtils.resolveDelegateApplicationId(config,
+                    context.project(), manager);
+                applicationId.set(resolvedId);
+                if (monitor.isCanceled())
+                {
+                    return;
+                }
+                if (resolvedId == null || resolvedId.isEmpty())
+                {
+                    publish.accept(StandalonePreparation.failed(
+                        "the configuration's application could not be resolved")); //$NON-NLS-1$
+                    return;
+                }
+                if (manager == null)
+                {
+                    publish.accept(StandalonePreparation.failed(
+                        "the EDT application manager is not available")); //$NON-NLS-1$
+                    return;
+                }
+
+                stage.set(StandalonePreparationStage.APPLICATION);
+                StandaloneServerSupport.ApplicationLookup lookup =
+                    StandaloneServerSupport.lookupApplication(manager, context.project(), resolvedId);
+                if (monitor.isCanceled())
+                {
+                    return;
+                }
+                if (lookup.application() == null)
+                {
+                    publish.accept(StandalonePreparation.failed("application '" + resolvedId //$NON-NLS-1$
+                        + "' was not found in project " + projectName)); //$NON-NLS-1$
+                    return;
+                }
+
+                stage.set(StandalonePreparationStage.SERVICE);
+                Object service = StandaloneServerSupport.acquireService();
+                if (monitor.isCanceled())
+                {
+                    return;
+                }
+                if (service == null)
+                {
+                    publish.accept(StandalonePreparation.failed(
+                        "the EDT standalone-server service is not available")); //$NON-NLS-1$
+                    return;
+                }
+                if (lookup.server() == null)
+                {
+                    publish.accept(StandalonePreparation.failed(
+                        "the application's standalone server could not be resolved")); //$NON-NLS-1$
+                    return;
+                }
+
+                stage.set(StandalonePreparationStage.STALE_PREFLIGHT);
+                try
+                {
+                    StandaloneServerStateRecovery.ensureStartableWithinBound(context.project(),
+                        lookup.application(), lookup.server(), resolvedId, manager, monitor,
+                        () -> stage.set(StandalonePreparationStage.STALE_STOP),
+                        () -> staleServerStopped.set(true));
+                }
+                catch (ApplicationException failure)
+                {
+                    publish.accept(StandalonePreparation.preflightFailed(context.project(), resolvedId,
+                        failure.getMessage(), staleServerStopped.get()));
+                    return;
+                }
+                stage.set(StandalonePreparationStage.START_CLAIM);
+                StandaloneServerStateRecovery.StartClaim startClaim =
+                    StandaloneServerStateRecovery.claimStartWithinBound(context.project(),
+                        resolvedId, monitor);
+                if (startClaim == null)
+                {
+                    String failure = "the standalone server could not be claimed before starting; " //$NON-NLS-1$
+                        + "another start may already own it or its ownership could not be confirmed"; //$NON-NLS-1$
+                    publish.accept(staleServerStopped.get()
+                        ? StandalonePreparation.preflightFailed(context.project(), resolvedId,
+                            failure, true)
+                        : StandalonePreparation.failed(failure));
+                    return;
+                }
+                StandaloneServerPortConflictPolicy effectivePortPolicy =
+                    DebugServerTargetSupport.isServerApplicationId(resolvedId)
+                        ? requestedPortPolicy : null;
+                publish.accept(StandalonePreparation.ready(context.project(), resolvedId, lookup,
+                    service, effectivePortPolicy, staleServerStopped.get(), startClaim));
+            });
+        }
+        catch (RuntimeException | Error failure)
+        {
+            StandalonePreparation abandoned = closeStandalonePreparationPublication(prepared,
+                publicationLock, acceptingPreparation);
+            if (abandoned != null)
+            {
+                abandoned.releaseUnstartedClaim();
+            }
+            throw failure;
+        }
+
+        StandalonePreparation published = closeStandalonePreparationPublication(prepared,
+            publicationLock, acceptingPreparation);
+        StandalonePreparation accepted = acceptPublishedStandalonePreparation(published, bounded);
+        String resolvedId = applicationId.get();
+        if (accepted != null)
+        {
+            return preserveCompletedStaleStop(accepted, resolvedProject.get(), resolvedId,
+                staleServerStopped.get());
+        }
+        if (published != null)
+        {
+            published.releaseUnstartedClaim();
+        }
+        if (bounded.isSuccess())
+        {
+            return standalonePreparationFailure(resolvedProject.get(), resolvedId,
+                staleServerStopped.get(),
+                "the standalone-server precondition phase produced no result"); //$NON-NLS-1$
+        }
+        if (bounded.getFailure() != null
+            && bounded.getOutcome() == BoundedJob.Outcome.COMPLETED)
+        {
+            if (staleServerStopped.get() && resolvedId != null)
+            {
+                return StandalonePreparation.preflightFailed(resolvedProject.get(), resolvedId,
+                    PlatformFailures.describe(bounded.getFailure()), true);
+            }
+            if (stage.get() == StandalonePreparationStage.APPLICATION)
+            {
+                return StandalonePreparation.failed("the application could not be resolved: " //$NON-NLS-1$
+                    + PlatformFailures.describe(bounded.getFailure()));
+            }
+            if (bounded.getFailure() instanceof RuntimeException)
+            {
+                throw (RuntimeException)bounded.getFailure();
+            }
+            return StandalonePreparation.failed(PlatformFailures.describe(bounded.getFailure()));
+        }
+        return finishIncompleteStandalonePreparation(resolvedProject.get(), resolvedId,
+            staleServerStopped.get(), stage.get(), configName, projectName, timeoutMs, bounded);
+    }
+
+    /** Preserves a completed stop even when a previously published failure omitted that fact. */
+    private static StandalonePreparation preserveCompletedStaleStop(
+        StandalonePreparation preparation, IProject project, String applicationId,
+        boolean staleServerStopped)
+    {
+        if (!staleServerStopped || applicationId == null || !preparation.hasFailure())
+        {
+            return preparation;
+        }
+        String failure = preparation.preflightFailure == null ? preparation.failure
+            : preparation.preflightFailure;
+        return StandalonePreparation.preflightFailed(project, applicationId, failure, true);
+    }
+
+    /** Classifies an inconclusive preparation while retaining any stop it actually completed. */
+    static StandalonePreparation finishIncompleteStandalonePreparation(IProject project,
+        String applicationId, boolean staleServerStopped, StandalonePreparationStage stage,
+        String configName, String projectName, long timeoutMs, BoundedJob.Result bounded)
+    {
+        if (stage == StandalonePreparationStage.APPLICATION && applicationId != null)
+        {
+            return standalonePreparationFailure(project, applicationId, staleServerStopped,
+                StandaloneServerSupport.applicationLookupFailure(applicationId, timeoutMs, bounded));
+        }
+        if (stage == StandalonePreparationStage.STALE_STOP && applicationId != null
+            && !staleServerStopped)
+        {
+            String detail = bounded.getOutcome() == BoundedJob.Outcome.INTERRUPTED
+                ? "the wait for it was interrupted" //$NON-NLS-1$
+                : "stopping it did not finish within " + (timeoutMs / 1000L) + "s"; //$NON-NLS-1$ //$NON-NLS-2$
+            return StandalonePreparation.preflightFailed(project, applicationId,
+                StandaloneServerStateRecovery.preflightStopInFlightFailure(applicationId, detail),
+                false);
+        }
+        String target = standalonePreparationTarget(stage, configName, projectName, applicationId);
+        return standalonePreparationFailure(project, applicationId, staleServerStopped,
+            StandaloneServerSupport.boundedPhaseFailure(target, timeoutMs, bounded));
+    }
+
+    /** Turns every failed exit after a completed stale stop into a restorable pre-flight failure. */
+    private static StandalonePreparation standalonePreparationFailure(IProject project,
+        String applicationId, boolean staleServerStopped, String failure)
+    {
+        return staleServerStopped && applicationId != null
+            ? StandalonePreparation.preflightFailed(project, applicationId, failure, true)
+            : StandalonePreparation.failed(failure);
+    }
+
+    /** Publishes a preparation result only while the bounded caller can still accept it. */
+    private static void publishStandalonePreparation(
+        AtomicReference<StandalonePreparation> prepared, Object publicationLock,
+        AtomicBoolean acceptingPreparation, StandalonePreparation candidate)
+    {
+        synchronized (publicationLock)
+        {
+            if (acceptingPreparation.get())
+            {
+                prepared.set(candidate);
+            }
+            else
+            {
+                candidate.releaseUnstartedClaim();
+            }
+        }
+    }
+
+    /** Atomically refuses later publication and returns any result already handed to the caller. */
+    private static StandalonePreparation closeStandalonePreparationPublication(
+        AtomicReference<StandalonePreparation> prepared, Object publicationLock,
+        AtomicBoolean acceptingPreparation)
+    {
+        synchronized (publicationLock)
+        {
+            acceptingPreparation.set(false);
+            return prepared.get();
+        }
+    }
+
+    /** One scheduling boundary for the complete standalone precondition phase. */
+    static BoundedJob.Result runStandalonePreparationBounded(String configName, long timeoutMs,
+        BoundedJob.IBoundedWork work)
+    {
+        return BoundedJob.run("Preparing standalone server: " + configName, timeoutMs, work); //$NON-NLS-1$
+    }
+
+    /** Accepts a known failure, but never a success published after an inconclusive wait. */
+    static StandalonePreparation acceptPublishedStandalonePreparation(
+        StandalonePreparation published, BoundedJob.Result bounded)
+    {
+        if (bounded.isSuccess())
+        {
+            return published;
+        }
+        return BoundedJob.isInconclusive(bounded.getOutcome()) && published != null
+            && published.hasFailure() ? published : null;
+    }
+
+    /** Names the precondition call that owned the shared deadline when it elapsed. */
+    private static String standalonePreparationTarget(StandalonePreparationStage stage,
+        String configName, String projectName, String applicationId)
+    {
+        switch (stage)
+        {
+        case PROJECT:
+            return "the standalone-server project precondition for project '" //$NON-NLS-1$
+                + projectName + "'"; //$NON-NLS-1$
+        case APPLICATION_MANAGER:
+            return "the EDT application-manager lookup"; //$NON-NLS-1$
+        case DELEGATE_APPLICATION:
+            return "the EDT delegate-application resolution for launch configuration '" //$NON-NLS-1$
+                + configName + "'"; //$NON-NLS-1$
+        case SERVICE:
+            return "the EDT standalone-server service lookup"; //$NON-NLS-1$
+        case STALE_PREFLIGHT:
+            return "the stale-server pre-flight for application '" + applicationId + "'"; //$NON-NLS-1$ //$NON-NLS-2$
+        case START_CLAIM:
+            return "the standalone-server start claim for application '" //$NON-NLS-1$
+                + applicationId + "'"; //$NON-NLS-1$
+        case STALE_STOP:
+            return "the stale-server post-stop pre-flight for application '" //$NON-NLS-1$
+                + applicationId + "'"; //$NON-NLS-1$
+        case APPLICATION:
+        default:
+            return "the standalone-server precondition phase"; //$NON-NLS-1$
+        }
+    }
+
+    /** Step active when the shared standalone-preparation deadline elapses. */
+    enum StandalonePreparationStage
+    {
+        PROJECT,
+        APPLICATION_MANAGER,
+        DELEGATE_APPLICATION,
+        APPLICATION,
+        SERVICE,
+        STALE_PREFLIGHT,
+        STALE_STOP,
+        START_CLAIM
+    }
+
+    /** Complete prerequisite snapshot handed to the separately bounded start. */
+    static final class StandalonePreparation
+    {
+        private final IProject project;
+        private final String applicationId;
+        private final StandaloneServerSupport.ApplicationLookup lookup;
+        private final Object service;
+        private final StandaloneServerPortConflictPolicy portPolicy;
+        private final String failure;
+        private final String preflightFailure;
+        private final boolean staleServerStopped;
+        private final StandaloneServerStateRecovery.StartClaim startClaim;
+
+        private StandalonePreparation(IProject project, String applicationId,
+            StandaloneServerSupport.ApplicationLookup lookup, Object service,
+            StandaloneServerPortConflictPolicy portPolicy, String failure,
+            String preflightFailure, boolean staleServerStopped,
+            StandaloneServerStateRecovery.StartClaim startClaim)
+        {
+            this.project = project;
+            this.applicationId = applicationId;
+            this.lookup = lookup;
+            this.service = service;
+            this.portPolicy = portPolicy;
+            this.failure = failure;
+            this.preflightFailure = preflightFailure;
+            this.staleServerStopped = staleServerStopped;
+            this.startClaim = startClaim;
+        }
+
+        static StandalonePreparation ready(IProject project, String applicationId,
+            StandaloneServerSupport.ApplicationLookup lookup, Object service,
+            StandaloneServerPortConflictPolicy portPolicy, boolean staleServerStopped)
+        {
+            return ready(project, applicationId, lookup, service, portPolicy, staleServerStopped,
+                null);
+        }
+
+        static StandalonePreparation ready(IProject project, String applicationId,
+            StandaloneServerSupport.ApplicationLookup lookup, Object service,
+            StandaloneServerPortConflictPolicy portPolicy, boolean staleServerStopped,
+            StandaloneServerStateRecovery.StartClaim startClaim)
+        {
+            return new StandalonePreparation(project, applicationId, lookup, service, portPolicy,
+                null, null, staleServerStopped, startClaim);
+        }
+
+        static StandalonePreparation failed(String failure)
+        {
+            return new StandalonePreparation(null, null, null, null, null, failure, null, false,
+                null);
+        }
+
+        static StandalonePreparation preflightFailed(IProject project, String applicationId,
+            String failure, boolean staleServerStopped)
+        {
+            return new StandalonePreparation(project, applicationId, null, null, null, null,
+                failure, staleServerStopped, null);
+        }
+
+        boolean hasFailure()
+        {
+            return failure != null || preflightFailure != null;
+        }
+
+        /** Transfers a completed stale stop before surfacing its pre-flight failure. */
+        void applyPreflight(Consumer<String> stopRetainer)
+        {
+            if (staleServerStopped)
+            {
+                stopRetainer.accept(applicationId);
+            }
+            if (preflightFailure != null)
+            {
+                throw new ApplicationException(preflightFailure);
+            }
+        }
+
+        void releaseUnstartedClaim()
+        {
+            if (startClaim != null)
+            {
+                startClaim.closeIfNotHandedOff();
+            }
+        }
+    }
+
+    /** Bounded standalone-start outcome plus the known or possible port-configuration mutation. */
+    static record StartOutcome(String failure, boolean conclusive, boolean portsReassigned,
+        boolean portReassignmentOutcomeUnknown)
+    {
+        StartOutcome(String failure, boolean conclusive, boolean portsReassigned)
+        {
+            this(failure, conclusive, portsReassigned, false);
+        }
+    }
+
+    /** Restores a stale server stopped by this call only after a conclusive direct-start failure. */
+    static StartOutcome startStandaloneServerGuarded(String configName, IProject project,
+        Runnable preflight, Supplier<StartOutcome> starter)
+    {
+        return startStandaloneServerGuarded(configName, project, preflight, starter,
+            StandaloneServerStateRecovery::appendRestoration);
+    }
+
+    /** Same guarded start with an observable restoration seam. */
+    static StartOutcome startStandaloneServerGuarded(String configName, IProject project,
+        Runnable preflight, Supplier<StartOutcome> starter, RestorationAppender restorer)
+    {
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            try
+            {
+                preflight.run();
+            }
+            catch (RuntimeException e)
+            {
+                return finishConclusiveStandaloneFailure(configName, project,
+                    PlatformFailures.describe(e), false, false, false, restorer);
+            }
+            StartOutcome outcome;
+            try
+            {
+                outcome = starter.get();
+            }
+            catch (RuntimeException e)
+            {
+                return finishConclusiveStandaloneFailure(configName, project,
+                    PlatformFailures.describe(e), true, false, false, restorer);
+            }
+            if (outcome == null)
+            {
+                return finishConclusiveStandaloneFailure(configName, project,
+                    "the standalone-server start produced no result", true, false, false, //$NON-NLS-1$
+                    restorer);
+            }
+            if (outcome.failure() == null)
+            {
+                return outcome;
+            }
+            if (!outcome.conclusive())
+            {
+                String notice = StandaloneServerStateRecovery.appendInconclusiveStartNotice(
+                    outcome.failure(), configName);
+                return new StartOutcome(standaloneInconclusiveAttemptError(configName,
+                    notice == null ? outcome.failure() : notice), false,
+                    outcome.portsReassigned(), outcome.portReassignmentOutcomeUnknown());
+            }
+            return finishConclusiveStandaloneFailure(configName, project, outcome.failure(), true,
+                outcome.portsReassigned(), outcome.portReassignmentOutcomeUnknown(), restorer);
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    /** Attempts restoration before one conclusive failure leaves the stop-record scope. */
+    private static StartOutcome finishConclusiveStandaloneFailure(String configName,
+        IProject project, String failure, boolean startAttempted, boolean portsReassigned,
+        boolean portReassignmentOutcomeUnknown, RestorationAppender restorer)
+    {
+        String restored = restorer.append(failure, project, configName);
+        String reason = restored == null ? failure : restored;
+        String reported = startAttempted ? standaloneAttemptError(configName, reason)
+            : standalonePreconditionError(configName, reason);
+        return new StartOutcome(reported, true, portsReassigned,
+            portReassignmentOutcomeUnknown);
+    }
+
+    @FunctionalInterface
+    interface RestorationAppender
+    {
+        String append(String original, IProject project, String launchConfigurationName);
+    }
+
+    /** Builds the completed standalone-server result with EDT's effective DEBUG mode. */
+    static String standaloneStartSuccess(String configName, String typeId, String projectName,
+        String applicationId, boolean portsReassigned)
+    {
+        ToolResult result = ToolResult.success()
+            .put(KEY_LAUNCH_CONFIGURATION, configName)
+            .put(KEY_CONFIGURATION_TYPE, typeId)
+            .put(KEY_ATTACH, false)
+            .put(KEY_MODE, MODE_DEBUG)
+            .put(KEY_STATUS, "running") //$NON-NLS-1$
+            .put(McpKeys.PROJECT, projectName)
+            .put(McpKeys.APPLICATION_ID, applicationId);
+        if (portsReassigned)
+        {
+            result.put(KEY_STANDALONE_SERVER_PORTS_REASSIGNED, true);
+        }
+        return result.put(McpKeys.MESSAGE, "Standalone server '" + configName //$NON-NLS-1$
+                + "' is running in DEBUG mode. EDT starts standalone servers in DEBUG mode " //$NON-NLS-1$
+                + "regardless of the requested mode. No database update was performed." //$NON-NLS-1$
+                + (portsReassigned
+                    ? " NOTE: the standalone server's ports were busy, so EDT moved it to free " //$NON-NLS-1$
+                        + "ports and rewrote its configuration " //$NON-NLS-1$
+                        + "(standaloneServerPortConflict=reassign) — clients must use the new address." //$NON-NLS-1$
+                    : "")) //$NON-NLS-1$
+            .toJson();
+    }
+
+    /** Carries a persistent port reassignment on the failed direct-start path as well. */
+    static String standaloneStartFailure(String failure, boolean portsReassigned)
+    {
+        return standaloneStartFailure(failure, portsReassigned, false);
+    }
+
+    /** Carries either the observed port rewrite or an inconclusive mutation outcome. */
+    static String standaloneStartFailure(String failure, boolean portsReassigned,
+        boolean portReassignmentOutcomeUnknown)
+    {
+        if (portReassignmentOutcomeUnknown)
+        {
+            return ToolResult.markErrorWithUnknownMutationOutcome(failure);
+        }
+        if (!portsReassigned)
+        {
+            return failure;
+        }
+        String marked = ToolResult.markErrorAfterMutation(failure);
+        try
+        {
+            JsonObject result = JsonParser.parseString(marked).getAsJsonObject();
+            result.addProperty(KEY_STANDALONE_SERVER_PORTS_REASSIGNED, true);
+            return ToolResult.toJsonStatic(result);
+        }
+        catch (RuntimeException e)
+        {
+            // All callers supply ToolResult JSON. Preserve an unexpected legacy payload rather than
+            // replacing its error text with a parser failure.
+            return marked;
+        }
+    }
+
+    /** Arms the targeted port-conflict answer while the bounded service start is running. */
+    static StartOutcome startStandaloneServerWithPolicy(Object service, Object server, String configName,
+        String launchMode, String infobaseName, String serverName,
+        StandaloneServerPortConflictPolicy portPolicy)
+    {
+        return startStandaloneServerWithPolicy(service, server, configName, launchMode, infobaseName,
+            serverName, portPolicy, StandaloneServerSupport.SERVER_OPERATION_TIMEOUT_MS,
+            StandaloneServerSupport.INCONCLUSIVE_START_GUARD_CAP_MS);
+    }
+
+    /** Production start that hands its preparation claim to the underlying Job lifecycle. */
+    private static StartOutcome startStandaloneServerWithPolicy(Object service, Object server,
+        String configName, String launchMode, String infobaseName, String serverName,
+        StandaloneServerPortConflictPolicy portPolicy,
+        StandaloneServerStateRecovery.StartClaim startClaim)
+    {
+        return startStandaloneServerWithPolicy(service, server, configName, launchMode, infobaseName,
+            serverName, portPolicy, StandaloneServerSupport.SERVER_OPERATION_TIMEOUT_MS,
+            StandaloneServerSupport.INCONCLUSIVE_START_GUARD_CAP_MS, startClaim);
+    }
+
+    /** Testable deadline form retaining both unattended-start guards under the same cleanup. */
+    static StartOutcome startStandaloneServerWithPolicy(Object service, Object server, String configName,
+        String launchMode, String infobaseName, String serverName,
+        StandaloneServerPortConflictPolicy portPolicy, long timeoutMs, long cleanupCapMs)
+    {
+        return startStandaloneServerWithPolicy(service, server, configName, launchMode, infobaseName,
+            serverName, portPolicy, timeoutMs, cleanupCapMs, null);
+    }
+
+    /** Same deadline form with an optional start claim sharing the deferred cleanup. */
+    private static StartOutcome startStandaloneServerWithPolicy(Object service, Object server,
+        String configName, String launchMode, String infobaseName, String serverName,
+        StandaloneServerPortConflictPolicy portPolicy, long timeoutMs, long cleanupCapMs,
+        StandaloneServerStateRecovery.StartClaim startClaim)
+    {
+        Runnable claimCleanup = startClaim == null ? null : startClaim::close;
+        Runnable claimHandoff = startClaim == null ? null : startClaim::handoff;
+        StandaloneServerSupport.GuardedStartResult result;
+        try
+        {
+            result = StandaloneServerSupport.startServerGuarded(service, server,
+                "Starting standalone server: " + configName, launchMode, infobaseName, //$NON-NLS-1$
+                serverName, portPolicy, timeoutMs, cleanupCapMs, claimCleanup, claimHandoff);
+        }
+        catch (RuntimeException | Error failure)
+        {
+            if (startClaim != null)
+            {
+                startClaim.close();
+            }
+            throw failure;
+        }
+        String failure = result.failure();
+        if (result.portReassignmentOutcomeUnknown())
+        {
+            failure = appendPossiblePortReassignmentNotice(failure);
+        }
+        return new StartOutcome(failure, result.conclusive(), result.portsReassigned(),
+            result.portReassignmentOutcomeUnknown());
+    }
+
+    /** Explains why a reassigning policy has an unknown mutation outcome after an in-flight start. */
+    private static String appendPossiblePortReassignmentNotice(String failure)
+    {
+        String separator = failure.endsWith(".") || failure.endsWith("!") || failure.endsWith("?") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            ? " " : ". "; //$NON-NLS-1$ //$NON-NLS-2$
+        return failure + separator + "The standalone server's ports may have been rewritten while " //$NON-NLS-1$
+            + "the start continued under standaloneServerPortConflict='reassign'; check the " //$NON-NLS-1$
+            + "standalone-server configuration before connecting or retrying."; //$NON-NLS-1$
+    }
+
+    /** Builds a precondition error without suggesting an inapplicable thin-client fallback. */
+    static String standalonePreconditionError(String configName, String reason)
+    {
+        return ToolResult.error("Failed to start standalone server '" + configName + "': " //$NON-NLS-1$ //$NON-NLS-2$
+            + reason).toJson();
+    }
+
+    /** Builds an attempted-start error with the measured thin-client fallback. */
+    static String standaloneAttemptError(String configName, String reason)
+    {
+        String separator = reason.endsWith(".") || reason.endsWith("!") || reason.endsWith("?") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            ? " " : ". "; //$NON-NLS-1$ //$NON-NLS-2$
+        return ToolResult.error("Failed to start standalone server '" + configName + "': " //$NON-NLS-1$ //$NON-NLS-2$
+            + reason + separator + STANDALONE_THIN_CLIENT_FALLBACK).toJson();
+    }
+
+    /** Builds an inconclusive attempted-start error without recommending a duplicate start. */
+    static String standaloneInconclusiveAttemptError(String configName, String reason)
+    {
+        String separator = reason.endsWith(".") || reason.endsWith("!") || reason.endsWith("?") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            ? " " : ". "; //$NON-NLS-1$ //$NON-NLS-2$
+        return ToolResult.error("Failed to start standalone server '" + configName + "': " //$NON-NLS-1$ //$NON-NLS-2$
+            + reason + separator
+            + StandaloneServerStateRecovery.inconclusiveStartGuidance(configName)).toJson();
     }
 
     /** Result of the supported-plus-diagnostic by-name lookup. */
@@ -531,11 +1345,6 @@ public class LaunchTool implements IMcpTool
         static NamedConfigurationResolution config(ILaunchConfiguration config)
         {
             return new NamedConfigurationResolution(config, null);
-        }
-
-        static NamedConfigurationResolution error(String error)
-        {
-            return new NamedConfigurationResolution(null, error);
         }
 
         static NamedConfigurationResolution notFound()
@@ -610,7 +1419,7 @@ public class LaunchTool implements IMcpTool
     {
         if (isAttach)
         {
-            return "Attach debug session is connecting тАФ poll debug_status to confirm it is " //$NON-NLS-1$
+            return "Attach debug session is connecting — poll debug_status to confirm it is " //$NON-NLS-1$
                 + "running, then wait_for_break to block until a breakpoint is hit."; //$NON-NLS-1$
         }
         if (MODE_RUN.equals(mode))
@@ -704,7 +1513,7 @@ public class LaunchTool implements IMcpTool
             // "does the IB need updating?" the same way the YAXUnit tools
             // do: skip on UPDATED, wait on BEING_UPDATED, incremental-update otherwise.
             // For a STANDALONE-SERVER application the programmatic update is SKIPPED
-            // and deferred to the launch delegate's coordinated path instead тАФ see
+            // and deferred to the launch delegate's coordinated path instead — see
             // runPreLaunchUpdateStep.
             if (appManager != null && application != null)
             {
@@ -751,7 +1560,7 @@ public class LaunchTool implements IMcpTool
                 + ", project=" + projectName //$NON-NLS-1$
                 + ", application=" + applicationId); //$NON-NLS-1$
 
-            // Delegate-criterion duplicate guard тАФ same supplement as
+            // Delegate-criterion duplicate guard — same supplement as
             // the by-name path: catch a UI-started / target-manager-only DEBUG session
             // the ILaunchManager guards above cannot see, BEFORE config.launch raises
             // the human "Debug session already exists" modal. See
@@ -801,29 +1610,58 @@ public class LaunchTool implements IMcpTool
 
     /**
      * Resolves the application by id and its display name for the legacy
-     * project+applicationId path. Mirrors the original inline guard: when {@code appManager}
-     * is null the application stays unresolved (name defaults to the id); a present manager
-     * that cannot find the id yields an {@code error} payload, while an
-     * {@link ApplicationException} is logged and swallowed so the caller still tries to
-     * find a launch configuration.
+     * project+applicationId path. When {@code appManager} is null the application stays unresolved
+     * (name defaults to the id); a present manager that cannot find the id yields an {@code error}
+     * payload.
+     *
+     * <p>BOUNDED (#622), and a lookup that did not ANSWER REFUSES rather than degrading — both
+     * ways of not answering, the expired deadline and the raised {@link ApplicationException}.
+     * Degrading looked harmless — log it, leave {@code application} null, fall through — but that
+     * null is exactly what gates {@link #runPreLaunchUpdateStep} off, so the call returned
+     * {@code success:true, status:"launching"} having silently skipped the database update
+     * {@code updateBeforeLaunch} (default true) asked for. The by-NAME route already hard-errors on
+     * the identical wedge ("the configuration's application could not be resolved"); the same tool
+     * must not answer the same condition two opposite ways. On a healthy EDT neither branch is
+     * reachable, and on a wedged one the pre-change code hung here.
      *
      * @param project the project to look the application up in
      * @param applicationId the application id to resolve
      * @param appManager the application manager (may be null)
-     * @return an {@link ApplicationResolution}; its {@code error} is non-null only when the
-     *     id was definitively not found
+     * @return an {@link ApplicationResolution}; its {@code error} is non-null when the id was
+     *     definitively not found OR when the lookup did not answer — the three say so differently
      */
-    private static ApplicationResolution resolveApplication(IProject project, String applicationId,
+    static ApplicationResolution resolveApplication(IProject project, String applicationId,
         IApplicationManager appManager)
+    {
+        return resolveApplication(project, applicationId, appManager,
+            ApplicationSupport.LOOKUP_TIMEOUT_MS);
+    }
+
+    /** Same resolution with an explicit deadline for the bounded application read. */
+    static ApplicationResolution resolveApplication(IProject project, String applicationId,
+        IApplicationManager appManager, long timeoutMs)
     {
         ApplicationResolution resolution = new ApplicationResolution();
         resolution.applicationName = applicationId; // Default to ID if can't get name
 
         if (appManager != null)
         {
+            ApplicationSupport.BoundedRead<Optional<IApplication>> read =
+                ApplicationSupport.getApplicationBounded(appManager, project, applicationId,
+                    timeoutMs);
+            if (!read.concluded())
+            {
+                Activator.logError("Error checking application: " + read.deadlineFailure(), null); //$NON-NLS-1$
+                resolution.error = ToolResult.error("Could not resolve application '" //$NON-NLS-1$
+                    + applicationId + "': " + read.deadlineFailure() //$NON-NLS-1$
+                    + ". Nothing was launched, and this is NOT a not-found - whether that " //$NON-NLS-1$
+                    + "application exists was never established. Retry once EDT is responsive.") //$NON-NLS-1$
+                    .toJson();
+                return resolution;
+            }
             try
             {
-                Optional<IApplication> appOpt = appManager.getApplication(project, applicationId);
+                Optional<IApplication> appOpt = read.valueOrRethrow();
                 if (!appOpt.isPresent())
                 {
                     resolution.error = ToolResult.error("Application not found: " + applicationId + //$NON-NLS-1$
@@ -835,20 +1673,30 @@ public class LaunchTool implements IMcpTool
             }
             catch (ApplicationException e)
             {
+                // Same refusal as the expired deadline above, for the same reason: a RAISED lookup
+                // establishes nothing either, and leaving `application` null is what gates
+                // runPreLaunchUpdateStep off - so "continue and find a launch config" returned
+                // success:true, status:"launching" with updateBeforeLaunch silently skipped.
                 Activator.logError("Error checking application", e); //$NON-NLS-1$
-                // Continue - we'll try to find launch config anyway
+                resolution.error = ToolResult.error("Could not resolve application '" //$NON-NLS-1$
+                    + applicationId + "': the EDT application lookup failed (" //$NON-NLS-1$
+                    + PlatformFailures.describe(e)
+                    + "). Nothing was launched, and this is NOT a not-found - whether that " //$NON-NLS-1$
+                    + "application exists was never established. Retry once EDT is responsive.") //$NON-NLS-1$
+                    .toJson();
+                return resolution;
             }
         }
         return resolution;
     }
 
     /**
-     * Unified existing-session decision for the project+applicationId path тАФ the SAME
+     * Unified existing-session decision for the project+applicationId path — the SAME
      * CLIENT-typed-thread-discriminated detector + restartIfRunning handling the by-name
      * path uses, so both call styles behave identically. A live DEBUG client target OR a
      * debug-target-less RUN-mode launch short-circuits (the legacy already-running guard);
-     * a standalone-SERVER session sharing this app id тАФ even a debug-mode one with a live
-     * SERVER-typed thread тАФ does NOT (the client proceeds and attaches). To force a fresh
+     * a standalone-SERVER session sharing this app id — even a debug-mode one with a live
+     * SERVER-typed thread — does NOT (the client proceeds and attaches). To force a fresh
      * launch when restartIfRunning is false, terminate_launch first.
      *
      * @param applicationId the application id to match an existing client session on
@@ -879,7 +1727,7 @@ public class LaunchTool implements IMcpTool
             {
                 return shortCircuit;
             }
-            // restartIfRunning=true: the old client was terminated тАФ fall through
+            // restartIfRunning=true: the old client was terminated — fall through
             // and relaunch.
         }
         return null;
@@ -889,7 +1737,7 @@ public class LaunchTool implements IMcpTool
      * Holder for {@link #resolveApplication}: the resolved {@link IApplication} (may stay
      * null) and its display name, or an {@code error} payload the caller returns as-is.
      */
-    private static class ApplicationResolution
+    static class ApplicationResolution
     {
         IApplication application;
         String applicationName;
@@ -900,9 +1748,9 @@ public class LaunchTool implements IMcpTool
      * Runs the EDT "update database before launch" step for a runtime-client launch.
      * Returns {@code null} on success, or an error message describing the failure.
      *
-     * <p>Synthetic application ids тАФ {@code attach:<configName>},
+     * <p>Synthetic application ids — {@code attach:<configName>},
      * {@code launch:<configName>} and {@code ServerApplication.<app>}, see
-     * {@link LaunchConfigUtils#isSyntheticApplicationId} тАФ skip the preflight.
+     * {@link LaunchConfigUtils#isSyntheticApplicationId} — skip the preflight.
      * They are minted by
      * {@link LaunchConfigUtils#getApplicationIdFor(ILaunchConfiguration)} (or, for
      * the {@code ServerApplication.} form, by
@@ -921,13 +1769,13 @@ public class LaunchTool implements IMcpTool
      * modal, which the armed {@link LaunchUpdateDialogAutoConfirmer} presses.
      *
      * <p>For the {@code ServerApplication.*} form the skip is not merely an
-     * "unresolvable id" technicality тАФ it is the INTENDED behavior: a
+     * "unresolvable id" technicality — it is the INTENDED behavior: a
      * standalone-server application must never be DB-updated out-of-band,
      * because {@code IApplicationManager.update} on it starts the standalone server
      * in RUN mode and holds a cached designer-agent connection that wedges the
      * subsequent debug restart. The update is deferred to the launch delegate's
      * coordinated path (server prepared in debug mode FIRST, then updated), whose
-     * dialog the armed confirmer auto-presses тАФ see
+     * dialog the armed confirmer auto-presses — see
      * {@link DebugServerTargetSupport#isServerApplicationId} and
      * {@link #runPreLaunchUpdateStep}, the same gate on the
      * project+applicationId path.
@@ -952,7 +1800,7 @@ public class LaunchTool implements IMcpTool
             return null;
         }
         // Shared update analysis: skip on UPDATED, wait on BEING_UPDATED, otherwise
-        // incremental-update тАФ same path as the YAXUnit auto-chain.
+        // incremental-update — same path as the YAXUnit auto-chain.
         return LaunchLifecycleUtils.updateApplicationIfNeeded(project, applicationId, appManager, false,
             policy).orElse(null);
     }
@@ -963,24 +1811,24 @@ public class LaunchTool implements IMcpTool
      * the launch, or an error message that aborts the call.
      *
      * <ul>
-     *   <li>{@code updateBeforeLaunch=false} тАФ documented opt-out: no programmatic
+     *   <li>{@code updateBeforeLaunch=false} — documented opt-out: no programmatic
      *       update is run (and {@link #performLaunch} leaves the update confirmer
-     *       unarmed, so the platform's update modal тАФ if any тАФ is a human's).</li>
+     *       unarmed, so the platform's update modal — if any — is a human's).</li>
      *   <li>{@code ServerApplication.*} id ({@link
-     *       DebugServerTargetSupport#isServerApplicationId}) тАФ the programmatic
+     *       DebugServerTargetSupport#isServerApplicationId}) — the programmatic
      *       update is SKIPPED and deferred to the launch delegate's coordinated
      *       path. Updating a standalone-server application out-of-band starts the
      *       server in RUN mode and caches a live designer-agent connection
      *       (DesignerSessionPool); the launch delegate then restarts the server in
      *       DEBUG mode and the connection teardown wedges the launch. EDT's native
      *       order (prepare the server in debug mode FIRST, then update) has no such
-     *       restart; its "Application update" dialog тАФ shown only when the IB is
-     *       stale тАФ is auto-pressed by the confirmer {@link #performLaunch} arms
+     *       restart; its "Application update" dialog — shown only when the IB is
+     *       stale — is auto-pressed by the confirmer {@link #performLaunch} arms
      *       exactly when {@code updateBeforeLaunch=true}. Trade-off: the synchronous
      *       "stale IB" refusal disappears for server apps (the update happens
      *       asynchronously inside the launch); failures surface via
-     *       {@code debug_status} / the EDT log тАФ matching EDT-native UX.</li>
-     *   <li>Any other (file / client-server infobase) application тАФ the programmatic
+     *       {@code debug_status} / the EDT log — matching EDT-native UX.</li>
+     *   <li>Any other (file / client-server infobase) application — the programmatic
      *       pre-update runs exactly as before through
      *       {@link LaunchLifecycleUtils#updateApplicationIfNeeded}: skip on UPDATED,
      *       wait on BEING_UPDATED, incremental-update otherwise; a stale IB still
@@ -1013,16 +1861,16 @@ public class LaunchTool implements IMcpTool
      * call sites funnel through, so {@code restartIfRunning} is honored identically
      * everywhere:
      * <ul>
-     *   <li>{@code restartIfRunning=false} (default) тЖТ returns the
+     *   <li>{@code restartIfRunning=false} (default) → returns the
      *       {@code alreadyRunning:true} short-circuit JSON (no launch), carrying the
      *       identity fields the caller supplied.</li>
-     *   <li>{@code restartIfRunning=true} тЖТ non-interactively terminates the existing
-     *       client session (its live DEBUG target, or тАФ for a RUN-mode launch тАФ the
+     *   <li>{@code restartIfRunning=true} → non-interactively terminates the existing
+     *       client session (its live DEBUG target, or — for a RUN-mode launch — the
      *       launch) via the shared
      *       {@link LaunchLifecycleUtils#terminateExistingSessionAndWait} /
      *       {@link LaunchLifecycleUtils#terminateExistingLaunchAndWait} helpers
-     *       (terminate + {@code forgetApplication} + тЙд3s wait), then returns
-     *       {@code null} so the caller relaunches тАФ exactly what the target-manager
+     *       (terminate + {@code forgetApplication} + ≤3s wait), then returns
+     *       {@code null} so the caller relaunches — exactly what the target-manager
      *       path ({@link #handleDelegateDuplicateSession}) already does.</li>
      * </ul>
      *
@@ -1046,8 +1894,8 @@ public class LaunchTool implements IMcpTool
         // restartIfRunning: stop the existing client session non-interactively, then
         // proceed. resolveExistingClientSession only ever returns a real client (a
         // DEBUG target with a live CLIENT-typed thread, or a RUN-mode launch), NEVER
-        // a server/profiling target тАФ a debug-mode standalone server's live thread is
-        // typed SERVER and is filtered out тАФ so this terminate can never kill a debug
+        // a server/profiling target — a debug-mode standalone server's live thread is
+        // typed SERVER and is filtered out — so this terminate can never kill a debug
         // server.
         if (session.liveTarget != null)
         {
@@ -1115,13 +1963,13 @@ public class LaunchTool implements IMcpTool
 
     /** Default short-circuit message for a still-running client session. */
     private static final String ALREADY_RUNNING_MESSAGE =
-        "Launch configuration is already running тАФ skipped re-launch. " //$NON-NLS-1$
+        "Launch configuration is already running — skipped re-launch. " //$NON-NLS-1$
             + "Call terminate_launch first, or pass restartIfRunning=true, to start a fresh session."; //$NON-NLS-1$
 
     /**
      * Detects a live runtime-client DEBUG session for {@code config}'s
      * {@code (project, delegate-app-id)} the EXACT way EDT's
-     * {@code RuntimeClientLaunchDelegate.checkExistingDebugSessions} does тАФ via
+     * {@code RuntimeClientLaunchDelegate.checkExistingDebugSessions} does — via
      * {@link DebugServerTargetSupport#findRuntimeClientDebugTarget} over the target
      * manager's {@code listDebugTargets()} set, keyed on the delegate's app id
      * ({@code ATTR_APPLICATION_ID} else {@code getDefaultApplication(project)}, see
@@ -1130,11 +1978,11 @@ public class LaunchTool implements IMcpTool
      * "Debug session already exists" code-1003 modal that hangs an unattended call.
      *
      * <ul>
-     *   <li>No live duplicate тЖТ returns {@code null}; the caller proceeds to launch.</li>
-     *   <li>Duplicate found, {@code restartIfRunning=false} (default) тЖТ returns the
+     *   <li>No live duplicate → returns {@code null}; the caller proceeds to launch.</li>
+     *   <li>Duplicate found, {@code restartIfRunning=false} (default) → returns the
      *       {@code alreadyRunning:true} short-circuit JSON (no dialog, no launch),
      *       consistent with the documented contract.</li>
-     *   <li>Duplicate found, {@code restartIfRunning=true} тЖТ terminates the existing
+     *   <li>Duplicate found, {@code restartIfRunning=true} → terminates the existing
      *       session NON-interactively, {@code forgetApplication}s it, waits up to
      *       ~3s for process death, then returns {@code null} so the caller relaunches.</li>
      * </ul>
@@ -1154,12 +2002,12 @@ public class LaunchTool implements IMcpTool
 
         // Defensive re-assert: findRuntimeClientDebugTarget already
         // required a live CLIENT-typed thread, but if the matched target lost its last
-        // live client thread between detection and now it is no longer a client тАФ do
+        // live client thread between detection and now it is no longer a client — do
         // NOT short-circuit or terminate; just proceed to launch.
         if (DebugServerTargetSupport.findFirstLiveClientThread(existing) == null)
         {
             Activator.logInfo("launch: target-manager match has no live CLIENT-typed thread " //$NON-NLS-1$
-                + "(server/profiling target) тАФ not short-circuiting; proceeding: project=" //$NON-NLS-1$
+                + "(server/profiling target) — not short-circuiting; proceeding: project=" //$NON-NLS-1$
                 + projectName + ", applicationId=" + delegateAppId); //$NON-NLS-1$
             return null;
         }
@@ -1171,8 +2019,8 @@ public class LaunchTool implements IMcpTool
         ExistingClientSession session = new ExistingClientSession(existing.getLaunch(), existing,
             ILaunchManager.DEBUG_MODE);
         AlreadyRunningContext ctx = new AlreadyRunningContext(
-            "Debug session is already running (detected via EDT's debug target manager тАФ e.g. a " //$NON-NLS-1$
-                + "UI-started 'Debug As' session) тАФ skipped re-launch to avoid the 'Debug session " //$NON-NLS-1$
+            "Debug session is already running (detected via EDT's debug target manager — e.g. a " //$NON-NLS-1$
+                + "UI-started 'Debug As' session) — skipped re-launch to avoid the 'Debug session " //$NON-NLS-1$
                 + "already exists' modal. Call terminate_launch first, or pass " //$NON-NLS-1$
                 + "restartIfRunning=true, to start a fresh session."); //$NON-NLS-1$
         ctx.launchConfiguration = config.getName();
@@ -1185,21 +2033,17 @@ public class LaunchTool implements IMcpTool
     }
 
     /**
-     * The actionable message for a launch that was stopped by a modal this plugin auto-answered тАФ
+     * The actionable message for a launch that was stopped by a modal this plugin auto-answered —
      * a standalone-server port conflict (the server never started) or an external-changes dialog
-     * cancelled while the launch delegate performed the DB update тАФ or {@code null} when neither
+     * cancelled while the launch delegate performed the DB update — or {@code null} when neither
      * happened.
      *
-     * <p>Also RECORDS it, so {@code debug_status} can report an outcome that happened long after
-     * this Job's caller received its "launching" answer.
-     *
-     * @param config the launch configuration that was started
      * @param policy the policy the call ran with (may be {@code null})
      * @param conflicts the cancel window opened around the launch
      * @return the message, or {@code null}
      */
-    private static String declinedConflictMessage(ILaunchConfiguration config,
-        ExternalInfobaseChangesPolicy policy, LaunchUpdateDialogAutoConfirmer.ConflictWatch conflicts)
+    private static String declinedConflictMessage(ExternalInfobaseChangesPolicy policy,
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch conflicts)
     {
         if (conflicts == null)
         {
@@ -1207,15 +2051,13 @@ public class LaunchTool implements IMcpTool
         }
         // A standalone-server launch STARTS its server first, so a busy port stops it before the
         // DB update is even reached. That modal is auto-cancelled (it would otherwise hang the
-        // launch Job forever), and EDT then reports a bare cancellation тАФ checked first because it
+        // launch Job forever), and EDT then reports a bare cancellation — checked first because it
         // is the earlier, more specific cause: nothing about the caller's data was declined.
         if (conflicts.portConflicted())
         {
             String message =
                 LaunchUpdateDialogAutoConfirmer.portConflictError(conflicts.portConflictDetail(),
                     conflicts.portConflictReason());
-            recordAsyncFailure(config, message);
-            Activator.logError(ERR_ASYNC_PREFIX + message, null);
             return message;
         }
         // Consulted ONLY when this launch armed the external-changes matcher: the window also
@@ -1226,9 +2068,20 @@ public class LaunchTool implements IMcpTool
             return null;
         }
         String message = ExternalInfobaseChangesPolicy.declinedUpdateError(policy, conflicts.reason());
-        recordAsyncFailure(config, message);
-        Activator.logError(ERR_ASYNC_PREFIX + message, null);
         return message;
+    }
+
+    /** Describes a launch delegate that returned normally after cancelling its monitor. */
+    static String abandonedLaunchMessage(String configName, String reason)
+    {
+        String prefix = "Launch of '" + configName //$NON-NLS-1$
+            + "' was abandoned by EDT (the launch delegate cancelled it)"; //$NON-NLS-1$
+        if (reason == null || reason.isEmpty())
+        {
+            return prefix + "; no reason was logged. Check the EDT error log."; //$NON-NLS-1$
+        }
+        return prefix + ". EDT logged while it ran: " + reason //$NON-NLS-1$
+            + ". That error may belong to another operation running at the same time."; //$NON-NLS-1$
     }
 
     /**
@@ -1236,7 +2089,7 @@ public class LaunchTool implements IMcpTool
      * STANDALONE-SERVER application, {@code null} (matcher unarmed) otherwise.
      *
      * <p>A file or client-server application cannot raise that modal, and an arm held for the whole
-     * of such a launch would claim a dialog belonging to a concurrent тАФ or manual тАФ server start.
+     * of such a launch would claim a dialog belonging to a concurrent — or manual — server start.
      *
      * <p>The test uses the DELEGATE-resolved id ({@code ATTR_APPLICATION_ID}, else the project's
      * default application), NOT the synthetic {@code launch:<name>} form: a runtime-client
@@ -1248,7 +2101,7 @@ public class LaunchTool implements IMcpTool
      * @param requested the policy the caller passed (may be {@code null})
      * @return the policy to arm with, or {@code null} to leave the matcher unarmed
      */
-    private static StandaloneServerPortConflictPolicy standaloneServerPortPolicy(
+    static StandaloneServerPortConflictPolicy standaloneServerPortPolicy(
         ILaunchConfiguration config, StandaloneServerPortConflictPolicy requested)
     {
         if (requested == null || config == null)
@@ -1290,96 +2143,77 @@ public class LaunchTool implements IMcpTool
     }
 
     /**
-     * Resolves the infobase name EDT states in its "Infobase \"<name>\" configuration was
-     * changedтАж" conflict modal for the application this launch configuration targets, so the
-     * launch-time auto-confirmer window can be armed with an ATTRIBUTABLE name. Best-effort:
-     * {@code null} when the config carries no resolvable project/application.
+     * Resolves BOTH attribution names for the application this launch configuration targets — the
+     * infobase name EDT states in its "Infobase \"<name>\" configuration was changed…" conflict
+     * modal, and the WST server name its port-conflict modal quotes — so the launch-time
+     * auto-confirmer window can be armed with ATTRIBUTABLE names. Best-effort: absent names simply
+     * refuse the writing answer.
+     *
+     * <p>HALF the bounded reads (#622). Each name previously cost a delegate-id resolution PLUS an
+     * application read, and a launch needs both — four wedge-prone reads for two strings taken off
+     * ONE application. Here the delegate id is resolved once and one application read serves both
+     * names.
+     *
+     * <p><b>The two steps keep INDEPENDENT bounds, each the one it already had</b> — the
+     * delegate-id step {@link ApplicationSupport#LOOKUP_TIMEOUT_MS}, the attribution read
+     * {@link LaunchLifecycleUtils#ATTRIBUTION_LOOKUP_TIMEOUT_MS}. Sharing one budget was tried and
+     * reverted: a slow first step left the second with milliseconds, so the name came back
+     * {@code null} and {@code LaunchUpdateDialogAutoConfirmer.attributableAnswer} silently
+     * downgraded the caller's {@code externalInfobaseChanges} policy to {@code cancel}. Halving
+     * the read COUNT is the win here; squeezing each read's deadline only re-creates the failure
+     * the names exist to prevent.
      *
      * @param config the launch configuration about to be started (may be {@code null})
-     * @return the application display name, or {@code null}
+     * @return the names, never {@code null}; {@code inconclusive()} separates "no such name" from
+     *     "the read did not answer"
      */
-    private static String launchInfobaseName(ILaunchConfiguration config)
+    private static LaunchLifecycleUtils.AttributionNames launchAttributionNames(
+        ILaunchConfiguration config)
     {
         if (config == null)
         {
-            return null;
+            return LaunchLifecycleUtils.attributionNames(null, null, null);
         }
         try
         {
             String projectName = config.getAttribute(LaunchConfigUtils.ATTR_PROJECT_NAME, ""); //$NON-NLS-1$
-            // The DELEGATE id, the same one standaloneServerPortPolicy resolves: a runtime
-            // configuration without a stored ATTR_APPLICATION_ID launches the default application
-            // application, while getApplicationIdFor yields a synthetic "launch:<name>" that no
-            // IApplicationManager knows - so attribution came back null and the arm, though
-            // created, could never authorise the re-address the caller asked for.
-            String applicationId = LaunchLifecycleUtils.resolveDelegateApplicationId(config,
-                projectName);
             ProjectContext ctx = ProjectContext.of(projectName);
             if (!ctx.isOpen())
             {
-                return null;
+                return LaunchLifecycleUtils.attributionNames(null, null, null);
             }
-            return LaunchLifecycleUtils.attributionInfobaseName(
-                Activator.getDefault().getApplicationManager(), ctx.project(), applicationId);
+            // The DELEGATE application, the same one standaloneServerPortPolicy resolves (a
+            // synthetic "launch:<name>" id is known to no IApplicationManager). An unanswered
+            // default lookup stays inconclusive rather than becoming a definitive "no name".
+            return LaunchLifecycleUtils.delegateAttributionNames(config, ctx.project(),
+                Activator.getDefault().getApplicationManager());
         }
         catch (Exception e) // NOSONAR a best-effort hint must never break the launch
         {
-            return null;
-        }
-    }
-
-    /**
-     * The WST server name behind a launch configuration - what the port-conflict dialog quotes.
-     * Best-effort: {@code null} simply refuses the writing answer.
-     *
-     * @param config the launch configuration
-     * @return the server name, or {@code null}
-     */
-    private static String launchServerName(ILaunchConfiguration config)
-    {
-        try
-        {
-            String projectName = config.getAttribute(LaunchConfigUtils.ATTR_PROJECT_NAME, ""); //$NON-NLS-1$
-            // The DELEGATE id, the same one standaloneServerPortPolicy resolves: a runtime
-            // configuration without a stored ATTR_APPLICATION_ID launches the default application
-            // application, while getApplicationIdFor yields a synthetic "launch:<name>" that no
-            // IApplicationManager knows - so attribution came back null and the arm, though
-            // created, could never authorise the re-address the caller asked for.
-            String applicationId = LaunchLifecycleUtils.resolveDelegateApplicationId(config,
-                projectName);
-            ProjectContext ctx = ProjectContext.of(projectName);
-            if (!ctx.isOpen())
-            {
-                return null;
-            }
-            return LaunchLifecycleUtils.attributionServerName(
-                Activator.getDefault().getApplicationManager(), ctx.project(), applicationId);
-        }
-        catch (Exception e) // NOSONAR a best-effort hint must never break the launch
-        {
-            return null;
+            // A raised read answered nothing: unknown, not absent.
+            return LaunchLifecycleUtils.attributionUnanswered();
         }
     }
 
     /**
      * Launches the given configuration asynchronously.
      *
-     * <p>Uses a direct {@code config.launch(launchMode, monitor)} тАФ not
-     * {@code DebugUITools.launch} тАФ because the latter may open modal dialogs
+     * <p>Uses a direct {@code config.launch(launchMode, monitor)} — not
+     * {@code DebugUITools.launch} — because the latter may open modal dialogs
      * (save-prompt, perspective-switch, already-running-confirmation) that
      * block the MCP worker thread indefinitely and eventually close the HTTP
      * socket. {@code debug_yaxunit_tests} uses the same direct path.
      *
-     * <p>The launch runs in a BACKGROUND {@link Job} тАФ never
-     * on the SWT UI thread тАФ and this method returns immediately: it does NOT
+     * <p>The launch runs in a BACKGROUND {@link Job} — never
+     * on the SWT UI thread — and this method returns immediately: it does NOT
      * wait for the 1C client to finish starting. The previous {@code asyncExec}
-     * dispatch ran the ENTIRE {@code RuntimeClientLaunchDelegate.doLaunch} тАФ
-     * including the standalone-server non-debugтЖТdebug stop+restart, which takes
-     * minutes тАФ ON the UI thread, freezing the whole workbench ("not responding",
+     * dispatch ran the ENTIRE {@code RuntimeClientLaunchDelegate.doLaunch} —
+     * including the standalone-server non-debug→debug stop+restart, which takes
+     * minutes — ON the UI thread, freezing the whole workbench ("not responding",
      * pale window) for that whole time. A manual EDT launch never freezes because
      * {@code DebugUIPlugin.launchInBackground} runs the launch in a background Job;
      * this Job mirrors that exact shape: {@link Job#INTERACTIVE} priority, no
-     * scheduling rule, neither {@code setUser} nor {@code setSystem} тАФ so it shows
+     * scheduling rule, neither {@code setUser} nor {@code setSystem} — so it shows
      * in the Progress view like EDT's own launches. The delegate's modals
      * self-marshal to the UI thread ({@code syncCall}), so they still appear there
      * and the armed auto-confirmer (whose {@link Display} filter fires on the UI
@@ -1388,7 +2222,7 @@ public class LaunchTool implements IMcpTool
      * separately via {@code debug_status} / {@code wait_for_break}.
      *
      * <p>Because the launch now runs after this method returns, any failure can no
-     * longer be surfaced synchronously to the caller тАФ it is logged from inside the
+     * longer be surfaced synchronously to the caller — it is logged from inside the
      * Job body ({@link #runLaunchJobBody}) and reflected in the Job's result
      * {@link IStatus}. Only the synchronous (headless, no workbench) path can
      * still return an error message.
@@ -1409,11 +2243,11 @@ public class LaunchTool implements IMcpTool
      *       {@code autoConfirmUpdateDialog}). With {@code restartIfRunning=true} and a
      *       {@code terminate()} that times out, the relaunch can still race a residual
      *       1003 modal; auto-pressing its "Keep existing and start new" button (located
-     *       by label тАФ never the destructive default "stop existing and start new")
+     *       by label — never the destructive default "stop existing and start new")
      *       keeps an unattended call from hanging. Pressing it performs NO DB update,
      *       so it does not undo the {@code updateBeforeLaunch=false} opt-out.</li>
      * </ul>
-     * The arm/disarm runs INSIDE the Job body's try/finally тАФ both are thread-safe
+     * The arm/disarm runs INSIDE the Job body's try/finally — both are thread-safe
      * from any thread (counters under a lock + a {@code syncExec} reconcile), and
      * the dialog shells are always created on the UI thread, so the filter fires
      * there no matter which thread ran the launch. The MCP worker has already
@@ -1421,7 +2255,7 @@ public class LaunchTool implements IMcpTool
      *
      * <p>Callers pass {@code updateBeforeLaunch} for {@code autoConfirmUpdateDialog}:
      * with {@code updateBeforeLaunch=false} the documented contract is that the
-     * platform "may then show that modal" тАФ auto-pressing the UPDATE dialog's default
+     * platform "may then show that modal" — auto-pressing the UPDATE dialog's default
      * button would silently perform the very DB update the caller disabled, so the
      * UPDATE matcher is NOT armed and that dialog is left for a human. The 1003
      * matcher, which performs no update, stays armed regardless.
@@ -1472,7 +2306,7 @@ public class LaunchTool implements IMcpTool
         {
             // Fire-and-forget in a background Job (mirroring EDT's own
             // DebugUIPlugin.launchInBackground): returns control to the MCP worker
-            // immediately, keeps the EDT UI thread free тАФ a minutes-long delegate
+            // immediately, keeps the EDT UI thread free — a minutes-long delegate
             // (e.g. the standalone-server mode-switch restart) no longer freezes
             // the workbench. The launch outcome can no longer be returned to the
             // caller, so the Job body logs it and reports it as its result status.
@@ -1496,17 +2330,19 @@ public class LaunchTool implements IMcpTool
         // The conflict matcher follows the same opt-out as the update matcher. It matters
         // most for a STANDALONE-SERVER application: there the pre-launch update is deferred to
         // EDT's launch delegate, so this window is the ONLY one covering that update.
-        String launchInfobase = launchInfobaseName(config);
+        // Resolved ONCE, both names together, and reused for the disarm: reading again later could
+        // return a different server if the configuration was rebound meanwhile, and the arm would
+        // then never be released by the value it was taken with.
+        LaunchLifecycleUtils.AttributionNames names = launchAttributionNames(config);
+        String launchInfobase = names.infobaseName();
+        String launchServer = names.serverName();
         ExternalInfobaseChangesPolicy launchPolicy = autoConfirmUpdateDialog ? policy : null;
         StandaloneServerPortConflictPolicy launchPortPolicy = standaloneServerPortPolicy(config,
             portPolicy);
-        // Resolved ONCE and reused for the disarm: reading it again later could return a
-        // different server if the configuration was rebound meanwhile, and the arm would then
-        // never be released by the value it was taken with.
-        String launchServer = launchServerName(config);
         boolean debugMode = ILaunchManager.DEBUG_MODE.equals(launchMode);
-        LaunchUpdateDialogAutoConfirmer.arm(autoConfirmUpdateDialog, debugMode,
-            autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy, launchServer);
+        boolean autoConfirmerArmed = LaunchUpdateDialogAutoConfirmer.arm(autoConfirmUpdateDialog,
+            debugMode, autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy,
+            launchServer);
         InfobaseAuthDialogSuppressor.markActivityStart();
         try
         {
@@ -1521,23 +2357,26 @@ public class LaunchTool implements IMcpTool
         finally
         {
             InfobaseAuthDialogSuppressor.markActivityEnd();
-            LaunchUpdateDialogAutoConfirmer.disarm(autoConfirmUpdateDialog, debugMode,
-                autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy,
-                launchServer);
+            if (autoConfirmerArmed)
+            {
+                LaunchUpdateDialogAutoConfirmer.disarm(autoConfirmUpdateDialog, debugMode,
+                    autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy,
+                    launchServer);
+            }
         }
     }
 
     /**
-     * The body of the background launch {@link Job} тАФ the
+     * The body of the background launch {@link Job} — the
      * seam {@link #performLaunch} schedules and the headless unit tests exercise
      * directly. Arms the {@link LaunchUpdateDialogAutoConfirmer} (update matcher
-     * gated on {@code autoConfirmUpdateDialog}, code-1003 matcher debug-only тАФ
+     * gated on {@code autoConfirmUpdateDialog}, code-1003 matcher debug-only —
      * the same flags the asyncExec dispatch used), runs the launch, and ALWAYS
-     * disarms in {@code finally} тАФ both calls are thread-safe from a Job thread.
+     * releases any acquired arm in {@code finally} — both calls are thread-safe from a Job thread.
      *
      * <p>Never throws: a Job that dies on an uncaught exception fails silently for
-     * the MCP caller, so EVERY failure тАФ {@link CoreException} or any other
-     * {@link Throwable} тАФ is logged to the EDT error log and returned as an error
+     * the MCP caller, so EVERY failure — {@link CoreException} or any other
+     * {@link Throwable} — is logged to the EDT error log and returned as an error
      * {@link IStatus} (visible as the Job's result in the Progress view).
      *
      * @param config the launch configuration to start
@@ -1584,7 +2423,12 @@ public class LaunchTool implements IMcpTool
         // code-1003 "debug session already exists" modal is auto-confirmed only
         // in debug mode (it is independent of the update opt-out). Manual EDT
         // launches outside this window still prompt.
-        String launchInfobase = launchInfobaseName(config);
+        // Resolved ONCE, both names together, before anything uses them: the window, the arm and
+        // its release must all carry the SAME name. Read twice, a rebound configuration (or one
+        // best-effort lookup that momentarily fails) would address the window to one server and
+        // the arm to another, and the arm would never be released by the value it was taken with.
+        LaunchLifecycleUtils.AttributionNames names = launchAttributionNames(config);
+        String launchInfobase = names.infobaseName();
         // The window lasts as long as the launch - minutes for a standalone-server mode switch -
         // so it must never answer a dialog blind. That is handled where the arm is recorded: an arm
         // whose infobase name could not be resolved (a by-name config with no persisted application
@@ -1593,7 +2437,7 @@ public class LaunchTool implements IMcpTool
         StandaloneServerPortConflictPolicy launchPortPolicy = standaloneServerPortPolicy(config,
             portPolicy);
         // This Job is where a STANDALONE-SERVER application's DB update actually happens (it is
-        // deferred to EDT's launch delegate), so an external-changes dialog can be cancelled here тАФ
+        // deferred to EDT's launch delegate), so an external-changes dialog can be cancelled here —
         // long after launch returned "launching". The window records that outcome so
         // debug_status can report it; without it the caller would see a successful dispatch and
         // then simply no session, with the reason only in the workspace log.
@@ -1605,33 +2449,42 @@ public class LaunchTool implements IMcpTool
         // port-conflict matcher is armed and can refuse the launch - without a window that refusal
         // reached nobody. "policy != null" is the non-Attach signal (the caller passes null for an
         // Attach, which attaches to a running server and never starts one).
-        // Resolved ONCE, before anything uses it: the window, the arm and its release must all
-        // carry the SAME name. Read twice, a rebound configuration (or one best-effort lookup
-        // that momentarily fails) would address the window to one server and the arm to another,
-        // and the arm would never be released by the value it was taken with.
-        String launchServer = launchServerName(config);
+        String launchServer = names.serverName();
         boolean debugMode = ILaunchManager.DEBUG_MODE.equals(launchMode);
+        // The window is told whether the names are null because there are none or because the
+        // lookup expired: a cancel caused by the second is worth retrying, one caused by the
+        // first is not, and only the window can still tell them apart.
         LaunchUpdateDialogAutoConfirmer.ConflictWatch conflicts = policy == null
             ? null
-            : LaunchUpdateDialogAutoConfirmer.beginConflictWatch(launchInfobase, launchServer);
-        LaunchUpdateDialogAutoConfirmer.arm(autoConfirmUpdateDialog, debugMode,
-            autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy, launchServer);
+            : LaunchUpdateDialogAutoConfirmer.beginConflictWatch(launchInfobase, launchServer,
+                names.inconclusive());
+        LaunchAbortReason abortReason = LaunchAbortReason.open(launchInfobase);
+        boolean autoConfirmerArmed = LaunchUpdateDialogAutoConfirmer.arm(autoConfirmUpdateDialog,
+            debugMode, autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy,
+            launchServer);
         // Keep the infobase auth-dialog suppression active for the WHOLE async launch
         // (#230). This launch is fire-and-forget: tool.execute() has already returned and
         // stamped lastActivityEndMillis, and with updateBeforeLaunch=false there is no
-        // synchronous preflight connect тАФ the FIRST (and only) infobase connect happens
+        // synchronous preflight connect — the FIRST (and only) infobase connect happens
         // right here in config.launch, which can run for minutes (e.g. the standalone-
-        // server mode-switch restart). The in-flight counter тАФ not the short trailing
-        // grace window тАФ must therefore cover it, so a "Configure Infobase access Settings"
+        // server mode-switch restart). The in-flight counter — not the short trailing
+        // grace window — must therefore cover it, so a "Configure Infobase access Settings"
         // dialog raised by this connect (missing/wrong stored creds) is still auto-cancelled
         // instead of hanging the unattended call (mirrors the arm/disarm pattern above).
+        // The counter is global, so movement proves only that a dialog appeared while this call ran.
+        long accessDialogsBefore = InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount();
         InfobaseAuthDialogSuppressor.markActivityStart();
         try
         {
-            StandaloneServerStateRecovery.launchWithRecovery(config, launchMode, monitor);
-            String declined = declinedConflictMessage(config, launchPolicy, conflicts);
+            StandaloneServerStateRecovery.launchWithRecovery(config, launchMode, monitor,
+                () -> abandonedLaunchMessage(config.getName(), abortReason.reason()));
+            String declined = declinedConflictMessage(launchPolicy, conflicts);
             if (declined != null)
             {
+                declined = appendAccessSettingsDialogFailure(declined, accessDialogsBefore,
+                    InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
+                recordAsyncFailure(config, declined);
+                Activator.logError(ERR_ASYNC_PREFIX + declined, null);
                 // The launch itself did not throw, but the update inside it wrote nothing.
                 return new Status(IStatus.ERROR, Activator.PLUGIN_ID, declined);
             }
@@ -1643,42 +2496,96 @@ public class LaunchTool implements IMcpTool
             // log is the only place the reason would otherwise exist. A cancelled conflict is
             // preferred over the delegate's own message: it is the actual cause AND it names the
             // knob that would have let the launch through.
-            String declined = declinedConflictMessage(config, launchPolicy, conflicts);
+            String declined = declinedConflictMessage(launchPolicy, conflicts);
             if (declined != null)
             {
+                declined = appendAccessSettingsDialogFailure(declined, accessDialogsBefore,
+                    InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
+                recordAsyncFailure(config, declined);
                 Activator.logError(ERR_ASYNC_PREFIX + e.getMessage(), e);
                 return new Status(IStatus.ERROR, Activator.PLUGIN_ID, declined, e);
             }
-            recordAsyncFailure(config, ERR_ASYNC_PREFIX + e.getMessage());
+            if (StandaloneServerStateRecovery.isAbandonedLaunch(e))
+            {
+                String message = appendAccessSettingsDialogFailure(e.getMessage(),
+                    accessDialogsBefore, InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
+                recordAsyncFailure(config, message);
+                Activator.logError(ERR_ASYNC_PREFIX + message, e);
+                return new Status(IStatus.ERROR, Activator.PLUGIN_ID, message, e);
+            }
+            String recorded = appendAccessSettingsDialogFailure(ERR_ASYNC_PREFIX + e.getMessage(),
+                accessDialogsBefore, InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
+            recordAsyncFailure(config, recorded);
             Activator.logError(ERR_ASYNC_PREFIX + e.getMessage(), e);
-            return e.getStatus();
+            return appendAccessSettingsDialogFailure(e.getStatus(), accessDialogsBefore,
+                InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
         }
         catch (Throwable t)
         {
-            // Never let the Job die on an uncaught exception тАФ it would vanish
+            // Never let the Job die on an uncaught exception — it would vanish
             // without a trace for the MCP caller. Log + report an error status.
-            String declined = declinedConflictMessage(config, launchPolicy, conflicts);
+            String declined = declinedConflictMessage(launchPolicy, conflicts);
             if (declined != null)
             {
+                declined = appendAccessSettingsDialogFailure(declined, accessDialogsBefore,
+                    InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
+                recordAsyncFailure(config, declined);
                 Activator.logError(ERR_ASYNC_PREFIX + t.getMessage(), t);
                 return new Status(IStatus.ERROR, Activator.PLUGIN_ID, declined, t);
             }
-            recordAsyncFailure(config, ERR_ASYNC_PREFIX + t.getMessage());
+            String message = appendAccessSettingsDialogFailure(ERR_ASYNC_PREFIX + t.getMessage(),
+                accessDialogsBefore, InfobaseAuthDialogSuppressor.accessSettingsAutoCancelCount());
+            recordAsyncFailure(config, message);
             Activator.logError(ERR_ASYNC_PREFIX + t.getMessage(), t);
-            return new Status(IStatus.ERROR, Activator.PLUGIN_ID,
-                ERR_ASYNC_PREFIX + t.getMessage(), t);
+            return new Status(IStatus.ERROR, Activator.PLUGIN_ID, message, t);
         }
         finally
         {
             InfobaseAuthDialogSuppressor.markActivityEnd();
-            LaunchUpdateDialogAutoConfirmer.disarm(autoConfirmUpdateDialog, debugMode,
-                autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy,
-                launchServer);
+            if (autoConfirmerArmed)
+            {
+                LaunchUpdateDialogAutoConfirmer.disarm(autoConfirmUpdateDialog, debugMode,
+                    autoConfirmUpdateDialog, launchPolicy, launchInfobase, launchPortPolicy,
+                    launchServer);
+            }
             if (conflicts != null)
             {
                 conflicts.close();
             }
+            abortReason.close();
         }
+    }
+
+    static IStatus appendAccessSettingsDialogFailure(IStatus status, long before, long after)
+    {
+        if (status == null || status.isOK())
+        {
+            return status;
+        }
+        String note = InfobaseAuthDialogSuppressor.accessSettingsDialogFailureNote(before, after);
+        if (note.isEmpty())
+        {
+            return status;
+        }
+        String original = status.getMessage();
+        String message = original == null || original.isEmpty() ? note : original + " " + note; //$NON-NLS-1$
+        if (status.isMultiStatus())
+        {
+            return new MultiStatus(status.getPlugin(), status.getCode(), status.getChildren(),
+                message, status.getException());
+        }
+        return new Status(status.getSeverity(), status.getPlugin(), status.getCode(), message,
+            status.getException());
+    }
+
+    private static String appendAccessSettingsDialogFailure(String message, long before, long after)
+    {
+        String note = InfobaseAuthDialogSuppressor.accessSettingsDialogFailureNote(before, after);
+        if (note.isEmpty())
+        {
+            return message;
+        }
+        return message == null || message.isEmpty() ? note : message + " " + note; //$NON-NLS-1$
     }
 
     /**

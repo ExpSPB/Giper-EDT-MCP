@@ -45,14 +45,14 @@ import fm.giper.edt.mcp.server.Activator;
  * <ol>
  *   <li>Try to instantiate the EDT BSL line breakpoint via reflection.</li>
  *   <li>Fallback: create a generic {@link IMarker} of the EDT marker type and
- *       let the EDT breakpoint manager pick it up тАФ this is the standard
+ *       let the EDT breakpoint manager pick it up — this is the standard
  *       Eclipse pattern for breakpoint extension contributors.</li>
  *   <li>Last-resort fallback: create a marker of type
  *       {@code org.eclipse.debug.core.lineBreakpointMarker}, which gives a
  *       degraded experience but never fails compilation.</li>
  * </ol>
  *
- * <p>The actual class/marker names are best-effort тАФ if 1C ships them under
+ * <p>The actual class/marker names are best-effort — if 1C ships them under
  * different ids on a particular EDT version, the call will fail at runtime
  * and the tool will surface a clear error message instead of crashing.
  */
@@ -99,7 +99,7 @@ public final class BreakpointUtils
 
     /** Candidate fully-qualified class names for the BSL line breakpoint. */
     private static final String[] BSL_BREAKPOINT_CLASSES = {
-        // Real class as of EDT 2025.2 / 2026.1 тАФ found in com._1c.g5.v8.dt.debug.core/plugin.xml
+        // Real class as of EDT 2025.2 / 2026.1 — found in com._1c.g5.v8.dt.debug.core/plugin.xml
         "com._1c.g5.v8.dt.internal.debug.core.model.breakpoints.BslLineBreakpoint", //$NON-NLS-1$
         // Historical fallbacks
         "com._1c.g5.v8.dt.debug.core.model.BslLineBreakpoint", //$NON-NLS-1$
@@ -114,11 +114,11 @@ public final class BreakpointUtils
         "com._1c.g5.v8.dt.debug.bsl.bslLineBreakpointMarker" //$NON-NLS-1$
     };
 
-    /** Eclipse-generic line breakpoint marker тАФ minimal fallback.
+    /** Eclipse-generic line breakpoint marker — minimal fallback.
      *  Value matches {@code IBreakpoint.LINE_BREAKPOINT_MARKER}. */
     private static final String GENERIC_LINE_MARKER = "org.eclipse.debug.core.lineBreakpoint"; //$NON-NLS-1$
 
-    /** BSL debug model identifier (best effort тАФ verified at runtime). */
+    /** BSL debug model identifier (best effort — verified at runtime). */
     private static final String BSL_MODEL_ID = "com._1c.g5.v8.dt.debug"; //$NON-NLS-1$
 
     private BreakpointUtils()
@@ -126,8 +126,8 @@ public final class BreakpointUtils
     }
 
     /**
-     * Resolves a "module" parameter тАФ either an EDT module-relative path or an
-     * absolute filesystem path тАФ to a workspace {@link IFile}.
+     * Resolves a "module" parameter — either an EDT module-relative path or an
+     * absolute filesystem path — to a workspace {@link IFile}.
      *
      * @param projectName project name (used when path is module-relative)
      * @param module      either {@code "CommonModules/Foo/Module.bsl"} or
@@ -789,7 +789,7 @@ public final class BreakpointUtils
      * Strategy 1: loads the EDT-specific {@code BslLineBreakpoint} via the owning bundle's class loader
      * and instantiates it. The class lives in an {@code internal.*} package that OSGi will not export
      * through Import-Package, so a plain {@code Class.forName()} from this bundle would fail with
-     * {@code ClassNotFoundException} тАФ but {@code Bundle.loadClass()} bypasses the export restriction and
+     * {@code ClassNotFoundException} — but {@code Bundle.loadClass()} bypasses the export restriction and
      * returns the class directly. Registers the created breakpoint with the manager (EDT's constructor
      * creates the marker but does not register). Behaviour-identical to the former inline Strategy 1.
      *
@@ -805,7 +805,7 @@ public final class BreakpointUtils
         if (debugCoreBundle == null)
         {
             Activator.logError("Bundle " + BSL_DEBUG_CORE_BUNDLE //$NON-NLS-1$
-                    + " not found тАФ falling back to marker", new IllegalStateException("bundle missing")); //$NON-NLS-1$ //$NON-NLS-2$
+                    + " not found — falling back to marker", new IllegalStateException("bundle missing")); //$NON-NLS-1$ //$NON-NLS-2$
             return null;
         }
 
@@ -824,7 +824,7 @@ public final class BreakpointUtils
      * Attempts a single candidate class: loads it from {@code debugCoreBundle}, finds an
      * {@code (IResource/IFile, int)} constructor, instantiates the breakpoint and registers it with the
      * manager (EDT's constructor creates the marker but does not register). Returns the created
-     * breakpoint, or {@code null} when the class/constructor is unavailable or instantiation fails тАФ so
+     * breakpoint, or {@code null} when the class/constructor is unavailable or instantiation fails — so
      * the caller falls through to the next candidate. {@link ClassNotFoundException} is silent (try next
      * name); any other failure is logged, exactly as in the former inline loop body.
      *
@@ -851,7 +851,7 @@ public final class BreakpointUtils
             {
                 IBreakpoint bp = (IBreakpoint) instance;
                 // EDT's constructor creates the marker but does not register
-                // with the breakpoint manager тАФ do it explicitly.
+                // with the breakpoint manager — do it explicitly.
                 bpManager.addBreakpoint(bp);
                 return bp;
             }
@@ -892,14 +892,14 @@ public final class BreakpointUtils
                 attrs.put(IBreakpoint.ENABLED, Boolean.TRUE);
                 attrs.put(IBreakpoint.ID, BSL_MODEL_ID);
                 marker.setAttributes(attrs);
-                // Find the breakpoint that EDT registers for this marker тАФ if EDT is loaded
+                // Find the breakpoint that EDT registers for this marker — if EDT is loaded
                 // it will pick the marker up via its lifecycle listener.
                 IBreakpoint bp = bpManager.getBreakpoint(marker);
                 if (bp != null)
                 {
                     return bp;
                 }
-                // No registered breakpoint type тАФ keep the marker but report a degraded result.
+                // No registered breakpoint type — keep the marker but report a degraded result.
                 MarkerOnlyBreakpoint fallback = new MarkerOnlyBreakpoint(marker);
                 bpManager.addBreakpoint(fallback);
                 fallback.registered = true;

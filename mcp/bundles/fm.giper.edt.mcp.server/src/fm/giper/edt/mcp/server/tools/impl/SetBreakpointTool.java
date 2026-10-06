@@ -67,7 +67,7 @@ public class SetBreakpointTool implements IMcpTool
         return JsonSchemaBuilder.object()
             .stringProperty("projectName", "EDT project name (required when modulePath is module-relative)") //$NON-NLS-1$ //$NON-NLS-2$
             .stringProperty(McpKeys.MODULE_PATH,
-                "Module identifier тАФ EDT module path (CommonModules/Foo/Module.bsl) or absolute file path (required)") //$NON-NLS-1$
+                "Module identifier — EDT module path (CommonModules/Foo/Module.bsl) or absolute file path (required)") //$NON-NLS-1$
             .stringProperty(KEY_MODULE, "Legacy alias for modulePath (deprecated)") //$NON-NLS-1$
             .integerProperty(KEY_LINE_NUMBER, "1-based line number (required)", true) //$NON-NLS-1$
             .stringProperty(KEY_CONDITION,
@@ -467,7 +467,7 @@ public class SetBreakpointTool implements IMcpTool
     }
 
     /**
-     * Validates the input arguments and resolves the target {@code .bsl} file тАФ
+     * Validates the input arguments and resolves the target {@code .bsl} file —
      * the side-effect-free pre-flight extracted from {@link #execute}. Returns a
      * holder carrying either the resolved {@link IFile} or the exact error JSON the
      * inline guards produced (same value, same case); the caller re-checks
@@ -549,7 +549,7 @@ public class SetBreakpointTool implements IMcpTool
     /**
      * Builds the success JSON for a created breakpoint, logging the outcome and
      * flagging the degraded (marker-only) case. Pure with respect to caller
-     * state тАФ reads only the supplied breakpoint/file/coordinates.
+     * state — reads only the supplied breakpoint/file/coordinates.
      *
      * @param bp the created breakpoint
      * @param file the resolved module file
@@ -573,7 +573,7 @@ public class SetBreakpointTool implements IMcpTool
         }
         boolean degraded = markerOnly > 0;
         Activator.logInfo("Breakpoint set: " + file.getFullPath() + ":" + lineNumber //$NON-NLS-1$ //$NON-NLS-2$
-            + (degraded ? " (degraded тАФ marker-only)" : "")); //$NON-NLS-1$ //$NON-NLS-2$
+            + (degraded ? " (degraded — marker-only)" : "")); //$NON-NLS-1$ //$NON-NLS-2$
         ToolResult res = ToolResult.success()
             .put("breakpointId", markerId) //$NON-NLS-1$
             .put(McpKeys.MODULE_PATH, module)

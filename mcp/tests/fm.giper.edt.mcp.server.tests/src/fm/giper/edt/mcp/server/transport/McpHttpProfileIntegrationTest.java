@@ -18,8 +18,13 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import org.junit.After;
 import org.junit.Before;
@@ -82,7 +87,9 @@ public class McpHttpProfileIntegrationTest
             result.getAsJsonObject("serverInfo").get("name").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue(result.get("instructions").getAsString().contains("UNKNOWN_PROFILE")); //$NON-NLS-1$ //$NON-NLS-2$
 
-        assertEquals(400, post("/mcp/profiles/zz-it-missing-profile", PING, null, false).status); //$NON-NLS-1$
+        Exchange missing = post("/mcp/profiles/zz-it-missing-profile", PING, null, false); //$NON-NLS-1$
+        assertEquals(400, missing.status);
+        assertTrue(missing.body.contains(McpConstants.HEADER_SESSION_ID));
         Exchange ping = post("/mcp/profiles/zz-it-missing-profile", PING, init.sessionId, false); //$NON-NLS-1$
         assertEquals(200, ping.status);
         assertTrue(ping.body.contains("\"result\"")); //$NON-NLS-1$
@@ -106,6 +113,61 @@ public class McpHttpProfileIntegrationTest
         assertEquals(200, deleted.status);
         assertEquals(404, post("/mcp/profiles/zz-it-missing-profile", PING, sessionId, false).status); //$NON-NLS-1$
         assertEquals(404, post("/mcp/profiles/zz-it-missing-profile", PING, "no-such-session", false).status); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void deletingOneSessionLeavesAnotherOnTheSameExplicitPathAlive() throws Exception
+    {
+        String path = "/mcp/profiles/zz-it-missing-profile"; //$NON-NLS-1$
+        Exchange first = post(path, INIT, null, false);
+        Exchange second = post(path, INIT, null, false);
+        assertEquals(200, first.status);
+        assertEquals(200, second.status);
+        assertFalse(first.sessionId.isBlank());
+        assertFalse(second.sessionId.isBlank());
+        assertNotEquals(first.sessionId, second.sessionId);
+
+        assertEquals(200, request("DELETE", path, null, first.sessionId, false).status); //$NON-NLS-1$
+        assertEquals(404, post(path, PING, first.sessionId, false).status);
+        Exchange surviving = post(path, PING, second.sessionId, false);
+        assertEquals(200, surviving.status);
+        assertTrue(surviving.body.contains("\"result\"")); //$NON-NLS-1$
+        assertEquals(1, mcp.getSessionRegistry().size());
+    }
+
+    @Test
+    public void loopbackOriginsAreServedOnAnExplicitProfile() throws Exception
+    {
+        String path = "/mcp/profiles/zz-it-missing-profile"; //$NON-NLS-1$
+        String sessionId = post(path, INIT, null, false).sessionId;
+        assertFalse(sessionId.isBlank());
+        for (String origin : new String[] { "http://localhost:3000", "http://127.0.0.1:8765", //$NON-NLS-1$ //$NON-NLS-2$
+            "http://[::1]:3000" }) //$NON-NLS-1$
+        {
+            Exchange reply = postWithOrigin(path, PING, sessionId, origin);
+            assertEquals(origin, 200, reply.status);
+            assertTrue(origin, reply.body.contains("\"result\"")); //$NON-NLS-1$
+            assertEquals(origin, reply.allowOrigin);
+        }
+    }
+
+    @Test
+    public void attackerOriginsAre403WithoutACorsGrantEvenWithoutASession() throws Exception
+    {
+        String path = "/mcp/profiles/zz-it-missing-profile"; //$NON-NLS-1$
+        String sessionId = post(path, INIT, null, false).sessionId;
+        assertFalse(sessionId.isBlank());
+        for (String origin : new String[] { "null", "file:///C:/page.html", "vscode-webview://abc123", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "https://evil.example.com", "http://localhost.attacker.com" }) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            Exchange refused = postWithOrigin(path, PING, sessionId, origin);
+            assertEquals(origin, 403, refused.status);
+            assertTrue(origin, refused.body.contains("Invalid Origin")); //$NON-NLS-1$
+            assertTrue(origin, refused.allowOrigin.isBlank());
+        }
+        Exchange sessionless = postWithOrigin(path, PING, null, "null"); //$NON-NLS-1$
+        assertEquals(403, sessionless.status);
+        assertTrue(sessionless.allowOrigin.isBlank());
     }
 
     @Test
@@ -165,6 +227,27 @@ public class McpHttpProfileIntegrationTest
         return request("POST", path, body, sessionId, sse); //$NON-NLS-1$
     }
 
+    private Exchange postWithOrigin(String path, String body, String sessionId, String origin)
+        throws IOException, InterruptedException
+    {
+        // HttpURLConnection suppresses Origin by default; HttpClient sends the actual wire header.
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)) //$NON-NLS-1$
+            .timeout(Duration.ofSeconds(4))
+            .header("Content-Type", "application/json") //$NON-NLS-1$ //$NON-NLS-2$
+            .header("Origin", origin); //$NON-NLS-1$
+        if (sessionId != null)
+        {
+            request.header(McpConstants.HEADER_SESSION_ID, sessionId);
+        }
+        HttpResponse<String> response = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
+            .send(request.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return new Exchange(response.statusCode(), response.body(),
+            response.headers().firstValue(McpConstants.HEADER_SESSION_ID).orElse(""), //$NON-NLS-1$
+            response.headers().firstValue("Content-Type").orElse(""), //$NON-NLS-1$ //$NON-NLS-2$
+            response.headers().firstValue("Access-Control-Allow-Origin").orElse("")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
     private Exchange request(String method, String path, String body, String sessionId, boolean sse)
         throws IOException
     {
@@ -210,13 +293,20 @@ public class McpHttpProfileIntegrationTest
         final String body;
         final String sessionId;
         final String contentType;
+        final String allowOrigin;
 
         Exchange(int status, String body, String sessionId, String contentType)
+        {
+            this(status, body, sessionId, contentType, ""); //$NON-NLS-1$
+        }
+
+        Exchange(int status, String body, String sessionId, String contentType, String allowOrigin)
         {
             this.status = status;
             this.body = body;
             this.sessionId = sessionId;
             this.contentType = contentType;
+            this.allowOrigin = allowOrigin;
         }
     }
 }

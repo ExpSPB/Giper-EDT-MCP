@@ -12,13 +12,14 @@ Adding is idempotent (an already-listed owner has its `use` UPDATED, counted und
 than `added`); removing detaches by the owner FQN. The change goes through a BM write transaction and
 force-exports the CommonAttribute `.mdo`. The success payload carries a `content` counts object
 {added, updated, removed}. Read the current content with get_metadata_details on the CommonAttribute
-FQN (a "Content" section listing CommonAttributeContentItem rows - the generic formatter shows the
-item count, and the OWNER FQN is the load-bearing on-disk proof).
+FQN (a "Content" table with Metadata / Use columns naming the owner FQN and its current use).
 
-reset: kind="write-metadata" -> reset_fixture()+reset_model() after each test.
+reset: kind="write-metadata" -> verified disk and model cleanup after each test.
 
-Fixture (shipped TestConfiguration): CommonAttribute.CommonAttribute has NO <content> yet;
-Catalog.Catalog is a valid common-attribute owner; CommonModule.OK is a NON-owner kind.
+Fixture (shipped TestConfiguration): CommonAttribute.CommonAttribute has NO <content> yet and uses
+dataSeparation=DontUse; Catalog.Catalog is a valid owner for that simple common attribute;
+CommonModule.OK is a NON-owner kind. The fixture has no Constant or separator common attribute,
+so separator/Constant scenarios create both inside their tests.
 """
 
 from harness import (
@@ -26,10 +27,12 @@ from harness import (
     assert_ok,
     assert_error,
     assert_error_quality,
-    assert_contains,
     assert_no_diff,
     poll_diff_contains,
     poll_disk_lacks,
+    read_disk,
+    split_markdown_row,
+    wait_for_project_ready,
     e2e_test,
     PROJECT,
 )
@@ -49,16 +52,58 @@ def _details_text(fqn=CA):
     return r.text
 
 
+def _create_ok(fqn, ctx):
+    """Create setup metadata and require readiness before the dependent mutation."""
+    r = call("create_metadata", {"projectName": PROJECT, "fqn": fqn})
+    assert_ok(r, ctx)
+    assert wait_for_project_ready(), "the project must settle after creating " + fqn
+    return r
+
+
+def _common_attribute_mdo(name):
+    return "src/CommonAttributes/%s/%s.mdo" % (name, name)
+
+
+def _content_rows(text, fqn=CA):
+    """Read the target's public Content table; omitted Content means an empty collection."""
+    lines = text.splitlines()
+    title = "## CommonAttribute: " + fqn.split(".", 1)[1]
+    headings = [i for i, line in enumerate(lines) if line.strip() == title]
+    assert len(headings) == 1, "expected exactly one target object heading:\n%s" % text[:700]
+    start = headings[0] + 1
+    end = next((i for i in range(start, len(lines)) if lines[i].startswith("## ")), len(lines))
+    sections = [i for i in range(start, end) if lines[i].strip() == "### Content"]
+    assert len(sections) <= 1, "duplicate Content sections:\n%s" % text[:700]
+    if not sections:
+        return []
+    start = sections[0] + 1
+    end = next((i for i in range(start, end) if lines[i].startswith("#")), end)
+    table = [split_markdown_row(line) for line in lines[start:end] if line.lstrip().startswith("|")]
+    assert len(table) >= 3 and table[0] == ["Metadata", "Use"], \
+        "Content must expose owner rows under Metadata / Use:\n%s" % text[:700]
+    assert len(table[1]) == 2 and all(
+        "-" in cell and set(cell) <= set("-:") for cell in table[1]), \
+        "Content must have a Markdown table separator:\n%s" % text[:700]
+    rows = table[2:]
+    assert all(len(row) == 2 and row[0] and row[1] in ("Use", "DontUse", "Auto")
+               for row in rows), "malformed Content row:\n%s" % text[:700]
+    return [tuple(row) for row in rows]
+
+
+def _assert_content_rows(text, expected, ctx, fqn=CA):
+    rows = _content_rows(text, fqn)
+    assert rows == expected, "%s: expected %r, got %r:\n%s" % (ctx, expected, rows, text[:700])
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Happy — attach an owner: the <content> block lands on disk AND the model shows it
 # ──────────────────────────────────────────────────────────────────────────────
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
-def test_add_owner_persists_and_reads_back():
+def test_add_owner_persists_and_get_details_renders_content_columns():
     # Precondition (anti-cheat): the owner is NOT already attached, so a no-op would FAIL the diff.
     before = _details_text()
-    assert "CommonAttributeContentItem" not in before, \
-        "the fixture common attribute must start with an EMPTY content list:\n%s" % before[:400]
+    _assert_content_rows(before, [], "the fixture must start with an empty content list")
 
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": CA,
@@ -76,8 +121,126 @@ def test_add_owner_persists_and_reads_back():
                        ctx="the attached owner must land in a <content> block on disk")
     # (2) MODEL read-back: the common attribute now carries a content item (empty -> one row).
     after = _details_text()
-    assert_contains(after, "CommonAttributeContentItem",
-                    "the model read-back must show the new content item")
+    _assert_content_rows(after, [(OWNER, "Use")],
+                         "the model must show exactly one attached owner with Use")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Happy — a separator common attribute accepts a Constant owner (#507)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_separator_accepts_constant_owner():
+    separator_name = "E2EDataSeparator507"
+    constant_name = "E2EDataSeparatorConstant507"
+    separator_fqn = "CommonAttribute." + separator_name
+    constant_fqn = "Constant." + constant_name
+    owner_token = "<metadata>%s</metadata>" % constant_fqn
+
+    _create_ok(constant_fqn, "create the Constant owner for the separator")
+    _create_ok(separator_fqn, "create the common attribute that will become a separator")
+
+    make_separator = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": separator_fqn,
+        "properties": [{"name": "dataSeparation", "value": "Separate"}],
+    })
+    assert_ok(make_separator, "set the target common attribute dataSeparation to Separate")
+    assert make_separator.structured.get("persisted") is True, \
+        "the separator property must persist before attaching an owner: %r" % (make_separator.structured,)
+    assert wait_for_project_ready(), "the separator must settle before attaching its owner"
+
+    before = _details_text(separator_fqn)
+    _assert_content_rows(before, [], "the new separator must start with no owners", fqn=separator_fqn)
+
+    attach = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": separator_fqn,
+        "content": [{"metadata": constant_fqn, "use": "Use"}],
+    })
+    assert_ok(attach, "attach a Constant owner to a separator common attribute")
+    counts = attach.structured.get("content") or {}
+    # A Constant belongs only to EDT's data-separable owner set. Acceptance proves that
+    # the writer used the live dataSeparation to select the separator predicate.
+    assert counts.get("added") == 1 and counts.get("updated") == 0 and counts.get("removed") == 0, \
+        "the Constant must be attached as one fresh owner: %r" % (attach.structured,)
+    assert attach.structured.get("persisted") is True, \
+        "the Constant owner must persist to disk: %r" % (attach.structured,)
+
+    on_disk = read_disk(_common_attribute_mdo(separator_name))
+    # Separate is the serialization default, so its element may be omitted. DontUse
+    # would prove the target incorrectly remained a simple common attribute.
+    assert "<dataSeparation>DontUse</dataSeparation>" not in on_disk, \
+        "the target must not have fallen back to a simple common attribute:\n%s" % on_disk[:600]
+    assert owner_token in on_disk, "the Constant owner must land in the separator's content on disk"
+
+    _assert_content_rows(_details_text(separator_fqn), [(constant_fqn, "Use")],
+                         "the separator must read back exactly one Constant owner", fqn=separator_fqn)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Happy — remove remains a cleanup operation after the target kind makes the row illegal
+# ──────────────────────────────────────────────────────────────────────────────
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_remove_owner_illegal_for_current_target_kind_succeeds():
+    attribute_name = "E2EIllegalOwnerCleanup507"
+    constant_name = "E2EIllegalOwnerCleanupConstant507"
+    attribute_fqn = "CommonAttribute." + attribute_name
+    constant_fqn = "Constant." + constant_name
+    owner_token = "<metadata>%s</metadata>" % constant_fqn
+    attribute_mdo = _common_attribute_mdo(attribute_name)
+
+    _create_ok(constant_fqn, "create the separator-only Constant owner")
+    _create_ok(attribute_fqn, "create the common attribute for the cleanup case")
+
+    make_separator = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": attribute_fqn,
+        "properties": [{"name": "dataSeparation", "value": "Separate"}],
+    })
+    assert_ok(make_separator, "make the target a separator before attaching the Constant")
+    assert wait_for_project_ready(), "the separator must settle before attaching its owner"
+
+    attach = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": attribute_fqn,
+        "content": [{"op": "add", "metadata": constant_fqn, "use": "Use"}],
+    })
+    assert_ok(attach, "attach the Constant while its class is legal for the target")
+    assert (attach.structured.get("content") or {}).get("added") == 1, \
+        "the setup must attach exactly one Constant owner: %r" % (attach.structured,)
+
+    make_simple = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": attribute_fqn,
+        "properties": [{"name": "dataSeparation", "value": "DontUse"}],
+    })
+    assert_ok(make_simple, "change the populated target to the simple common-attribute kind")
+    assert wait_for_project_ready(), "the changed target must settle before the cleanup call"
+
+    before_remove = read_disk(attribute_mdo)
+    assert "<dataSeparation>DontUse</dataSeparation>" in before_remove, \
+        "the target must now be simple before exercising cleanup:\n%s" % before_remove[:700]
+    assert owner_token in before_remove, "the now-illegal Constant row must exist before removal"
+    _assert_content_rows(_details_text(attribute_fqn), [(constant_fqn, "Use")],
+                         "the now-illegal owner must remain in the model before cleanup", fqn=attribute_fqn)
+
+    # Removal resolves a real owner and attached row, but skips the owner-class rule for
+    # the target's current kind so an obsolete row remains removable.
+    remove = call("modify_metadata", {
+        "projectName": PROJECT,
+        "fqn": attribute_fqn,
+        "content": [{"op": "remove", "metadata": constant_fqn}],
+    })
+    assert_ok(remove, "remove the Constant that is illegal for the target's current simple kind")
+    counts = remove.structured.get("content") or {}
+    assert counts.get("removed") == 1 and counts.get("added") == 0 and counts.get("updated") == 0, \
+        "the cleanup call must remove exactly the obsolete row: %r" % (remove.structured,)
+    poll_disk_lacks(attribute_mdo, owner_token,
+                    ctx="the now-illegal Constant owner row must be removable from disk")
+    _assert_content_rows(_details_text(attribute_fqn), [],
+                         "the obsolete owner must also be removed from the model", fqn=attribute_fqn)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -98,6 +261,8 @@ def test_add_owner_op_defaults_to_add():
     # the default use is Use -> the item carries a <use>Use</use> in the same content block.
     poll_diff_contains("<use>Use</use>",
                        ctx="the default per-owner use must serialize as Use")
+    _assert_content_rows(_details_text(), [(OWNER, "Use")],
+                         "the default add must read back exactly one owner with Use")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -113,6 +278,8 @@ def test_readd_is_idempotent_and_updates_use():
     assert_ok(first, "first attach")
     assert (first.structured.get("content") or {}).get("added") == 1, \
         "first attach must add: %r" % (first.structured,)
+    _assert_content_rows(_details_text(), [(OWNER, "Use")],
+                         "the first attach must read back one owner with Use before the update")
 
     # Re-add the SAME owner with a DIFFERENT use -> no duplicate, counted as an update.
     second = call("modify_metadata", {
@@ -129,8 +296,8 @@ def test_readd_is_idempotent_and_updates_use():
                        ctx="the re-add must update the owner's use to DontUse on disk")
     # anti-cheat: exactly ONE content item exists (no duplicate row in the model read-back).
     text = _details_text()
-    assert text.count("CommonAttributeContentItem") == 1, \
-        "the idempotent re-add must NOT duplicate the owner:\n%s" % text[:500]
+    _assert_content_rows(text, [(OWNER, "DontUse")],
+                         "the idempotent re-add must update Use without duplicating the owner")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -145,6 +312,8 @@ def test_remove_owner_detaches_it():
     })
     assert_ok(seed, "seed the owner to later remove")
     poll_diff_contains(OWNER_MDO_TOKEN, ctx="the seeded owner must be on disk before removal")
+    _assert_content_rows(_details_text(), [(OWNER, "Use")],
+                         "the seeded owner must be present in the model before removal")
 
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": CA,
@@ -161,8 +330,7 @@ def test_remove_owner_detaches_it():
                     ctx="the detached owner's <content> block must be gone from the .mdo")
     # The model read-back no longer lists a content item (back to an empty content list).
     after = _details_text()
-    assert "CommonAttributeContentItem" not in after, \
-        "the model read-back must show the content item removed:\n%s" % after[:500]
+    _assert_content_rows(after, [], "the model must show the seeded owner removed")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -187,6 +355,8 @@ def test_add_owner_by_russian_type_token():
                        ctx="the Russian-token owner must serialize to the canonical Catalog.Catalog")
     poll_diff_contains("<use>DontUse</use>",
                        ctx="the non-default DontUse use must serialize for the bilingual-token owner")
+    _assert_content_rows(_details_text(), [(OWNER, "DontUse")],
+                         "the bilingual owner must read back its canonical FQN and DontUse")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -233,6 +403,20 @@ def test_add_non_owner_kind_is_error():
 # ──────────────────────────────────────────────────────────────────────────────
 # Negative — remove an owner that is not attached is a clean error (nothing written)
 # ──────────────────────────────────────────────────────────────────────────────
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_remove_unresolvable_owner_is_error():
+    missing = "Catalog.NoSuchOwnerToRemove_e2e"
+    # Removal skips only the class predicate; it must still resolve the owner object.
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": CA,
+        "content": [{"op": "remove", "metadata": missing}],
+    })
+    e = assert_error(r, "detach an owner object that does not exist")
+    assert_error_quality(e, names=[missing],
+                         ctx="removing a non-existent owner names the unresolved FQN")
+    assert_no_diff("a rejected removal of a non-existent owner must change nothing")
+
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_remove_not_attached_owner_is_error():

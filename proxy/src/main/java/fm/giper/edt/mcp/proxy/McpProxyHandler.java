@@ -13,7 +13,10 @@ import java.io.OutputStream;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
@@ -154,6 +157,42 @@ public final class McpProxyHandler implements HttpHandler
      */
     private volatile ThreadPoolExecutor workerPool;
 
+    private final Object sseLock = new Object();
+    private final Set<HttpExchange> sseExchanges = new HashSet<>();
+    private ThreadPoolExecutor ssePool;
+
+    /** Installs a fresh stream executor before the HTTP server starts accepting requests. */
+    void setSsePool(ThreadPoolExecutor pool)
+    {
+        synchronized (sseLock)
+        {
+            ssePool = pool;
+        }
+    }
+
+    /** Detaches admission first, then closes owned exchanges, including blocked stream writes. */
+    void stopSseStreams()
+    {
+        List<HttpExchange> exchanges;
+        synchronized (sseLock)
+        {
+            ssePool = null;
+            exchanges = new ArrayList<>(sseExchanges);
+        }
+        for (HttpExchange exchange : exchanges)
+        {
+            exchange.close();
+        }
+    }
+
+    int activeSseStreamCount()
+    {
+        synchronized (sseLock)
+        {
+            return sseExchanges.size();
+        }
+    }
+
     /**
      * Creates the handler.
      *
@@ -217,6 +256,7 @@ public final class McpProxyHandler implements HttpHandler
     @Override
     public void handle(HttpExchange exchange) throws IOException
     {
+        boolean handedOff = false;
         try
         {
             // Admission control before any work: shed with a retryable 503 rather than let the
@@ -262,7 +302,7 @@ public final class McpProxyHandler implements HttpHandler
             }
             else if (HTTP_METHOD_GET.equals(method))
             {
-                handleSseGet(exchange, endpoint);
+                handedOff = handleSseGet(exchange, endpoint);
             }
             else
             {
@@ -284,7 +324,10 @@ public final class McpProxyHandler implements HttpHandler
         }
         finally
         {
-            exchange.close();
+            if (!handedOff)
+            {
+                exchange.close();
+            }
         }
     }
 
@@ -818,30 +861,64 @@ public final class McpProxyHandler implements HttpHandler
      * Opens a client GET/SSE stream bound to {@code endpoint}. Notifications are delivered by
      * {@link SseNotificationHub} and de-duplicated per stream.
      */
-    private void handleSseGet(HttpExchange exchange, ProfileEndpoint endpoint) throws IOException
+    private boolean handleSseGet(HttpExchange exchange, ProfileEndpoint endpoint) throws IOException
     {
         String sessionId = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
         if (sessionId == null || sessionId.isBlank())
         {
             sendPlain(exchange, 400, buildJsonRpcError(ERROR_INVALID_REQUEST,
                 "Missing " + HEADER_SESSION_ID + " header - call initialize first.", null)); //$NON-NLS-1$ //$NON-NLS-2$
-            return;
+            return false;
         }
         if (sessions.lookup(sessionId, endpoint.canonicalPath()) == null)
         {
             sendPlain(exchange, 404, buildJsonRpcError(ERROR_INVALID_REQUEST,
                 "Unknown or expired session '" + sessionId + "' - call initialize again.", null)); //$NON-NLS-1$ //$NON-NLS-2$
-            return;
+            return false;
         }
-        exchange.getResponseHeaders().add(HEADER_CONTENT_TYPE, VALUE_TEXT_EVENT_STREAM);
-        exchange.getResponseHeaders().add(HEADER_CACHE_CONTROL, VALUE_NO_CACHE);
-        exchange.getResponseHeaders().add(HEADER_CONNECTION, VALUE_KEEP_ALIVE);
-        exchange.sendResponseHeaders(200, 0);
-        OutputStream out = exchange.getResponseBody();
+
+        // Admission and ownership transfer are atomic relative to shutdown. No streams queue:
+        // a full stream budget receives 503 on the ordinary HTTP worker before any SSE headers.
+        synchronized (sseLock)
+        {
+            if (ssePool != null)
+            {
+                sseExchanges.add(exchange);
+                try
+                {
+                    ssePool.execute(() -> serveSse(exchange, endpoint, sessionId));
+                    return true;
+                }
+                catch (RejectedExecutionException e)
+                {
+                    sseExchanges.remove(exchange);
+                }
+            }
+        }
+        exchange.getResponseHeaders().add("Retry-After", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+        sendPlain(exchange, 503, buildSimpleError("Proxy SSE capacity exhausted, retry later")); //$NON-NLS-1$
+        return false;
+    }
+
+    private void serveSse(HttpExchange exchange, ProfileEndpoint endpoint, String sessionId)
+    {
+        OutputStream out = null;
         SseNotificationHub hub = registry.sseHub();
-        hub.registerClient(endpoint.canonicalPath(), out);
         try
         {
+            // Session expiry or deletion can race the handoff; never open an invalid stream.
+            if (sessions.lookup(sessionId, endpoint.canonicalPath()) == null)
+            {
+                sendPlain(exchange, 404, buildJsonRpcError(ERROR_INVALID_REQUEST,
+                    "Unknown or expired session '" + sessionId + "' - call initialize again.", null)); //$NON-NLS-1$ //$NON-NLS-2$
+                return;
+            }
+            exchange.getResponseHeaders().add(HEADER_CONTENT_TYPE, VALUE_TEXT_EVENT_STREAM);
+            exchange.getResponseHeaders().add(HEADER_CACHE_CONTROL, VALUE_NO_CACHE);
+            exchange.getResponseHeaders().add(HEADER_CONNECTION, VALUE_KEEP_ALIVE);
+            exchange.sendResponseHeaders(200, 0);
+            out = exchange.getResponseBody();
+            hub.registerClient(endpoint.canonicalPath(), out);
             while (!Thread.currentThread().isInterrupted())
             {
                 synchronized (out)
@@ -860,9 +937,21 @@ public final class McpProxyHandler implements HttpHandler
         {
             // client disconnected or profile kick closed the stream
         }
+        catch (RuntimeException e)
+        {
+            LOG.log(Level.SEVERE, "Unexpected error serving proxy SSE stream", e); //$NON-NLS-1$
+        }
         finally
         {
-            hub.unregisterClient(endpoint.canonicalPath(), out);
+            if (out != null)
+            {
+                hub.unregisterClient(endpoint.canonicalPath(), out);
+            }
+            exchange.close();
+            synchronized (sseLock)
+            {
+                sseExchanges.remove(exchange);
+            }
         }
     }
 

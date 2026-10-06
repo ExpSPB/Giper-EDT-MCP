@@ -87,9 +87,9 @@ public class FormStructureReaderTest
         // short-circuits on a null configuration.
         assertNull(FormStructureReader.resolveMdForm(MetadataScope.ofConfiguration(null), "CommonForm.MyForm")); //$NON-NLS-1$
         assertNull(FormStructureReader.resolveMdForm(MetadataScope.ofConfiguration(null), "Catalog.Products.Forms.ItemForm")); //$NON-NLS-1$
-        // Russian metadata TYPE token is accepted (╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║).
+        // Russian metadata TYPE token is accepted (Справочник).
         assertNull(FormStructureReader.resolveMdForm(MetadataScope.ofConfiguration(null),
-            "╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.Products.Forms.ItemForm")); //$NON-NLS-1$
+            "Справочник.Products.Forms.ItemForm")); //$NON-NLS-1$
     }
 
     // ==================== nameOf / titleOf helpers ====================
@@ -112,7 +112,7 @@ public class FormStructureReaderTest
     public void testTitleOfByLanguageCode()
     {
         EObject command = newCommand("Post", "Provesti", "Post document"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        // The title is keyed by language CODE тАФ selecting "en" returns the English title, never the
+        // The title is keyed by language CODE — selecting "en" returns the English title, never the
         // language NAME.
         assertEquals("Post document", FormStructureReader.titleOf(command, "en")); //$NON-NLS-1$ //$NON-NLS-2$
         assertEquals("Provesti", FormStructureReader.titleOf(command, "ru")); //$NON-NLS-1$ //$NON-NLS-2$
@@ -313,7 +313,7 @@ public class FormStructureReaderTest
             "Catalog.Products.Forms.ItemForm", form, "en"); //$NON-NLS-1$ //$NON-NLS-2$
 
         // Items: per-kind extras + visibility + dataPath on the field. NON-default enum literals are
-        // used (Horizontal/LabelField/Directly) so the values are genuinely authored тАФ only explicitly
+        // used (Horizontal/LabelField/Directly) so the values are genuinely authored — only explicitly
         // set enums are reported (an unset enum reads back as the metamodel default, which is noise).
         assertTrue(md.contains("- MainGroup (type: FormGroup, id: 1, " //$NON-NLS-1$
             + "group: UsualGroupExtInfo Horizontal Collapsible)")); //$NON-NLS-1$
@@ -331,6 +331,27 @@ public class FormStructureReaderTest
         assertTrue(md.contains("## Event handlers")); //$NON-NLS-1$
         assertTrue(md.contains("| Element | Event | Handler |")); //$NON-NLS-1$
         assertTrue(md.contains("| (form) | OnOpen | FormOnOpen |")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testRenderButtonCommandReferenceDistinguishesCustomAndStandard()
+    {
+        EObject form = newForm();
+        EObject custom = newCommand("Refresh", null, null); //$NON-NLS-1$
+        addCommand(form, custom);
+        EObject customButton = newItem(MODEL.formButton, "RefreshButton", 10); //$NON-NLS-1$
+        customButton.eSet(customButton.eClass().getEStructuralFeature("commandName"), custom); //$NON-NLS-1$
+        addItem(form, customButton);
+
+        EObject standard = newStandardCommand("SaveValues", "СохранитьЗначения"); //$NON-NLS-1$ //$NON-NLS-2$
+        EObject standardButton = newItem(MODEL.formButton, "SaveButton", 11); //$NON-NLS-1$
+        standardButton.eSet(standardButton.eClass().getEStructuralFeature("commandName"), standard); //$NON-NLS-1$
+        addItem(form, standardButton);
+
+        String md = FormStructureReader.render("CommonForm.F", form, "en"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(md, md.contains("command: Refresh")); //$NON-NLS-1$
+        assertTrue(md, md.contains("standardCommand: SaveValues")); //$NON-NLS-1$
+        assertFalse(md, md.contains("command: SaveValues")); //$NON-NLS-1$
     }
 
     @Test
@@ -605,6 +626,108 @@ public class FormStructureReaderTest
             names.add(row[2]);
         }
         return names;
+    }
+
+    /**
+     * A form root's {@code extInfo} is an event-handler container of its own, and EDT binds a record
+     * form's write and read events inside it. The walk has to read that list too: reading only the
+     * root's own reported "no event handlers" for a form that has one (issue #592).
+     */
+    @Test
+    public void testTheHandlerWalkReportsBindingsThatLiveInTheExtInfo()
+    {
+        EObject root = rootWithExtInfoBinding();
+        FormStructureReader.HandlerRows rows = new FormStructureReader.HandlerRows(10);
+
+        FormStructureReader.collectHandlers(root, "Form", "en", rows, //$NON-NLS-1$ //$NON-NLS-2$
+            new int[] {MAX_NODES}, new boolean[] {false}, new ArrayDeque<>());
+
+        assertEquals("the binding inside the extInfo is a handler of this form", //$NON-NLS-1$
+            List.of("OnCreateAtServer", "BeforeWriteAtServer"), keptHandlerNames(rows)); //$NON-NLS-1$ //$NON-NLS-2$
+        for (String[] row : rows.kept())
+        {
+            assertEquals("both belong to the FORM, not to a node called extInfo", //$NON-NLS-1$
+                "Form", row[0]); //$NON-NLS-1$
+        }
+    }
+
+    /**
+     * A form root carrying {@code OnCreateAtServer} on itself and {@code BeforeWriteAtServer} inside
+     * its {@code extInfo} - the shape EDT's wizard writes for an information-register record form.
+     */
+    private static EObject rootWithExtInfoBinding()
+    {
+        EcoreFactory f = EcoreFactory.eINSTANCE;
+        EPackage pkg = f.createEPackage();
+        pkg.setName("form"); //$NON-NLS-1$
+        pkg.setNsURI("http://g5.1c.ru/v8/dt/form/extinfohandlerstest"); //$NON-NLS-1$
+        pkg.setNsPrefix("form"); //$NON-NLS-1$
+
+        EClass eventType = f.createEClass();
+        eventType.setName("Event"); //$NON-NLS-1$
+        EAttribute eventName = f.createEAttribute();
+        eventName.setName("name"); //$NON-NLS-1$
+        eventName.setEType(EcorePackage.Literals.ESTRING);
+        eventType.getEStructuralFeatures().add(eventName);
+        pkg.getEClassifiers().add(eventType);
+
+        EClass handlerType = f.createEClass();
+        handlerType.setName("EventHandler"); //$NON-NLS-1$
+        EAttribute handlerName = f.createEAttribute();
+        handlerName.setName("name"); //$NON-NLS-1$
+        handlerName.setEType(EcorePackage.Literals.ESTRING);
+        handlerType.getEStructuralFeatures().add(handlerName);
+        EReference handlerEvent = f.createEReference();
+        handlerEvent.setName("event"); //$NON-NLS-1$
+        handlerEvent.setEType(eventType);
+        handlerEvent.setContainment(true);
+        handlerType.getEStructuralFeatures().add(handlerEvent);
+        pkg.getEClassifiers().add(handlerType);
+
+        EClass extInfoType = f.createEClass();
+        extInfoType.setName("InformationRegisterManagerFormExtInfo"); //$NON-NLS-1$
+        extInfoType.getEStructuralFeatures().add(handlerList(f, handlerType));
+        pkg.getEClassifiers().add(extInfoType);
+
+        EClass formType = f.createEClass();
+        formType.setName("Form"); //$NON-NLS-1$
+        formType.getEStructuralFeatures().add(handlerList(f, handlerType));
+        EReference extInfo = f.createEReference();
+        extInfo.setName("extInfo"); //$NON-NLS-1$
+        extInfo.setEType(extInfoType);
+        extInfo.setContainment(true);
+        formType.getEStructuralFeatures().add(extInfo);
+        pkg.getEClassifiers().add(formType);
+
+        EObject form = pkg.getEFactoryInstance().create(formType);
+        EObject extInfoObject = pkg.getEFactoryInstance().create(extInfoType);
+        form.eSet(extInfo, extInfoObject);
+        bindTestHandler(pkg, handlerType, eventType, form, "OnCreateAtServer"); //$NON-NLS-1$
+        bindTestHandler(pkg, handlerType, eventType, extInfoObject, "BeforeWriteAtServer"); //$NON-NLS-1$
+        return form;
+    }
+
+    private static EReference handlerList(EcoreFactory f, EClass handlerType)
+    {
+        EReference handlers = f.createEReference();
+        handlers.setName("handlers"); //$NON-NLS-1$
+        handlers.setEType(handlerType);
+        handlers.setContainment(true);
+        handlers.setUpperBound(-1);
+        return handlers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void bindTestHandler(EPackage pkg, EClass handlerType, EClass eventType,
+        EObject container, String eventName)
+    {
+        EObject event = pkg.getEFactoryInstance().create(eventType);
+        event.eSet(eventType.getEStructuralFeature("name"), eventName); //$NON-NLS-1$
+        EObject handler = pkg.getEFactoryInstance().create(handlerType);
+        handler.eSet(handlerType.getEStructuralFeature("name"), eventName); //$NON-NLS-1$
+        handler.eSet(handlerType.getEStructuralFeature("event"), event); //$NON-NLS-1$
+        ((List<EObject>)container.eGet(container.eClass().getEStructuralFeature("handlers"))) //$NON-NLS-1$
+            .add(handler);
     }
 
     @Test
@@ -1249,10 +1372,10 @@ public class FormStructureReaderTest
     {
         // The event name is selected by language CODE: 'ru' picks nameRu, never the English name.
         EObject form = newForm();
-        addHandler(form, "OnOpen", "╨Я╤А╨╕╨Ю╤В╨║╤А╤Л╤В╨╕╨╕", "╨д╨╛╤А╨╝╨░╨Я╤А╨╕╨Ю╤В╨║╤А╤Л╤В╨╕╨╕"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        addHandler(form, "OnOpen", "ПриОткрытии", "ФормаПриОткрытии"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
         String mdRu = FormStructureReader.render("CommonForm.F", form, "ru"); //$NON-NLS-1$ //$NON-NLS-2$
-        assertTrue(mdRu.contains("╨Я╤А╨╕╨Ю╤В╨║╤А╤Л╤В╨╕╨╕")); //$NON-NLS-1$
+        assertTrue(mdRu.contains("ПриОткрытии")); //$NON-NLS-1$
         String mdEn = FormStructureReader.render("CommonForm.F", form, "en"); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue(mdEn.contains("| (form) | OnOpen | ")); //$NON-NLS-1$
     }
@@ -1280,8 +1403,9 @@ public class FormStructureReaderTest
         addItem(form, group);
 
         EObject button = newItem(MODEL.formButton, "PostButton", 4); //$NON-NLS-1$
-        button.eSet(button.eClass().getEStructuralFeature("commandName"), //$NON-NLS-1$
-            newCommand("Post", null, "Post document")); //$NON-NLS-1$ //$NON-NLS-2$
+        EObject postCommand = newCommand("Post", null, null); //$NON-NLS-1$
+        addCommand(form, postCommand);
+        button.eSet(button.eClass().getEStructuralFeature("commandName"), postCommand); //$NON-NLS-1$
         addItem(form, button);
 
         EObject attribute = newAttribute("Goods"); //$NON-NLS-1$
@@ -1292,7 +1416,7 @@ public class FormStructureReaderTest
         title.put("en", "Goods item"); //$NON-NLS-1$ //$NON-NLS-2$
         addAttribute(form, attribute);
 
-        addHandler(form, "OnOpen", "╨Я╤А╨╕╨Ю╤В╨║╤А╤Л╤В╨╕╨╕", //$NON-NLS-1$
+        addHandler(form, "OnOpen", "ПриОткрытии", //$NON-NLS-1$
             "FormOnOpen"); //$NON-NLS-1$
 
         return form;
@@ -1943,6 +2067,14 @@ public class FormStructureReaderTest
         return command;
     }
 
+    private static EObject newStandardCommand(String name, String nameRu)
+    {
+        EObject command = new DynamicEObjectImpl(MODEL.formStandardCommand);
+        command.eSet(command.eClass().getEStructuralFeature("name"), name); //$NON-NLS-1$
+        command.eSet(command.eClass().getEStructuralFeature("nameRu"), nameRu); //$NON-NLS-1$
+        return command;
+    }
+
     private static void addItem(EObject container, EObject child)
     {
         addTo(container, "items", child); //$NON-NLS-1$
@@ -2039,6 +2171,7 @@ public class FormStructureReaderTest
         final EClass formButton;
         final EClass formAttribute;
         final EClass formCommand;
+        final EClass formStandardCommand;
         final EClass commandHandler;
         final EClass handlerContainer;
         final EClass autoCommandBar;
@@ -2164,7 +2297,11 @@ public class FormStructureReaderTest
             fieldEditMode.setEType(editModeEnum);
             formField.getEStructuralFeatures().add(fieldEditMode);
 
-            // Button-like leaf: a FormItem carrying the bound metadata 'commandName'. The concrete
+            EClass command = factory.createEClass();
+            command.setName("Command"); //$NON-NLS-1$
+            command.setAbstract(true);
+
+            // Button-like leaf: a FormItem carrying the bound command reference. The concrete
             // form-model button EClass is named "Button" (NOT "FormButton", its platform-type name), so
             // the dynamic EClass must use that name for kindExtrasOf's eClass()-name match to fire.
             formButton = factory.createEClass();
@@ -2172,6 +2309,7 @@ public class FormStructureReaderTest
             formButton.getESuperTypes().add(formItem);
             EReference buttonCommand = factory.createEReference();
             buttonCommand.setName("commandName"); //$NON-NLS-1$
+            buttonCommand.setEType(command);
             formButton.getEStructuralFeatures().add(buttonCommand);
 
             // FormAttribute-like: name + title (EMap by language code) + main + savedData flags.
@@ -2223,6 +2361,7 @@ public class FormStructureReaderTest
             // FormCommand-like: name + title (EMap by language code) + the action containment.
             formCommand = factory.createEClass();
             formCommand.setName("FormCommand"); //$NON-NLS-1$
+            formCommand.getESuperTypes().add(command);
             commandName = factory.createEAttribute();
             commandName.setName("name"); //$NON-NLS-1$
             commandName.setEType(EcorePackage.Literals.ESTRING);
@@ -2238,7 +2377,18 @@ public class FormStructureReaderTest
             action.setEType(handlerContainer);
             action.setContainment(true);
             formCommand.getEStructuralFeatures().add(action);
-            buttonCommand.setEType(formCommand);
+
+            formStandardCommand = factory.createEClass();
+            formStandardCommand.setName("FormStandardCommand"); //$NON-NLS-1$
+            formStandardCommand.getESuperTypes().add(command);
+            EAttribute standardName = factory.createEAttribute();
+            standardName.setName("name"); //$NON-NLS-1$
+            standardName.setEType(EcorePackage.Literals.ESTRING);
+            formStandardCommand.getEStructuralFeatures().add(standardName);
+            EAttribute standardNameRu = factory.createEAttribute();
+            standardNameRu.setName("nameRu"); //$NON-NLS-1$
+            standardNameRu.setEType(EcorePackage.Literals.ESTRING);
+            formStandardCommand.getEStructuralFeatures().add(standardNameRu);
 
             // AutoCommandBar-like: a FormItem container OUTSIDE the items tree.
             autoCommandBar = factory.createEClass();
@@ -2295,7 +2445,9 @@ public class FormStructureReaderTest
             pkg.getEClassifiers().add(formField);
             pkg.getEClassifiers().add(formButton);
             pkg.getEClassifiers().add(formAttribute);
+            pkg.getEClassifiers().add(command);
             pkg.getEClassifiers().add(formCommand);
+            pkg.getEClassifiers().add(formStandardCommand);
             pkg.getEClassifiers().add(commandHandler);
             pkg.getEClassifiers().add(handlerContainer);
             pkg.getEClassifiers().add(autoCommandBar);

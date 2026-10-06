@@ -8,6 +8,7 @@
 package fm.giper.edt.mcp.server.protocol;
 
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,6 +51,21 @@ import com.google.gson.JsonParser;
  */
 public class InputSchemaCompactorRiskTest
 {
+    @Test
+    public void metadataNameAndLocalizedTextFilterContractsSurviveCompaction()
+    {
+        IMcpTool tool = McpToolRegistry.getInstance().getAllTools().stream()
+            .filter(candidate -> "get_metadata_objects".equals(candidate.getName())) //$NON-NLS-1$
+            .findFirst().orElseThrow();
+        JsonObject original = properties(JsonParser.parseString(tool.getInputSchema()));
+        JsonObject compacted = properties(InputSchemaCompactor.compact(tool.getName(),
+            JsonParser.parseString(tool.getInputSchema())));
+        for (String parameter : new String[] { "nameFilter", "textFilter" }) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            assertTrue(description(original.get(parameter)) != null);
+            assertEquals(description(original.get(parameter)), description(compacted.get(parameter)));
+        }
+    }
     @Before
     public void setUp()
     {

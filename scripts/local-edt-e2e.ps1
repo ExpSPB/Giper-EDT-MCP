@@ -133,9 +133,11 @@ New-Item -ItemType Directory -Force -Path $Workspace | Out-Null
 $importDirs = @(
     (Join-Path $RepoRoot 'tests\TestConfiguration'),
     (Join-Path $RepoRoot 'tests\tests'),
-    (Join-Path $RepoRoot 'tests\ExternalObjects')
+    (Join-Path $RepoRoot 'tests\ExternalObjects'),
+    (Join-Path $RepoRoot 'tests\SupportedConfiguration')
 ) -join ';'
 
+$env:MCP_MODEL_RESET_MODE = 'refresh'
 $env:EDT_MCP_AUTO_START = 'true'
 $env:EDT_MCP_PORT = "$Port"
 $env:EDT_MCP_IMPORT_PROJECTS = $importDirs

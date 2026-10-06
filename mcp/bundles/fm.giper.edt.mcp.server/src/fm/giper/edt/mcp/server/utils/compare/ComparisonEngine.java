@@ -40,12 +40,12 @@ import fm.giper.edt.mcp.server.utils.ProjectContext;
  *
  * <h2>What it is for</h2>
  * EDT drives configuration comparison through {@code IComparisonManager}, an interface that can
- * both COMPARE and MERGE. This facade exposes the comparing half and never hands the manager тАФ or
- * the {@code IComparisonSession} behind it тАФ to a caller. That is not decoration: it is the second
+ * both COMPARE and MERGE. This facade exposes the comparing half and never hands the manager — or
+ * the {@code IComparisonSession} behind it — to a caller. That is not decoration: it is the second
  * of the three independent layers that make merging impossible here.
  * <ol>
  *   <li>{@code MANIFEST.MF} does not import {@code com._1c.g5.v8.dt.compare.merge} or
- *       {@code com._1c.g5.v8.dt.compare.git.merge}, so OSGi cannot load those classes at all тАФ not
+ *       {@code com._1c.g5.v8.dt.compare.git.merge}, so OSGi cannot load those classes at all — not
  *       even reflectively.</li>
  *   <li>No tool ever receives {@code IComparisonManager}. It is not even held here: the private
  *       backend below resolves it per call from a supplier {@code EdtServices} hands in, and the
@@ -53,7 +53,7 @@ import fm.giper.edt.mcp.server.utils.ProjectContext;
  *       entry points are not reachable through {@link Backend}, which is the only shape the rest of
  *       this class can see.</li>
  *   <li>{@code NoMergeStarterRatchetTest} fails the build if the names of those entry points appear
- *       ANYWHERE under the bundle source root тАФ a comment counts тАФ pins the set of files allowed to
+ *       ANYWHERE under the bundle source root — a comment counts — pins the set of files allowed to
  *       name {@code IComparisonManager} and {@code IComparisonSession}, and fails on a platform
  *       rule-setting call in ANY of them.</li>
  * </ol>
@@ -62,13 +62,13 @@ import fm.giper.edt.mcp.server.utils.ProjectContext;
  * a question or governs a comparison's LIFETIME (start, prioritise, cancel, stop); none of them
  * changes what the comparison says. Merge decisions are recorded into EDT's merge-rules FILE by
  * {@code merge_rules}, and the platform re-applies that file when a comparison is launched with
- * it тАФ so nothing here needs the session's rule-setting call, and the ratchet's allow-list for
+ * it — so nothing here needs the session's rule-setting call, and the ratchet's allow-list for
  * that call is EMPTY rather than "this file only".
  *
  * <h2>Constraints this facade encodes (measured, not assumed)</h2>
  * <ul>
  *   <li><b>One comparison per EDT instance.</b> {@code ComparisonManager} asserts that no batch is
- *       already active, so a second launch does not queue тАФ it fails. Callers ask
+ *       already active, so a second launch does not queue — it fails. Callers ask
  *       {@link #hasActiveComparison()} first and refuse honestly, naming the live comparison and
  *       how to end it (see {@code ComparisonFailures}).</li>
  *   <li><b>{@link ComparisonProcessStatus} has no failure literal.</b> A failed comparison keeps
@@ -79,21 +79,21 @@ import fm.giper.edt.mcp.server.utils.ProjectContext;
  *   <li><b>A status that could not be read is not a status.</b> EDT's manager answers nothing when
  *       it no longer holds the handle's session, and the read itself can throw. Either way
  *       {@link #progress} answers {@link Phase#UNKNOWN} and carries the read failure, rather than
- *       folding the absence into a phase тАФ a caller that quotes it as a platform literal is
+ *       folding the absence into a phase — a caller that quotes it as a platform literal is
  *       putting words in EDT's mouth, and one that treats it as terminal kills a live
  *       comparison over a single unlucky tick.</li>
  *   <li><b>The tree is lazy.</b> Reading a node the engine has not compared yet yields an empty
  *       child list that renders as "no differences". Call {@link #prioritize} and wait on the
  *       NODE's own status ({@link ComparisonView#topNodeStatus}) before reading it.</li>
  *   <li><b>The tree is in the COMPARISON's BM store</b>, not the project's, so
- *       {@code BmTransactions.read(project, тАж)} is the wrong boundary (CLAUDE.md don't #1). Use
+ *       {@code BmTransactions.read(project, …)} is the wrong boundary (CLAUDE.md don't #1). Use
  *       {@link #read(ComparisonView, String, BmTransactions.BmOperation)}.</li>
- *   <li><b>A session is not a job.</b> Its resources тАФ a virtual project and a private BM store тАФ
+ *   <li><b>A session is not a job.</b> Its resources — a virtual project and a private BM store —
  *       are given back only by {@link #cancel}/{@link #stop}, so {@link ComparisonSessionRegistry}
  *       owns the lifetime rather than any background-job record. The registry reclaims expired
  *       sessions from its own lookups, so every comparison-tool call sweeps and no call site has to
  *       remember to; with no comparison tool called again, the last session is released when the
- *       bundle stops ({@link #uninstall()}) and not before тАФ there is no timer.</li>
+ *       bundle stops ({@link #uninstall()}) and not before — there is no timer.</li>
  * </ul>
  */
 public final class ComparisonEngine
@@ -119,7 +119,7 @@ public final class ComparisonEngine
      * Package-scoped on purpose. It exists for two reasons at once: nothing outside this package
      * can name it, so no tool can be handed one; and it is a plain interface with no EDT service
      * behind it, so {@code ComparisonEngineTest} can drive the whole facade headlessly. Only the
-     * comparing operations are declared here тАФ the merging ones are simply absent, which is a
+     * comparing operations are declared here — the merging ones are simply absent, which is a
      * stronger statement than a comment saying we will not call them.
      */
     interface Backend
@@ -242,8 +242,8 @@ public final class ComparisonEngine
         /** It failed. {@link Progress#failure()} carries the reason. */
         FAILED,
         /**
-         * The status could NOT be read this tick: either the read threw тАФ then
-         * {@link Progress#statusReadFailure()} carries what was logged тАФ or EDT answered nothing
+         * The status could NOT be read this tick: either the read threw — then
+         * {@link Progress#statusReadFailure()} carries what was logged — or EDT answered nothing
          * at all, which its manager does whenever it no longer holds the handle's session.
          * <p>
          * This is an ABSENCE of information, not a phase the platform reported, and the two must
@@ -254,7 +254,7 @@ public final class ComparisonEngine
          */
         UNKNOWN,
         /**
-         * The platform reported a status this feature does not expect тАФ every remaining literal of
+         * The platform reported a status this feature does not expect — every remaining literal of
          * {@link ComparisonProcessStatus} belongs to merging, which cannot happen here. Reported
          * rather than mapped onto a comparison phase, so the raw literal reaches the caller instead
          * of a guess. There is always a literal to quote here; when there is none, the phase is
@@ -307,7 +307,7 @@ public final class ComparisonEngine
         }
 
         /**
-         * Why the status could not be READ тАФ a different fact from {@link #failure()}, which is
+         * Why the status could not be READ — a different fact from {@link #failure()}, which is
          * the comparison's own failure. This one is the exception the status read threw, already
          * logged, and it is what a caller names instead of quoting a status it never got.
          *
@@ -392,18 +392,18 @@ public final class ComparisonEngine
 
     /**
      * Releases every live comparison and uninstalls the facade. The ONLY caller is
-     * {@code EdtServices.dispose()}, and it must run BEFORE the service tracker is closed тАФ
+     * {@code EdtServices.dispose()}, and it must run BEFORE the service tracker is closed —
      * releasing a session needs the very service that is about to go away.
      *
      * <h2>Why the registry is CLOSED and not merely emptied</h2>
      * Clearing the singleton stops NEW work from finding the facade; it does nothing about work
      * already in flight. {@code BackgroundJobs.close()} waits two seconds and interrupts, and a
      * launch worker stuck in a git revision resolution or a project lookup goes on running with
-     * the OLD engine in hand тАФ so it can reach {@code sessions().register(...)} after this method
+     * the OLD engine in hand — so it can reach {@code sessions().register(...)} after this method
      * has walked the map. Emptying alone would leave that session in a registry nobody will sweep
      * again, and the comparison it is about to start would hold EDT's single slot until the JVM
      * exits under an id nothing can name. The registry therefore refuses registration from this
-     * point on, and the refusal reaches the worker as a failed launch that started nothing тАФ
+     * point on, and the refusal reaches the worker as a failed launch that started nothing —
      * an answer rather than a race.
      *
      * @return how many comparisons were released
@@ -662,7 +662,7 @@ public final class ComparisonEngine
     /**
      * Runs a task inside the comparison tree's OWN read transaction.
      * <p>
-     * This is the correct boundary and {@code BmTransactions.read(project, тАж)} is not: the nodes
+     * This is the correct boundary and {@code BmTransactions.read(project, …)} is not: the nodes
      * are objects of the comparison's private BM store, and reading them through the project's
      * store is the class of defect CLAUDE.md don't #1 names.
      *
@@ -701,7 +701,7 @@ public final class ComparisonEngine
     /**
      * Asks the engine to compare the named nodes next.
      * <p>
-     * The tree is built lazily, and an unfinished node reads back as having no children тАФ which
+     * The tree is built lazily, and an unfinished node reads back as having no children — which
      * renders as "no differences" for a subtree nobody has looked at. Prioritise the node, then
      * wait until {@link ComparisonView#topNodeStatus} reports it FINISHED, and only then read it.
      * <p>
@@ -1345,8 +1345,8 @@ public final class ComparisonEngine
      * The production backend: the one field in this bundle that holds EDT's comparison service.
      * <p>
      * It resolves the service on every call rather than caching it, so the facade behaves
-     * correctly across an unregister/register cycle. When the service is absent тАФ the state before
-     * the bundle starts and after it stops тАФ the two kinds of call answer differently, and the
+     * correctly across an unregister/register cycle. When the service is absent — the state before
+     * the bundle starts and after it stops — the two kinds of call answer differently, and the
      * asymmetry is the point: a READ answers {@link PlatformAnswer#unavailable()}, which says "the
      * question was not asked" in a form no caller can mistake for "there is nothing there"; a
      * LIFETIME call throws {@link ServiceUnavailableException}, because returning quietly from one

@@ -14,16 +14,32 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.MultiStatus;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.debug.core.ILaunch;
+import org.eclipse.debug.core.ILaunchConfiguration;
+import org.eclipse.debug.core.ILaunchManager;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import com.e1c.g5.dt.applications.ApplicationException;
+import com.e1c.g5.dt.applications.ExecutionContext;
+import com.e1c.g5.dt.applications.IApplication;
+import com.e1c.g5.dt.applications.IApplicationManager;
+import com.e1c.g5.dt.applications.IApplicationType;
 
 /**
  * Tests for {@link StandaloneServerStateRecovery}: recognising EDT's stale standalone-server
@@ -37,6 +53,9 @@ import com.e1c.g5.dt.applications.ApplicationException;
 public class StandaloneServerStateRecoveryTest
 {
     private static final String PLUGIN = "fm.giper.edt.mcp.server";
+
+    /** The standalone-server application every recovery test addresses. */
+    private static final String APPLICATION_ID = "ServerApplication.Test";
 
     private static final String HEADLINE =
         "An internal error occurred during: \"Starting Standalone server for TestBase\".";
@@ -252,6 +271,30 @@ public class StandaloneServerStateRecoveryTest
     }
 
     @Test
+    public void testStalePreflightReusesResolvedApplicationForStateRecheckAndStop()
+        throws Exception
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("TestProject"); //$NON-NLS-1$
+        IApplicationManager manager = Mockito.mock(IApplicationManager.class);
+        IApplicationType type = Mockito.mock(IApplicationType.class);
+        Mockito.when(type.getId()).thenReturn(StandaloneServerSupport.WST_SERVER_APP_TYPE);
+        IApplication application = Mockito.mock(IApplication.class,
+            Mockito.withSettings().extraInterfaces(ServerBackedApplication.class));
+        Mockito.when(application.getType()).thenReturn(type);
+        Mockito.when(((ServerBackedApplication)application).getServer())
+            .thenReturn(new FakeServer(2, null));
+
+        StandaloneServerStateRecovery.ensureStartable(project, application,
+            "ServerApplication.Test", manager); //$NON-NLS-1$
+
+        Mockito.verify(manager, Mockito.never()).getApplication(project,
+            "ServerApplication.Test"); //$NON-NLS-1$
+        Mockito.verify(manager).cleanup(Mockito.same(application),
+            Mockito.any(ExecutionContext.class), Mockito.any(IProgressMonitor.class));
+    }
+
+    @Test
     public void testAStopThatMayStillBeRunningIsNotTheSameAsOneThatNeverRan()
     {
         // The distinction the pre-flight turns on: after a stop that was merely ASKED to stop,
@@ -266,10 +309,984 @@ public class StandaloneServerStateRecoveryTest
             StandaloneServerStateRecovery.Recovery.failedInFlight("x").recovered());
     }
 
+    @Test
+    public void testNoRestorationMessageWhenThisOperationStoppedNothing()
+    {
+        int[] restores = new int[1];
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            String message = StandaloneServerStateRecovery.appendRestoration("operation failed", //$NON-NLS-1$
+                "Standalone", applicationId -> { //$NON-NLS-1$
+                    restores[0]++;
+                    return null;
+                });
+            assertNull(message);
+            assertEquals(0, restores[0]);
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testSuccessfulRestoreIsAppendedExactly()
+    {
+        int[] restores = new int[1];
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            String message = StandaloneServerStateRecovery.appendRestoration("operation failed.", //$NON-NLS-1$
+                "Standalone", applicationId -> { //$NON-NLS-1$
+                    restores[0]++;
+                    return null;
+                });
+            assertEquals("operation failed. The standalone server 'ServerApplication.Test' was " //$NON-NLS-1$
+                + "stopped for this operation and has been started again.", message); //$NON-NLS-1$
+            assertEquals(1, restores[0]);
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testRestorationSkipsAServerNowOwnedByAnotherLaunch()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("TestProject"); //$NON-NLS-1$
+        FakeServer server = new FakeServer(2, launch(false));
+        IApplication application = Mockito.mock(IApplication.class,
+            Mockito.withSettings().extraInterfaces(ServerBackedApplication.class));
+        IApplicationType type = Mockito.mock(IApplicationType.class);
+        IApplicationManager manager = Mockito.mock(IApplicationManager.class);
+        Mockito.when(type.getId()).thenReturn(StandaloneServerSupport.WST_SERVER_APP_TYPE);
+        Mockito.when(application.getType()).thenReturn(type);
+        Mockito.when(((ServerBackedApplication)application).getServer()).thenReturn(server);
+        AtomicInteger normalizingStops = new AtomicInteger();
+        AtomicInteger restores = new AtomicInteger();
+        Mockito.doAnswer(invocation -> {
+            normalizingStops.incrementAndGet();
+            server.setState(4);
+            return null;
+        }).when(manager).cleanup(Mockito.same(application), Mockito.any(ExecutionContext.class),
+            Mockito.any(IProgressMonitor.class));
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                StandaloneServerStateRecovery.restoreIfStillUnowned(project, application, server,
+                    "ServerApplication.Test", manager, 5_000L, () -> { //$NON-NLS-1$
+                        restores.incrementAndGet();
+                        return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                    });
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertEquals("a live launch must prevent stale-state normalization", //$NON-NLS-1$
+                0, normalizingStops.get());
+            assertEquals("another launch's server must not be started again", 0, restores.get()); //$NON-NLS-1$
+            assertTrue(message.contains("is already running under another launch")); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testRestorationNormalizesAStaleStartedServerBeforeRestartingIt()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("StaleRestorationProject"); //$NON-NLS-1$
+        FakeServer server = new FakeServer(2, null);
+        IApplication application = Mockito.mock(IApplication.class,
+            Mockito.withSettings().extraInterfaces(ServerBackedApplication.class));
+        IApplicationType type = Mockito.mock(IApplicationType.class);
+        IApplicationManager manager = Mockito.mock(IApplicationManager.class);
+        Mockito.when(type.getId()).thenReturn(StandaloneServerSupport.WST_SERVER_APP_TYPE);
+        Mockito.when(application.getType()).thenReturn(type);
+        Mockito.when(((ServerBackedApplication)application).getServer()).thenReturn(server);
+        AtomicInteger order = new AtomicInteger();
+        AtomicInteger normalizingStops = new AtomicInteger();
+        AtomicInteger restores = new AtomicInteger();
+        Mockito.doAnswer(invocation -> {
+            assertTrue("normalization must be the first lifecycle action", //$NON-NLS-1$
+                order.compareAndSet(0, 1));
+            normalizingStops.incrementAndGet();
+            server.setState(4);
+            return null;
+        }).when(manager).cleanup(Mockito.same(application), Mockito.any(ExecutionContext.class),
+            Mockito.any(IProgressMonitor.class));
+
+        StandaloneServerStateRecovery.restoreIfStillUnowned(project, application, server,
+            "ServerApplication.Test", manager, 10_000L, () -> { //$NON-NLS-1$
+                assertTrue("restoration must run only after stale-state normalization", //$NON-NLS-1$
+                    order.compareAndSet(1, 2));
+                restores.incrementAndGet();
+                return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+            });
+
+        assertEquals("the stale tuple must be normalized exactly once", //$NON-NLS-1$
+            1, normalizingStops.get());
+        assertEquals("the normalized server must be restored exactly once", 1, restores.get()); //$NON-NLS-1$
+        assertEquals(2, order.get());
+    }
+
+    @Test
+    public void testRestorationDispatchRequiresAnObservableRemainingWait()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("SharedDeadlineProject"); //$NON-NLS-1$
+        FakeServer normalizedServer = new FakeServer(2, null);
+        long[] normalizationAllowance = new long[1];
+        AtomicInteger shortWindowDispatches = new AtomicInteger();
+
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                StandaloneServerStateRecovery.restoreIfStillUnowned(project, normalizedServer,
+                    "ServerApplication.Test", 4_000L, normalizationTimeoutMs -> { //$NON-NLS-1$
+                        normalizationAllowance[0] = normalizationTimeoutMs;
+                        normalizedServer.setState(4);
+                        return StandaloneServerStateRecovery.Recovery.stopped();
+                    }, restorationTimeoutMs -> {
+                        shortWindowDispatches.incrementAndGet();
+                        return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                    });
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertTrue("normalization must still receive the full remaining window", //$NON-NLS-1$
+                normalizationAllowance[0] >= 3_000L);
+            assertEquals("a start with less than the observable minimum must not be dispatched", //$NON-NLS-1$
+                0, shortWindowDispatches.get());
+            assertTrue(message.contains("was stopped for this operation")); //$NON-NLS-1$
+            assertTrue("the skip must name the actionable tool", //$NON-NLS-1$
+                message.contains("launch")); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+
+        AtomicInteger observableWindowDispatches = new AtomicInteger();
+        StandaloneServerStateRecovery.restoreIfStillUnowned(project,
+            new FakeServer(4, null), "ServerApplication.Test", 10_000L, //$NON-NLS-1$
+            normalizationTimeoutMs -> {
+                throw new AssertionError("a confirmed STOPPED server must not be normalized"); //$NON-NLS-1$
+            }, restorationTimeoutMs -> {
+                observableWindowDispatches.incrementAndGet();
+                return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+            });
+        assertEquals("a start with an observable remaining wait must dispatch exactly once", //$NON-NLS-1$
+            1, observableWindowDispatches.get());
+    }
+
+    @Test
+    public void testRestorationSkipsWhenNormalizationDoesNotReachStopped()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("NormalizationTimeoutProject"); //$NON-NLS-1$
+        FakeServer server = new FakeServer(2, null);
+        long timeoutMs = 2_400L;
+        AtomicInteger restores = new AtomicInteger();
+
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                StandaloneServerStateRecovery.restoreIfStillUnowned(project, server,
+                    "ServerApplication.Test", timeoutMs, normalizationTimeoutMs -> { //$NON-NLS-1$
+                        return StandaloneServerStateRecovery.Recovery.failedInFlight(
+                            "stopping it did not finish within its allowance"); //$NON-NLS-1$
+                    }, restorationTimeoutMs -> {
+                        restores.incrementAndGet();
+                        return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                    });
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertEquals("normalization that does not confirm STOPPED must prevent restoration", //$NON-NLS-1$
+                0, restores.get());
+            assertEquals("failed normalization must leave the stale tuple", //$NON-NLS-1$
+                2, server.getServerState());
+            assertTrue(message.contains("could not be normalized to STOPPED")); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testRestorationSkipsAnUnknownServerState()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("UnknownStateProject"); //$NON-NLS-1$
+        AtomicInteger restores = new AtomicInteger();
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                StandaloneServerStateRecovery.restoreIfStillUnowned(project,
+                    new FakeServer(0, null), "ServerApplication.Test", () -> { //$NON-NLS-1$
+                        restores.incrementAndGet();
+                        return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                    });
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertEquals("UNKNOWN is not a confirmed stopped state", 0, restores.get()); //$NON-NLS-1$
+            assertTrue(message.contains("current state is UNKNOWN, not STOPPED")); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testRestorationSkipsWhenTheRecoveryLockTimesOut() throws Exception
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("LockTimeoutProject"); //$NON-NLS-1$
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger restores = new AtomicInteger();
+        Thread holder = new Thread(() -> StandaloneServerStateRecovery.holdRecoveryLockForTest(
+            project, "ServerApplication.Test", () -> { //$NON-NLS-1$
+                locked.countDown();
+                try
+                {
+                    release.await(5, TimeUnit.SECONDS);
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                }
+            }), "test: held standalone recovery lock"); //$NON-NLS-1$
+        holder.start();
+        assertTrue(locked.await(5, TimeUnit.SECONDS));
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                StandaloneServerStateRecovery.restoreIfStillUnowned(project,
+                    new FakeServer(4, null), "ServerApplication.Test", 25L, () -> { //$NON-NLS-1$
+                        restores.incrementAndGet();
+                        return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                    });
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertEquals("an unavailable recovery lock must prevent restoration", //$NON-NLS-1$
+                0, restores.get());
+            assertTrue("the caller must be told why ownership was unconfirmed", //$NON-NLS-1$
+                message.contains("recovery guard did not become available")); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+            release.countDown();
+            holder.join(5_000L);
+            assertFalse(holder.isAlive());
+        }
+    }
+
+    @Test
+    public void testRestorationSkipsAClaimedButNotYetStartedServer()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("ClaimedStartProject"); //$NON-NLS-1$
+        AtomicInteger restores = new AtomicInteger();
+        StandaloneServerStateRecovery.StartClaim claim =
+            StandaloneServerStateRecovery.claimStartWithinBound(project,
+                "ServerApplication.Test", 1_000L, null); //$NON-NLS-1$
+        assertNotNull(claim);
+        try
+        {
+            StandaloneServerStateRecovery.restoreIfStillUnowned(project,
+                new FakeServer(4, null), "ServerApplication.Test", () -> { //$NON-NLS-1$
+                    restores.incrementAndGet();
+                    return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                });
+
+            assertEquals("a claimed start must be visible before WST changes state", //$NON-NLS-1$
+                0, restores.get());
+        }
+        finally
+        {
+            claim.close();
+        }
+    }
+
+    @Test
+    public void testRestorationStillStartsAnUnownedServer()
+    {
+        IProject project = Mockito.mock(IProject.class);
+        Mockito.when(project.getName()).thenReturn("TestProject"); //$NON-NLS-1$
+        AtomicInteger restores = new AtomicInteger();
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                StandaloneServerStateRecovery.restoreIfStillUnowned(project,
+                    new FakeServer(4, null), "ServerApplication.Test", () -> { //$NON-NLS-1$
+                        restores.incrementAndGet();
+                        return new StandaloneServerStateRecovery.RestorationStartOutcome(null, true);
+                    });
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+
+            assertEquals("an unowned server must still be restored exactly once", 1, restores.get()); //$NON-NLS-1$
+            assertEquals("operation failed. The standalone server 'ServerApplication.Test' was " //$NON-NLS-1$
+                + "stopped for this operation and has been started again.", message); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testFailedRestoreIsAppendedExactly()
+    {
+        int[] restores = new int[1];
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            String message = StandaloneServerStateRecovery.appendRestoration("operation failed.", //$NON-NLS-1$
+                "Standalone for Test", applicationId -> { //$NON-NLS-1$
+                    restores[0]++;
+                    return "ports are busy"; //$NON-NLS-1$
+                });
+            assertEquals("operation failed. The standalone server 'ServerApplication.Test' was " //$NON-NLS-1$
+                + "stopped for this operation and could NOT be started again: ports are busy. " //$NON-NLS-1$
+                + "Start it with launch(launchConfigurationName='Standalone for Test').", message); //$NON-NLS-1$
+            assertEquals(1, restores[0]);
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testRestorationSchedulingFailureKeepsTheOriginalOperationFailure()
+    {
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            AtomicReference<String> launchName =
+                new AtomicReference<>("Standalone for Test"); //$NON-NLS-1$
+            StandaloneServerStateRecovery.RestorationAttempt attempt =
+                StandaloneServerStateRecovery.runRestorationAttempt(launchName, () -> {
+                    throw new IllegalStateException("Eclipse Job manager is shutting down"); //$NON-NLS-1$
+                });
+
+            String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                "database update failed", attempt.launchConfigurationName, //$NON-NLS-1$
+                applicationId -> attempt.outcome);
+
+            assertTrue("the operation failure must remain the response headline", //$NON-NLS-1$
+                message.startsWith("database update failed. ")); //$NON-NLS-1$
+            assertTrue("the scheduling failure must be subordinate restoration detail", //$NON-NLS-1$
+                message.contains("could NOT be started again: " //$NON-NLS-1$
+                    + "Eclipse Job manager is shutting down")); //$NON-NLS-1$
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testInconclusiveRestoreChecksStateBeforeRecommendingAnyStart()
+    {
+        String[] reasons = {
+            "starting it did not finish within 60s and may still be running", //$NON-NLS-1$
+            "the wait for the standalone-server start was interrupted; " //$NON-NLS-1$
+                + "the start may still be running" //$NON-NLS-1$
+        };
+        for (String reason : reasons)
+        {
+            StandaloneServerStateRecovery.beginOperation();
+            try
+            {
+                StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+                String message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                    "operation failed.", "Standalone", //$NON-NLS-1$ //$NON-NLS-2$
+                    applicationId -> new StandaloneServerStateRecovery.RestorationStartOutcome(
+                        reason, false));
+
+                assertTrue(message.contains("may still be running")); //$NON-NLS-1$
+                assertTrue(message.contains("check debug_status")); //$NON-NLS-1$
+                assertTrue(message.contains("before starting anything")); //$NON-NLS-1$
+                assertFalse("an in-flight restoration must not be reported as a definite failure", //$NON-NLS-1$
+                    message.contains("could NOT be started again")); //$NON-NLS-1$
+                assertFalse("an in-flight restoration must not recommend an immediate restart", //$NON-NLS-1$
+                    message.contains("Start it with launch")); //$NON-NLS-1$
+            }
+            finally
+            {
+                StandaloneServerStateRecovery.endOperation();
+            }
+        }
+    }
+
+    @Test
+    public void testStoppedServerRecordDoesNotLeakIntoTheNextOperation()
+    {
+        StandaloneServerStateRecovery.beginOperation();
+        StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.First"); //$NON-NLS-1$
+        StandaloneServerStateRecovery.endOperation();
+
+        StandaloneServerStateRecovery.beginOperation();
+        try
+        {
+            String message = StandaloneServerStateRecovery.appendRestoration("second failed", //$NON-NLS-1$
+                "Second", applicationId -> null); //$NON-NLS-1$
+            assertNull(message);
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.endOperation();
+        }
+    }
+
+    @Test
+    public void testRestorationKeepsThePortConfirmerArmedAroundTheStart()
+        throws Exception
+    {
+        int originalPortArms = LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest();
+        int originalConflictWatches = conflictWatchCount();
+        AtomicInteger inFlight = authInFlightCounter();
+        int originalAuth = inFlight.get();
+        LaunchUpdateDialogAutoConfirmer.armPortConflictForTest(
+            StandaloneServerPortConflictPolicy.REASSIGN,
+            "Foreign infobase", "Foreign server"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        try
+        {
+            String result = StandaloneServerStateRecovery.startRestorationWithPortGuard(
+                new FailingRestorationService(), new Object(), "ServerApplication.Test", //$NON-NLS-1$
+                null, null);
+
+            assertEquals("start failed", result); //$NON-NLS-1$
+            assertEquals(
+                "a conclusive restoration must close its conflict watch before returning", //$NON-NLS-1$
+                originalConflictWatches, conflictWatchCount());
+            assertEquals("a conclusive restoration must release its auth guard before returning", //$NON-NLS-1$
+                originalAuth, inFlight.get());
+            assertEquals("headless cleanup must not release another invocation's port guard", //$NON-NLS-1$
+                originalPortArms + 1,
+                LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest());
+        }
+        finally
+        {
+            while (LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest() > originalPortArms)
+            {
+                LaunchUpdateDialogAutoConfirmer.disarmPortConflictForTest(
+                    StandaloneServerPortConflictPolicy.REASSIGN,
+                    "Foreign infobase", "Foreign server"); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+        }
+    }
+
+    @Test
+    public void testInconclusiveRestorationKeepsThePortConfirmerArmedUntilJobCompletion()
+        throws Exception
+    {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<String> answer = new AtomicReference<>();
+        AtomicReference<Throwable> callerFailure = new AtomicReference<>();
+        AtomicInteger inFlight = authInFlightCounter();
+        int originalAuth = inFlight.get();
+        int originalPortArms = LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest();
+        int originalConflictWatches = conflictWatchCount();
+        // Seed another invocation's port arm; the headless acquisition reports false, so neither
+        // eager nor deferred cleanup may consume this marker.
+        LaunchUpdateDialogAutoConfirmer.armPortConflictForTest(
+            StandaloneServerPortConflictPolicy.REASSIGN,
+            "Foreign infobase", "Foreign server"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        Thread caller = new Thread(() -> {
+            try
+            {
+                answer.set(StandaloneServerStateRecovery.startRestorationWithPortGuard(
+                    new BlockingRestorationService(started, release), new Object(),
+                    "ServerApplication.Test", null, null, 100L, 5_000L)); //$NON-NLS-1$
+            }
+            catch (Throwable t)
+            {
+                callerFailure.set(t);
+            }
+        }, "test: bounded restoration caller"); //$NON-NLS-1$
+
+        caller.start();
+        try
+        {
+            assertTrue("the restoration start must be running before its bounded wait returns", //$NON-NLS-1$
+                started.await(5, TimeUnit.SECONDS));
+            caller.join(5_000L);
+            assertFalse("the bounded restoration caller must have returned", caller.isAlive()); //$NON-NLS-1$
+            assertNull(callerFailure.get());
+            assertNotNull(answer.get());
+            assertTrue(answer.get(), answer.get().contains(
+                "starting it did not finish within 100ms and may still be running")); //$NON-NLS-1$
+            assertFalse(answer.get(), answer.get().contains("within 60s")); //$NON-NLS-1$
+            assertEquals("the missing nested auth guard must be present while restoration is in flight", //$NON-NLS-1$
+                originalAuth + 1, inFlight.get());
+            assertEquals(
+                "the old eager conflict-watch close must be absent while restoration is in flight", //$NON-NLS-1$
+                originalConflictWatches + 1, conflictWatchCount());
+            assertEquals("headless cleanup must not release another invocation's port guard", //$NON-NLS-1$
+                originalPortArms + 1,
+                LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest());
+
+            release.countDown();
+            long deadline = System.currentTimeMillis() + 5_000L;
+            while ((inFlight.get() != originalAuth
+                || conflictWatchCount() != originalConflictWatches)
+                && System.currentTimeMillis() < deadline)
+            {
+                Thread.sleep(10L);
+            }
+            assertEquals("Job completion must release the restoration auth guard", //$NON-NLS-1$
+                originalAuth, inFlight.get());
+            assertEquals("Job completion must close the restoration conflict watch", //$NON-NLS-1$
+                originalConflictWatches, conflictWatchCount());
+            assertEquals("Job completion must leave another invocation's port guard armed", //$NON-NLS-1$
+                originalPortArms + 1,
+                LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest());
+        }
+        finally
+        {
+            release.countDown();
+            caller.join(5_000L);
+            long cleanupDeadline = System.currentTimeMillis() + 5_000L;
+            while ((inFlight.get() != originalAuth
+                || conflictWatchCount() != originalConflictWatches)
+                && System.currentTimeMillis() < cleanupDeadline)
+            {
+                Thread.sleep(10L);
+            }
+            while (LaunchUpdateDialogAutoConfirmer.portConflictArmsForTest() > originalPortArms)
+            {
+                LaunchUpdateDialogAutoConfirmer.disarmPortConflictForTest(
+                    StandaloneServerPortConflictPolicy.REASSIGN,
+                    "Foreign infobase", "Foreign server"); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+        }
+    }
+
+    @Test
+    public void testRestorationApplicationLookupReturnsOnItsDeadline() throws Exception
+    {
+        IApplicationManager manager = Mockito.mock(IApplicationManager.class);
+        IProject project = Mockito.mock(IProject.class);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        Mockito.when(manager.getApplication(project, "ServerApplication.Test")) //$NON-NLS-1$
+            .thenAnswer(invocation -> {
+                started.countDown();
+                try
+                {
+                    release.await(30, TimeUnit.SECONDS);
+                    return Optional.<IApplication>empty();
+                }
+                finally
+                {
+                    finished.countDown();
+                }
+            });
+
+        try
+        {
+            StandaloneServerSupport.ApplicationLookup lookup =
+                StandaloneServerSupport.lookupApplicationBounded(manager, project,
+                    "ServerApplication.Test", 250L); //$NON-NLS-1$
+
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            assertNull(lookup.application());
+            assertNotNull(lookup.failure());
+            assertTrue(lookup.failure().contains("did not finish within 250ms")); //$NON-NLS-1$
+            assertTrue(lookup.failure().contains("may still be running")); //$NON-NLS-1$
+            assertFalse("the old unbounded restoration lookup must not report measured absence", //$NON-NLS-1$
+                lookup.failure().contains("was not found")); //$NON-NLS-1$
+        }
+        finally
+        {
+            release.countDown();
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void testRestorationReportsAPortConflictInsteadOfATimeout()
+    {
+        String result = StandaloneServerStateRecovery.startRestorationWithPortGuard(
+            new PortConflictingRestorationService(), new Object(), "ServerApplication.Test", //$NON-NLS-1$
+            null, null);
+
+        assertNotNull(result);
+        assertTrue(result.contains("network ports are already in use")); //$NON-NLS-1$
+        assertFalse(result.contains("did not finish within")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAttributedAbandonmentRestoresAStoppedServerBeforeTheRecordIsCleared()
+        throws Exception
+    {
+        ILaunchConfiguration config = Mockito.mock(ILaunchConfiguration.class);
+        Mockito.when(config.getName()).thenReturn("Cancelled launch"); //$NON-NLS-1$
+        Mockito.when(config.getAttribute(LaunchConfigUtils.ATTR_PROJECT_NAME, "")) //$NON-NLS-1$
+            .thenReturn(""); //$NON-NLS-1$
+        Mockito.when(config.getAttribute(LaunchConfigUtils.ATTR_APPLICATION_ID, "")) //$NON-NLS-1$
+            .thenReturn("InfobaseApplication.Test"); //$NON-NLS-1$
+        Mockito.doAnswer(invocation -> {
+            StandaloneServerStateRecovery.recordStoppedServer("ServerApplication.Test"); //$NON-NLS-1$
+            ((IProgressMonitor)invocation.getArgument(1)).setCanceled(true);
+            return Mockito.mock(ILaunch.class);
+        }).when(config).launch(Mockito.eq(ILaunchManager.DEBUG_MODE),
+            Mockito.any(IProgressMonitor.class));
+
+        try
+        {
+            StandaloneServerStateRecovery.launchWithRecovery(config, ILaunchManager.DEBUG_MODE,
+                new NullProgressMonitor(), () -> "launch was abandoned"); //$NON-NLS-1$
+            throw new AssertionError("an attributed cancellation must fail the launch"); //$NON-NLS-1$
+        }
+        catch (CoreException failure)
+        {
+            assertTrue(StandaloneServerStateRecovery.isAbandonedLaunch(failure));
+            assertTrue(failure.getMessage().contains("launch was abandoned")); //$NON-NLS-1$
+            assertTrue(failure.getMessage().contains(
+                "was stopped for this operation and could NOT be started again")); //$NON-NLS-1$
+        }
+    }
+
+    // ==================== a stop that outlives the wait for it (#623) ====================
+
+    @Test
+    public void testAStopStillInFlightRefusesAnUnrelatedLaterStart() throws Exception
+    {
+        WedgedStop wedged = new WedgedStop("InFlightStopProject"); //$NON-NLS-1$
+        try
+        {
+            wedged.dispatchAndAbandon();
+            assertEquals("the wedged cleanup reached STOPPED before it stopped answering", //$NON-NLS-1$
+                4, wedged.server.getServerState());
+
+            // The unrelated later operation. It knows nothing about the wedged cleanup, and the
+            // state it reads is a perfectly startable one - so only the guard can refuse it.
+            assertRefusedWhileStopping(wedged);
+
+            assertEquals("the refusal must come from the guard, not from a second cleanup", //$NON-NLS-1$
+                1, wedged.cleanups.get());
+        }
+        finally
+        {
+            wedged.close();
+        }
+    }
+
+    @Test
+    public void testTheBoundedPreflightAlsoRefusesWhileAStopMayStillBeRunning() throws Exception
+    {
+        WedgedStop wedged = new WedgedStop("InFlightStopBoundedProject"); //$NON-NLS-1$
+        try
+        {
+            wedged.dispatchAndAbandon();
+            try
+            {
+                StandaloneServerStateRecovery.ensureStartableWithinBound(wedged.project,
+                    wedged.application, wedged.server, APPLICATION_ID, wedged.manager, null, null,
+                    null);
+                throw new AssertionError("the bounded pre-flight must refuse a start while a " //$NON-NLS-1$
+                    + "dispatched stop of the same server may still be running"); //$NON-NLS-1$
+            }
+            catch (ApplicationException refused)
+            {
+                assertTrue(refused.getMessage(),
+                    refused.getMessage().contains("an earlier stop of it started")); //$NON-NLS-1$
+            }
+            assertEquals(1, wedged.cleanups.get());
+        }
+        finally
+        {
+            wedged.close();
+        }
+    }
+
+    @Test
+    public void testAStopStillInFlightRefusesTheBoundedStartClaim() throws Exception
+    {
+        WedgedStop wedged = new WedgedStop("InFlightStopClaimProject"); //$NON-NLS-1$
+        try
+        {
+            wedged.dispatchAndAbandon();
+            assertNull("a start claim is ownership, and the wedged cleanup still holds it", //$NON-NLS-1$
+                StandaloneServerStateRecovery.claimStartWithinBound(wedged.project,
+                    APPLICATION_ID, 1_000L, null));
+
+            wedged.finishCleanup();
+            assertTrue("the claim must be grantable again once the cleanup finished", //$NON-NLS-1$
+                wedged.awaitOwnershipReleased(10_000L));
+        }
+        finally
+        {
+            wedged.close();
+        }
+    }
+
+    @Test
+    public void testRestorationSkipsAServerWhoseStopMayStillBeRunning() throws Exception
+    {
+        WedgedStop wedged = new WedgedStop("InFlightStopRestorationProject"); //$NON-NLS-1$
+        try
+        {
+            wedged.dispatchAndAbandon();
+            AtomicInteger restores = new AtomicInteger();
+            String message;
+            StandaloneServerStateRecovery.beginOperation();
+            try
+            {
+                StandaloneServerStateRecovery.recordStoppedServer(APPLICATION_ID);
+                StandaloneServerStateRecovery.RestorationStartOutcome outcome =
+                    StandaloneServerStateRecovery.restoreIfStillUnowned(wedged.project,
+                        new FakeServer(4, null), APPLICATION_ID, () -> {
+                            restores.incrementAndGet();
+                            return new StandaloneServerStateRecovery.RestorationStartOutcome(null,
+                                true);
+                        });
+                message = StandaloneServerStateRecovery.appendRestorationOutcome(
+                    "operation failed.", "Standalone", applicationId -> outcome); //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            finally
+            {
+                StandaloneServerStateRecovery.endOperation();
+            }
+
+            assertEquals("restoring would start the very server the wedged cleanup takes down", //$NON-NLS-1$
+                0, restores.get());
+            assertTrue(message, message.contains("an earlier stop of it started")); //$NON-NLS-1$
+        }
+        finally
+        {
+            wedged.close();
+        }
+    }
+
+    @Test
+    public void testTheStopRecordIsReleasedWhenTheWedgedCleanupFinishes() throws Exception
+    {
+        WedgedStop wedged = new WedgedStop("InFlightStopReleaseProject"); //$NON-NLS-1$
+        try
+        {
+            wedged.dispatchAndAbandon();
+            // Proves the release below is not vacuous: without this, a guard that never took
+            // ownership at all would pass the rest of this test.
+            assertRefusedWhileStopping(wedged);
+
+            wedged.finishCleanup();
+            // Stale again, so a guard that HAS handed ownership back has visible work to do.
+            wedged.server.setState(2);
+
+            long deadline = System.currentTimeMillis() + 10_000L;
+            String lastRefusal = null;
+            boolean proceeded = false;
+            while (System.currentTimeMillis() < deadline)
+            {
+                try
+                {
+                    StandaloneServerStateRecovery.ensureStartable(wedged.project,
+                        wedged.application, APPLICATION_ID, wedged.manager);
+                    proceeded = true;
+                    break;
+                }
+                catch (ApplicationException stillRefused)
+                {
+                    lastRefusal = stillRefused.getMessage();
+                    Thread.sleep(20L);
+                }
+            }
+
+            assertTrue("a finished cleanup must stop refusing later starts, or one hung stop " //$NON-NLS-1$
+                + "refuses this application until EDT restarts: " + lastRefusal, proceeded); //$NON-NLS-1$
+            assertEquals("the released guard must let the later start run its own stale stop", //$NON-NLS-1$
+                2, wedged.cleanups.get());
+            assertEquals(4, wedged.server.getServerState());
+        }
+        finally
+        {
+            wedged.close();
+        }
+    }
+
+    @Test
+    public void testTheStopRecordCannotOutliveItsHardCap() throws Exception
+    {
+        long originalCap = StandaloneServerStateRecovery.stopInFlightCapMs;
+        StandaloneServerStateRecovery.stopInFlightCapMs = 150L;
+        WedgedStop wedged = new WedgedStop("InFlightStopCapProject"); //$NON-NLS-1$
+        try
+        {
+            wedged.dispatchAndAbandon();
+            // The cleanup is still wedged and nothing will ever report it finished. A record that
+            // waited only for that report would refuse every start of this application until EDT
+            // restarts - worse than the defect it closes.
+            assertTrue("the hard cap must hand ownership back with the cleanup still wedged", //$NON-NLS-1$
+                wedged.awaitOwnershipReleased(10_000L));
+        }
+        finally
+        {
+            StandaloneServerStateRecovery.stopInFlightCapMs = originalCap;
+            wedged.close();
+        }
+    }
+
+    /** Asserts the pre-flight refuses an unrelated start, and says why and what to do. */
+    private static void assertRefusedWhileStopping(WedgedStop wedged)
+    {
+        try
+        {
+            StandaloneServerStateRecovery.ensureStartable(wedged.project, wedged.application,
+                APPLICATION_ID, wedged.manager);
+            throw new AssertionError("a start must not proceed while a dispatched stop of the " //$NON-NLS-1$
+                + "same server may still be running"); //$NON-NLS-1$
+        }
+        catch (ApplicationException refused)
+        {
+            assertTrue(refused.getMessage(),
+                refused.getMessage().contains("an earlier stop of it started")); //$NON-NLS-1$
+            assertTrue("the refusal must name the way out", //$NON-NLS-1$
+                refused.getMessage().contains("Wait for it to finish")); //$NON-NLS-1$
+        }
+    }
+
+    /**
+     * The #623 fixture: a stale server whose stop is dispatched, gets as far as {@code STOPPED},
+     * and then stops answering - so the bounded wait for it returns while the cleanup runs on.
+     */
+    private static final class WedgedStop implements AutoCloseable
+    {
+        final IProject project;
+        final IApplication application;
+        final FakeServer server = new FakeServer(2, null);
+        final IApplicationManager manager = Mockito.mock(IApplicationManager.class);
+        final AtomicInteger cleanups = new AtomicInteger();
+        private final CountDownLatch dispatched = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        WedgedStop(String projectName)
+        {
+            project = Mockito.mock(IProject.class);
+            Mockito.when(project.getName()).thenReturn(projectName);
+            IApplicationType type = Mockito.mock(IApplicationType.class);
+            Mockito.when(type.getId()).thenReturn(StandaloneServerSupport.WST_SERVER_APP_TYPE);
+            application = Mockito.mock(IApplication.class,
+                Mockito.withSettings().extraInterfaces(ServerBackedApplication.class));
+            Mockito.when(application.getType()).thenReturn(type);
+            Mockito.when(((ServerBackedApplication)application).getServer()).thenReturn(server);
+            Mockito.doAnswer(invocation -> {
+                server.setState(4);
+                if (cleanups.incrementAndGet() == 1)
+                {
+                    dispatched.countDown();
+                    release.await(30, TimeUnit.SECONDS);
+                }
+                return null;
+            }).when(manager).cleanup(Mockito.same(application), Mockito.any(ExecutionContext.class),
+                Mockito.any(IProgressMonitor.class));
+        }
+
+        /**
+         * Runs the real guarded stop and makes its bounded wait give up while the cleanup runs on.
+         *
+         * <p>The wait is ABANDONED rather than timed out, and on its own thread: a short deadline
+         * would race the Job scheduler, and a job the deadline caught before it started is a
+         * conclusive outcome that reproduces nothing. Waiting for the cleanup to enter and then
+         * interrupting the waiter reproduces the same in-flight outcome with no timing assumption,
+         * and leaves no interrupt flag on the thread running the test.
+         */
+        void dispatchAndAbandon() throws InterruptedException
+        {
+            Thread dispatcher = new Thread(
+                () -> StandaloneServerStateRecovery.restoreIfStillUnowned(project, application,
+                    server, APPLICATION_ID, manager, 30_000L, () -> {
+                        throw new AssertionError(
+                            "an unfinished stop must not reach the restoration start"); //$NON-NLS-1$
+                    }),
+                "test: abandoned standalone-server stop"); //$NON-NLS-1$
+            dispatcher.setDaemon(true);
+            dispatcher.start();
+            assertTrue("the wedged cleanup must be running by now", //$NON-NLS-1$
+                dispatched.await(10, TimeUnit.SECONDS));
+            // Re-interrupted until it lands: an interrupt raised in a window where the waiter is
+            // not blocked yet only sets a flag the platform's join may clear again.
+            long deadline = System.currentTimeMillis() + 30_000L;
+            while (dispatcher.isAlive() && System.currentTimeMillis() < deadline)
+            {
+                dispatcher.interrupt();
+                dispatcher.join(200L);
+            }
+            assertFalse("the bounded caller must have given up on the wedged cleanup", //$NON-NLS-1$
+                dispatcher.isAlive());
+        }
+
+        /** Lets EDT's cleanup return at last. */
+        void finishCleanup()
+        {
+            release.countDown();
+        }
+
+        /** Whether the guard hands a start claim out again within {@code timeoutMs}. */
+        boolean awaitOwnershipReleased(long timeoutMs) throws InterruptedException
+        {
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            while (System.currentTimeMillis() < deadline)
+            {
+                StandaloneServerStateRecovery.StartClaim claim =
+                    StandaloneServerStateRecovery.claimStartWithinBound(project, APPLICATION_ID,
+                        200L, null);
+                if (claim != null)
+                {
+                    claim.close();
+                    return true;
+                }
+                Thread.sleep(20L);
+            }
+            return false;
+        }
+
+        @Override
+        public void close() throws InterruptedException
+        {
+            finishCleanup();
+            awaitOwnershipReleased(10_000L);
+        }
+    }
+
     /** A WST server as the pre-flight addresses it: by the two public accessors it reads. */
     public static final class FakeServer
     {
-        private final int state;
+        private volatile int state;
         private final Object launch;
 
         FakeServer(int state, Object launch)
@@ -283,9 +1300,89 @@ public class StandaloneServerStateRecoveryTest
             return state;
         }
 
+        void setState(int state)
+        {
+            this.state = state;
+        }
+
         public Object getLaunch()
         {
             return launch;
+        }
+    }
+
+    /** The reflective server accessor exposed by EDT's standalone-server application. */
+    public interface ServerBackedApplication
+    {
+        Object getServer();
+    }
+
+    /** A restoration service that exposes the port conflict captured by its guarded window. */
+    public static final class PortConflictingRestorationService
+    {
+        public IStatus startServer(Object server, String launchMode, Object monitor)
+        {
+            LaunchUpdateDialogAutoConfirmer.recordPortConflictForTest(
+                "8429 - HTTP gate port"); //$NON-NLS-1$
+            return new Status(IStatus.ERROR, PLUGIN,
+                "starting it did not finish within 60s"); //$NON-NLS-1$
+        }
+    }
+
+    /** A conclusive restoration failure used to verify immediate composite-guard cleanup. */
+    public static final class FailingRestorationService
+    {
+        public IStatus startServer(Object server, String launchMode, Object monitor)
+        {
+            return new Status(IStatus.ERROR, PLUGIN, "start failed"); //$NON-NLS-1$
+        }
+    }
+
+    /** A restoration start that ignores cancellation until the test releases it. */
+    public static final class BlockingRestorationService
+    {
+        private final CountDownLatch started;
+        private final CountDownLatch release;
+
+        BlockingRestorationService(CountDownLatch started, CountDownLatch release)
+        {
+            this.started = started;
+            this.release = release;
+        }
+
+        public IStatus startServer(Object server, String launchMode, Object monitor)
+        {
+            started.countDown();
+            try
+            {
+                release.await(30, TimeUnit.SECONDS);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+            return Status.OK_STATUS;
+        }
+    }
+
+    private static AtomicInteger authInFlightCounter() throws Exception
+    {
+        Field field = InfobaseAuthDialogSuppressor.class.getDeclaredField("IN_FLIGHT"); //$NON-NLS-1$
+        field.setAccessible(true);
+        return (AtomicInteger)field.get(null);
+    }
+
+    private static int conflictWatchCount() throws Exception
+    {
+        Field lockField = LaunchUpdateDialogAutoConfirmer.class.getDeclaredField("LOCK"); //$NON-NLS-1$
+        lockField.setAccessible(true);
+        Object lock = lockField.get(null);
+        Field watchesField = LaunchUpdateDialogAutoConfirmer.class.getDeclaredField(
+            "CONFLICT_WATCHES"); //$NON-NLS-1$
+        watchesField.setAccessible(true);
+        synchronized (lock)
+        {
+            return ((java.util.List<?>)watchesField.get(null)).size();
         }
     }
 

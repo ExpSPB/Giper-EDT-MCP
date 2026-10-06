@@ -112,7 +112,7 @@ public class ListBreakpointsTool implements IMcpTool
             {
                 continue;
             }
-            // IResource.getProject() is null for a marker on the workspace root тАФ
+            // IResource.getProject() is null for a marker on the workspace root —
             // non-exception root markers are outside this tool's BSL breakpoint surface.
             IProject project = m.getResource().getProject();
             if (project == null)

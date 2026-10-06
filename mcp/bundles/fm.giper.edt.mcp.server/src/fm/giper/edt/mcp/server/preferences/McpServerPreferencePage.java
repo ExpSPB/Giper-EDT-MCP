@@ -157,6 +157,9 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
                 {
                     Activator.logError("Failed to restart MCP Server after transport change", e); //$NON-NLS-1$
                 }
+                // Reflect the live listener after the page's restart, including a refused restart
+                // that deliberately kept the previous listener running.
+                generalTab.refreshServerState();
             }
         }
 

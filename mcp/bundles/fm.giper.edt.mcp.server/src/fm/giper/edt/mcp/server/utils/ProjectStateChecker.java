@@ -149,11 +149,18 @@ public final class ProjectStateChecker
      * AFTER_SYNC and BEFORE_BUILD buckets, and the only way to ask about it is
      * {@code waitImportantDataComputations} - a WAIT that its own timeout does not bound, which then
      * needs a job wrapper and a one-in-flight claim whose ownership rules produced a defect on every
-     * attempt. Naming the segments makes this a pure query that cannot block, and makes the
+     * attempt. The gate therefore does not call it: naming the segments lets
+     * {@code isComputed(MODEL_SEGMENTS)} answer as a pure query that cannot block, and makes the
      * assumption reviewable, which a wait never was.
      */
     private static final java.util.List<String> MODEL_SEGMENTS =
         java.util.Arrays.asList("MD", "FORM"); //$NON-NLS-1$ //$NON-NLS-2$
+
+    /** Shared immutable model segment IDs for lifecycle-specific completion checks. */
+    static List<String> modelSegments()
+    {
+        return List.copyOf(MODEL_SEGMENTS);
+    }
 
     /** The DT project behind a workspace project, or {@code null} when it is not an EDT project. */
     private static IDtProject resolveDtProject(IProject project)
@@ -271,13 +278,12 @@ public final class ProjectStateChecker
      * {@code LanguageCheckDerivedDataComputer}, {@code MarkerCleanerDerivedDataComputer} - runs
      * through {@code executeReadonlyTask}. The check bundle contains no read-write BM task at all.
      * <p>
-     * The question is asked through {@code waitImportantDataComputations}, the platform's own wait on
-     * the segments that must be complete during the incremental phase, because that is the ONLY form
-     * of the question that accounts for QUEUED work: it begins with
-     * {@code contextManager.waitAccumulatedContextProcessing}. Inferring readiness from the active
-     * pipeline STAGE does not - a change arriving during a long post-build check enqueues model work
-     * in an earlier bucket while the reported stage stays {@code AFTER_BUILD}. The timeout must stay
-     * POSITIVE: with {@code timeout <= 0} the platform waits on its task condition without a bound.
+     * The question is asked as PURE QUERIES that cannot block - no wait, no job, no claim (see
+     * {@link #isModelDataComputed(IDerivedDataManager)}): {@code isComputed} on the named model
+     * segments, bracketed by two reads of whether a model synchronisation is pending. Inferring
+     * readiness from the active pipeline STAGE is not used - a change arriving during a long
+     * post-build check enqueues model work in an earlier bucket while the reported stage stays
+     * {@code AFTER_BUILD}.
      *
      * @param project the project the caller wants to edit (a {@code null} project skips the check)
      * @return an actionable error, or {@code null} when the model may be edited
@@ -327,6 +333,11 @@ public final class ProjectStateChecker
     /**
      * Probes whether the platform's IMPORTANT (model and index) computations are complete, without
      * waiting for validation. See {@link #modelBuildingErrorOrNull(IProject)} for why this shape.
+     * <p>
+     * Ready means: no model synchronisation pending (see
+     * {@link #isModelSyncPending(IDerivedDataManager)}), the {@link #MODEL_SEGMENTS} computed, and
+     * still no synchronisation pending after that. The segment check is required in every case -
+     * an empty pipeline never stands in for it.
      *
      * @param ddManager the project's derived-data manager
      * @return {@code true} only when the important computations are proven complete
@@ -335,24 +346,7 @@ public final class ProjectStateChecker
     {
         try
         {
-            // An ACTIVE model synchronisation is tracked separately from the pipeline, so its model
-            // contexts may not be enqueued yet and the segments below would still read as computed
-            // for the PREVIOUS model.
-            if (isModelSyncActive(ddManager))
-            {
-                return false;
-            }
-            // A PURE query: isComputed takes the pipeline read lock and returns, with no wait, no
-            // job and no claim to hand back. This replaces a waitImportantDataComputations probe
-            // that had to be wrapped in a BoundedJob (the platform call is not bounded by its own
-            // timeout) and guarded against accumulating stuck jobs - machinery whose ownership rules
-            // produced a defect on every attempt. Asking a question that cannot block removes that
-            // whole class instead of patching it again.
-            if (!ddManager.isComputed(MODEL_SEGMENTS))
-            {
-                return false;
-            }
-            return !isModelSyncActive(ddManager);
+            return isModelDataComputed(ddManager, false);
         }
         catch (RuntimeException e)
         {
@@ -363,26 +357,87 @@ public final class ProjectStateChecker
         }
     }
 
+    /** Checked lifecycle callers must propagate an SDK probe failure rather than poll/log it. */
+    static boolean isModelDataComputedChecked(IDerivedDataManager ddManager)
+    {
+        return isModelDataComputed(ddManager, true);
+    }
+
+    private static boolean isModelDataComputed(IDerivedDataManager ddManager, boolean checked)
+    {
+        // A model synchronisation with scheduled work may have model contexts the segments below
+        // do not reflect yet, so they could still read as computed for the PREVIOUS model.
+        if ((checked ? isModelSyncPendingChecked(ddManager) : isModelSyncPending(ddManager)))
+        {
+            return false;
+        }
+        // A PURE query: isComputed takes the pipeline read lock and returns, with no wait, no
+        // job and no claim to hand back. This replaces a waitImportantDataComputations probe
+        // that had to be wrapped in a BoundedJob (the platform call is not bounded by its own
+        // timeout) and guarded against accumulating stuck jobs - machinery whose ownership rules
+        // produced a defect on every attempt. Asking a question that cannot block removes that
+        // whole class instead of patching it again.
+        if (!ddManager.isComputed(MODEL_SEGMENTS))
+        {
+            return false;
+        }
+        // Asked again with the SAME predicate: a synchronisation that began during the probe.
+        return !(checked ? isModelSyncPendingChecked(ddManager) : isModelSyncPending(ddManager));
+    }
+
     /**
-     * Whether the model is being synchronised - or whether that cannot be established, which counts
-     * the same way. Synchronisation is tracked separately from the pipeline, so an active one means
-     * model and index contexts that are not enqueued yet.
+     * Whether a model synchronisation is pending - or whether that cannot be established, which
+     * counts the same way.
+     * <p>
+     * Pending means the CACHED {@code DerivedDataStatus.isModelSyncActive()} is {@code true} AND the
+     * live pipeline is not empty ({@code !isAllComputed()}). The flag alone is not enough (issue
+     * #699): the platform writes it only when derived-data work is scheduled, activated or
+     * recovered, or a computation ends or is unblocked, and the end of a background synchronisation
+     * does not refresh it - so after an import whose work finished while the synchronisation still
+     * counted as active, the flag stays {@code true} with nothing scheduled, and a gate on the flag
+     * alone refused every metadata write until something else scheduled derived-data work.
+     * Synchronisation work, once its contexts are scheduled into the pipeline, both refreshes the
+     * flag and makes the pipeline non-empty, so it is still refused.
+     * <p>
+     * The boundary, stated: the newly admitted window is "flag {@code true}, nothing scheduled in
+     * the pipeline". {@code isAllComputed()} sees only contexts already scheduled into the pipeline,
+     * not those still accumulated in the platform's context manager, so this window covers both a
+     * synchronisation that has not scheduled anything yet and the pauses BETWEEN batches of a
+     * running one (one batch computed, the next still accumulating). Both are the same class of
+     * state the gate already admitted before the flag flips (a synchronisation active with an empty
+     * pipeline). And {@code isAllComputed()} also
+     * covers the post-build validation (#495), so with a stale flag AND a long validation running
+     * the gate stays shut exactly as it did before this change - never worse than the flag alone.
+     * <p>
+     * Fail closed: a {@code null} status, a status read that throws, or a pipeline probe that throws
+     * all count as pending.
      *
      * @param ddManager the project's derived-data manager
-     * @return {@code true} when a synchronisation is active OR the status could not be read
+     * @return {@code true} when a synchronisation with scheduled work is active, OR the status or the
+     *     pipeline state could not be read
      */
-    private static boolean isModelSyncActive(IDerivedDataManager ddManager)
+    private static boolean isModelSyncPending(IDerivedDataManager ddManager)
     {
         try
         {
-            DerivedDataStatus status = ddManager.getDerivedDataStatus();
-            return status == null || status.isModelSyncActive();
+            return isModelSyncPendingChecked(ddManager);
         }
         catch (RuntimeException e)
         {
-            Activator.logError("Cannot read the derived-data status; treating it as not ready", e); //$NON-NLS-1$
+            Activator.logError("Cannot read the derived-data status or the pipeline state; " //$NON-NLS-1$
+                + "treating it as not ready", e); //$NON-NLS-1$
             return true;
         }
+    }
+
+    private static boolean isModelSyncPendingChecked(IDerivedDataManager ddManager)
+    {
+        DerivedDataStatus status = ddManager.getDerivedDataStatus();
+        if (status == null)
+        {
+            return true;
+        }
+        return status.isModelSyncActive() && !ddManager.isAllComputed();
     }
 
     /**
@@ -444,6 +499,24 @@ public final class ProjectStateChecker
             return result.getMessage() + ". Please wait and retry."; //$NON-NLS-1$
         }
         return null;
+    }
+
+    /**
+     * Whether {@code project} carries a nature of a project that can own a BM model.
+     *
+     * <p>The permanent, description-level answer to "is this an EDT project at all?", as opposed to
+     * {@link IDtProjectManager#getDtProject(IProject)}, which additionally requires EDT to have
+     * STARTED the project's context. The two together separate an un-started EDT project (nature
+     * yes, DtProject no - recoverable, and worth saying so) from a plain Eclipse project (nature
+     * no - not this plugin's business).
+     *
+     * @param project the project to inspect (may be {@code null})
+     * @return {@code TRUE}/{@code FALSE} when the natures could be read, and {@code null} when they
+     *     could NOT be determined at all - which is never the same statement as "no"
+     */
+    public static Boolean hasBmModelProjectNature(IProject project)
+    {
+        return ProjectContext.hasAnyNature(project, BM_MODEL_PROJECT_NATURES);
     }
 
     /**
@@ -1353,7 +1426,7 @@ public final class ProjectStateChecker
             @Override
             public Boolean hasBmModelProjectNature(IProject project)
             {
-                return ProjectContext.hasAnyNature(project, BM_MODEL_PROJECT_NATURES);
+                return ProjectStateChecker.hasBmModelProjectNature(project);
             }
 
             @Override

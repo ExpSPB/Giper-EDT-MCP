@@ -29,7 +29,7 @@ import com.e1c.g5.dt.applications.ApplicationException;
  * away in the {@link IStatus} tree.
  *
  * <p>The cases are the shapes the platform actually produces on the standalone-server update
- * path тАФ a cancelled server operation carries {@code Status.CANCEL_STATUS}, whose message is the
+ * path — a cancelled server operation carries {@code Status.CANCEL_STATUS}, whose message is the
  * empty string, and EDT's publish results are {@code MultiStatus} trees whose reason sits in a
  * child.
  *
@@ -100,8 +100,8 @@ public class PlatformFailuresTest
     @Test
     public void testBlankMessageFallsBackToTheStatusTree()
     {
-        // ApplicationException(IStatus) copies status.getMessage() тАФ the EMPTY STRING for a
-        // cancelled server operation тАФ so the exception's own message must not be trusted.
+        // ApplicationException(IStatus) copies status.getMessage() — the EMPTY STRING for a
+        // cancelled server operation — so the exception's own message must not be trusted.
         MultiStatus status = new MultiStatus(PLUGIN, 0, "", null);
         status.add(new Status(IStatus.ERROR, PLUGIN, "Server \"S\" start attempt failed."));
         String described = PlatformFailures.describe(new ApplicationException(status));
@@ -174,7 +174,7 @@ public class PlatformFailuresTest
     public void testTextlessCancelIsNamedByItsSeverity()
     {
         // The exact shape of an auto-cancelled standalone-server operation: nothing anywhere in
-        // the failure carries text, so the severity IS the diagnosis тАФ and "Database update
+        // the failure carries text, so the severity IS the diagnosis — and "Database update
         // failed: " with nothing after it is what this replaces.
         String described = PlatformFailures.describe(new ApplicationException(Status.CANCEL_STATUS));
         assertTrue("a textless failure must name the exception type",
@@ -383,6 +383,35 @@ public class PlatformFailuresTest
 
         assertEquals("equal selected and terminal messages must not be repeated", "", //$NON-NLS-1$ //$NON-NLS-2$
             rootCause(failure));
+    }
+
+    @Test
+    public void testDescribeStatusAppendsItsDeepestDistinctCause()
+    {
+        String cause = "another process still owns the standalone server ports"; //$NON-NLS-1$
+        IStatus status = new Status(IStatus.ERROR, PLUGIN, "server start failed", //$NON-NLS-1$
+            new RuntimeException("start operation failed", new IllegalStateException(cause))); //$NON-NLS-1$
+
+        assertEquals("server start failed Caused by: " + cause, //$NON-NLS-1$
+            PlatformFailures.describeStatus(status));
+    }
+
+    @Test
+    public void testDescribeStatusDoesNotRepeatItsHeadlineAsTheCause()
+    {
+        String headline = "server start failed"; //$NON-NLS-1$
+        IStatus status = new Status(IStatus.ERROR, PLUGIN, headline,
+            new IllegalStateException(headline));
+
+        assertEquals(headline, PlatformFailures.describeStatus(status));
+    }
+
+    @Test
+    public void testDescribeStatusWithoutAnExceptionReturnsItsMessage()
+    {
+        IStatus status = new Status(IStatus.ERROR, PLUGIN, "server start failed"); //$NON-NLS-1$
+
+        assertEquals("server start failed", PlatformFailures.describeStatus(status)); //$NON-NLS-1$
     }
 
     @Test

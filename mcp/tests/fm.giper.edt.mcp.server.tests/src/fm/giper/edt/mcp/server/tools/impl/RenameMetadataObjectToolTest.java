@@ -793,4 +793,21 @@ public class RenameMetadataObjectToolTest
             Thread.currentThread().interrupt();
         }
     }
+
+    @Test
+    public void testDerivedDataWaitTimeoutNamesWaitWithoutClaimingConsentOrCommit() throws Exception
+    {
+        java.lang.reflect.Method timeout = RenameMetadataObjectTool.class.getDeclaredMethod(
+            "timeoutError", String.class, String.class, boolean.class, long.class, RenameProgress.Phase.class);
+        timeout.setAccessible(true);
+        String result = (String)timeout.invoke(null, "Catalog.Products", "Goods", true,
+            60_000L, RenameProgress.Phase.WAITING_FOR_DERIVED_DATA);
+        assertTrue(result.contains("pending project work"));
+        assertFalse(result.contains("consent gate"));
+        assertFalse(result.contains("PARTIALLY renamed"));
+        assertFalse(result.contains("mutationCommitted"));
+        assertTrue(result.contains("may still apply"));
+        assertTrue(result.contains("mutationOutcomeUnknown"));
+    }
+
 }

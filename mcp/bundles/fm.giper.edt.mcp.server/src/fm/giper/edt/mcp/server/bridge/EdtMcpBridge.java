@@ -9,6 +9,7 @@ package fm.giper.edt.mcp.server.bridge;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -46,7 +47,7 @@ import com.google.gson.JsonSyntaxException;
  * In-process Workmate has no HTTP session: the next {@link #callTool} sees the
  * current repository snapshot immediately.
  */
-public class EdtMcpBridge implements IEdtMcpBridge
+public class EdtMcpBridge implements IEdtMcpBridge, BiFunction<String, String, String>, Supplier<String>
 {
     private static final long BRIDGE_REQUEST_ID = 1L;
 
@@ -54,10 +55,24 @@ public class EdtMcpBridge implements IEdtMcpBridge
     private final McpProtocolHandler protocolHandler;
     private final Supplier<ToolProfileSnapshot> snapshotSupplier;
 
+    /** JDK alias keeps the same default-profile policy as the public bridge. */
+    @Override
+    public String apply(String toolName, String argsJson)
+    {
+        return callTool(toolName, argsJson);
+    }
+
+    /** JDK alias keeps the same default-profile policy as the public bridge. */
+    @Override
+    public String get()
+    {
+        return listTools();
+    }
+
     /** Creates a bridge backed by the live singleton tool registry. */
     public EdtMcpBridge()
     {
-        this(McpToolRegistry.getInstance(), new McpProtocolHandler(), EdtMcpBridge::liveOrAllowAll);
+        this(McpToolRegistry.getInstance(), new McpProtocolHandler(), EdtMcpBridge::liveOrSafeSnapshot);
     }
 
     /** Package-private seam for focused headless tests (allow-all default profile). */
@@ -208,7 +223,7 @@ public class EdtMcpBridge implements IEdtMcpBridge
         return new ProfileToolPolicy(context.getResolution(), registry.getAllTools());
     }
 
-    private static ToolProfileSnapshot liveOrAllowAll()
+    private static ToolProfileSnapshot liveOrSafeSnapshot()
     {
         Activator activator = Activator.getDefault();
         if (activator != null)
@@ -219,7 +234,8 @@ public class EdtMcpBridge implements IEdtMcpBridge
                 return repository.getSnapshot();
             }
         }
-        return allowAllRegistered(McpToolRegistry.getInstance());
+        // A retained bridge can outlive service unregistration. Missing policy must never widen it.
+        return DefaultToolProfileFactory.createSafeSnapshot();
     }
 
     private static ToolProfileSnapshot allowAllRegistered(McpToolRegistry registry)

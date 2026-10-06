@@ -43,9 +43,20 @@ public class McpOriginValidatorTest
     }
 
     @Test
+    public void testIpv6LoopbackAllowed()
+    {
+        // The bracketed IPv6 loopback is as much a loopback origin as 127.0.0.1, and a page
+        // served from http://[::1]:3000 could not reach this server while it was missing.
+        assertTrue(McpOriginValidator.isValidOrigin("http://[::1]"));
+        assertTrue(McpOriginValidator.isValidOrigin("http://[::1]:8765"));
+        assertTrue(McpOriginValidator.isValidOrigin("https://[::1]:8765"));
+    }
+
+    @Test
     public void testFileOriginRejected()
     {
         assertFalse(McpOriginValidator.isValidOrigin("file:///C:/page.html"));
+        assertFalse(McpOriginValidator.isValidOrigin("file://"));
     }
 
     @Test
@@ -94,5 +105,7 @@ public class McpOriginValidatorTest
         assertFalse(McpOriginValidator.isValidOrigin("https://localhost.evil.example"));
         assertFalse(McpOriginValidator.isValidOrigin("http://localhostx"));
         assertFalse(McpOriginValidator.isValidOrigin("http://127.0.0.1.attacker.com:8765"));
+        assertFalse(McpOriginValidator.isValidOrigin("http://[::1].attacker.com"));
+        assertFalse(McpOriginValidator.isValidOrigin("http://[::1]x"));
     }
 }

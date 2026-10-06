@@ -326,6 +326,21 @@ public final class RoleRightsWriter
             // resolution refusal can leave the role exactly as the call found it. Template resolution
             // genuinely needs the description and therefore remains after the bootstrap.
             List<RightPlan> rightsPlan = planRights(ctx, rights);
+            if (!rightsPlan.isEmpty())
+            {
+                // EDT's rights tasks sort the role's entries and fail on one whose target is an
+                // unresolved proxy (no UUID); refuse before anything commits.
+                List<String> unresolved = BmTransactions.read(ctx.model, "FindUnresolvedRights", //$NON-NLS-1$
+                    (tx, pm) -> {
+                        IBmObject current = tx.getObjectById(ctx.roleBmId);
+                        return current instanceof Role ? unresolvedTargets(((Role)current).getRights())
+                            : Collections.<String>emptyList();
+                    });
+                if (unresolved != null && !unresolved.isEmpty())
+                {
+                    throw new RoleWriteException(unresolvedTargetsRefusal(roleName, unresolved));
+                }
+            }
 
             // A RoleDescription must exist AND be registered as a BM top object before ANY rights task
             // runs (the tasks downcast Role.getRights() to RoleDescription without auto-creating it,
@@ -966,6 +981,56 @@ public final class RoleRightsWriter
     }
 
     /**
+     * @param rights the role's {@code getRights()} value, inside a read transaction
+     * @return the addresses of the entries whose target is an unresolved proxy (empty when none)
+     */
+    static List<String> unresolvedTargets(Object rights)
+    {
+        List<String> result = new ArrayList<>();
+        List<ObjectRights> entries = rights instanceof RoleDescription ? ((RoleDescription)rights).getRights() : null;
+        if (entries != null)
+        {
+            for (ObjectRights objectRights : entries)
+            {
+                // Same rule as the orphan scan: a missing target blocks exactly like a proxy one.
+                EObject target = objectRights.getObject();
+                if (target == null)
+                {
+                    result.add(RoleRightsOrphans.NO_TARGET);
+                }
+                else if (target.eIsProxy())
+                {
+                    result.add(RoleRightsOrphans.addressOrUri(target));
+                }
+            }
+        }
+        return result;
+    }
+
+    /** How many unresolved targets the edit refusal lists before summarising the rest. */
+    static final int MAX_LISTED_UNRESOLVED = 20;
+
+    /**
+     * The refusal for a rights edit on a role that holds unresolved entries. Pure.
+     *
+     * @param roleName the role name
+     * @param unresolved the unresolved targets (non-empty)
+     * @return a ready JSON error
+     */
+    static String unresolvedTargetsRefusal(String roleName, List<String> unresolved)
+    {
+        int shown = Math.min(unresolved.size(), MAX_LISTED_UNRESOLVED);
+        String listed = String.join(", ", unresolved.subList(0, shown)) //$NON-NLS-1$
+            + (unresolved.size() > shown ? " and " + (unresolved.size() - shown) + " more" : ""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return ToolResult.error("Role " + roleName + " has " + unresolved.size() //$NON-NLS-1$ //$NON-NLS-2$
+            + " rights entr" + (unresolved.size() == 1 ? "y" : "ies") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            + " whose object no longer resolves (" + listed //$NON-NLS-1$
+            + "); EDT's rights tasks cannot edit the role while they remain, so nothing was written. " //$NON-NLS-1$
+            + "Remove them with resync_to_disk(cleanOrphanRoleRights=true) - it reports first - then " //$NON-NLS-1$
+            + "retry; an entry it reports as undetermined is re-linked by clean_project.").toJson(); //$NON-NLS-1$
+    }
+
+    /**
      * The refusal used when a rights task fails in a way the writer does not recognise - the
      * catch-all of {@link #apply}. It is a separate helper for one reason: {@code apply} resolves EDT
      * services and cannot run headless, while THIS text is the one place the #452 commit failure
@@ -1270,12 +1335,12 @@ public final class RoleRightsWriter
         if (str(entry.get(KEY_OBJECT)) == null || str(entry.get(KEY_OBJECT)).isEmpty())
         {
             return ToolResult.error("Each 'rights' entry needs an 'object' FQN, e.g. " //$NON-NLS-1$
-                + "'Catalog.Products' (or the Russian '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л').").toJson(); //$NON-NLS-1$
+                + "'Catalog.Products' (or the Russian 'Справочник.Товары').").toJson(); //$NON-NLS-1$
         }
         if (str(entry.get(KEY_RIGHT)) == null || str(entry.get(KEY_RIGHT)).isEmpty())
         {
             return ToolResult.error("Each 'rights' entry needs a 'right' name, e.g. 'Read' / " //$NON-NLS-1$
-                + "'Update' (or the Russian '╨з╤В╨╡╨╜╨╕╨╡' / '╨Ш╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╡').").toJson(); //$NON-NLS-1$
+                + "'Update' (or the Russian 'Чтение' / 'Изменение').").toJson(); //$NON-NLS-1$
         }
         if (!isValidRightValue(entry.get(KEY_VALUE)))
         {
@@ -1394,7 +1459,7 @@ public final class RoleRightsWriter
             + "). Use op 'add' to create it.").toJson(); //$NON-NLS-1$
     }
 
-    /** Bilingual label for a {@link Right} ("English / ╨а╤Г╤Б╤Б╨║╨╕╨╣" when both, else whichever is set). */
+    /** Bilingual label for a {@link Right} ("English / Русский" when both, else whichever is set). */
     private static String rightLabel(Right right)
     {
         return dualLabel(right.getName(), right.getNameRu());

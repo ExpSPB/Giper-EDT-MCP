@@ -26,6 +26,10 @@ Build options:
                               (default: parsed from README.md, falls back to 'dev')
   --archive-prefix PREFIX     Archive name prefix
                               (default: ${DEFAULT_ARCHIVE_PREFIX} → ${DEFAULT_ARCHIVE_PREFIX}X.Y.Z.zip)
+  --edt-install PATH          Snapshot an installed EDT 2025.2.5 SDK and verify
+                              the canonical unit runtime uses that exact SDK
+  --target-definition PATH    Use an explicit Tycho target file (instead of the
+                              floating public 2025.2 channel, currently .6)
 
 Path options (each has matching ENV fallback):
   --project-root PATH         Repo root (contains 'mcp/')         [\$EDT_MCP_PROJECT_ROOT]
@@ -113,10 +117,17 @@ run_maven() {
     local mvn="$1"; shift
     local mcp_dir="$1"; shift
     local skip_tests="$1"; shift
+    local target_definition="$1"; shift
+    local target_os="$1"; shift
+    local target_ws="$1"; shift
 
     local -a cmd=("$mvn" clean verify --batch-mode -T 1C)
     if [[ "$skip_tests" == "true" ]]; then
         cmd+=(-DskipTests)
+    fi
+    if [[ -n "$target_definition" ]]; then
+        cmd+=("-Dedt.target.definition=$(to_windows_path "$target_definition")"
+              "-Dedt.target.os=$target_os" "-Dedt.target.ws=$target_ws")
     fi
 
     log "Working directory: $mcp_dir"
@@ -158,10 +169,16 @@ main() {
     local output_dir="${EDT_MCP_OUTPUT_DIR:-}"
     local java_home_arg=""
     local maven_home_arg=""
+    local edt_install=""
+    local target_definition=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --skip-tests) skip_tests="true"; shift ;;
+            --edt-install) [[ $# -ge 2 ]] || die "--edt-install needs a value"; edt_install="$2"; shift 2 ;;
+            --edt-install=*) edt_install="${1#*=}"; shift ;;
+            --target-definition) [[ $# -ge 2 ]] || die "--target-definition needs a value"; target_definition="$2"; shift 2 ;;
+            --target-definition=*) target_definition="${1#*=}"; shift ;;
             --version)         [[ $# -ge 2 ]] || die "--version needs a value"; version="$2"; shift 2 ;;
             --version=*)       version="${1#*=}"; shift ;;
             --archive-prefix)  [[ $# -ge 2 ]] || die "--archive-prefix needs a value"; archive_prefix="$2"; shift 2 ;;
@@ -191,6 +208,29 @@ main() {
 
     repo_dir="$(normalize_path "${repo_dir:-$project_root/$DEFAULT_REPO_SUBPATH}")"
     output_dir="$(normalize_path "${output_dir:-$DEFAULT_OUTPUT_DIR}")"
+
+    [[ -z "$edt_install" || -z "$target_definition" ]] \
+        || die "choose --edt-install or --target-definition, not both"
+    local python="" target_os="" target_ws=""
+    if [[ -n "$edt_install" ]]; then
+        python="$(command -v python || command -v python3 || true)"
+        [[ -n "$python" ]] || die "Python 3 is required to snapshot the installed EDT SDK"
+        edt_install="$(normalize_path "$edt_install")"
+        target_definition="$("$python" "$project_root/scripts/edt-sdk-target.py" snapshot \
+            --install "$(to_windows_path "$edt_install")" \
+            --output "$(to_windows_path "$project_root/tmp/edt-sdk-2025.2.5")" \
+            --template "$(to_windows_path "$project_root/mcp/targets/default/default.target")")"
+    fi
+    if [[ -n "$target_definition" ]]; then
+        target_definition="$(normalize_path "$target_definition")"
+        [[ -f "$target_definition" ]] || die "target definition not found: $target_definition"
+        case "$(uname -s)" in
+            MINGW*|MSYS*|CYGWIN*) target_os="win32"; target_ws="win32" ;;
+            Linux*) target_os="linux"; target_ws="gtk" ;;
+            Darwin*) target_os="macosx"; target_ws="cocoa" ;;
+            *) die "unsupported installed SDK host platform" ;;
+        esac
+    fi
 
     local java_home
     java_home="$(normalize_path "${java_home_arg:-${JAVA_HOME:-}}")"
@@ -223,9 +263,15 @@ main() {
     log "Output dir     : $output_dir"
     log "Version        : $version"
     log "Skip tests     : $skip_tests"
+    log "Target         : ${target_definition:-public 2025.2 channel (currently EDT 2025.2.6)}"
     echo
 
-    run_maven "$mvn" "$mcp_dir" "$skip_tests"
+    run_maven "$mvn" "$mcp_dir" "$skip_tests" "$target_definition" "$target_os" "$target_ws"
+    if [[ -n "$edt_install" && "$skip_tests" == "false" ]]; then
+        "$python" "$project_root/scripts/edt-sdk-target.py" verify \
+            --inventory "$(to_windows_path "$(dirname "$target_definition")/sdk-inventory.json")" \
+            --reports "$(to_windows_path "$mcp_dir/tests/fm.giper.edt.mcp.server.tests/target/surefire-reports")"
+    fi
 
     local archive_name="${archive_prefix}${version}.zip"
     local zip_path

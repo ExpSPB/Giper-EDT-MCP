@@ -316,12 +316,102 @@ public final class MetadataNodeResolver
      * @param featureName the containment feature name
      * @return the kind token
      */
-    private static String kindTokenForFeature(String featureName)
+    public static String kindTokenForFeature(String featureName)
     {
         String singular = featureName.endsWith("s") //$NON-NLS-1$
             ? featureName.substring(0, featureName.length() - 1) : featureName;
         return singular.isEmpty() ? singular
             : Character.toUpperCase(singular.charAt(0)) + singular.substring(1);
+    }
+
+    /**
+     * The full-name address of a metadata node, built from its containment: the outermost object's
+     * {@code Type.Name} (its EClass name, which is how EDT names a top object), then
+     * {@code .Kind.Name} per level ({@link #kindTokenForFeature}), e.g.
+     * {@code Catalog.Goods.TabularSection.Lines.Attribute.Price}. The walk stops at a container that
+     * is not an {@link MdObject} or is the {@link Configuration}.
+     *
+     * <p>A LABEL: every level is printed whatever its kind, so a kind this resolver has no token for
+     * (a form, an integration service channel) still yields a readable path that
+     * {@link #resolveExisting} may not accept. Use {@link #resolvableAddressOf} for an address that
+     * has to be fed back.</p>
+     *
+     * @param object the node (not {@code null})
+     * @return the address, never {@code null}
+     */
+    public static String addressOf(MdObject object)
+    {
+        return address(object, false);
+    }
+
+    /**
+     * The address {@link #resolveExisting} resolves back to {@code object} itself - the same
+     * {@code Type.Name(.Kind.Name)*} form {@link #addressOf} prints, and the form the metadata tools
+     * accept for that node (e.g. {@code rights[].object} of {@code modify_metadata}).
+     *
+     * <p>Answers only when every part of the path is addressable: the outermost object is a
+     * top-level configuration type, each level below it sits in a containment collection this
+     * resolver has a kind token for, and every level has a programmatic Name (never the synonym).
+     * Anything else - a form, an integration service channel, a cube dimension, an unnamed
+     * level, a non-metadata container - answers {@code null}, so the caller keeps whatever it used
+     * before rather than printing an address that would not resolve.</p>
+     *
+     * @param object the node (may be {@code null})
+     * @return the address, or {@code null} when the node has none
+     */
+    public static String resolvableAddressOf(MdObject object)
+    {
+        return object == null ? null : address(object, true);
+    }
+
+    /** Shared walk of {@link #addressOf} ({@code strict == false}) and {@link #resolvableAddressOf}. */
+    private static String address(MdObject object, boolean strict)
+    {
+        if (strict && (object instanceof Configuration || isBlank(object.getName())))
+        {
+            return null;
+        }
+        EObject container = object.eContainer();
+        EStructuralFeature feature = object.eContainingFeature();
+        if (container instanceof MdObject && !(container instanceof Configuration) && feature != null)
+        {
+            if (strict && !isAddressableStep(feature))
+            {
+                return null;
+            }
+            String owner = address((MdObject)container, strict);
+            if (owner == null)
+            {
+                return null;
+            }
+            return owner + '.' + kindTokenForFeature(feature.getName()) + '.' + object.getName();
+        }
+        if (strict && container != null && !(container instanceof Configuration))
+        {
+            return null;
+        }
+        if (strict && !isConfigurationType(object))
+        {
+            return null;
+        }
+        return object.eClass().getName() + '.' + object.getName();
+    }
+
+    /** Whether the kind token printed for {@code feature} maps back to that very feature. */
+    private static boolean isAddressableStep(EStructuralFeature feature)
+    {
+        return feature.getName().equals(featureNameForKind(kindTokenForFeature(feature.getName())));
+    }
+
+    /** Whether {@code object}'s EClass names a top-level configuration collection. */
+    private static boolean isConfigurationType(MdObject object)
+    {
+        return MetadataTypeUtils.getConfigReferenceName(object.eClass().getName()) != null;
+    }
+
+    private static boolean isBlank(String value)
+    {
+        return value == null || value.isEmpty();
     }
 
     /**
@@ -549,10 +639,10 @@ public final class MetadataNodeResolver
      * The {@link #resolveForCreate(Configuration, String)} variant that resolves the parent against
      * whichever ROOT the project has (issue #309).
      *
-     * <p>A TOP-level create still requires a {@code Configuration} collection to put the object in,
-     * so a top-level FQN of a STANDALONE type (an external data processor / report, which is a
-     * project root rather than a configuration entry) does not resolve here - the caller reports
-     * that, rather than silently creating nothing.</p>
+     * <p>A TOP-level target is a {@code Configuration} collection entry, so a top-level FQN of a
+     * STANDALONE type (an external data processor / report, which is a project root rather than a
+     * configuration entry) does not resolve here; {@code create_metadata} creates such a root by a
+     * separate branch.</p>
      *
      * @param scope the resolution root (may be {@code null})
      * @param fqn the full-name FQN of the node to create
@@ -575,11 +665,9 @@ public final class MetadataNodeResolver
         {
             if (scope.isExternalObjects())
             {
-                // An external-objects project has NO configuration to add a top object to, and
-                // its own roots are created with the project (create_project / an .epf import),
-                // never here. Handing back a target anyway made createTopLevel treat this root as
-                // a Configuration and die with a raw ClassCastException; answering "no target"
-                // lets the caller get the refusal that names the project kind instead.
+                // An external-objects project has NO configuration to add a top object to; its
+                // roots are not collection entries. Handing back a target made createTopLevel
+                // treat this root as a Configuration and die with a raw ClassCastException.
                 return null;
             }
             String type = MetadataTypeUtils.toEnglishSingular(parts[0]);

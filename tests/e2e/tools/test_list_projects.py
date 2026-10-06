@@ -102,10 +102,21 @@ def test_readiness_gate_examines_every_row_not_just_the_last():
     assert blockers == [("TestConfiguration", "building")], \
         "the building project must still be named: %r" % (blockers,)
 
-    # No parseable row at all: the substring fallback must stay conservative rather than decay to
-    # a permanent "ready", and must still say what it saw.
+    # No parseable row: do not infer readiness from text tokens. Even "state: ready" does not
+    # prove that EVERY open EDT project is ready; an output-format change must fail closed.
+    for unparsed in ("state: building", "state: ready", "", header):
+        blockers = [("old diagnostic", "ready")]
+        assert not harness._all_edt_projects_ready(unparsed, not_ready=blockers), \
+            "an unparsed project table must refuse readiness: %r" % (unparsed,)
+        assert blockers == [("<unparsed project table>", "unknown")], \
+            "the diagnostic must name the unparsed table and replace stale blockers: %r" % (blockers,)
+
+    # A parsed but unfamiliar state is also a real blocker, even before a final ready row.
+    unknown_first = header + (
+        "| TestConfiguration | unknown | /w/TestConfiguration | Yes | Yes | 1c |\n"
+        "| tests | ready | /w/tests | Yes | Yes | 1c |\n")
     blockers = []
-    assert not harness._all_edt_projects_ready("state: building", not_ready=blockers), \
-        "an unparseable output naming a blocking state must not read as ready"
-    assert blockers and blockers[0][1] == "building", \
-        "the fallback must still report the state it saw: %r" % (blockers,)
+    assert not harness._all_edt_projects_ready(unknown_first, not_ready=blockers), \
+        "a parsed unknown state must not be treated as ready"
+    assert blockers == [("TestConfiguration", "unknown")], \
+        "the actual project with unknown readiness must be named: %r" % (blockers,)

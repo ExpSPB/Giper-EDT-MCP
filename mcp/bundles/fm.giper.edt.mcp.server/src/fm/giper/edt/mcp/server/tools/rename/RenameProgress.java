@@ -51,6 +51,8 @@ public final class RenameProgress
          * the decision can arrive later and start the rename after the caller gave up.
          */
         AWAITING_CONSENT,
+        /** Consent was allowed; waiting for pending project work before the first mutation. */
+        WAITING_FOR_DERIVED_DATA,
         /**
          * Past the consent gate and authorised to rewrite: the apply loop is running or about to.
          * A call that stops waiting here can leave the configuration PARTIALLY renamed.

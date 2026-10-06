@@ -196,12 +196,12 @@ public class CommonAttributeContentWriterTest
     @Test
     public void testRussianOwnerTypeNormalizesToEnglishSingular()
     {
-        // "╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л" -> "Catalog.╨в╨╛╨▓╨░╤А╤Л": the Russian TYPE token maps to the canonical
+        // "Справочник.Товары" -> "Catalog.Товары": the Russian TYPE token maps to the canonical
         // English singular the in-transaction owner resolution expects (only the type token is
         // bilingual; the object name is preserved verbatim).
         String ruCatalog = fromCp(0x0421, 0x043f, 0x0440, 0x0430, 0x0432, 0x043e, 0x0447, 0x043d,
-            0x0438, 0x043a); // ╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║
-        String ruGoods = fromCp(0x0422, 0x043e, 0x0432, 0x0430, 0x0440, 0x044b); // ╨в╨╛╨▓╨░╤А╤Л
+            0x0438, 0x043a); // Справочник
+        String ruGoods = fromCp(0x0422, 0x043e, 0x0432, 0x0430, 0x0440, 0x044b); // Товары
         String normalized = MetadataTypeUtils.normalizeFqn(ruCatalog + "." + ruGoods); //$NON-NLS-1$
         assertEquals("Catalog." + ruGoods, normalized); //$NON-NLS-1$
     }

@@ -24,10 +24,13 @@ import fm.giper.edt.mcp.server.transport.McpEndpoint;
  * {@code text/event-stream} connections per the MCP Streamable HTTP transport).
  * Each stream is bound to a requested endpoint and optional session; a
  * list-changed notification is delivered once per session on that path.
+ * Legacy enablement changes notify the {@code /mcp} path. Named-profile changes
+ * close affected sessions and require reinitialization through the repository policy.
  * <p>
  * Thread-safe: streams are added/removed from a concurrent set, and each stream's
- * writes (heartbeat from its own SSE thread, broadcasts from a request thread) are
- * serialized by the per-stream lock in {@link SseStream}.
+ * writes (heartbeat from its own SSE thread, broadcasts from a request thread or the
+ * preferences' own sender thread) are serialized by the per-stream lock in
+ * {@link SseStream}.
  */
 public final class SseStreamRegistry // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {

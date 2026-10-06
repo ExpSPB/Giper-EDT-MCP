@@ -264,10 +264,10 @@ public class RenameMetadataObjectTool implements IMcpTool
         // is quiet. NB this narrows the window, it does not close it: EDT builds the refactoring
         // INSIDE the syncExec below (saving dirty editors and running an incremental build as it
         // goes), so fresh work can still be queued between here and perform(). Closing it properly
-        // needs an EDT-supported "quiesce then open the batch session" step; doing it ourselves -
-        // by draining between construction and perform - would mean releasing the UI thread in the
-        // middle of a rename, which drops the serialisation that keeps a concurrent write from
-        // making the built cascade stale. See issue #320.
+        // needs an EDT-supported "quiesce then open the batch session" step. The service now also
+        // observes all open-project completion after construction and between SDK performs without
+        // releasing/pumping the UI thread; it remains a checked drain, not atomic exclusion.
+        // See issue #320.
         String building = cascadeSettler.settle(projectName, SETTLE_TIMEOUT_MS);
         if (building != null)
         {
@@ -557,6 +557,10 @@ public class RenameMetadataObjectTool implements IMcpTool
                 + "rewritten - but an answer arriving later still starts it. Set " //$NON-NLS-1$
                 + "EDT_MCP_DESTRUCTIVE_CONSENT=allow for unattended use, and check the target's " //$NON-NLS-1$
                 + "name with " + inspector + " before retrying."; //$NON-NLS-1$ //$NON-NLS-2$
+        case WAITING_FOR_DERIVED_DATA:
+            return "The rename was waiting for pending project work before changing the model. " //$NON-NLS-1$
+                + "Nothing had been renamed yet, but it is not cancelled and may still apply. " //$NON-NLS-1$
+                + "Check the target with " + inspector + " before retrying."; //$NON-NLS-1$ //$NON-NLS-2$
         case APPLYING:
             return "The rename had passed the consent gate into its apply phase, so the " //$NON-NLS-1$
                 + "configuration may be PARTIALLY renamed - do not treat it as unchanged. Inspect " //$NON-NLS-1$

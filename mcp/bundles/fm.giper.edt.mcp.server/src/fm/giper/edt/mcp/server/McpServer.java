@@ -40,6 +40,9 @@ public class McpServer
     private HttpServer server;
     private int port;
     private volatile boolean running = false;
+
+    /** The live bind snapshot, also used by the listener's authorization decision. */
+    private volatile boolean boundRemotely = false;
     
     /** Request counter - use AtomicLong for thread safety */
     private final AtomicLong requestCount = new AtomicLong(0);
@@ -140,6 +143,7 @@ public class McpServer
         // erased that answer authorizes it.
         server.createContext("/mcp", //$NON-NLS-1$
             new McpHttpHandler(this, protocolHandler, interruptibleExecutor, allowRemote));
+        boundRemotely = allowRemote;
         server.createContext("/health", new HealthHandler()); //$NON-NLS-1$
 
         // Main thread pool for POST/OPTIONS/DELETE requests (finite-duration only).
@@ -269,6 +273,9 @@ public class McpServer
             server.stop(1);
             server = null;
             running = false;
+            // A stopped listener is bound to nothing, so the preferences page must not warn
+            // about a remote listener that no longer exists.
+            boundRemotely = false;
             if (mainExecutor != null)
             {
                 mainExecutor.shutdownNow();
@@ -286,13 +293,24 @@ public class McpServer
     }
 
     /**
-     * Restarts the MCP server.
+     * Restarts the MCP server. A configuration that {@link #remoteBindRefusal} rejects is refused
+     * here, with the running server untouched.
      * 
      * @param port the port number
-     * @throws IOException if restart fails
+     * @throws IOException if restart fails, or if the new configuration would expose an
+     *             unauthenticated server to the network - in which case nothing was stopped
      */
     public void restart(int port) throws IOException
     {
+        // Decide before stop(): a rejected reconfiguration must not take a healthy listener
+        // offline. start() checks again on its own snapshot before binding the replacement.
+        BindConfig config = readBindConfig();
+        String refusal = remoteBindRefusal(config.allowRemote, config.authToken, port);
+        if (refusal != null)
+        {
+            throw new IOException(refusal);
+        }
+
         stop();
         start(port);
     }
@@ -315,6 +333,17 @@ public class McpServer
     public int getPort()
     {
         return port;
+    }
+
+    /**
+     * Whether the live listener accepts connections from other hosts.
+     * The bind snapshot is authoritative: preferences can change without rebinding the listener.
+     *
+     * @return true when bound to every interface; false for loopback and stopped servers
+     */
+    public boolean isBoundRemotely()
+    {
+        return boundRemotely;
     }
 
     /**

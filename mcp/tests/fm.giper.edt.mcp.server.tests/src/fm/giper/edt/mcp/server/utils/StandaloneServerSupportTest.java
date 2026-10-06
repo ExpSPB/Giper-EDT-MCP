@@ -205,6 +205,28 @@ public class StandaloneServerSupportTest
     }
 
     @Test
+    public void testDatabaseDirOrThrowAnswersNullOnlyForRdbms() throws Exception
+    {
+        // The strict read: only an RDBMS database has no local directory; missing data is unreadable.
+        assertNull(StandaloneServerSupport.databaseDirOrThrow(
+            new FakeServerInfobaseModule(new FakeConfiguration(new FakeRdbmsDatabase()))));
+        for (Object module : new Object[] { new FakeServerInfobaseModule(null),
+            new FakeServerInfobaseModule(new FakeConfiguration(null)),
+            new FakeServerInfobaseModule(new FakeConfiguration(new FakeNonStringDirDatabase())) })
+        {
+            try
+            {
+                StandaloneServerSupport.databaseDirOrThrow(module);
+                fail("missing server data must raise, not read as 'no local directory'"); //$NON-NLS-1$
+            }
+            catch (IllegalStateException expected)
+            {
+                // unreadable, as required
+            }
+        }
+    }
+
+    @Test
     public void testDatabaseDirOfReturnsNullWhenConfigDirectoryIsNotAString()
     {
         // getConfigDirectory() exists but returns a non-String -> null (instanceof guard).
@@ -278,7 +300,34 @@ public class StandaloneServerSupportTest
         assertNull(StandaloneServerSupport.findServerByModuleName(service, "Any")); //$NON-NLS-1$
     }
 
-    // ==================== deleteServer ====================
+    // ==================== startServer / deleteServer ====================
+
+    @Test
+    public void testStartServerInvokesTheThreeArgumentServiceMethod() throws Exception
+    {
+        Object server = new Object();
+        IStatus expected = org.eclipse.core.runtime.Status.OK_STATUS;
+        FakeStartService service = new FakeStartService(expected);
+
+        IStatus actual = StandaloneServerSupport.startServer(service, server, "run", MONITOR); //$NON-NLS-1$
+
+        assertSame(expected, actual);
+        assertSame(server, service.server);
+        assertEquals("run", service.launchMode); //$NON-NLS-1$
+        assertSame(MONITOR, service.monitor);
+    }
+
+    @Test
+    public void testInterruptedStartMayStillBeRunningAndDoesNotReportItsException()
+    {
+        BoundedJob.Result interrupted = new BoundedJob.Result(BoundedJob.Outcome.INTERRUPTED,
+            5L, new InterruptedException("join interrupted")); //$NON-NLS-1$
+
+        String reason = StandaloneServerSupport.startFailureReason(interrupted, 5L);
+
+        assertTrue(reason, reason.contains("may still be running")); //$NON-NLS-1$
+        assertFalse(reason, reason.contains("join interrupted")); //$NON-NLS-1$
+    }
 
     @Test
     public void testDeleteServerReturnsErrorStatusWhenMethodAbsent()
@@ -757,6 +806,28 @@ public class StandaloneServerSupportTest
             {
                 throw toThrow;
             }
+            return result;
+        }
+    }
+
+    /** A service exposing the erased three-argument standalone-server start signature. */
+    public static final class FakeStartService
+    {
+        private final IStatus result;
+        Object server;
+        String launchMode;
+        Object monitor;
+
+        FakeStartService(IStatus result)
+        {
+            this.result = result;
+        }
+
+        public IStatus startServer(Object passedServer, String passedLaunchMode, Object passedMonitor)
+        {
+            server = passedServer;
+            launchMode = passedLaunchMode;
+            monitor = passedMonitor;
             return result;
         }
     }

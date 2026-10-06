@@ -20,7 +20,7 @@ rubber-stamping.
 
 from harness import (
     call, assert_ok, assert_error, assert_error_quality,
-    assert_contains, assert_no_diff, e2e_test, PROJECT,
+    assert_contains, assert_no_diff, e2e_test, PROJECT, TESTS_PROJECT,
 )
 
 
@@ -53,6 +53,70 @@ def test_valid_query_against_fixture_catalog_is_clean():
     # a stale 'Done' placeholder).
     assert_contains(r.text, "valid", "success digest must reflect the result keys")
 
+    assert_no_diff("validate_query is read-only; nothing may change on disk")
+
+
+@e2e_test(tool="validate_query", kind="read")
+def test_extension_union_scope_resolves_inherited_field():
+    r = call("validate_query", {
+        "projectName": TESTS_PROJECT,
+        "queryText": "ВЫБРАТЬ Ссылка, Наименование ИЗ Справочник.Catalog",
+    })
+    assert_ok(r, "extension union scope must resolve inherited fields")
+    assert r.structured is not None, \
+        "extension validation must return structuredContent; got: %r" % (r.text,)
+    assert r.structured.get("valid") is True, \
+        "the inherited field must be valid in the union scope: %r" % (r.structured,)
+    assert r.structured.get("issues") == [], \
+        "the inherited field must produce no issues: %r" % (r.structured,)
+    assert_no_diff("validate_query is read-only; nothing may change on disk")
+
+
+@e2e_test(tool="validate_query", kind="read")
+def test_extension_union_scope_resolves_extension_owned_object():
+    r = call("validate_query", {
+        "projectName": TESTS_PROJECT,
+        "queryText": "ВЫБРАТЬ Ссылка, ExtValue ИЗ Справочник.tests_ExtOnly",
+    })
+    assert_ok(r, "extension union scope must resolve extension-owned objects")
+    assert r.structured is not None, \
+        "extension validation must return structuredContent; got: %r" % (r.text,)
+    assert r.structured.get("valid") is True, \
+        "the extension-owned object must be valid in the union scope: %r" % (r.structured,)
+    assert r.structured.get("issues") == [], \
+        "the extension-owned object must produce no issues: %r" % (r.structured,)
+    assert_no_diff("validate_query is read-only; nothing may change on disk")
+
+
+@e2e_test(tool="validate_query", kind="read")
+def test_extension_union_scope_rejects_unknown_borrowed_field():
+    # The SDK localizes diagnostics independently of the query dialect.
+    for query, field, column, offset in (
+        ("ВЫБРАТЬ НетТакогоПоля ИЗ Справочник.Catalog", "НетТакогоПоля", 9, 8),
+        ("SELECT NoSuchField FROM Catalog.Catalog", "NoSuchField", 8, 7),
+    ):
+        r = call("validate_query", {
+            "projectName": TESTS_PROJECT,
+            "queryText": query,
+        })
+        assert_ok(r, "extension union scope must still run semantic validation")
+        assert r.structured is not None, \
+            "extension validation must return structuredContent; got: %r" % (r.text,)
+        assert r.structured.get("valid") is False, \
+            "an unknown field must be invalid in the union scope: %r" % (r.structured,)
+        assert r.structured.get("errorCount", 0) >= 1, \
+            "the unknown field must produce an error: %r" % (r.structured,)
+        issues = r.structured.get("issues") or []
+        assert any(
+            issue.get("severity") == "ERROR"
+            and field in str(issue.get("message", ""))
+            and any(phrase in str(issue.get("message", "")).casefold()
+                    for phrase in ("not found", "не найдено"))
+            and issue.get("line") == 1
+            and issue.get("column") == column
+            and issue.get("offset") == offset
+            for issue in issues
+        ), "the authored field must produce its positioned not-found error: %r" % (issues,)
     assert_no_diff("validate_query is read-only; nothing may change on disk")
 
 

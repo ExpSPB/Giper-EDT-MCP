@@ -16,6 +16,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.eclipse.emf.common.util.Enumerator;
+import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EDataType;
@@ -34,7 +36,11 @@ import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.EStructuralFeature;
 import org.eclipse.emf.ecore.EcoreFactory;
 import org.eclipse.emf.ecore.EcorePackage;
+import org.eclipse.emf.ecore.InternalEObject;
 import org.eclipse.emf.ecore.impl.DynamicEObjectImpl;
+import org.eclipse.emf.ecore.util.EcoreUtil;
+import org.eclipse.xtext.naming.QualifiedName;
+import org.eclipse.xtext.resource.IEObjectDescription;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -60,8 +66,10 @@ import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.ScheduledJob;
+import com._1c.g5.v8.dt.metadata.mdclass.SessionParameter;
 import com._1c.g5.v8.dt.metadata.mdclass.TemplateType;
 import com._1c.g5.v8.dt.metadata.mdclass.XDTOPackage;
+import com._1c.g5.v8.dt.platform.IEObjectProvider;
 import com._1c.g5.v8.dt.platform.version.Version;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
 import fm.giper.edt.mcp.server.tools.impl.ModifyMetadataTool.FormHolder;
@@ -71,6 +79,8 @@ import fm.giper.edt.mcp.server.utils.MdNameNormalizer;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.McoreValueListBuilder;
+import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector;
+import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector.PropertyInfo;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
 import fm.giper.edt.mcp.server.utils.MetadataTypeBuilder;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
@@ -89,6 +99,27 @@ import com.google.gson.JsonPrimitive;
  */
 public class ModifyMetadataToolTest
 {
+    /**
+     * The Russian {@code nameRu} identifier of the ActionsPanelTools standard command group - the
+     * platform's own token, not the localized UI string. Spelled in code points: raw Cyrillic
+     * literals are banned in this code base.
+     */
+    /**
+     * The affirmative half of the merged refusal - the clause the RETIRED wording could not contain,
+     * because it said the opposite. Pinning "STANDARD command group" alone proves nothing: the old
+     * "...STANDARD command groups are a different, enum-addressed value space and are not supported
+     * here" carries that substring too, and named the FQN form as well.
+     */
+    private static final String ACCEPTS_A_BARE_STANDARD_GROUP =
+        "the bare name of a platform built-in STANDARD command group"; //$NON-NLS-1$
+
+    /** The retired claim; its absence is half of what tells the new refusal from the old one. */
+    private static final String RETIRED_CLAIM = "not supported here"; //$NON-NLS-1$
+
+    private static final String ACTIONS_PANEL_TOOLS_RU = // PanelDeystviyServis
+        "\u041F\u0430\u043D\u0435\u043B\u044C\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0439" //$NON-NLS-1$
+            + "\u0421\u0435\u0440\u0432\u0438\u0441"; //$NON-NLS-1$
+
     @Test
     public void testNameConstant()
     {
@@ -121,6 +152,19 @@ public class ModifyMetadataToolTest
         assertSame(MetadataTypeBuilder.TypeTarget.FORM_ATTRIBUTE,
             ModifyMetadataTool.typeTargetForFeature(
                 MetadataTypeBuilder.TypeTarget.FORM_ATTRIBUTE, source));
+    }
+
+    @Test
+    public void testSessionParameterTypeSelectsItsOwnTypeTarget()
+    {
+        SessionParameter parameter = MdClassFactory.eINSTANCE.createSessionParameter();
+        EStructuralFeature type = parameter.eClass().getEStructuralFeature("type"); //$NON-NLS-1$
+        assertSame("modify_metadata resolves 'type' to this literal", //$NON-NLS-1$
+            MdClassPackage.Literals.SESSION_PARAMETER__TYPE, type);
+        assertSame(MetadataTypeBuilder.TypeTarget.SESSION_PARAMETER,
+            ModifyMetadataTool.typeTargetForFeature(MetadataTypeBuilder.TypeTarget.METADATA, type));
+        assertSame(MetadataTypeBuilder.TypeTarget.FORM_ATTRIBUTE,
+            ModifyMetadataTool.typeTargetForFeature(MetadataTypeBuilder.TypeTarget.FORM_ATTRIBUTE, type));
     }
 
     @Test
@@ -1008,26 +1052,230 @@ public class ModifyMetadataToolTest
         assertSame(group, resolved);
     }
 
-    // ===== validateReferenceTarget: not-found hint (issue #262 P3, "do not fake support") ==========
+    // ===== validateReferenceTarget: the not-found hint (issues #262 P3, #508) =====================
     //
     // target==null never touches IBmObject (bmGetId/bmIsTop), so this branch is testable headlessly.
 
     @Test
-    public void testValidateReferenceTargetNotFoundHintIsCommandGroupSpecific()
+    public void testValidateReferenceTargetNotFoundHintNamesBothCommandGroupForms()
     {
-        // A command's 'group' feature (declared against the mcore CommandGroup interface) gets a hint
-        // naming the supported 'CommandGroup.<Name>' shape AND explicitly calling out that the
-        // platform's STANDARD command groups are a different, unsupported value space.
+        // A command's 'group' feature (declared against the mcore CommandGroup interface) gets ONE
+        // merged refusal naming BOTH addressable forms - the 'CommandGroup.<Name>' FQN of a
+        // configuration group, and the bare name of a platform STANDARD group - plus the catalogue
+        // of standard names in both identifiers, so the caller can copy one out (issue #508).
+        String err = ModifyMetadataTool.validateReferenceTarget("group", commandGroupFeature(), //$NON-NLS-1$
+            null, "NotAGroupAtAll", commandGroupCatalogue()); //$NON-NLS-1$
+        assertNotNull(err);
+        assertTrue(err, err.contains("NotAGroupAtAll")); //$NON-NLS-1$
+        assertTrue("the FQN form stays named", err.contains("CommandGroup.<Name>")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("the standard-group form is OFFERED, not called out as unsupported: " + err, //$NON-NLS-1$
+            err.contains(ACCEPTS_A_BARE_STANDARD_GROUP));
+        assertTrue("at least one standard name, so the caller can copy one out", //$NON-NLS-1$
+            err.contains("ActionsPanelTools")); //$NON-NLS-1$
+        assertTrue("...and its Russian identifier, which is discoverable nowhere else", //$NON-NLS-1$
+            err.contains(ACTIONS_PANEL_TOOLS_RU));
+        assertFalse("the retired claim must be gone: " + err, err.contains(RETIRED_CLAIM)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testCommandGroupNotFoundHintStillNamesBothFormsWithoutTheCatalogue()
+    {
+        // The catalogue is a platform service and can be unreachable; the refusal degrades to OFFERING
+        // both forms rather than losing the standard-group half altogether. It must not degrade back
+        // into the retired "...are not supported here", which also named the FQN form and also carried
+        // the words "STANDARD command group" - which is why the affirmative clause is what is pinned.
+        String err = ModifyMetadataTool.validateReferenceTarget("group", commandGroupFeature(), //$NON-NLS-1$
+            null, "CommandGroup.Bogus", null); //$NON-NLS-1$
+        assertNotNull(err);
+        assertTrue(err, err.contains("CommandGroup.<Name>")); //$NON-NLS-1$
+        assertTrue(err, err.contains(ACCEPTS_A_BARE_STANDARD_GROUP));
+        assertFalse("the retired claim must be gone: " + err, err.contains(RETIRED_CLAIM)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testTheFourArgumentValidateOverloadAlsoGetsTheMergedCommandGroupHint()
+    {
+        // The overload every OTHER caller uses (a MANY_REFERENCE never carries a catalogue) must not
+        // be left behind on the retired wording.
+        String err = ModifyMetadataTool.validateReferenceTarget("group", commandGroupFeature(), //$NON-NLS-1$
+            null, "CommandGroup.Bogus"); //$NON-NLS-1$
+        assertNotNull(err);
+        assertTrue(err, err.contains("CommandGroup.<Name>")); //$NON-NLS-1$
+        assertTrue(err, err.contains(ACCEPTS_A_BARE_STANDARD_GROUP));
+        assertFalse("the retired claim must be gone: " + err, err.contains(RETIRED_CLAIM)); //$NON-NLS-1$
+    }
+
+    // ===== issue #508: a platform STANDARD command group is settable by its bare name =============
+    //
+    // A StandardCommandGroup is not an MdObject and carries no BM id, so it can never travel as a
+    // PreparedChange.reference: it is written as the platform's own UNRESOLVED proxy in a SCALAR set,
+    // which is the only shape the transaction's ReferenceValueFactory can persist.
+
+    @Test
+    public void testTheReferencePathItselfWritesAStandardGroupInsteadOfRefusingIt()
+    {
+        // The wiring pin: the whole single-reference path - not just the helper - must reach the
+        // standard-group catalogue, and must reach it BEFORE FQN resolution. Without the branch in
+        // that path 'ActionsPanelTools' falls through to the FQN resolver and comes back refused.
+        EObject command = MdClassFactory.eINSTANCE.createDataProcessorCommand();
+        PropertyInfo info = MetadataPropertyIntrospector.find(command, "group"); //$NON-NLS-1$
+        assertNotNull("precondition: 'group' must be an addressable property", info); //$NON-NLS-1$
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        String err = ModifyMetadataTool.prepareReferenceWith(commandGroupCatalogue(),
+            MetadataScope.ofConfiguration(MdClassFactory.eINSTANCE.createConfiguration()), command,
+            "group", "ActionsPanelTools", info, out); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertNull("the reference path must accept a standard group name, got: " + err, err); //$NON-NLS-1$
+        assertEquals(1, out.size());
+        assertTrue("...and write it as the platform's unresolved proxy", //$NON-NLS-1$
+            ((EObject)out.get(0).value()).eIsProxy());
+    }
+
+    @Test
+    public void testTheReferencePathRefusesAnUnknownBareNameWithBothForms()
+    {
+        EObject command = MdClassFactory.eINSTANCE.createDataProcessorCommand();
+        PropertyInfo info = MetadataPropertyIntrospector.find(command, "group"); //$NON-NLS-1$
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        String err = ModifyMetadataTool.prepareReferenceWith(commandGroupCatalogue(),
+            MetadataScope.ofConfiguration(MdClassFactory.eINSTANCE.createConfiguration()), command,
+            "group", "NotAGroupAtAll", info, out); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertNotNull("an unknown bare name must be refused, not silently dropped", err); //$NON-NLS-1$
+        assertTrue(err, err.contains("NotAGroupAtAll")); //$NON-NLS-1$
+        assertTrue("the refusal carries the merged hint the catalogue feeds", //$NON-NLS-1$
+            err.contains("ActionsPanelTools")); //$NON-NLS-1$
+        assertTrue("nothing may be queued for a refused value", out.isEmpty()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAStandardCommandGroupNameQueuesAScalarProxySet()
+    {
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        assertTrue("a bare standard-group name must be queued by the standard-group branch", //$NON-NLS-1$
+            ModifyMetadataTool.queueStandardCommandGroup(commandGroupFeature(),
+                "ActionsPanelTools", commandGroupCatalogue(), out)); //$NON-NLS-1$
+
+        assertEquals(1, out.size());
+        ModifyMetadataTool.PreparedChange change = out.get(0);
+        assertEquals("group", change.featureName()); //$NON-NLS-1$
+        Object value = change.value();
+        assertTrue("a standard group travels as a value, not as a BM id: " + value, //$NON-NLS-1$
+            value instanceof EObject);
+        assertTrue("...and that value is the platform's UNRESOLVED proxy", //$NON-NLS-1$
+            ((EObject)value).eIsProxy());
+    }
+
+    @Test
+    public void testTheRussianStandardCommandGroupIdentifierQueuesTheSameSet()
+    {
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        assertTrue("the Russian nameRu identifier addresses the same group", //$NON-NLS-1$
+            ModifyMetadataTool.queueStandardCommandGroup(commandGroupFeature(),
+                ACTIONS_PANEL_TOOLS_RU, commandGroupCatalogue(), out));
+
+        assertEquals(1, out.size());
+        assertTrue(((EObject)out.get(0).value()).eIsProxy());
+    }
+
+    @Test
+    public void testAnUnknownBareNameFallsThroughToTheSharedRefusal()
+    {
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        assertFalse("an unknown token must not be queued", //$NON-NLS-1$
+            ModifyMetadataTool.queueStandardCommandGroup(commandGroupFeature(),
+                "NotAGroupAtAll", commandGroupCatalogue(), out)); //$NON-NLS-1$
+        assertTrue("nothing may be queued when nothing resolved", out.isEmpty()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAnFqnShapedValueNeverEntersTheStandardGroupBranch()
+    {
+        // The catalogue here deliberately holds a dot-bearing name (the platform's own names never
+        // do) so the "no dot" gate is OBSERVABLE: without it an FQN-shaped value would be answered
+        // from the standard-group catalogue instead of going to FQN resolution.
+        IEObjectProvider trap = catalogueOf("CommandGroup.MyGroup"); //$NON-NLS-1$
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        assertFalse("a dotted value belongs to the FQN address space", //$NON-NLS-1$
+            ModifyMetadataTool.queueStandardCommandGroup(commandGroupFeature(),
+                "CommandGroup.MyGroup", trap, out)); //$NON-NLS-1$
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    public void testTheStandardGroupBranchDoesNotFireForOtherReferences()
+    {
+        EStructuralFeature parentFeature = MdClassFactory.eINSTANCE.createSubsystem()
+            .eClass().getEStructuralFeature("parentSubsystem"); //$NON-NLS-1$
+        assertNotNull("precondition: Subsystem must declare 'parentSubsystem'", parentFeature); //$NON-NLS-1$
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        assertFalse("a dotless value on a NON-command-group reference keeps the FQN path", //$NON-NLS-1$
+            ModifyMetadataTool.queueStandardCommandGroup(parentFeature, "ActionsPanelTools", //$NON-NLS-1$
+                commandGroupCatalogue(), out));
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    public void testWithoutTheCatalogueAStandardGroupNameIsRefusedRatherThanGuessed()
+    {
+        List<ModifyMetadataTool.PreparedChange> out = new ArrayList<>();
+
+        assertFalse("no catalogue means no value to write - never a fabricated one", //$NON-NLS-1$
+            ModifyMetadataTool.queueStandardCommandGroup(commandGroupFeature(),
+                "ActionsPanelTools", null, out)); //$NON-NLS-1$
+        assertTrue(out.isEmpty());
+    }
+
+    /** The {@code group} feature of a command - the one declared against mcore's CommandGroup. */
+    private static EStructuralFeature commandGroupFeature()
+    {
         EStructuralFeature groupFeature = MdClassFactory.eINSTANCE.createDataProcessorCommand()
             .eClass().getEStructuralFeature("group"); //$NON-NLS-1$
         assertNotNull("precondition: DataProcessorCommand must declare 'group'", groupFeature); //$NON-NLS-1$
-        String err = ModifyMetadataTool.validateReferenceTarget("group", groupFeature, null, //$NON-NLS-1$
-            "CommandGroup.Bogus"); //$NON-NLS-1$
-        assertNotNull(err);
-        assertTrue("the hint must name the CommandGroup.<Name> shape", //$NON-NLS-1$
-            err.contains("CommandGroup.<Name>")); //$NON-NLS-1$
-        assertTrue("the hint must call out standard groups as unsupported", //$NON-NLS-1$
-            err.contains("STANDARD command groups")); //$NON-NLS-1$
+        return groupFeature;
+    }
+
+    /** A stub platform catalogue holding ActionsPanelTools under both of its identifiers. */
+    private static IEObjectProvider commandGroupCatalogue()
+    {
+        return catalogueOf("ActionsPanelTools", ACTIONS_PANEL_TOOLS_RU); //$NON-NLS-1$
+    }
+
+    /**
+     * A stub of the platform's command-group catalogue: every supplied identifier is an index key of
+     * the SAME group, and every description hands back a fresh unresolved proxy on that group's URI -
+     * the shape {@code AbstractEObjectProvider} has.
+     */
+    private static IEObjectProvider catalogueOf(String... identifiers)
+    {
+        URI uri = URI.createURI("v8:/CommandGroups").appendFragment(identifiers[0]); //$NON-NLS-1$
+        IEObjectProvider provider = Mockito.mock(IEObjectProvider.class);
+        List<IEObjectDescription> descriptions = new ArrayList<>();
+        for (String identifier : identifiers)
+        {
+            IEObjectDescription desc = Mockito.mock(IEObjectDescription.class);
+            Mockito.doReturn(QualifiedName.create(identifier)).when(desc).getName();
+            Mockito.doReturn(uri).when(desc).getEObjectURI();
+            Mockito.doAnswer(invocation -> standardGroupProxy(uri)).when(desc).getEObjectOrProxy();
+            descriptions.add(desc);
+            Mockito.doReturn(standardGroupProxy(uri)).when(provider).getProxy(identifier);
+        }
+        Mockito.doReturn(descriptions).when(provider).getEObjectDescriptions(Mockito.any());
+        return provider;
+    }
+
+    private static EObject standardGroupProxy(URI uri)
+    {
+        EObject group = EcoreUtil.create(McorePackage.Literals.STANDARD_COMMAND_GROUP);
+        ((InternalEObject)group).eSetProxyURI(uri);
+        return group;
     }
 
     @Test
@@ -2724,19 +2972,16 @@ public class ModifyMetadataToolTest
             "InformationRegister.Reg.Form.RecordForm.Attribute.Record"); //$NON-NLS-1$
         String fqn = "InformationRegister.Reg.Form.RecordForm.Attribute.Record"; //$NON-NLS-1$
 
-        ConsentPreview retypeOnly =
-            ModifyMetadataTool.formRetypePreview(fqn, ref, props("valueType", "String"), false); //$NON-NLS-1$ //$NON-NLS-2$
+        ConsentPreview retypeOnly = ModifyMetadataTool.formRetypePreview(fqn, ref, true, false);
         assertEquals(List.of("valueType"), retypeOnly.getTopNames()); //$NON-NLS-1$
 
-        ConsentPreview mainOnly =
-            ModifyMetadataTool.formRetypePreview(fqn, ref, props("main", "false"), true); //$NON-NLS-1$ //$NON-NLS-2$
+        ConsentPreview mainOnly = ModifyMetadataTool.formRetypePreview(fqn, ref, false, true);
         assertEquals(List.of("main"), mainOnly.getTopNames()); //$NON-NLS-1$
         assertTrue("a main-only prompt is about the ext-info, not about stored values: " //$NON-NLS-1$
             + mainOnly.getSubtitle(),
             mainOnly.getSubtitle().contains("ext-info")); //$NON-NLS-1$
 
-        ConsentPreview both = ModifyMetadataTool.formRetypePreview(fqn, ref,
-            List.of(props("valueType", "String").get(0), props("main", "false").get(0)), true); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        ConsentPreview both = ModifyMetadataTool.formRetypePreview(fqn, ref, true, true);
         assertEquals("both losses are named", List.of("valueType", "main"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             both.getTopNames());
         assertTrue("and the subtitle spells out the second one: " + both.getSubtitle(), //$NON-NLS-1$
@@ -2744,10 +2989,11 @@ public class ModifyMetadataToolTest
     }
 
     /**
-     * The other edge of the same rule. A batch may carry BOTH a retype and a main write and still
-     * lose no handler - the node merely changes kind, and its data is carried over. The dialog is
-     * therefore built from what the pre-check FOUND, not from what the request could have carried:
-     * a prompt that promises a deletion which will not happen teaches the reader to ignore it.
+     * The other edge of the same rule, in BOTH directions. A batch may carry a retype and a main
+     * write and still lose no handler - the node merely changes kind, and its data is carried over;
+     * and it may name {@code valueType} while leaving the type exactly as it was (issue #599). The
+     * dialog is therefore built from what the pre-check FOUND, never from what the request carried:
+     * a prompt that promises a loss which will not happen teaches the reader to ignore it.
      */
     @Test
     public void testThePreviewDoesNotClaimALossThePreCheckDidNotFind()
@@ -2756,12 +3002,108 @@ public class ModifyMetadataToolTest
             "InformationRegister.Reg.Form.RecordForm.Attribute.Record"); //$NON-NLS-1$
         String fqn = "InformationRegister.Reg.Form.RecordForm.Attribute.Record"; //$NON-NLS-1$
 
-        ConsentPreview harmlessMain = ModifyMetadataTool.formRetypePreview(fqn, ref,
-            List.of(props("valueType", "String").get(0), props("main", "true").get(0)), false); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        ConsentPreview harmlessMain = ModifyMetadataTool.formRetypePreview(fqn, ref, true, false);
         assertEquals("only the retype is at stake", List.of("valueType"), //$NON-NLS-1$ //$NON-NLS-2$
             harmlessMain.getTopNames());
         assertFalse("so the dialog must not promise a deletion that will not happen: " //$NON-NLS-1$
             + harmlessMain.getSubtitle(), harmlessMain.getSubtitle().contains("ext-info")); //$NON-NLS-1$
+
+        // The mirror case: the batch WROTE valueType, but the pre-check found the resulting type
+        // equal to the stored one, so only the ext-info loss is at stake.
+        ConsentPreview noRealRetype = ModifyMetadataTool.formRetypePreview(fqn, ref, false, true);
+        assertEquals("a valueType write that retypes nothing is not named", List.of("main"), //$NON-NLS-1$ //$NON-NLS-2$
+            noRealRetype.getTopNames());
+        assertFalse("and the subtitle may not talk about stored values: " //$NON-NLS-1$
+            + noRealRetype.getSubtitle(),
+            noRealRetype.getSubtitle().contains("stored values")); //$NON-NLS-1$
+    }
+
+    /**
+     * A classifier may be written ONCE per call: each write rebuilds the ext-info, so
+     * {@code [valueType=String, valueType=ValueList]} would drop a ValueList's item type at the first
+     * write while the gate and the retype guards judged a state the batch never reaches.
+     */
+    @Test
+    public void testComboRejectsARepeatedAttributeValueType()
+    {
+        EPackage pkg = buildAttributeLikePackage();
+        EObject attribute = newAttributeWithExtInfo(pkg);
+
+        String err = ModifyMetadataTool.formTypeExtInfoComboError(attribute, Arrays.asList(
+            prop("valueType", "String"), prop("valueType", "ValueList"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        assertNotNull("a repeated value type must be refused", err); //$NON-NLS-1$
+        assertTrue(err, err.contains("only ONCE per call")); //$NON-NLS-1$
+        // Both spellings are one classifier on an attribute: `type` normalizes to `valueType`.
+        assertNotNull("a `type` + `valueType` pair is the same repeat", //$NON-NLS-1$
+            ModifyMetadataTool.formTypeExtInfoComboError(attribute, Arrays.asList(
+                prop("type", "String"), prop("valueType", "ValueList")))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+    }
+
+    /** The item-kind twin: {@code ContextMenu -> Pages} in one call is refused, not applied twice. */
+    @Test
+    public void testRewritingTheSameKindIsNotAKindChange()
+    {
+        EEnum kinds = EcoreFactory.eINSTANCE.createEEnum();
+        kinds.setName("ManagedFormFieldType"); //$NON-NLS-1$
+        for (String name : new String[] { "InputField", "LabelField" }) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            EEnumLiteral literal = EcoreFactory.eINSTANCE.createEEnumLiteral();
+            literal.setName(name);
+            literal.setValue(kinds.getELiterals().size());
+            kinds.getELiterals().add(literal);
+        }
+        EAttribute type = EcoreFactory.eINSTANCE.createEAttribute();
+        type.setName("type"); //$NON-NLS-1$
+        type.setEType(kinds);
+        EClass inputExt = EcoreFactory.eINSTANCE.createEClass();
+        inputExt.setName("InputFieldExtInfo"); //$NON-NLS-1$
+        EClass labelExt = EcoreFactory.eINSTANCE.createEClass();
+        labelExt.setName("LabelFieldExtInfo"); //$NON-NLS-1$
+        EReference extInfo = EcoreFactory.eINSTANCE.createEReference();
+        extInfo.setName("extInfo"); //$NON-NLS-1$
+        extInfo.setEType(EcorePackage.Literals.EOBJECT);
+        extInfo.setContainment(true);
+        EClass field = EcoreFactory.eINSTANCE.createEClass();
+        field.setName("FormField"); //$NON-NLS-1$
+        field.getEStructuralFeatures().add(type);
+        field.getEStructuralFeatures().add(extInfo);
+        EPackage pkg = EcoreFactory.eINSTANCE.createEPackage();
+        pkg.setName("kindprobe"); //$NON-NLS-1$
+        pkg.setNsURI("http://kindprobe"); //$NON-NLS-1$
+        pkg.getEClassifiers().add(kinds);
+        pkg.getEClassifiers().add(field);
+        pkg.getEClassifiers().add(inputExt);
+        pkg.getEClassifiers().add(labelExt);
+        EObject item = EcoreUtil.create(field);
+        item.eSet(type, kinds.getEEnumLiteral("LabelField").getInstance()); //$NON-NLS-1$
+        item.eSet(extInfo, EcoreUtil.create(labelExt));
+
+        List<Object> before = ModifyMetadataTool.itemPairingOf(item);
+        assertFalse("rewriting a consistent pairing must prune nothing", //$NON-NLS-1$
+            ModifyMetadataTool.pairingChanged(true, before, item));
+        assertFalse("no kind write, no pruning", ModifyMetadataTool.pairingChanged(false, before, item)); //$NON-NLS-1$
+
+        // The same kind whose STALE ext-info the write repaired: the published events changed.
+        item.eSet(extInfo, EcoreUtil.create(inputExt));
+        List<Object> stale = ModifyMetadataTool.itemPairingOf(item);
+        item.eSet(extInfo, EcoreUtil.create(labelExt));
+        assertTrue(ModifyMetadataTool.pairingChanged(true, stale, item));
+
+        // A real kind change.
+        item.eSet(type, kinds.getEEnumLiteral("InputField").getInstance()); //$NON-NLS-1$
+        assertTrue(ModifyMetadataTool.pairingChanged(true, before, item));
+    }
+
+    @Test
+    public void testComboRejectsARepeatedItemKind()
+    {
+        EPackage pkg = buildFormLikePackage();
+        EObject group = newGroupWithExtInfo(pkg, new EObject[1]);
+
+        String err = ModifyMetadataTool.formTypeExtInfoComboError(group, Arrays.asList(
+            prop("type", "ContextMenu"), prop("type", "Pages"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        assertNotNull("a repeated item kind must be refused", err); //$NON-NLS-1$
+        assertTrue(err, err.contains("'type' can be set only ONCE per call")); //$NON-NLS-1$
     }
 
     /**
@@ -2787,6 +3129,121 @@ public class ModifyMetadataToolTest
             "String", ModifyMetadataTool.categoryAfter(prepared, null)); //$NON-NLS-1$
         assertNull("a batch that retypes nothing falls back to the member", //$NON-NLS-1$
             ModifyMetadataTool.categoryAfter(List.of(), null));
+    }
+
+    /**
+     * Issue #599. The gate decided by property NAME, so writing {@code valueType} with the type the
+     * attribute ALREADY has raised a destructive dialog for a write that loses nothing.
+     */
+    @Test
+    public void testAValueTypeWriteThatLandsTheSameTypeIsNotARetype()
+    {
+        EObject attribute = attributeTyped(singleType("CatalogObject.Goods")); //$NON-NLS-1$
+
+        assertFalse("the resulting type equals the stored one, so nothing is destroyed", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(
+                preparedTypes(singleType("CatalogObject.Goods")), attribute)); //$NON-NLS-1$
+        assertTrue("...and the mirror case must still ask", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(preparedTypes(singleType("String")), attribute)); //$NON-NLS-1$
+    }
+
+    /**
+     * The answer is a property of the batch's END STATE, not of any single entry: applied in order,
+     * {@code [valueType=String, valueType=CatalogObject]} on an attribute already typed
+     * {@code CatalogObject} ends where it started. A first-match loop would answer about a state the
+     * batch never reaches - and, read the other way round, would go silent on a real retype.
+     */
+    @Test
+    public void testARepeatedValueTypeWriteIsJudgedByWhatTheBatchLEAVES()
+    {
+        EObject attribute = attributeTyped(singleType("CatalogObject.Goods")); //$NON-NLS-1$
+
+        assertFalse("the batch ends on the type it started with", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(preparedTypes(singleType("String"), //$NON-NLS-1$
+                singleType("CatalogObject.Goods")), attribute)); //$NON-NLS-1$
+        assertTrue("and the other way round it really retypes", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(preparedTypes(singleType("CatalogObject.Goods"), //$NON-NLS-1$
+                singleType("String")), attribute)); //$NON-NLS-1$
+    }
+
+    /**
+     * The direction that matters: not knowing is NOT knowing that nothing changes. Every case the
+     * verdict cannot decide keeps raising the dialog, because a silent gate loses data.
+     */
+    @Test
+    public void testAnUndecidableRetypeStillAsks()
+    {
+        assertTrue("a batch with no prepared type write cannot claim the type is unchanged", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(List.of(), attributeTyped(singleType("String")))); //$NON-NLS-1$
+        assertTrue("nor can one with no member to compare against", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(preparedTypes(singleType("String")), null)); //$NON-NLS-1$
+        assertTrue("a member whose valueType is unset is not the type about to be written", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(preparedTypes(singleType("String")), plainColumn())); //$NON-NLS-1$
+        assertTrue("nor is a member carrying no valueType feature at all", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(preparedTypes(singleType("String")), //$NON-NLS-1$
+                attributeWithAnAdjustableFlag()));
+    }
+
+    /**
+     * A change on the nested {@code <extInfo>} is a property INSIDE the holder, never the member's
+     * own data type - counting it would compare a value the member's {@code valueType} never gets.
+     */
+    @Test
+    public void testAnExtInfoChangeIsNotTheMembersOwnRetype()
+    {
+        EAttribute valueTypeFeature = EcoreFactory.eINSTANCE.createEAttribute();
+        valueTypeFeature.setName("valueType"); //$NON-NLS-1$
+        List<ModifyMetadataTool.HolderChange> onExtInfo = List.of(
+            new ModifyMetadataTool.HolderChange(true,
+                ModifyMetadataTool.PreparedChange.typeDescription(valueTypeFeature,
+                    singleType("CatalogObject.Goods")))); //$NON-NLS-1$
+
+        assertTrue("no type write on the member itself - so the verdict is 'ask'", //$NON-NLS-1$
+            ModifyMetadataTool.retypesMember(onExtInfo,
+                attributeTyped(singleType("CatalogObject.Goods")))); //$NON-NLS-1$
+    }
+
+    /**
+     * A form attribute CARRYING {@code stored} in its {@code valueType} - the model side the gate
+     * compares the batch against.
+     *
+     * <p>Its {@code valueType} targets the REAL {@code McorePackage} EClass, not the look-alike the
+     * preparation-only fixtures declare: the gate reads a type the writer BUILT, and EMF refuses to
+     * store an mcore {@code TypeDescription} in a reference typed by a same-named copy.</p>
+     */
+    private static EObject attributeTyped(TypeDescription stored)
+    {
+        EcoreFactory factory = EcoreFactory.eINSTANCE;
+        EPackage pkg = factory.createEPackage();
+        pkg.setName("formtyped"); //$NON-NLS-1$
+        pkg.setNsPrefix("formtyped"); //$NON-NLS-1$
+        pkg.setNsURI("http://ditrix.com/test/formtyped"); //$NON-NLS-1$
+        EClass attributeClass = factory.createEClass();
+        attributeClass.setName("FormAttribute"); //$NON-NLS-1$
+        EReference valueType = factory.createEReference();
+        valueType.setName("valueType"); //$NON-NLS-1$
+        valueType.setEType(McorePackage.Literals.TYPE_DESCRIPTION);
+        valueType.setContainment(true);
+        attributeClass.getEStructuralFeatures().add(valueType);
+        pkg.getEClassifiers().add(attributeClass);
+
+        EObject attribute = new DynamicEObjectImpl(attributeClass);
+        attribute.eSet(valueType, stored);
+        return attribute;
+    }
+
+    /** The prepared {@code valueType} writes of one batch, in the order they would be applied. */
+    private static List<ModifyMetadataTool.HolderChange> preparedTypes(TypeDescription... written)
+    {
+        EAttribute valueTypeFeature = EcoreFactory.eINSTANCE.createEAttribute();
+        valueTypeFeature.setName("valueType"); //$NON-NLS-1$
+        List<ModifyMetadataTool.HolderChange> prepared = new ArrayList<>();
+        for (TypeDescription description : written)
+        {
+            prepared.add(new ModifyMetadataTool.HolderChange(false,
+                ModifyMetadataTool.PreparedChange.typeDescription(valueTypeFeature, description)));
+        }
+        return prepared;
     }
 
     /** A {@code TypeDescription} naming exactly one type, the shape a retype prepares. */

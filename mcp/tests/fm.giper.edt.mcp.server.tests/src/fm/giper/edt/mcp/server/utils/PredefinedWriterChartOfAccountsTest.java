@@ -18,6 +18,7 @@ import java.util.Locale;
 
 import org.junit.Test;
 
+import com._1c.g5.v8.dt.mcore.McoreFactory;
 import com._1c.g5.v8.dt.metadata.common.AccountType;
 import com._1c.g5.v8.dt.metadata.mdclass.AccountingFlag;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
@@ -413,6 +414,7 @@ public class PredefinedWriterChartOfAccountsTest
         com._1c.g5.v8.dt.metadata.mdclass.ChartOfCharacteristicTypes cct =
             MdClassFactory.eINSTANCE.createChartOfCharacteristicTypes();
         cct.setName("Subkonto"); //$NON-NLS-1$
+        cct.setType(McoreFactory.eINSTANCE.createTypeDescription());
         coa.setExtDimensionTypes(cct);
 
         PredefinedWriter.ItemProps folderProps = new PredefinedWriter.ItemProps();
@@ -432,6 +434,11 @@ public class PredefinedWriterChartOfAccountsTest
         assertTrue("a folder characteristicType must be refused", result.isError()); //$NON-NLS-1$
         assertTrue("the error must say it is a folder: " + result.error, //$NON-NLS-1$
             result.error.toLowerCase(Locale.ROOT).contains("folder")); //$NON-NLS-1$
+        assertNull("a refused characteristic folder must not attach an account", //$NON-NLS-1$
+            PredefinedWriter.findByName(coa, "Cash")); //$NON-NLS-1$
+        assertTrue("the account list must remain empty after refusal", PredefinedWriter.listAll(coa).isEmpty()); //$NON-NLS-1$
+        assertEquals(1, PredefinedWriter.listAll(cct).size());
+        assertTrue("the referenced CCT folder must remain a folder", PredefinedWriter.listAll(cct).get(0).isFolder); //$NON-NLS-1$
     }
 
     // ==================== chart flag references: yo tolerance + dangling safety (issue #296 f/u) =====

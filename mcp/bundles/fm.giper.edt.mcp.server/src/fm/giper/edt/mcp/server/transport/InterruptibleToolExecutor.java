@@ -55,8 +55,14 @@ public class InterruptibleToolExecutor
 
     public String execute(HttpExchange exchange, String requestBody, McpRequestContext context) throws Exception // NOSONAR propagates checked exceptions across the reflective boundary by design
     {
-        // Extract request ID and tool name for ActiveToolCall via the shared parser.
-        JsonRpcRequest request = protocolHandler.parse(requestBody);
+        long startNanos = System.nanoTime();
+        return execute(exchange, requestBody, protocolHandler.parse(requestBody), startNanos, context);
+    }
+
+    /** Executes a pre-parsed request without replacing its profile or session context. */
+    public String execute(HttpExchange exchange, String requestBody, JsonRpcRequest request,
+        long startNanos, McpRequestContext context) throws Exception // NOSONAR reflective execution preserves checked failures
+    {
         Object requestId = request != null ? McpProtocolHandler.normalizeId(request.getId()) : null;
         String toolName = request != null && request.getToolName() != null ? request.getToolName() : "unknown"; //$NON-NLS-1$
 
@@ -77,7 +83,7 @@ public class InterruptibleToolExecutor
             McpCallHistory.bindRequestMeta(resolved);
             try
             {
-                resultContainer[0] = protocolHandler.processRequest(requestBody, resolved);
+                resultContainer[0] = protocolHandler.processRequest(requestBody, request, startNanos, resolved);
             }
             catch (Exception e)
             {

@@ -247,9 +247,10 @@ public final class TemplateScreenshotHelper
     {
         Display display = Display.getCurrent();
         Shell shell = new Shell(display);
+        MoxelControl control = null;
         try
         {
-            MoxelControl control = new MoxelControl(shell, MOXEL_CONTROL_STYLE, presentation);
+            control = new MoxelControl(shell, MOXEL_CONTROL_STYLE, presentation);
             control.setDocument(document);
 
             SheetAccessor sheet = control.getSheet();
@@ -295,6 +296,26 @@ public final class TemplateScreenshotHelper
             viewPort.setDevicePosition(new Rectangle(0, 0, widthPx, heightPx));
 
             return RenderOutcome.image(paintToImage(control, viewPort, display, widthPx, heightPx));
+        }
+        finally
+        {
+            disposeRenderControls(control, shell);
+        }
+    }
+
+    /**
+     * Release the standalone SDK control before its SWT parent. Parent disposal calls SWT's
+     * child release path directly and does not invoke MoxelControl's public listener cleanup.
+     * The SDK removes its listeners even when the SWT widget was already disposed.
+     */
+    static void disposeRenderControls(MoxelControl control, Shell shell)
+    {
+        try
+        {
+            if (control != null)
+            {
+                control.dispose();
+            }
         }
         finally
         {

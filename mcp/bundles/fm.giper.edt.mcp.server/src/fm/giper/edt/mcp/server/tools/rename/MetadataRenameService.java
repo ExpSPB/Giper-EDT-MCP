@@ -29,6 +29,7 @@ import org.eclipse.core.runtime.Platform;
 import org.osgi.framework.Bundle;
 
 import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmEngine;
 import com._1c.g5.v8.dt.bsl.model.Method;
 import com._1c.g5.v8.dt.bsl.model.Module;
 import com._1c.g5.v8.dt.common.StringUtils;
@@ -57,14 +58,17 @@ import com._1c.g5.v8.dt.refactoring.core.RefactoringStatus;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.utils.BmModelResolver;
+import fm.giper.edt.mcp.server.utils.BmTransactions;
 import fm.giper.edt.mcp.server.utils.ConsentPreview;
 import fm.giper.edt.mcp.server.utils.ContentHash;
 import fm.giper.edt.mcp.server.utils.DestructiveConsentGate;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
 import fm.giper.edt.mcp.server.utils.FormValidationException;
+import fm.giper.edt.mcp.server.utils.MetadataScope;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.VendorSupportGuard;
 
 /**
  * Domain service backing {@code rename_metadata_object}: resolves the target, builds the LTK
@@ -165,6 +169,15 @@ public class MetadataRenameService
 
         objectFqn = MetadataTypeUtils.normalizeFqn(objectFqn);
 
+        // Vendor support, before any refactoring exists: EDT's rename checks only the referencing
+        // objects, never the renamed one itself (#642).
+        String locked = VendorSupportGuard.refusalForFqn(MetadataScope.of(project, config), objectFqn,
+            VendorSupportGuard.Intent.MODIFY, "renamed"); //$NON-NLS-1$
+        if (locked != null)
+        {
+            return ToolResult.error(locked).toJson();
+        }
+
         // A FQN addressing a FORM element (attribute / column / command / field / button / group /
         // decoration / table) is handled by a dedicated branch BEFORE the mdclass path, mirroring how
         // delete_metadata dispatches the same shapes: form elements live on the form's content model,
@@ -246,6 +259,11 @@ public class MetadataRenameService
             return ToolResult.error("Failed to create rename refactoring for: " + objectFqn).toJson(); //$NON-NLS-1$
         }
 
+        String lockedReferrers = supportLockRefusal(objectFqn, refactorings);
+        if (lockedReferrers != null)
+        {
+            return ToolResult.error(lockedReferrers).toJson();
+        }
         if (!confirm)
         {
             // Preview mode - collect all items and problems
@@ -314,13 +332,11 @@ public class MetadataRenameService
      * holding an element name are deliberately NOT rewritten - that was the issue author's explicit
      * scope call (issue #381).
      * <p>
-     * The refactoring is BUILT inside a BM READ transaction (the form element only exists as a live
-     * EObject there) but PERFORMED outside it: {@code IRefactoring.perform()} opens its own batch
-     * session and write transaction, exactly as the mdclass path does, and nothing is force-exported
-     * by hand. What THIS method carries out of the read is a plain {@code String} old name; the
-     * refactoring itself is EDT's object and may hold model elements of its own - the mdclass branch
-     * hands the identical kind of object to the identical preview and apply code, so nothing here is
-     * a new exposure, but the claim is stated as it is rather than as "nothing escapes".
+     * Both refactoring CREATION and PERFORMANCE run outside our BM transactions. EDT's creation
+     * synchronously builds the workspace and can open another BM transaction on the same thread.
+     * The preparation read carries out only the old name and stable BM ID; the SDK receives a fresh
+     * global object resolved by that ID after the read closes. Our property checks remain inside
+     * short read transactions, and nothing is force-exported by hand.
      *
      * @param project the EDT project
      * @param config the project's configuration
@@ -357,40 +373,19 @@ public class MetadataRenameService
                     + "'CommonForm.FormName.<Kind>.Name' (Kind = Attribute / Command / Field / " //$NON-NLS-1$
                     + "Button / Group / Decoration / Table / Column on a collection attribute)."); //$NON-NLS-1$
 
-            // Only the old name and the refactoring leave the read transaction - never the element.
-            FormRenameTarget target = FormElementWriter.readEditableForm(fctx,
-                "Prepare form element rename", (formModel, tx) -> { //$NON-NLS-1$
-                    EObject member = FormElementWriter.resolveFormMember(formModel, ref);
-                    if (member == null)
-                    {
-                        return FormRenameTarget.notFound(FormElementWriter.kindMismatchAdvice(
-                            formModel, ref.kindToken, ref.name, normFqn));
-                    }
-                    String designerChild = designerChildRefusal(member, ref);
-                    if (designerChild != null)
-                    {
-                        return FormRenameTarget.refused(designerChild);
-                    }
-                    if (!(member instanceof NamedElement))
-                    {
-                        return FormRenameTarget.refused("Form element '" + ref.name //$NON-NLS-1$
-                            + "' cannot be renamed: its model type carries no renameable name."); //$NON-NLS-1$
-                    }
-                    String duplicate = duplicateNameRefusal(formModel, member, ref, newName);
-                    if (duplicate != null)
-                    {
-                        return FormRenameTarget.refused(duplicate);
-                    }
-                    return FormRenameTarget.of(((NamedElement)member).getName(),
-                        formRefactoringService.createFormRenameRefactoring((NamedElement)member,
-                            newName));
-                });
+            FormRenameTarget target = prepareFormRename(fctx, ref, normFqn, newName,
+                formRefactoringService);
 
             if (target.error != null)
             {
                 return ToolResult.error(target.error).toJson();
             }
             Collection<IRefactoring> refactorings = Collections.singletonList(target.refactoring);
+            String lockedReferrers = supportLockRefusal(normFqn, refactorings);
+            if (lockedReferrers != null)
+            {
+                return ToolResult.error(lockedReferrers).toJson();
+            }
             if (!confirm)
             {
                 return renderPreview(normFqn, newName, target.oldName, refactorings, maxResults,
@@ -410,6 +405,135 @@ public class MetadataRenameService
             return ToolResult.error("Failed to rename form element: " //$NON-NLS-1$
                 + causeMessage(e)).toJson();
         }
+    }
+
+    /** Prepare identity in reads, then let EDT create its refactoring without an outer transaction. */
+    static FormRenameTarget prepareFormRename(FormElementWriter.FormEditContext ctx,
+        FormElementWriter.FormMemberRef ref, String normFqn, String newName,
+        IFormRefactoringService service)
+    {
+        FormRenameSelection selected = FormElementWriter.readEditableForm(ctx,
+            "Prepare form element rename", (formModel, tx) -> { //$NON-NLS-1$
+                EObject member = FormElementWriter.resolveFormMember(formModel, ref);
+                if (member == null)
+                {
+                    return new FormRenameSelection(null, 0, FormRenameTarget.notFound(
+                        FormElementWriter.kindMismatchAdvice(formModel, ref.kindToken, ref.name, normFqn)).error);
+                }
+                String refusal = designerChildRefusal(member, ref);
+                if (refusal == null && !(member instanceof NamedElement))
+                {
+                    refusal = "Form element '" + ref.name //$NON-NLS-1$
+                        + "' cannot be renamed: its model type carries no renameable name."; //$NON-NLS-1$
+                }
+                if (refusal == null)
+                {
+                    refusal = duplicateNameRefusal(formModel, member, ref, newName);
+                }
+                if (refusal == null && !(member instanceof IBmObject))
+                {
+                    refusal = "Form element '" + ref.name //$NON-NLS-1$
+                        + "' has no stable BM identity. Nothing was renamed; refresh the project and retry."; //$NON-NLS-1$
+                }
+                return refusal != null ? new FormRenameSelection(null, 0, refusal)
+                    : new FormRenameSelection(((NamedElement)member).getName(),
+                        ((IBmObject)member).bmGetId(), null);
+            });
+        if (selected.error != null)
+        {
+            return FormRenameTarget.refused(selected.error);
+        }
+        IBmEngine engine = ctx.bmModel.getEngine();
+        if (engine == null || engine.getCurrentTransaction() != null)
+        {
+            return FormRenameTarget.refused(staleFormRenameTarget(ref));
+        }
+        // getObjectById completes its own short read and returns a global BM object, not our tx object.
+        IBmObject global = engine.getObjectById(selected.bmId);
+        if (!(global instanceof NamedElement) || global.bmGetId() != selected.bmId
+            || global.bmGetTransaction() != null)
+        {
+            return FormRenameTarget.refused(staleFormRenameTarget(ref));
+        }
+        boolean sameTarget = BmTransactions.read(ctx.bmModel,
+            "Check form element rename identity", (tx, pm) -> { //$NON-NLS-1$
+                IBmObject current = tx.getObjectById(selected.bmId);
+                return current instanceof NamedElement
+                    && Objects.equals(selected.oldName, ((NamedElement)current).getName());
+            });
+        if (!sameTarget || engine.getCurrentTransaction() != null)
+        {
+            return FormRenameTarget.refused(staleFormRenameTarget(ref));
+        }
+        return FormRenameTarget.of(selected.oldName,
+            service.createFormRenameRefactoring((NamedElement)global, newName));
+    }
+
+    private static String staleFormRenameTarget(FormElementWriter.FormMemberRef ref)
+    {
+        return "Form element '" + ref.name + "' in " + ref.formPath //$NON-NLS-1$ //$NON-NLS-2$
+            + " is no longer available with the prepared BM identity. Nothing was renamed. " //$NON-NLS-1$
+            + "Use get_metadata_details to verify the element, then retry rename_metadata_object."; //$NON-NLS-1$
+    }
+
+    /** Only immutable values cross the preparation read boundary. */
+    private record FormRenameSelection(String oldName, long bmId, String error)
+    {
+    }
+
+    /**
+     * The refusal for a rename whose cascade would update references inside objects vendor support
+     * locks: EDT's rename records those as {@link com._1c.g5.v8.dt.refactoring.core.EditingForbiddenProblem}
+     * and still performs the edit, so the tool refuses before preview or perform (#642).
+     *
+     * @param objectFqn the renamed object's FQN
+     * @param refactorings the prepared refactorings
+     * @return the refusal message, or {@code null} when no problem is a support lock
+     */
+    static String supportLockRefusal(String objectFqn, Collection<IRefactoring> refactorings)
+    {
+        Set<String> locked = new java.util.LinkedHashSet<>();
+        for (IRefactoring refactoring : refactorings)
+        {
+            RefactoringStatus status = refactoring.getStatus();
+            Collection<IRefactoringProblem> problems = status == null ? null : status.getProblems();
+            if (problems == null)
+            {
+                continue;
+            }
+            for (IRefactoringProblem problem : problems)
+            {
+                if (VendorSupportGuard.isSupportLockProblem(problem))
+                {
+                    locked.add(lockedObjectLabel(problem));
+                }
+            }
+        }
+        return locked.isEmpty() ? null
+            : VendorSupportGuard.cascadeRefusal(objectFqn, "renamed", //$NON-NLS-1$
+                "the rename would update references inside", new ArrayList<>(locked)); //$NON-NLS-1$
+    }
+
+    /** The FQN of the top object a support-lock problem names (bmGetFqn is for top objects only). */
+    private static String lockedObjectLabel(IRefactoringProblem problem)
+    {
+        try
+        {
+            if (problem.getObject() instanceof IBmObject bmObject)
+            {
+                IBmObject top = bmObject.bmIsTop() ? bmObject : bmObject.bmGetTopObject();
+                String fqn = top == null ? null : top.bmGetFqn();
+                if (fqn != null)
+                {
+                    return fqn;
+                }
+            }
+        }
+        catch (RuntimeException e) // NOSONAR a label only
+        {
+            // fall through to the generic label
+        }
+        return "an object EDT could not name"; //$NON-NLS-1$
     }
 
     /**
@@ -530,12 +654,12 @@ public class MetadataRenameService
             + ". Pick a different name."; //$NON-NLS-1$
     }
 
-    /** What survives the prepare read transaction: the old name plus EDT's refactoring, or an error. */
-    private static final class FormRenameTarget
+    /** The old name and the refactoring created after preparation reads have closed, or an error. */
+    static final class FormRenameTarget
     {
-        private final String oldName;
-        private final IRefactoring refactoring;
-        private final String error;
+        final String oldName;
+        final IRefactoring refactoring;
+        final String error;
 
         private FormRenameTarget(String oldName, IRefactoring refactoring, String error)
         {
@@ -1329,8 +1453,7 @@ public class MetadataRenameService
                     List<TextEdit> leafEdits = getLeafEdits(edit);
                     if (!leafEdits.isEmpty())
                     {
-                        Module module = BslModuleUtils.loadModule(file.getProject(),
-                            BslModuleUtils.extractModulePath(file.getFullPath().toString()));
+                        Module module = BslModuleUtils.loadModule(file);
                         addLeafEditChangePoints(change, leafIndex, scan, leafEdits, content, module, ctx);
                         scan.addedFallbackChange = true;
                     }
@@ -1633,7 +1756,7 @@ public class MetadataRenameService
             int columnNumber = computeColumnNumber(content, fileOffset);
             String codeContext = extractContext(content, lineNumber);
             String methodName = null;
-            Module module = BslModuleUtils.loadModule(file.getProject(), BslModuleUtils.extractModulePath(file.getFullPath().toString()));
+            Module module = BslModuleUtils.loadModule(file);
             if (module != null)
             {
                 methodName = findContainingMethodAst(module, lineNumber);
@@ -2429,6 +2552,206 @@ public class MetadataRenameService
 
 
 
+    @FunctionalInterface
+    interface RenameBarrier
+    {
+        String await() throws InterruptedException;
+    }
+
+    interface SdkFailureScope extends AutoCloseable
+    {
+        String failure();
+
+        @Override
+        void close();
+    }
+
+    static final class ApplyOutcome
+    {
+        final List<String> performed = new ArrayList<>();
+        final List<String> errors = new ArrayList<>();
+        int attempted;
+        String barrierError;
+    }
+
+    /** Runs the actual prepared SDK sequence; a failed barrier stops all later performs. */
+    static ApplyOutcome applyPreparedRefactorings(Collection<IRefactoring> refactorings,
+        RenameProgress progress, Runnable beforeFirstMutation, RenameBarrier barrier)
+    {
+        return applyPreparedRefactorings(refactorings, progress, beforeFirstMutation, barrier,
+            RenameSdkFailureObserver::openLive);
+    }
+
+    static ApplyOutcome applyPreparedRefactorings(Collection<IRefactoring> refactorings,
+        RenameProgress progress, Runnable beforeFirstMutation, RenameBarrier barrier,
+        java.util.function.Supplier<SdkFailureScope> observers)
+    {
+        ApplyOutcome outcome = new ApplyOutcome();
+        progress.enter(RenameProgress.Phase.WAITING_FOR_DERIVED_DATA);
+        for (IRefactoring refactoring : refactorings)
+        {
+            try
+            {
+                outcome.barrierError = barrier.await();
+                if (Thread.currentThread().isInterrupted())
+                {
+                    throw new InterruptedException("Rename completion wait interrupted"); //$NON-NLS-1$
+                }
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                outcome.barrierError = "Waiting for pending project work was interrupted."; //$NON-NLS-1$
+            }
+            catch (RuntimeException e)
+            {
+                if (Thread.currentThread().isInterrupted() && isInterruptedBarrierFailure(e))
+                {
+                    // Only a proven interruption is cancellation; a coincident real error stays ERROR.
+                    outcome.barrierError = "Waiting for pending project work was interrupted."; //$NON-NLS-1$
+                }
+                else
+                {
+                    Activator.logError("Could not verify pending project work before rename", e); //$NON-NLS-1$
+                    outcome.barrierError = "Could not verify pending project work: " + e.getMessage(); //$NON-NLS-1$
+                }
+            }
+            if (outcome.barrierError != null)
+            {
+                // Refusal/interruption is not an SDK ERROR. Actual exceptions were diagnosed above.
+                Activator.logInfo("Rename stopped before its next refactoring: " + outcome.barrierError); //$NON-NLS-1$
+                return outcome;
+            }
+            SdkFailureScope observer;
+            try
+            {
+                observer = observers.get();
+            }
+            catch (RuntimeException e)
+            {
+                Activator.logError("Could not observe SDK resource synchronization before rename", e); //$NON-NLS-1$
+                outcome.barrierError = "Could not observe EDT resource synchronization. Nothing further was renamed. " //$NON-NLS-1$
+                    + "Check project readiness and retry."; //$NON-NLS-1$
+                return outcome;
+            }
+            if (observer == null)
+            {
+                outcome.barrierError = "EDT resource synchronization observation is unavailable. " //$NON-NLS-1$
+                    + "Check project readiness and retry. Nothing further was renamed."; //$NON-NLS-1$
+                Activator.logInfo(outcome.barrierError);
+                return outcome;
+            }
+            String completedTitle = null;
+            boolean returnedNormally = false;
+            try
+            {
+                // Registration can restore interruption; refuse before flags or SDK dispatch.
+                if (Thread.currentThread().isInterrupted())
+                {
+                    outcome.barrierError = "Waiting for pending project work was interrupted."; //$NON-NLS-1$
+                    Activator.logInfo(outcome.barrierError);
+                    return outcome;
+                }
+                if (outcome.attempted == 0)
+                {
+                    progress.enter(RenameProgress.Phase.APPLYING);
+                    beforeFirstMutation.run();
+                }
+                outcome.attempted++;
+                try
+                {
+                    refactoring.perform();
+                    completedTitle = refactoring.getTitle();
+                    returnedNormally = true;
+                }
+                catch (Exception e)
+                {
+                    // Preserve existing thrown-SDK-error visibility and continuation semantics.
+                    Activator.logError("Error performing rename refactoring: " + refactoring.getTitle(), e); //$NON-NLS-1$
+                    outcome.errors.add(refactoring.getTitle() + ": " + e.getMessage()); //$NON-NLS-1$
+                }
+            }
+            finally
+            {
+                // This scope belongs to the actual synchronous SDK thread, even after HTTP timeout.
+                try
+                {
+                    observer.close();
+                }
+                catch (RuntimeException e)
+                {
+                    Activator.logError("Could not close SDK resource synchronization observation", e); //$NON-NLS-1$
+                    outcome.barrierError = "EDT resource synchronization could not be observed reliably. " //$NON-NLS-1$
+                        + "Changes may be partial; inspect the target and project files before retrying."; //$NON-NLS-1$
+                }
+            }
+            try
+            {
+                String observedFailure = observer.failure();
+                if (observedFailure != null)
+                {
+                    outcome.barrierError = observedFailure;
+                }
+            }
+            catch (RuntimeException e)
+            {
+                Activator.logError("Could not read SDK resource synchronization evidence", e); //$NON-NLS-1$
+                outcome.barrierError = "EDT resource synchronization outcome is unknown. " //$NON-NLS-1$
+                    + "Inspect the target and project files before retrying."; //$NON-NLS-1$
+            }
+            if (outcome.barrierError != null)
+            {
+                // The SDK's original ERROR remains visible; do not retry or count this as confirmed.
+                outcome.errors.add(outcome.barrierError);
+                Activator.logInfo("Rename stopped after unconfirmed resource synchronization: " //$NON-NLS-1$
+                    + outcome.barrierError);
+                return outcome;
+            }
+            if (returnedNormally)
+            {
+                outcome.performed.add(completedTitle);
+            }
+        }
+        return outcome;
+    }
+
+    /** Logging only: every runtime barrier failure still refuses the next mutation. */
+    private static boolean isInterruptedBarrierFailure(RuntimeException failure)
+    {
+        Throwable current = failure;
+        for (int depth = 0; current != null && depth < 10; depth++)
+        {
+            if (current instanceof InterruptedException)
+            {
+                return true;
+            }
+            // Exact EDT .5's event drain wraps interruption without a cause. Match both facts;
+            // its timeout uses the same class with a different message and remains a real error.
+            if ("com._1c.g5.v8.dt.internal.core.platform.bm.integration.event.BmEventManagerException" //$NON-NLS-1$
+                .equals(current.getClass().getName())
+                && "The calling thread has been unexpectedly interrupted".equals(current.getMessage())) //$NON-NLS-1$
+            {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    static String renderBarrierFailure(String objectFqn, ApplyOutcome outcome)
+    {
+        String state = outcome.attempted == 0 ? "Nothing was renamed. " //$NON-NLS-1$
+            : "The rename stopped after an earlier refactoring was attempted and may be partial. " //$NON-NLS-1$
+                + "Inspect the target and get_project_errors before retrying. "; //$NON-NLS-1$
+        String message = "Could not continue rename of '" + objectFqn + "'. " //$NON-NLS-1$ //$NON-NLS-2$
+            + state + outcome.barrierError;
+        ToolResult result = !outcome.performed.isEmpty() ? ToolResult.errorAfterMutation(message)
+            : outcome.attempted > 0 ? ToolResult.errorWithUnknownMutationOutcome(message)
+            : ToolResult.error(message);
+        return result.put("performedCount", outcome.performed.size()) //$NON-NLS-1$
+            .put("performed", outcome.performed).put("errors", outcome.errors).toJson(); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
     private String performRename(String objectFqn, String newName,
         Collection<IRefactoring> refactorings, DisableRequest disableRequest, String expectedHash,
         RenameProgress progress, String subject)
@@ -2439,10 +2762,9 @@ public class MetadataRenameService
             return ToolResult.error(hashError).toJson();
         }
 
-        // Destructive-operation consent gate: the LAST check before the cascade rename mutates the
-        // model (rewriting every reference across BSL, forms and metadata). Built from the refactorings
-        // the tool already resolved; on ALLOW the behaviour is byte-identical, on REJECT nothing is
-        // mutated. This runs inside the tool's UI-thread syncExec scope, so the dialog (when armed)
+        // Destructive-operation consent gate before the checked completion barrier and mutation.
+        // Built from the refactorings the tool already resolved; REJECT changes nothing, while ALLOW
+        // still requires observable project completion before any cascade starts. This runs inside the tool's UI-thread syncExec scope, so the dialog (when armed)
         // opens directly. Headless / env-bypass / non-ASK never block.
         // The subject is passed in rather than hardcoded: this path now also renames FORM elements,
         // and a prompt saying "metadata object" about a form field would misdescribe what is being
@@ -2468,43 +2790,23 @@ public class MetadataRenameService
                 .toJson();
         }
 
-        // Past the gate the rename is authorised to rewrite the model, and from here on a caller
-        // that stops waiting must be told the configuration CAN be partially renamed - the one
-        // outcome it must not mistake for "nothing happened". Entered before applyDisableIndices
-        // (which only flips in-memory LTK flags) deliberately: erring towards the warning costs a
-        // check, erring the other way costs a silent half-renamed configuration.
-        progress.enter(RenameProgress.Phase.APPLYING);
-
-        // Apply disableIndices by traversing items and their native changes. Malformed entries cannot
-        // reach this point: the tool refuses them before the cascade starts (#401).
         DisableOutcome disableOutcome = new DisableOutcome(disableRequest);
-        if (!disableRequest.indices().isEmpty())
-        {
-            applyDisableIndices(refactorings, disableRequest.indices(), disableOutcome);
-        }
-
-        List<String> performed = new ArrayList<>();
-        List<String> errors = new ArrayList<>();
-
-        for (IRefactoring refactoring : refactorings)
-        {
-            try
+        ApplyOutcome outcome = applyPreparedRefactorings(refactorings, progress, () -> {
+            if (!disableRequest.indices().isEmpty())
             {
-                refactoring.perform();
-                performed.add(refactoring.getTitle());
+                applyDisableIndices(refactorings, disableRequest.indices(), disableOutcome);
             }
-            catch (Exception e)
-            {
-                Activator.logError("Error performing rename refactoring: " + refactoring.getTitle(), e); //$NON-NLS-1$
-                errors.add(refactoring.getTitle() + ": " + e.getMessage()); //$NON-NLS-1$
-            }
+        }, RenameCompletionBarrier.live());
+        if (outcome.barrierError != null)
+        {
+            return renderBarrierFailure(objectFqn, outcome);
         }
         // The apply LOOP is over - which is not the same as "every change point succeeded":
         // errors above and disableIndices both survive into the report. The phase says only that
         // nothing is left to apply.
         progress.enter(RenameProgress.Phase.APPLIED);
 
-        return renderExecutedReport(objectFqn, newName, disableOutcome, performed, errors);
+        return renderExecutedReport(objectFqn, newName, disableOutcome, outcome.performed, outcome.errors);
     }
 
     /**

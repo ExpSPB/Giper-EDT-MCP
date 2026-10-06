@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.eclipse.swt.SWT;
@@ -392,6 +395,16 @@ public final class LaunchUpdateDialogAutoConfirmer
      */
     private static final int MAX_PORT_CONFLICT_DETAIL_CHARS = 400;
 
+    /**
+     * How long a reconciliation may wait for the SWT UI thread. This hop takes milliseconds when
+     * the UI thread is responsive; when it is not, an unattended call cannot wait it out - it
+     * would block outside every deadline while holding a start claim and the recovery lock.
+     */
+    private static final long UI_RECONCILE_TIMEOUT_MS = 2_000L;
+
+    /** Hand the reconcile to the UI thread and do not wait for it at all. */
+    private static final long QUEUE_ONLY_MS = 0L;
+
     private static final Object LOCK = new Object();
 
     /**
@@ -417,8 +430,8 @@ public final class LaunchUpdateDialogAutoConfirmer
      * "Реорганизация информации"). While {@code > 0} the listener auto-presses that
      * modal's default "Accept" button. Armed alongside the update matcher by the
      * back-compat {@link #arm(boolean, boolean)} (a restructure is a consequence of an
-     * update), and independently by {@code update_database} via
-     * {@link #arm(boolean, boolean, boolean)}.
+     * update), and independently by {@code update_database} through the seven-argument
+     * {@code arm} overload.
      */
     private static int restructureArmCount;
 
@@ -529,6 +542,20 @@ public final class LaunchUpdateDialogAutoConfirmer
      * writes nothing, and repeating the same policy would not change that.
      */
     public static final String CANCEL_REASON_NOT_ATTRIBUTED = "not-attributed"; //$NON-NLS-1$
+
+    /**
+     * Reason value: the dialog could not be attributed because the caller's own infobase-name
+     * lookup did not CONCLUDE (#622) — EDT's application manager did not answer inside the
+     * attribution deadline.
+     *
+     * <p>Separated from {@link #CANCEL_REASON_NOT_ATTRIBUTED} because the advice inverts. That one
+     * means the targeted application resolves no infobase, which no retry changes; this one is a
+     * ten-second deadline on a read that normally returns in milliseconds, and it is exactly the
+     * case where retrying (once EDT answers again) is what helps. A window only reports it when
+     * the caller told it its attribution was inconclusive — see
+     * {@link #beginConflictWatch(String, String, boolean)}.
+     */
+    public static final String CANCEL_REASON_ATTRIBUTION_UNAVAILABLE = "attribution-unavailable"; //$NON-NLS-1$
 
     /**
      * The conflict-cancel windows currently open — one per update in flight (see
@@ -934,16 +961,20 @@ public final class LaunchUpdateDialogAutoConfirmer
     }
 
     /**
-     * Arms the update-dialog matcher only — the back-compat entry point. MUST be
-     * paired with {@link #disarm()}. Equivalent to {@code arm(true, false)}: the
-     * "Application update" modal is auto-confirmed, the code-1003 modal is NOT.
-     * Kept for callers that need only the update modal pressed unconditionally;
-     * the YAXUnit tools now gate both matchers per call site via
-     * {@link #arm(boolean, boolean)}.
+     * Arms the update-dialog matcher only — the back-compat entry point. Pair it with
+     * {@link #disarm()}, called only when this returned {@code true}. Equivalent to
+     * {@code arm(true, false)}: the "Application update" modal is auto-confirmed, the
+     * code-1003 modal is NOT. Kept for callers that need only the update modal pressed
+     * unconditionally; the YAXUnit tools gate both matchers per call site through the
+     * seven-argument overload.
+     *
+     * @return {@code true} when this call armed anything; {@code false} when no workbench
+     *         display was available. Call the matching {@code disarm} only on {@code true}: a
+     *         release after a no-op arm takes the count of a concurrent caller that did arm
      */
-    public static void arm()
+    public static boolean arm()
     {
-        arm(true, false);
+        return arm(true, false);
     }
 
     /**
@@ -956,9 +987,9 @@ public final class LaunchUpdateDialogAutoConfirmer
     }
 
     /**
-     * Arms the auto-confirmer with independently-selectable matchers. MUST be
-     * paired with {@link #disarm(boolean, boolean)} (same flags) in a
-     * {@code finally} block around the {@code launch()} call. Reentrant per
+     * Arms the auto-confirmer with independently-selectable matchers. Pair it with
+     * {@link #disarm(boolean, boolean)} (same flags) in a {@code finally} block around the
+     * {@code launch()} call, run only when this returned {@code true}. Reentrant per
      * matcher: nested/concurrent launches share one {@link Display} filter, which
      * is installed while EITHER matcher has an outstanding arm.
      *
@@ -981,39 +1012,46 @@ public final class LaunchUpdateDialogAutoConfirmer
      *
      * @param updateDialog arm the "Application update" TITLE matcher
      * @param sessionDialog arm the code-1003 "Debug session already exists" BODY matcher
+     * @return {@code true} when this call armed anything; {@code false} when it requested nothing
+     *         or no workbench display was available. Call the matching {@code disarm} only on
+     *         {@code true}
      */
-    public static void arm(boolean updateDialog, boolean sessionDialog)
+    public static boolean arm(boolean updateDialog, boolean sessionDialog)
     {
         // A DB restructure is a consequence of the same DB update, so the existing
         // launch callers (which arm the update matcher around their pre-launch update)
         // get the restructure matcher for free, gated on the update flag.
-        arm(updateDialog, sessionDialog, updateDialog);
+        return arm(updateDialog, sessionDialog, updateDialog);
     }
 
     /**
      * Arms the auto-confirmer with all three independently-selectable matchers — the
      * "Application update" TITLE, the code-1003 "Debug session already exists" BODY,
      * and the DB-restructure ("Restructure data" / "Реорганизация информации") TITLE.
-     * MUST be paired with {@link #disarm(boolean, boolean, boolean)} (same flags) in a
-     * {@code finally} block. {@code update_database} arms ONLY the restructure matcher
-     * ({@code arm(false, false, true)}) around its {@code IApplicationManager.update}
-     * call; the launch paths arm update+restructure together via the two-arg overload.
+     * Pair it with {@link #disarm(boolean, boolean, boolean)} (same flags) in a
+     * {@code finally} block, run only when this returned {@code true}. Outside this class its only
+     * caller is {@code build_external_objects}, which arms all three around its build; the
+     * launch, YAXUnit and {@code update_database} paths go through the seven-argument overload
+     * because they also arm the conflict and port-conflict matchers.
      * Reentrant per matcher; no-op headless / all-false; never throws.
      *
      * @param updateDialog arm the "Application update" TITLE matcher
      * @param sessionDialog arm the code-1003 "Debug session already exists" BODY matcher
      * @param restructureDialog arm the DB-restructure TITLE matcher (press "Accept")
+     * @return {@code true} when this call armed anything; {@code false} when it requested nothing
+     *         or no workbench display was available. Call the matching {@code disarm} only on
+     *         {@code true}
      */
-    public static void arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog)
+    public static boolean arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog)
     {
-        arm(updateDialog, sessionDialog, restructureDialog, null);
+        return arm(updateDialog, sessionDialog, restructureDialog, null);
     }
 
     /**
      * Arms the auto-confirmer with all three boolean matchers plus the external-changes
-     * conflict matcher, whose press is policy-driven. MUST be paired with
+     * conflict matcher, whose press is policy-driven. Pair it with
      * {@link #disarm(boolean, boolean, boolean, ExternalInfobaseChangesPolicy)} passing the
-     * SAME arguments, in a {@code finally} block.
+     * SAME arguments, in a {@code finally} block, run only when this returned {@code true}.
      *
      * <p>The conflict matcher is armed only when {@code conflictPolicy} is non-{@code null}
      * — a caller that leaves it {@code null} keeps EDT's "Infobase configuration changes"
@@ -1029,11 +1067,14 @@ public final class LaunchUpdateDialogAutoConfirmer
      *            is degraded to {@link ExternalInfobaseChangesPolicy#CANCEL} — nothing can be
      *            proven to be this caller's. Use the five-argument overload to allow a writing
      *            answer.
+     * @return {@code true} when this call armed anything; {@code false} when it requested nothing
+     *         or no workbench display was available. Call the matching {@code disarm} only on
+     *         {@code true}
      */
-    public static void arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog,
+    public static boolean arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog,
         ExternalInfobaseChangesPolicy conflictPolicy)
     {
-        arm(updateDialog, sessionDialog, restructureDialog, conflictPolicy, null);
+        return arm(updateDialog, sessionDialog, restructureDialog, conflictPolicy, null);
     }
 
     /**
@@ -1050,8 +1091,9 @@ public final class LaunchUpdateDialogAutoConfirmer
      *            resolved ({@code null}/blank), the arm is degraded to
      *            {@link ExternalInfobaseChangesPolicy#CANCEL}: the modal is still answered, so the
      *            call cannot hang, but nothing is written on a dialog whose ownership is unproven
+     * @return {@code true} when this call installed its requested arms; {@code false} otherwise
      */
-    public static void arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog,
+    public static boolean arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog,
         ExternalInfobaseChangesPolicy conflictPolicy, String infobaseName)
     {
         // The port-conflict matcher stays UNARMED for the legacy overloads: they are also used by
@@ -1059,7 +1101,7 @@ public final class LaunchUpdateDialogAutoConfirmer
         // arm held for the whole of one of those would answer a port dialog raised by an unrelated
         // launch or by a human. Only a caller that can actually meet the modal opts in, by passing a
         // policy to the six-argument overload.
-        arm(updateDialog, sessionDialog, restructureDialog, conflictPolicy, infobaseName, null);
+        return arm(updateDialog, sessionDialog, restructureDialog, conflictPolicy, infobaseName, null);
     }
 
     /**
@@ -1078,19 +1120,21 @@ public final class LaunchUpdateDialogAutoConfirmer
      *            REWRITE the server configuration. {@code null} is read as the default. The
      *            reassign answer requires UNANIMITY across the outstanding arms — see
      *            {@link #PORT_CONFLICT_ARMS}
+     * @return {@code true} when this call installed its requested arms; {@code false} otherwise
      */
-    public static void arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog,
+    public static boolean arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog,
         ExternalInfobaseChangesPolicy conflictPolicy, String infobaseName,
         StandaloneServerPortConflictPolicy portPolicy)
     {
         // No server name: a reassign armed this way can answer nothing, by design. Callers that
         // can start a standalone server resolve the name and use the overload below.
-        arm(updateDialog, sessionDialog, restructureDialog, conflictPolicy, infobaseName,
+        return arm(updateDialog, sessionDialog, restructureDialog, conflictPolicy, infobaseName,
             portPolicy, null);
     }
 
     /**
      * Arms the matchers, naming the standalone server this call may start.
+     * Call the matching {@code disarm} only when this method returns {@code true}.
      *
      * @param updateDialog arm the "Update database configuration" TITLE matcher
      * @param sessionDialog arm the code-1003 "Debug session already exists" BODY matcher
@@ -1102,8 +1146,10 @@ public final class LaunchUpdateDialogAutoConfirmer
      * @param serverName the WST server's own name, resolved from the application. The
      *            {@code REASSIGN} answer is pressed only on a dialog quoting exactly this name;
      *            {@code null} means the write is refused rather than aimed by guesswork
+     * @return {@code true} when this call installed its requested arms; {@code false} when it
+     *         requested nothing or no workbench display was available
      */
-    public static void arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog, // NOSONAR mirrors the existing arm-flag list; a parameter object would move the arity, not remove it
+    public static boolean arm(boolean updateDialog, boolean sessionDialog, boolean restructureDialog, // NOSONAR mirrors the existing arm-flag list; a parameter object would move the arity, not remove it
         ExternalInfobaseChangesPolicy conflictPolicy, String infobaseName,
         StandaloneServerPortConflictPolicy portPolicy, String serverName)
     {
@@ -1115,12 +1161,12 @@ public final class LaunchUpdateDialogAutoConfirmer
         if (!updateDialog && !sessionDialog && !restructureDialog && conflictPolicy == null
             && portPolicy == null)
         {
-            return;
+            return false;
         }
         Display display = safeDisplay();
         if (display == null)
         {
-            return;
+            return false;
         }
         synchronized (LOCK)
         {
@@ -1150,7 +1196,25 @@ public final class LaunchUpdateDialogAutoConfirmer
                     attributableAnswer(infobaseName, conflictPolicy)));
             }
         }
-        reconcileOnUiThread(display);
+        // A filter another operation already installed protects this arm immediately: the
+        // listener reads the live counters under LOCK. What still needs the UI thread is the
+        // sweep of shells ALREADY on screen, and nothing in this call depends on when that
+        // runs - so an arm that finds a filter present queues the work instead of waiting.
+        // A bounded wait that expires is equally safe: it leaves the install QUEUED, SWT runs
+        // queued runnables in order so it precedes anything the not-yet-dispatched work can
+        // raise, and a UI thread too busy to run it cannot show a modal either.
+        reconcileOnUiThread(display,
+            filterInstalledOn(display) ? QUEUE_ONLY_MS : UI_RECONCILE_TIMEOUT_MS);
+        return true;
+    }
+
+    /** Whether the shared filter is already installed on this display. */
+    private static boolean filterInstalledOn(Display display)
+    {
+        synchronized (LOCK)
+        {
+            return filter != null && filterDisplay == display && !display.isDisposed();
+        }
     }
 
     /**
@@ -1315,25 +1379,84 @@ public final class LaunchUpdateDialogAutoConfirmer
     }
 
     /**
-     * Marshals {@link #reconcileFilter(Display)} to the UI thread. Called
-     * WITHOUT holding {@code LOCK} (the blocking {@code syncExec} under the
-     * monitor was a deadlock, R1). Never throws: a display disposed between
-     * the check and the {@code syncExec} (workbench shutdown race) is benign —
-     * the filter dies with the display and the counter stays consistent.
+     * Hands one runnable to another thread and waits a bounded time for it to finish.
+     *
+     * @param submit how the work reaches the other thread
+     * @param work the work to run there
+     * @param timeoutMs how long to wait for it
+     * @return {@code true} when the work finished within the bound
      */
-    private static void reconcileOnUiThread(Display display)
+    static boolean runBounded(Consumer<Runnable> submit, Runnable work, long timeoutMs)
+    {
+        CountDownLatch done = new CountDownLatch(1);
+        submit.accept(() -> {
+            try
+            {
+                work.run();
+            }
+            finally
+            {
+                done.countDown();
+            }
+        });
+        try
+        {
+            return done.await(timeoutMs, TimeUnit.MILLISECONDS);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Marshals {@link #reconcileFilter(Display)} to the UI thread, bounded. Called WITHOUT
+     * holding {@code LOCK} (blocking under the monitor was a deadlock, R1). Never throws: a
+     * display disposed during the hop (workbench shutdown race) is benign - the filter dies with
+     * the display and the counter stays consistent.
+     *
+     * @param display the display carrying the filter (never {@code null})
+     * @return {@code true} when the reconciliation ran; {@code false} when the UI thread did not
+     *         run it within {@link #UI_RECONCILE_TIMEOUT_MS}
+     */
+    private static boolean reconcileOnUiThread(Display display)
+    {
+        return reconcileOnUiThread(display, UI_RECONCILE_TIMEOUT_MS);
+    }
+
+    /**
+     * Marshals {@link #reconcileFilter(Display)} to the UI thread within the given bound.
+     * {@link #QUEUE_ONLY_MS} hands the work over and returns at once - the reconcile still
+     * runs, the caller just does not wait for it.
+     *
+     * @param display the display carrying the filter (never {@code null})
+     * @param timeoutMs how long to wait for the UI thread to run it
+     * @return {@code true} when the reconciliation ran within the bound
+     */
+    private static boolean reconcileOnUiThread(Display display, long timeoutMs)
     {
         if (display.isDisposed())
         {
-            return;
+            return true;
+        }
+        if (display.getThread() == Thread.currentThread())
+        {
+            // Already on the UI thread: handing the work to asyncExec and then waiting for it
+            // would block the very thread that has to run it.
+            reconcileFilter(display);
+            return true;
         }
         try
         {
-            display.syncExec(() -> reconcileFilter(display));
+            // A late run after this timeout is harmless: reconcileFilter re-reads the arm state
+            // under LOCK, so it sees whatever the caller left behind rather than a stale decision.
+            return runBounded(display::asyncExec, () -> reconcileFilter(display), timeoutMs);
         }
         catch (SWTException e)
         {
-            // ERROR_DEVICE_DISPOSED race on shutdown — nothing to (un)install.
+            // ERROR_DEVICE_DISPOSED race on shutdown - nothing to (un)install.
+            return true;
         }
     }
 
@@ -3019,6 +3142,43 @@ public final class LaunchUpdateDialogAutoConfirmer
         }
     }
 
+    /**
+     * Test seam: takes one arm of each selected matcher exactly as a successful {@code arm} does —
+     * the arm of a concurrent launch, which a headless {@code arm} cannot make. Release it with
+     * {@code disarm} passing the same flags.
+     */
+    static void armMatchersForTest(boolean updateDialog, boolean sessionDialog,
+        boolean restructureDialog)
+    {
+        synchronized (LOCK)
+        {
+            if (updateDialog)
+            {
+                updateArmCount++;
+            }
+            if (sessionDialog)
+            {
+                sessionArmCount++;
+            }
+            if (restructureDialog)
+            {
+                restructureArmCount++;
+            }
+        }
+    }
+
+    /**
+     * Test seam: the outstanding arms of the update, session and restructure matchers, in that
+     * order.
+     */
+    static int[] armCountsForTest()
+    {
+        synchronized (LOCK)
+        {
+            return new int[] { updateArmCount, sessionArmCount, restructureArmCount };
+        }
+    }
+
     /** Test seam: the unanimity decision {@link #answerPortConflictDialog} presses on. */
     static boolean reassignAllowedForTest(String detail)
     {
@@ -3060,7 +3220,30 @@ public final class LaunchUpdateDialogAutoConfirmer
      */
     public static ConflictWatch beginConflictWatch(String infobaseName, String serverName)
     {
-        ConflictWatch watch = new ConflictWatch(trimToNull(infobaseName), trimToNull(serverName));
+        return beginConflictWatch(infobaseName, serverName, false);
+    }
+
+    /**
+     * Opens a window that also knows whether the caller's attribution lookup CONCLUDED.
+     *
+     * <p>A {@code null} {@code infobaseName} has two very different causes, and the window is the
+     * only place that can still tell them apart: the application genuinely names no infobase, or
+     * the bounded lookup for that name expired (#622). Both degrade the arm to {@code cancel};
+     * only the second is worth retrying, so a window told the lookup was inconclusive reports
+     * {@link #CANCEL_REASON_ATTRIBUTION_UNAVAILABLE} in place of
+     * {@link #CANCEL_REASON_NOT_ATTRIBUTED}.
+     *
+     * @param infobaseName the infobase being worked on (may be {@code null})
+     * @param serverName the WST server name this call may start (may be {@code null})
+     * @param attributionInconclusive {@code true} when the names above are {@code null} because
+     *     the read did not conclude, rather than because there are none
+     * @return the open window, never {@code null}
+     */
+    public static ConflictWatch beginConflictWatch(String infobaseName, String serverName,
+        boolean attributionInconclusive)
+    {
+        ConflictWatch watch = new ConflictWatch(trimToNull(infobaseName), trimToNull(serverName),
+            attributionInconclusive);
         synchronized (LOCK)
         {
             CONFLICT_WATCHES.add(watch);
@@ -3108,6 +3291,9 @@ public final class LaunchUpdateDialogAutoConfirmer
 
         /** The server this window covers, when the caller could resolve it. */
         private final String serverName;
+
+        /** Whether the caller's attribution lookup expired instead of answering (#622). */
+        private final boolean attributionInconclusive;
         private int cancels;
         private String reason;
         private boolean portConflict;
@@ -3118,13 +3304,19 @@ public final class LaunchUpdateDialogAutoConfirmer
 
         ConflictWatch(String infobaseName)
         {
-            this(infobaseName, null);
+            this(infobaseName, null, false);
         }
 
         ConflictWatch(String infobaseName, String serverName)
         {
+            this(infobaseName, serverName, false);
+        }
+
+        ConflictWatch(String infobaseName, String serverName, boolean attributionInconclusive)
+        {
             this.infobaseName = infobaseName;
             this.serverName = serverName;
+            this.attributionInconclusive = attributionInconclusive;
         }
 
         void record(String cancelReason)
@@ -3250,12 +3442,21 @@ public final class LaunchUpdateDialogAutoConfirmer
          * Why the last cancel in this window happened — one of the {@code CANCEL_REASON_*}
          * constants; only meaningful when {@link #cancelled()} is {@code true}.
          *
+         * <p>A {@link #CANCEL_REASON_NOT_ATTRIBUTED} recorded into a window whose own attribution
+         * lookup never concluded is reported as {@link #CANCEL_REASON_ATTRIBUTION_UNAVAILABLE}
+         * instead. The press path cannot make that distinction — it only ever sees a {@code null}
+         * name — but this window knows WHY its name was null, and the two carry opposite advice.
+         *
          * @return the reason token, or {@code null} when nothing was cancelled
          */
         public String reason()
         {
             synchronized (LOCK)
             {
+                if (attributionInconclusive && CANCEL_REASON_NOT_ATTRIBUTED.equals(reason))
+                {
+                    return CANCEL_REASON_ATTRIBUTION_UNAVAILABLE;
+                }
                 return reason;
             }
         }

@@ -13,7 +13,7 @@
 
   <groupId>fm.giper.edt.mcp</groupId>
   <artifactId>bom</artifactId>
-  <version>1.0.11-SNAPSHOT</version>
+  <version>1.0.12-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>BOM</name>
@@ -54,7 +54,7 @@
               <artifact>
                 <groupId>fm.giper.edt.mcp</groupId>
                 <artifactId>default</artifactId>
-                <version>1.0.11-SNAPSHOT</version>
+                <version>1.0.12-SNAPSHOT</version>
               </artifact>
             </target>
             <dependency-resolution>
@@ -157,5 +157,38 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- The public 2025.2 p2 channel now serves .6. Use a generated immutable
+         local SDK target to prove compatibility with an installed .5 baseline. -->
+    <profile>
+      <id>installed-edt</id>
+      <activation>
+        <property><name>edt.target.definition</name></property>
+      </activation>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <groupId>org.eclipse.tycho</groupId>
+              <artifactId>target-platform-configuration</artifactId>
+              <configuration>
+                <target combine.self="override">
+                  <file>${edt.target.definition}</file>
+                </target>
+                <environments combine.self="override">
+                  <environment>
+                    <os>${edt.target.os}</os>
+                    <ws>${edt.target.ws}</ws>
+                    <arch>x86_64</arch>
+                  </environment>
+                </environments>
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
+  </profiles>
 
 </project>
