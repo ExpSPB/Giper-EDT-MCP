@@ -27,6 +27,7 @@ import com._1c.g5.v8.dt.mcore.StringQualifiers;
 import com._1c.g5.v8.dt.mcore.Type;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.mcore.TypeItem;
+import com._1c.g5.v8.dt.mcore.util.McoreUtil;
 import com._1c.g5.v8.dt.md.resource.MdTypeUtil;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
@@ -228,18 +229,46 @@ public final class MetadataTypeBuilder
     private static final int MAX_STRING_LENGTH = 1024;
     private static final int MAX_NUMBER_PRECISION = 38;
 
-    /** The build outcome: exactly one of {@link #typeDescription} / {@link #error} is non-null. */
+    /**
+     * The build outcome: exactly one of {@link #typeDescription} / {@link #error} is non-null. A failure
+     * is classified where it is produced, never afterwards from its text.
+     */
     public static final class Result
     {
         /** The built type, or {@code null} on error. */
         public final TypeDescription typeDescription;
         /** The error message, or {@code null} on success. */
         public final String error;
+        /** {@code true} when {@link #error} is a platform/server failure, not a problem with the spec. */
+        public final boolean platformFailure;
+        /** The exception behind a platform failure, or {@code null} when none was raised. */
+        public final Throwable cause;
 
-        private Result(TypeDescription typeDescription, String error)
+        private Result(TypeDescription typeDescription, String error, boolean platformFailure,
+            Throwable cause)
         {
             this.typeDescription = typeDescription;
             this.error = error;
+            this.platformFailure = platformFailure;
+            this.cause = cause;
+        }
+
+        /**
+         * This platform failure as an unmarked exception with {@code message}. The platform's own
+         * exception rides as SUPPRESSED, not as the cause, so the client keeps our message while the
+         * log keeps its stack.
+         *
+         * @param message the message the caller shows for this failure
+         * @return the exception to raise or log
+         */
+        public IllegalStateException asException(String message)
+        {
+            IllegalStateException failure = new IllegalStateException(message);
+            if (cause != null)
+            {
+                failure.addSuppressed(cause);
+            }
+            return failure;
         }
     }
 
@@ -250,7 +279,17 @@ public final class MetadataTypeBuilder
 
     private static Result error(String message)
     {
-        return new Result(null, message);
+        return new Result(null, message, false, null);
+    }
+
+    private static Result platformError(String message)
+    {
+        return platformError(message, null);
+    }
+
+    private static Result platformError(String message, Throwable cause)
+    {
+        return new Result(null, message, true, cause);
     }
 
     /**
@@ -313,9 +352,7 @@ public final class MetadataTypeBuilder
         TypeTarget typeTarget)
     {
         String primitive = normalizePrimitive(kind);
-        ProducedTypeKind producedKind = typeTarget == TypeTarget.METADATA
-            || typeTarget == TypeTarget.EVENT_SOURCE
-            || typeTarget == TypeTarget.FORM_ATTRIBUTE
+        ProducedTypeKind producedKind = typeTarget != TypeTarget.DCS_PARAMETER
             ? splitProducedTypeKind(kind) : null;
         String[] accepted;
         if ("String".equals(primitive)) //$NON-NLS-1$
@@ -555,7 +592,14 @@ public final class MetadataTypeBuilder
          * actually does - it does not build the collection kinds for a DCS parameter (issue #295
          * review).
          */
-        DCS_PARAMETER
+        DCS_PARAMETER,
+        /**
+         * A session parameter's {@code type}: an in-memory value held for the session, not a stored
+         * feature. Accepts the METADATA vocabulary plus the fixed collections (FixedArray /
+         * FixedStructure / FixedMap), and owns its refusal wording for the same reason DCS_PARAMETER
+         * does.
+         */
+        SESSION_PARAMETER
     }
 
     /**
@@ -638,7 +682,7 @@ public final class MetadataTypeBuilder
             McorePackage.Literals.TYPE_ITEM, version);
         if (provider == null)
         {
-            return error("Platform type provider is not available for this configuration version."); //$NON-NLS-1$
+            return platformError("Platform type provider is not available for this configuration version."); //$NON-NLS-1$
         }
 
         TypeDescription td = McoreFactory.eINSTANCE.createTypeDescription();
@@ -648,14 +692,14 @@ public final class MetadataTypeBuilder
         {
             JsonObject item = itemEl.getAsJsonObject();
             String kind = asString(item.get("kind")).trim(); //$NON-NLS-1$
-            String err = addType(td, item, kind, provider, config, effectiveScope,
+            Result failure = appendType(td, item, kind, provider, config, effectiveScope,
                 isExtensionProject, typeTarget);
-            if (err != null)
+            if (failure != null)
             {
-                return error(err);
+                return failure;
             }
         }
-        return new Result(td, null);
+        return new Result(td, null, false, null);
     }
 
     /** The platform pseudo-type a form list attribute carries as its value type. */
@@ -975,20 +1019,33 @@ public final class MetadataTypeBuilder
             isExtensionProject, typeTarget);
     }
 
-    /** Scope-aware core used by the explicit-scope build overload. */
+    /**
+     * Scope-aware test seam over {@link #appendType}: the failure's message, or {@code null} on success.
+     */
     static String addType(TypeDescription td, JsonObject item, String kind,
         IEObjectProvider provider, Configuration config, MetadataScope scope,
         boolean isExtensionProject, TypeTarget typeTarget)
     {
+        Result failure = appendType(td, item, kind, provider, config, scope, isExtensionProject,
+            typeTarget);
+        return failure == null ? null : failure.error;
+    }
+
+    /**
+     * Appends the one type {@code item} names to {@code td}. Returns {@code null} on success, else the
+     * failure, classified as the caller's refusal or the platform's failure at the branch producing it.
+     */
+    static Result appendType(TypeDescription td, JsonObject item, String kind,
+        IEObjectProvider provider, Configuration config, MetadataScope scope,
+        boolean isExtensionProject, TypeTarget typeTarget)
+    {
         MetadataScope effectiveScope = scope == null ? MetadataScope.ofConfiguration(config) : scope;
-        ProducedTypeKind producedKind = typeTarget == TypeTarget.METADATA
-            || typeTarget == TypeTarget.EVENT_SOURCE
-            || typeTarget == TypeTarget.FORM_ATTRIBUTE
+        ProducedTypeKind producedKind = typeTarget != TypeTarget.DCS_PARAMETER
             ? splitProducedTypeKind(kind) : null;
         if (typeTarget == TypeTarget.EVENT_SOURCE && producedKind != null
             && producedKind.hasKnownMetadataType() && !isEventSourceProducedType(producedKind))
         {
-            return eventSourceProducedTypeRefusal(kind);
+            return error(eventSourceProducedTypeRefusal(kind));
         }
         if (producedKind != null && producedKind.hasKnownMetadataType() && item.has("ref")) //$NON-NLS-1$
         {
@@ -1001,7 +1058,7 @@ public final class MetadataTypeBuilder
             MetadataNodeResolver.MetadataNode node = MetadataNodeResolver.resolveExisting(config, kind);
             if (node == null || !isDefinedType(node.object))
             {
-                return unresolvedDefinedType(kind, kind, isExtensionProject);
+                return error(unresolvedDefinedType(kind, kind, isExtensionProject));
             }
             return addDefinedTypeSet(td, node.object, kind);
         }
@@ -1014,12 +1071,12 @@ public final class MetadataTypeBuilder
             {
                 if (isDefinedTypeKind(kind))
                 {
-                    return unresolvedDefinedType(kind, ref, isExtensionProject);
+                    return error(unresolvedDefinedType(kind, ref, isExtensionProject));
                 }
-                return "Cannot resolve the reference target for kind '" + kind + "' ref '" //$NON-NLS-1$ //$NON-NLS-2$
+                return error("Cannot resolve the reference target for kind '" + kind + "' ref '" //$NON-NLS-1$ //$NON-NLS-2$
                     + ref + "'. Use {kind:'Ref', ref:'Type.Name'} or " //$NON-NLS-1$ //$NON-NLS-2$
                     + "{kind:'CatalogRef', ref:'Name'} and check the object exists." //$NON-NLS-1$
-                    + extensionAdoptHint(isExtensionProject);
+                    + extensionAdoptHint(isExtensionProject));
             }
             if (isDefinedType(target))
             {
@@ -1027,6 +1084,7 @@ public final class MetadataTypeBuilder
                 return addDefinedTypeSet(td, target, requested);
             }
             Type refType;
+            boolean routed = true;
             try
             {
                 // The generic getRefType(MdObject) dispatcher does NOT route Enum (it has a separate
@@ -1040,12 +1098,20 @@ public final class MetadataTypeBuilder
             catch (AssertionError e)
             {
                 refType = null;
+                routed = false;
+            }
+            if (refType == null && !routed)
+            {
+                return error("Object '" + target.getName() + "' is not a reference type. Only objects with a " //$NON-NLS-1$ //$NON-NLS-2$
+                    + "Ref type (Catalog / Document / Enum / ChartOf* / ExchangePlan / BusinessProcess / " //$NON-NLS-1$
+                    + "Task) can be referenced."); //$NON-NLS-1$
             }
             if (refType == null)
             {
-                return "Object '" + target.getName() + "' is not a reference type. Only objects with a " //$NON-NLS-1$ //$NON-NLS-2$
-                    + "Ref type (Catalog / Document / Enum / ChartOf* / ExchangePlan / BusinessProcess / " //$NON-NLS-1$
-                    + "Task) can be referenced."; //$NON-NLS-1$
+                // The dispatcher routed a reference kind but its produced Ref type is absent: derived data.
+                return platformError("Object '" + target.getName() + "' " + REF_TYPE_UNAVAILABLE //$NON-NLS-1$ //$NON-NLS-2$
+                    + " Wait for project indexing to finish, run revalidate_objects for the object " //$NON-NLS-1$
+                    + "if needed, and retry."); //$NON-NLS-1$
             }
             td.getTypes().add(refType);
             return null;
@@ -1057,7 +1123,7 @@ public final class MetadataTypeBuilder
             EObject proxy = provider.createProxy(primitive);
             if (!(proxy instanceof TypeItem))
             {
-                return "Could not create the platform type '" + primitive + "'."; //$NON-NLS-1$ //$NON-NLS-2$
+                return platformError(primitiveNotCreated(primitive));
             }
             td.getTypes().add((TypeItem)proxy);
             applyQualifiers(td, item, primitive);
@@ -1069,7 +1135,7 @@ public final class MetadataTypeBuilder
         {
             if (isCollectionKind(kind) && typeTarget != TypeTarget.FORM_ATTRIBUTE)
             {
-                return collectionKindRefusal(kind, typeTarget);
+                return error(collectionKindRefusal(kind, typeTarget));
             }
             return addSimplePlatformType(td, provider, simpleTypeCandidates);
         }
@@ -1077,39 +1143,45 @@ public final class MetadataTypeBuilder
         // Any OTHER type the platform knows for this version - ValueList, SpreadsheetDocument, Chart,
         // StandardPeriod, TypeDescription, ... (issue #369). The provider indexes every type under BOTH
         // its English and its Russian name, so the bilingual spelling resolves with no alias table here.
-        TypeItem platformType = tryCreateTypeItem(provider, kind);
+        TypeProbe probe = probeTypeItem(provider, kind);
+        TypeItem platformType = probe.item();
         if (platformType != null)
         {
             if (isDynamicListKind(kind))
             {
-                return dynamicListKindRefusal(kind);
+                return error(dynamicListKindRefusal(kind));
             }
             if (typeTarget != TypeTarget.FORM_ATTRIBUTE)
             {
-                if (typeTarget == TypeTarget.EVENT_SOURCE && producedKind != null
+                if ((typeTarget == TypeTarget.EVENT_SOURCE && producedKind != null
                     && producedKind.hasKnownMetadataType())
+                    || (typeTarget == TypeTarget.SESSION_PARAMETER && isFixedCollectionKind(kind)))
                 {
                     td.getTypes().add(platformType);
                     return null;
                 }
-                if (typeTarget == TypeTarget.METADATA && producedKind != null
-                    && producedKind.hasKnownMetadataType())
+                if ((typeTarget == TypeTarget.METADATA || typeTarget == TypeTarget.SESSION_PARAMETER)
+                    && producedKind != null && producedKind.hasKnownMetadataType())
                 {
-                    return producedTypeRefusal(kind);
+                    return error(producedTypeRefusal(kind));
                 }
-                return formOnlyTypeRefusal(kind, typeTarget);
+                return error(formOnlyTypeRefusal(kind, typeTarget));
             }
             td.getTypes().add(platformType);
             return null;
+        }
+        if (probe.crash() != null)
+        {
+            return platformError(PLATFORM_TYPE_NOT_CREATED + " Tried: " + kind + ".", probe.crash()); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         if (producedKind != null && !producedKind.hasKnownMetadataType()
             && !isCataloguedNestedProducedTypePrefix(producedKind.prefix))
         {
-            return unknownProducedTypePrefix(kind, producedKind);
+            return error(unknownProducedTypePrefix(kind, producedKind));
         }
 
-        return "Unknown type kind '" + kind //$NON-NLS-1$
+        return error("Unknown type kind '" + kind //$NON-NLS-1$
             + "'. Use String / Number / Boolean / Date / ValueStorage / " //$NON-NLS-1$
             + "UUID, ValueTable / ValueTree (in-memory collections - a FORM attribute only), a " //$NON-NLS-1$
             + "DefinedType ({kind:'DefinedType', ref:'Name'} or {kind:'DefinedType.Name'}), a " //$NON-NLS-1$
@@ -1117,7 +1189,7 @@ public final class MetadataTypeBuilder
             + "{kind:'ExchangePlanObject'}), or a reference ({kind:'Ref', ref:'Type.Name'}). On a " //$NON-NLS-1$
             + "FORM attribute any platform type name " //$NON-NLS-1$
             + "also works (ValueList / SpreadsheetDocument / Chart / StandardPeriod / ..., English or " //$NON-NLS-1$
-            + "Russian) - this one names no type this platform version knows."; //$NON-NLS-1$
+            + "Russian) - this one names no type this platform version knows."); //$NON-NLS-1$
     }
 
     private static boolean isEventSourceProducedType(ProducedTypeKind producedKind)
@@ -1141,13 +1213,13 @@ public final class MetadataTypeBuilder
     }
 
     /** Adds one concrete model-owned produced Type to the non-containment type list. */
-    private static String addConcreteProducedType(TypeDescription td, JsonObject item, String kind,
+    private static Result addConcreteProducedType(TypeDescription td, JsonObject item, String kind,
         ProducedTypeKind producedKind, MetadataScope scope, boolean isExtensionProject,
         TypeTarget typeTarget)
     {
         if (typeTarget != TypeTarget.EVENT_SOURCE && typeTarget != TypeTarget.FORM_ATTRIBUTE)
         {
-            return producedTypeRefusal(kind);
+            return error(producedTypeRefusal(kind));
         }
         if (producedKind.isNested())
         {
@@ -1158,21 +1230,21 @@ public final class MetadataTypeBuilder
                 ? producedKind.canonicalKind() : kind;
             if ("Recalculation".equals(producedKind.englishMetadataType)) //$NON-NLS-1$
             {
-                return "Type kind '" + kind + "' is a produced type of a NESTED object (" //$NON-NLS-1$ //$NON-NLS-2$
+                return error("Type kind '" + kind + "' is a produced type of a NESTED object (" //$NON-NLS-1$ //$NON-NLS-2$
                     + producedKind.englishMetadataType + " lives inside its owning register" //$NON-NLS-1$
                     + "), which cannot be addressed by ref. Pass {kind:'" + canonical //$NON-NLS-1$
-                    + "'} without ref to use its abstract form."; //$NON-NLS-1$
+                    + "'} without ref to use its abstract form."); //$NON-NLS-1$
             }
-            return "Type kind '" + kind + "' is a produced type of a NESTED object; a nested " //$NON-NLS-1$ //$NON-NLS-2$
+            return error("Type kind '" + kind + "' is a produced type of a NESTED object; a nested " //$NON-NLS-1$ //$NON-NLS-2$
                 + "object is addressed through its owner, not by ref. Pass {kind:'" + canonical //$NON-NLS-1$ //$NON-NLS-2$
-                + "'} without ref to use its abstract form."; //$NON-NLS-1$
+                + "'} without ref to use its abstract form."); //$NON-NLS-1$
         }
         String rawRef = jsonString(item.get("ref")); //$NON-NLS-1$
         if (rawRef == null || rawRef.trim().isEmpty())
         {
-            return "Type kind '" + kind + "' requires a non-empty 'ref'. Pass the object's bare " //$NON-NLS-1$ //$NON-NLS-2$
+            return error("Type kind '" + kind + "' requires a non-empty 'ref'. Pass the object's bare " //$NON-NLS-1$ //$NON-NLS-2$
                 + "Name or a qualified metadata FQN such as '" + producedKind.englishMetadataType //$NON-NLS-1$
-                + ".Name'."; //$NON-NLS-1$
+                + ".Name'."); //$NON-NLS-1$
         }
         String ref = rawRef.trim();
 
@@ -1184,24 +1256,25 @@ public final class MetadataTypeBuilder
             if (refEnglishType != null
                 && !producedKind.englishMetadataType.equalsIgnoreCase(refEnglishType))
             {
-                return "Type kind '" + kind + "' selects metadata type '" //$NON-NLS-1$ //$NON-NLS-2$
+                return error("Type kind '" + kind + "' selects metadata type '" //$NON-NLS-1$ //$NON-NLS-2$
                     + producedKind.englishMetadataType + "', but qualified ref '" + ref //$NON-NLS-1$ //$NON-NLS-2$
                     + "' selects metadata type '" + refEnglishType + "'. Make the kind and ref type " //$NON-NLS-1$ //$NON-NLS-2$
-                    + "tokens match, or pass the bare object Name as ref."; //$NON-NLS-1$
+                    + "tokens match, or pass the bare object Name as ref."); //$NON-NLS-1$
             }
         }
 
         MdObject target = resolveProducedTypeTarget(scope, producedKind, ref);
         if (target == null)
         {
-            return "Cannot resolve the reference target for kind '" + kind + "' ref '" //$NON-NLS-1$ //$NON-NLS-2$
+            return error("Cannot resolve the reference target for kind '" + kind + "' ref '" //$NON-NLS-1$ //$NON-NLS-2$
                 + ref + "'. Use {kind:'" + producedKind.englishMetadataType //$NON-NLS-1$ //$NON-NLS-2$
                 + producedKind.producedSuffix + "', ref:'Name'} or pass ref:'" //$NON-NLS-1$
                 + producedKind.englishMetadataType + ".Name', and check the object exists." //$NON-NLS-1$
-                + extensionAdoptHint(isExtensionProject);
+                + extensionAdoptHint(isExtensionProject));
         }
 
         MdTypes producedTypes;
+        RuntimeException readFailure = null;
         try
         {
             producedTypes = MdClassUtil.getProducedTypes(target);
@@ -1209,20 +1282,21 @@ public final class MetadataTypeBuilder
         catch (RuntimeException e)
         {
             producedTypes = null;
+            readFailure = e;
         }
         String objectFqn = producedKind.englishMetadataType + "." + target.getName(); //$NON-NLS-1$
         if (producedTypes == null || producedTypes.eClass() == null)
         {
-            return "Object '" + objectFqn + "' resolved, but its produced types are not available " //$NON-NLS-1$ //$NON-NLS-2$
-                + "yet. Wait for project indexing to finish, run revalidate_objects for the object " //$NON-NLS-1$
-                + "if needed, and retry."; //$NON-NLS-1$
+            return platformError("Object '" + objectFqn + "' " + PRODUCED_TYPES_UNAVAILABLE //$NON-NLS-1$ //$NON-NLS-2$
+                + " Wait for project indexing to finish, run revalidate_objects for the object " //$NON-NLS-1$
+                + "if needed, and retry.", readFailure); //$NON-NLS-1$
         }
 
         EStructuralFeature feature =
             producedTypes.eClass().getEStructuralFeature(producedKind.featureName);
         if (feature == null)
         {
-            return unsupportedProducedType(objectFqn, kind, producedKind, producedTypes);
+            return error(unsupportedProducedType(objectFqn, kind, producedKind, producedTypes));
         }
 
         MdType mdType;
@@ -1236,15 +1310,17 @@ public final class MetadataTypeBuilder
         catch (RuntimeException e)
         {
             modelType = null;
+            readFailure = e;
         }
         if (modelType == null)
         {
-            return "Object '" + objectFqn + "' offers produced type '" //$NON-NLS-1$ //$NON-NLS-2$
+            return platformError("Object '" + objectFqn + "' offers produced type '" //$NON-NLS-1$ //$NON-NLS-2$
                 + producedKind.englishMetadataType + producedKind.producedSuffix + "', but its " //$NON-NLS-1$
-                + "producedTypes/" + producedKind.featureName + "/type chain is not available yet. " //$NON-NLS-1$ //$NON-NLS-2$
+                + "producedTypes/" + producedKind.featureName + PRODUCED_TYPE_CHAIN_UNAVAILABLE + " " //$NON-NLS-1$ //$NON-NLS-2$
                 + "Wait for project indexing to finish, run revalidate_objects for the object if " //$NON-NLS-1$
                 + "needed, and retry. Available produced types: " //$NON-NLS-1$
-                + availableProducedTypeKinds(producedTypes, producedKind.englishMetadataType) + "."; //$NON-NLS-1$
+                + availableProducedTypeKinds(producedTypes, producedKind.englishMetadataType) + ".", //$NON-NLS-1$
+                readFailure);
         }
 
         // TypeDescription.types is NON-containment: share the model-owned Type, do not copy it.
@@ -1316,7 +1392,7 @@ public final class MetadataTypeBuilder
     }
 
     /** Adds the model-owned TypeSet produced by a DefinedType to the non-containment type list. */
-    private static String addDefinedTypeSet(TypeDescription td, MdObject definedType, String requested)
+    private static Result addDefinedTypeSet(TypeDescription td, MdObject definedType, String requested)
     {
         TypeItem typeSet = null;
         try
@@ -1327,11 +1403,11 @@ public final class MetadataTypeBuilder
         }
         catch (RuntimeException e)
         {
-            return unavailableDefinedTypeChain(requested);
+            return platformError(unavailableDefinedTypeChain(requested), e);
         }
         if (typeSet == null)
         {
-            return unavailableDefinedTypeChain(requested);
+            return platformError(unavailableDefinedTypeChain(requested));
         }
         // TypeDescription.types is NON-containment: share the model-owned TypeSet, do not copy it.
         td.getTypes().add(typeSet);
@@ -1340,8 +1416,7 @@ public final class MetadataTypeBuilder
 
     private static String unavailableDefinedTypeChain(String requested)
     {
-        return "DefinedType '" + requested //$NON-NLS-1$
-            + "' resolved, but its producedTypes/containerType/typeSet chain is not available yet. " //$NON-NLS-1$
+        return "DefinedType '" + requested + "' resolved, but " + DEFINED_TYPE_CHAIN_UNAVAILABLE + " " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             + "Wait for project indexing to finish, run revalidate_objects for the DefinedType if " //$NON-NLS-1$
             + "needed, and retry."; //$NON-NLS-1$
     }
@@ -1429,6 +1504,11 @@ public final class MetadataTypeBuilder
                 + "'Type.Object.Form.FormName.Attribute.Name') is the only target that accepts it. Give " //$NON-NLS-1$
                 + "the parameter a primitive or a reference type instead."; //$NON-NLS-1$
         }
+        if (typeTarget == TypeTarget.SESSION_PARAMETER)
+        {
+            return "Type kind '" + kind + "' is a platform value this tool does not build for a " //$NON-NLS-1$ //$NON-NLS-2$
+                + "session parameter. " + SESSION_PARAMETER_VOCABULARY; //$NON-NLS-1$
+        }
         return "Type kind '" + kind + "' is a platform value this tool builds only for a FORM attribute " //$NON-NLS-1$ //$NON-NLS-2$
             + "(fqn 'Type.Object.Form.FormName.Attribute.Name'), not for a stored metadata feature. Set " //$NON-NLS-1$
             + "it on a form attribute; a stored feature takes String / Number / Boolean / Date / " //$NON-NLS-1$
@@ -1465,6 +1545,11 @@ public final class MetadataTypeBuilder
                 + "'Type.Object.Form.FormName.Attribute.Name') is the only target that accepts the " //$NON-NLS-1$
                 + "collection kinds. Give the parameter a primitive or a reference type instead."; //$NON-NLS-1$
         }
+        if (typeTarget == TypeTarget.SESSION_PARAMETER)
+        {
+            return "Type kind '" + kind + "' is a collection this tool does not build for a session " //$NON-NLS-1$ //$NON-NLS-2$
+                + "parameter. " + SESSION_PARAMETER_VOCABULARY; //$NON-NLS-1$
+        }
         return "Type kind '" + kind + "' is an IN-MEMORY collection: the platform holds it " //$NON-NLS-1$ //$NON-NLS-2$
             + "only in a FORM attribute (fqn 'Type.Object.Form.FormName.Attribute.Name'), " //$NON-NLS-1$
             + "never in a stored metadata feature. Set it on a form attribute, or use " //$NON-NLS-1$
@@ -1482,41 +1567,95 @@ public final class MetadataTypeBuilder
      * @param td the type description to append the resolved type to
      * @param provider the platform type provider
      * @param candidates the proxy names to try, in resolution order
-     * @return {@code null} on success, or an actionable error naming every tried candidate name
+     * @return {@code null} on success, or the platform failure naming every tried candidate name
      */
-    private static String addSimplePlatformType(TypeDescription td, IEObjectProvider provider, String[] candidates)
+    private static Result addSimplePlatformType(TypeDescription td, IEObjectProvider provider, String[] candidates)
     {
+        RuntimeException crash = null;
         for (String candidate : candidates)
         {
-            TypeItem resolved = tryCreateTypeItem(provider, candidate);
-            if (resolved != null)
+            TypeProbe probe = probeTypeItem(provider, candidate);
+            if (probe.item() != null)
             {
-                td.getTypes().add(resolved);
+                td.getTypes().add(probe.item());
                 return null;
             }
+            if (crash == null)
+            {
+                crash = probe.crash();
+            }
         }
-        return "Could not create the platform type. Tried: " + String.join(", ", candidates) + "."; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        // A KNOWN kind the present provider built under none of its names is the platform's failure.
+        return platformError(PLATFORM_TYPE_NOT_CREATED + " Tried: " + String.join(", ", candidates) + ".", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            crash);
+    }
+
+    /** Opens the error for a KNOWN kind the present provider did not build - a platform failure. */
+    private static final String PLATFORM_TYPE_NOT_CREATED = "Could not create the platform type."; //$NON-NLS-1$
+
+    /** A known primitive the provider did not build - opened like every other platform-type failure. */
+    static String primitiveNotCreated(String primitive)
+    {
+        return PLATFORM_TYPE_NOT_CREATED + " Tried: " + primitive + "."; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** A resolved object whose produced types the platform did not yield - not the spec's fault. */
+    private static final String PRODUCED_TYPES_UNAVAILABLE =
+        "resolved, but its produced types are not available yet."; //$NON-NLS-1$
+
+    /** A resolved reference kind whose produced Ref type the platform did not yield - not the spec's fault. */
+    private static final String REF_TYPE_UNAVAILABLE =
+        "resolved, but its Ref type is not available yet."; //$NON-NLS-1$
+
+    /** A produced type whose model type chain the platform did not yield - not the spec's fault. */
+    private static final String PRODUCED_TYPE_CHAIN_UNAVAILABLE = "/type chain is not available yet."; //$NON-NLS-1$
+
+    /** An existing DefinedType whose produced-type chain the platform did not yield - not the spec's fault. */
+    private static final String DEFINED_TYPE_CHAIN_UNAVAILABLE =
+        "its producedTypes/containerType/typeSet chain is not available yet."; //$NON-NLS-1$
+
+    /**
+     * What the provider answered for one name: the built item, or the exception of a name it KNOWS
+     * but failed to build; both {@code null} means the name is unknown (or there is no provider).
+     */
+    record TypeProbe(TypeItem item, RuntimeException crash)
+    {
     }
 
     /**
-     * Creates the proxy for {@code name} and returns it as a {@link TypeItem}, or {@code null} on any
-     * failure - including a {@code null} provider, which the unknown-kind probe reaches when a caller
-     * has none (the tests exercise the refusal branches without one).
+     * Creates the proxy for {@code name}. The provider THROWS for an unknown name, so a throw is told
+     * apart by asking whether the provider has a description for that name: only a KNOWN name's throw
+     * is kept as the provider's own failure. A {@code null} provider resolves nothing (the tests
+     * exercise the refusal branches without one).
      */
-    private static TypeItem tryCreateTypeItem(IEObjectProvider provider, String name)
+    static TypeProbe probeTypeItem(IEObjectProvider provider, String name)
     {
         if (provider == null)
         {
-            return null;
+            return new TypeProbe(null, null);
         }
         try
         {
             EObject proxy = provider.createProxy(name);
-            return (proxy instanceof TypeItem) ? (TypeItem)proxy : null;
+            return new TypeProbe((proxy instanceof TypeItem) ? (TypeItem)proxy : null, null);
         }
         catch (RuntimeException e)
         {
-            return null;
+            return new TypeProbe(null, knowsName(provider, name, e) ? e : null);
+        }
+    }
+
+    /** Whether the provider indexes {@code name}; a lookup that itself fails counts as known. */
+    private static boolean knowsName(IEObjectProvider provider, String name, RuntimeException failure)
+    {
+        try
+        {
+            return provider.getEObjectDescription(name) != null;
+        }
+        catch (RuntimeException e)
+        {
+            failure.addSuppressed(e);
+            return true;
         }
     }
 
@@ -1713,6 +1852,39 @@ public final class MetadataTypeBuilder
             && ("ValueTable".equals(candidates[0]) || "ValueTree".equals(candidates[0])); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
+    /** What a session parameter's type accepts, appended to each of its refusals. */
+    private static final String SESSION_PARAMETER_VOCABULARY = "A session parameter takes FixedArray / " //$NON-NLS-1$
+        + "FixedStructure / FixedMap, String / Number / Boolean / Date / ValueStorage / UUID or a " //$NON-NLS-1$
+        + "reference ({kind:'Ref', ref:'Type.Name'}); for Array / Structure / Map use the Fixed " //$NON-NLS-1$
+        + "counterpart."; //$NON-NLS-1$
+
+    /**
+     * Whether {@code kind} names a fixed collection (FixedArray / FixedStructure / FixedMap, English or
+     * Russian) - the platform values a session parameter holds on top of the METADATA vocabulary.
+     *
+     * @param kind the raw {@code kind} token from the spec
+     * @return {@code true} for a fixed collection kind
+     */
+    static boolean isFixedCollectionKind(String kind)
+    {
+        if (kind == null)
+        {
+            return false;
+        }
+        switch (kind.trim().toLowerCase())
+        {
+            case "fixedarray": //$NON-NLS-1$
+            case "фиксированныймассив": //$NON-NLS-1$
+            case "fixedstructure": //$NON-NLS-1$
+            case "фиксированнаяструктура": //$NON-NLS-1$
+            case "fixedmap": //$NON-NLS-1$
+            case "фиксированноесоответствие": //$NON-NLS-1$
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /**
      * Whether {@code kindOrTypeName} names a platform type that owns NO addressable member - nothing a
      * dotted path can continue into. Answered for the spec vocabulary (a {@code kind} token) and for a
@@ -1796,6 +1968,82 @@ public final class MetadataTypeBuilder
             case "datetime": //$NON-NLS-1$
             default:
                 return DateFractions.DATE_TIME;
+        }
+    }
+
+    /**
+     * Whether two value types describe the SAME type - used to tell a real retype from a write that
+     * leaves the member's type exactly as it was (issue #599).
+     *
+     * <p>The two failure directions are NOT equal in cost. Answering "different" for equal types
+     * costs one dialog nobody needed; answering "same" for DIFFERENT types silences a destructive
+     * consent gate and loses stored data without a question. So nothing is equal by default: the
+     * answer is {@code true} only for two descriptions whose every type NAMES itself and matches
+     * position by position, with equal qualifiers. Everything else - an absent or non-description
+     * value, an EMPTY type list (which would leave the verdict to the qualifiers alone), a type item
+     * whose name cannot be read, a proxy the type-name resolver does not know - is DIFFERENT.</p>
+     *
+     * <p>Identity is the type NAME, which is also what the {@code .form} / {@code .mdo} file stores,
+     * and {@link McoreUtil#getTypeName} answers the ENGLISH name for a resolved type and for a proxy
+     * alike - so a type written in either language compares identically. The EClass is deliberately
+     * not compared: the stored side is normally a lazily resolved proxy and the built side a fresh
+     * one, and requiring the same class there would call every identical type different.</p>
+     *
+     * <p>The structural comparison itself is the platform's own {@link McoreUtil#compareTypeDescriptions}
+     * - order-sensitive over the type list and exact over the string / number / date / BINARY
+     * qualifiers, including "set" vs "unset" (a {@code String} written with no length is therefore
+     * NOT the same as a stored {@code String(10)}). It is called only once every name on both sides
+     * has been read, because it dereferences those names without a null check.</p>
+     *
+     * @param current the type the member carries now (anything at all; only a {@code TypeDescription}
+     *            can compare equal)
+     * @param next the type the batch would leave on it
+     * @return {@code true} only when the two are certainly the same type
+     */
+    public static boolean describesSameType(Object current, Object next)
+    {
+        if (!(current instanceof TypeDescription) || !(next instanceof TypeDescription))
+        {
+            return false;
+        }
+        TypeDescription stored = (TypeDescription)current;
+        TypeDescription built = (TypeDescription)next;
+        List<TypeItem> storedTypes = stored.getTypes();
+        List<TypeItem> builtTypes = built.getTypes();
+        if (storedTypes.isEmpty() || storedTypes.size() != builtTypes.size())
+        {
+            return false;
+        }
+        for (int i = 0; i < storedTypes.size(); i++)
+        {
+            if (comparableTypeName(storedTypes.get(i)) == null
+                || comparableTypeName(builtTypes.get(i)) == null)
+            {
+                return false;
+            }
+        }
+        return McoreUtil.compareTypeDescriptions(stored, built);
+    }
+
+    /**
+     * The name a type item can be COMPARED by, or {@code null} when it names nothing this process can
+     * read - an unresolved proxy whose URI the type-name resolver does not know throws or answers
+     * null there, and a type that names nothing may not compare equal to anything.
+     */
+    private static String comparableTypeName(TypeItem item)
+    {
+        if (item == null)
+        {
+            return null;
+        }
+        try
+        {
+            String name = McoreUtil.getTypeName(item);
+            return name == null || name.isEmpty() ? null : name;
+        }
+        catch (RuntimeException e)
+        {
+            return null;
         }
     }
 

@@ -13,7 +13,8 @@ a base project, or an external data processors/reports project.
 - **externalObjects** — create an external data processors/reports project. The project
   may be seeded with its root `ExternalDataProcessor` / `ExternalReport` in the same call,
   after which its members are ready for authoring via `create_metadata`. Omit the root when
-  creating an empty project for a later `.epf` / `.erf` import.
+  creating an empty project for a later `.epf` / `.erf` import. More roots are added to the
+  existing project with `create_metadata` (`fqn: 'ExternalDataProcessor.<Name>'`).
 
 The `name` must not already exist as a workspace project (the tool rejects duplicates).
 
@@ -51,9 +52,13 @@ The `name` must not already exist as a workspace project (the tool rejects dupli
 - **comment** (optional): free-text comment.
 - **purpose** (optional, default `Customization`): `Customization`, `AddOn`, or `Patch`.
 - **compatibilityMode** (optional): a `CompatibilityMode` enum literal
-  (e.g. `Version8_3_10`). Omit or pass empty for the factory default.
+  (e.g. `Version8_3_10`). Omit or pass empty to inherit the base compatibility mode.
 - **version**: REJECTED — extension always inherits the version from the base configuration.
 - **scriptVariant**: REJECTED — extension always inherits scriptVariant from the base.
+
+The extension root is prepared through EDT's model-object adopter, as in the extension
+wizard. It receives a fresh UUID, adopts the base's default Language, and preserves the
+property states and mapping to base-object IDs; the base configuration is only read.
 
 ### externalObjects kind
 

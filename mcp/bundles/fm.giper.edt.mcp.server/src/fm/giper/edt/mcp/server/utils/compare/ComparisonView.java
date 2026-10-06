@@ -32,19 +32,19 @@ import com._1c.g5.v8.dt.compare.model.TopComparisonNode;
  *
  * <h2>Why it exists</h2>
  * EDT's {@code IComparisonSession} is a single interface that both reads the comparison tree and
- * REWRITES it тАФ it can set merge rules, re-parent nodes, break correspondences and adopt external
+ * REWRITES it — it can set merge rules, re-parent nodes, break correspondences and adopt external
  * properties. Handing that interface to a tool would make "this feature only reads" a promise kept
  * by review rather than by the type system. This view exposes the reading half and nothing else, so
  * a tool that never receives the session cannot mutate what it is describing. The ONE mutating
- * operation this half legitimately needs тАФ priming a lazy subtree so that reading it tells the
- * truth тАФ lives on {@link ComparisonEngine}, where it is visible in one place. Recording a merge
+ * operation this half legitimately needs — priming a lazy subtree so that reading it tells the
+ * truth — lives on {@link ComparisonEngine}, where it is visible in one place. Recording a merge
  * decision is NOT such an operation: decisions are written to EDT's merge-rules FILE by
  * {@code merge_rules}, never onto the live comparison, and {@link #availableMergeRules} is what
  * that file's rules are checked against before it is written.
  *
  * <h2>The transaction boundary (CLAUDE.md don't #1)</h2>
  * The nodes below are {@code IBmObject}s of the COMPARISON's own BM store, not of the workspace
- * project's. {@code BmTransactions.read(project, тАж)} therefore opens the WRONG store and is not a
+ * project's. {@code BmTransactions.read(project, …)} therefore opens the WRONG store and is not a
  * valid boundary for any of these calls. Every method here must be invoked from inside
  * {@link ComparisonEngine#read(ComparisonView, String, fm.giper.edt.mcp.server.utils.BmTransactions.BmOperation)}
  * (or its {@code IBmTask} sibling), which routes to
@@ -55,14 +55,14 @@ import com._1c.g5.v8.dt.compare.model.TopComparisonNode;
  * <h2>Laziness</h2>
  * The tree is built on demand. A node whose {@link #topNodeStatus(long)} is
  * {@link ComparisonNodeStatus#UNFINISHED} or {@link ComparisonNodeStatus#HAS_UNFINISHED_CHILDREN}
- * has not been compared yet, and reading its children then yields an EMPTY list тАФ which renders as
+ * has not been compared yet, and reading its children then yields an EMPTY list — which renders as
  * "no differences" and is a lie. Prime it with {@link ComparisonEngine#prioritize} and wait on the
  * NODE's own status before reading it.
  *
  * <h2>Labels</h2>
  * There is deliberately no label accessor. {@code ComparisonUtils.getLabel} delegates to a function
  * that branches on {@code Locale.getDefault()}, so its output depends on the machine the server
- * happens to run on тАФ the same defect this repository already banned in
+ * happens to run on — the same defect this repository already banned in
  * {@code MetadataReferenceService.getFeatureLabel}. Callers name nodes from the comparison
  * symlink/FQN instead, which is stable.
  */
@@ -150,7 +150,7 @@ public final class ComparisonView
 
     /**
      * @param symlink the EDT qualified name of a top object, English tokens (e.g.
-     *     {@code Catalog.Products}) тАФ the engine does not translate, so pass a canonicalised name
+     *     {@code Catalog.Products}) — the engine does not translate, so pass a canonicalised name
      * @param side the side the symlink belongs to
      * @return the top node, or {@code null} when the symlink is not part of this comparison
      */
@@ -302,7 +302,7 @@ public final class ComparisonView
     /**
      * The engine's own descriptions of what could go wrong at a node. They are POTENTIAL: they are
      * produced by inspecting the comparison, not by attempting anything, and this feature never
-     * proceeds past a comparison тАФ so they must be reported as possibilities, never as results.
+     * proceeds past a comparison — so they must be reported as possibilities, never as results.
      *
      * @param nodeId the node to describe
      * @param context the comparison context of the current read
@@ -331,7 +331,7 @@ public final class ComparisonView
     }
 
     /**
-     * The rules EDT itself considers legal at this node. This is the ONLY authority on legality тАФ
+     * The rules EDT itself considers legal at this node. This is the ONLY authority on legality —
      * a rule absent from this list is refused by the platform silently, so it must be refused by us
      * loudly, naming the node and this set.
      *

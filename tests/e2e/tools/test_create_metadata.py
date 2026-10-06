@@ -31,10 +31,17 @@ Fixture inventory (TestConfiguration, English Names):
   need one create it first.)
 """
 
+from collections import Counter
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from harness import (
     E2ECallTimeout,
+    E2ESkip,
+    assert_marker_contract,
+    assert_no_marker_fields,
+    poll_project_error_check,
+    project_error_rows,
     call,
     assert_ok,
     assert_error,
@@ -49,13 +56,14 @@ from harness import (
     poll_disk_contains,
     read_disk,
     reset_all_fixtures,
+    split_markdown_row,
     tree_snapshot,
     wait_for_project_ready,
     e2e_test,
-    fixture_form_has_auto_command_bar,
     PROJECT,
     TESTS_PROJECT,
     _fail,
+    _workspace_dir,
 )
 
 
@@ -68,6 +76,11 @@ def _objects_text(metadata_type):
     r = call("get_metadata_objects", {"projectName": PROJECT, "metadataType": metadata_type})
     assert_ok(r, "get_metadata_objects read-back (%s)" % metadata_type)
     return r.text
+
+
+def _role_rights_file(role_name):
+    """The separate rights resource create_metadata must export for a Role top object."""
+    return "src/Roles/%s/Rights.rights" % role_name
 
 
 def _xml_local(tag):
@@ -120,6 +133,37 @@ def test_create_top_level_catalog_appears_in_readback():
 
     assert_contains(_objects_text("catalogs"), name,
                     "the new catalog must appear in the model read-back")
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_created_role_gets_its_rights_model():
+    """A created role must immediately own its separate Rights.rights resource.
+
+    Without that file the 1C configurator refuses to load the WHOLE configuration, while the failure
+    surfaces far from the create_metadata call that caused it. This pins the resource and its three
+    default properties at creation time, before any later modify_metadata call can materialize it."""
+    name = "E2ECreatedRoleRights"
+    fqn = "Role." + name
+    rights_file = _role_rights_file(name)
+
+    r = call("create_metadata", {"projectName": PROJECT, "fqn": fqn})
+    assert_ok(r, "create %s with its rights model" % fqn)
+    assert (r.structured or {}).get("persisted") is True, (
+        "role creation must report persisted=true after exporting Role.mdo and Rights.rights: %r"
+        % (r.structured,))
+
+    poll_disk_contains(rights_file, "<setForNewObjects>",
+                       ctx="create_metadata must export the role's Rights.rights resource")
+    rights_xml = read_disk(rights_file)
+    for prop in ("setForNewObjects", "setForAttributesByDefault",
+                 "independentRightsOfChildObjects"):
+        assert_contains(rights_xml, "<%s>" % prop,
+                        "the created rights resource must carry its %s default" % prop)
+    assert_not_contains(rights_xml, "<object>",
+                        "the created rights model must be empty before any rights write")
+
+    assert_contains(_objects_text("roles"), name,
+                    "MODEL read-back: the role with the exported rights model must resolve")
 
 
 @e2e_test(tool="create_metadata", kind="write-metadata")
@@ -185,6 +229,38 @@ def test_create_persists_object_and_configuration_to_disk():
                        ctx="create must add the Configuration.mdo collection reference")
 
 
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_created_catalog_inherits_the_configuration_lock_mode():
+    """#644: the type initializer must receive the project, as in EDT's own "New" wizard.
+
+    TestConfiguration's Configuration.mdo sets dataLockControlMode=Managed, and CatalogInitializer
+    copies it onto a new catalog ONLY when it is handed the project. With the version-only factory
+    overload the property stayed at its Automatic default, which EDT never produces here."""
+    name = "E2ELockModeCatalog"
+    r = call("create_metadata", {"projectName": PROJECT, "fqn": "Catalog." + name})
+    assert_ok(r, "create Catalog.%s" % name)
+    mdo = poll_disk_contains("src/Catalogs/%s/%s.mdo" % (name, name),
+                             "<dataLockControlMode>Managed</dataLockControlMode>",
+                             ctx="the new catalog must carry the configuration's Managed lock mode")
+    assert_not_contains(mdo, "<dataLockControlMode>Automatic",
+                        "the Automatic default must not be what reached disk")
+    assert_contains(_objects_text("catalogs"), name, "MODEL read-back: the new catalog must resolve")
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_created_common_command_gets_the_default_command_group():
+    """#644: CommonCommandInitializer resolves its default group through the project; without the
+    project the new command had no group at all, unlike one created in EDT."""
+    name = "E2EGroupedCommonCommand"
+    r = call("create_metadata", {"projectName": PROJECT, "fqn": "CommonCommand." + name})
+    assert_ok(r, "create CommonCommand.%s" % name)
+    poll_disk_contains("src/CommonCommands/%s/%s.mdo" % (name, name),
+                       "<group>ActionsPanelTools</group>",
+                       ctx="the new common command must be placed in the ActionsPanelTools group")
+    assert_contains(_objects_text("commonCommands"), name,
+                    "MODEL read-back: the new common command must resolve")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Happy — members addressed by FQN (the add_metadata_attribute fold + new kinds)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -230,7 +306,16 @@ def test_create_register_then_resource_member():
 
 @e2e_test(tool="create_metadata", kind="write-metadata")
 def test_create_dimension_member_on_register():
-    # Dimension is a member kind distinct from Resource/Attribute. Create a register, then a Dimension.
+    """A bare dimension gets EDT's valid String(10) default before DD observes it."""
+    from tools.test_edt_log_ratchet import _collect_our_errors, _emit_log_probe
+
+    workspace = _workspace_dir()
+    assert workspace is not None, "dimension regression requires the serving EDT workspace log"
+    probe = _emit_log_probe()
+    _, saw_probe = _collect_our_errors(workspace, probe)
+    assert saw_probe, "the dimension SDK log check must be bound to the server under test"
+    sdk_errors_before = _dimension_sdk_null_type_errors(workspace)
+
     reg = "E2EDimReg"
     assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": "InformationRegister." + reg}),
               "seed InformationRegister")
@@ -243,6 +328,72 @@ def test_create_dimension_member_on_register():
         "kind must be the concrete register-dimension EClass: %r" % (r.structured,)
     poll_diff_contains("<name>%s</name>" % dim,
                        ctx="the new dimension must land in the register's .mdo on disk")
+    wait_for_project_ready()
+
+    root = ET.fromstring(read_disk("src/InformationRegisters/%s/%s.mdo" % (reg, reg)))
+    dimensions = [node for node in root if _xml_local(node.tag) == "dimensions"
+                  and _direct_child_text(node, "name") == dim]
+    assert len(dimensions) == 1, "the created dimension must have exactly one persisted node"
+    type_node = next((node for node in dimensions[0] if _xml_local(node.tag) == "type"), None)
+    assert type_node is not None, "a bare dimension must persist its SDK default type"
+    assert [node.text for node in type_node if _xml_local(node.tag) == "types"] == ["String"], \
+        "the SDK default must be a single String type"
+    qualifiers = next((node for node in type_node
+                       if _xml_local(node.tag) == "stringQualifiers"), None)
+    assert qualifiers is not None and _direct_child_text(qualifiers, "length") == "10", \
+        "the SDK default String length must persist as 10"
+
+    details = call("get_metadata_details", {
+        "projectName": PROJECT, "objectFqns": ["InformationRegister." + reg], "full": True})
+    assert_ok(details, "read back the register dimension default type")
+    _assert_dimension_model_default(details.text, dim)
+
+    new_sdk_errors = _dimension_sdk_null_type_errors(workspace) - sdk_errors_before
+    assert not new_sdk_errors, "dimension creation must not cause SDK null-type exceptions: %r" % new_sdk_errors
+
+
+def _assert_dimension_model_default(markdown, name):
+    """Read Name/Type from its table, excluding the separate dimension-indexing table."""
+    header = None
+    dimension_types = []
+    for line in markdown.splitlines():
+        if not line.startswith("|"):
+            header = None
+            continue
+        row = split_markdown_row(line)
+        if header is None:
+            header = row
+            continue
+        if "Name" not in header or "Type" not in header or len(row) != len(header):
+            continue
+        if row[header.index("Name")] == name:
+            dimension_types.append(row[header.index("Type")])
+    assert dimension_types == ["String"], \
+        "model read-back must show exactly one dimension with String type: %r" % dimension_types
+
+
+def _dimension_sdk_null_type_errors(workspace):
+    """Count exact SDK failures across log rotations; the test compares its own before/after."""
+    from tools.test_edt_log_ratchet import _ENTRY
+
+    metadata = Path(workspace) / ".metadata"
+    files = sorted(metadata.glob(".bak_*.log")) + [metadata / ".log"]
+    found = Counter()
+    for path in files:
+        if not path.is_file():
+            continue
+        entries = path.read_text(encoding="utf-8", errors="replace").split("\n!ENTRY ")
+        for index, block in enumerate(entries):
+            if index:
+                block = "!ENTRY " + block
+            match = _ENTRY.match(block)
+            if not match or match.group(1) != "com._1c.g5.v8.derived" or match.group(2) != "4":
+                continue
+            if "RegisterDimension.getTypeDescription()" not in block or "NullPointerException" not in block:
+                continue
+            message = next((line for line in block.splitlines() if line.startswith("!MESSAGE")), "")
+            found[(match.group(4), message)] += 1
+    return found
 
 
 @e2e_test(tool="create_metadata", kind="write-metadata")
@@ -1599,6 +1750,47 @@ def test_create_form_item_level_handler():
 
 
 @e2e_test(tool="create_metadata", kind="write-metadata")
+def test_create_form_group_handler_binds_inside_the_group_ext_info():
+    # #651: a FormGroup holds no handler list; a Pages group's OnCurrentPageChange is published by
+    # its PagesGroupExtInfo and must bind INSIDE that node, as EDT itself binds it.
+    grp, proc = "GHPages", "GHPagesOnCurrentPageChange"
+    form_file = "src/Catalogs/Catalog/Forms/ItemForm/Form.form"
+    r = call("create_metadata", {
+        "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Group." + grp,
+        "properties": [{"name": "type", "value": "Pages"}]})
+    assert_ok(r, "seed a Pages group")
+    wait_for_project_ready()
+    r = call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": "Catalog.Catalog.Form.ItemForm.Group.%s.Handler.OnCurrentPageChange" % grp,
+        "properties": [{"name": "procedure", "value": proc}]})
+    assert_ok(r, "bind OnCurrentPageChange to the Pages group")
+    assert r.structured.get("action") == "created", "must report created: %r" % (r.structured,)
+
+    root = ET.fromstring(poll_disk_contains(form_file, proc,
+                                            ctx="the group handler must land in the .form"))
+    local = lambda element: element.tag.rsplit("}", 1)[-1]
+    group = next((element for element in root.iter() if local(element) == "items"
+                  and any(local(c) == "name" and c.text == grp for c in element)), None)
+    assert group is not None, "the Pages group must be on disk"
+    ext_info = next((c for c in group if local(c) == "extInfo"), None)
+    assert ext_info is not None, "the Pages group must carry its extInfo"
+    bound = [h for h in ext_info.iter() if local(h) == "handlers"
+             and any(local(c) == "name" and c.text == proc for c in h)]
+    assert len(bound) == 1, "the handler must bind exactly once inside the group's extInfo: %s" % \
+        ET.tostring(ext_info, encoding="unicode")[:800]
+
+    # Unknown group event: the refusal lists what the group's ext-info publishes.
+    r = call("create_metadata", {
+        "projectName": PROJECT,
+        "fqn": "Catalog.Catalog.Form.ItemForm.Group.%s.Handler.NotARealEvent_zz" % grp})
+    e = assert_error(r, "unknown group event")
+    assert_error_quality(e, names=["NotARealEvent_zz"],
+                         suggests=["Available events", "OnCurrentPageChange"],
+                         ctx="an unknown group event must list the group's available events")
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
 def test_create_form_item_level_handler_unknown_event_lists_available():
     # An item-level handler with an unknown event must list the item's available events (which include
     # the extInfo sub-type's events, e.g. OnChange for an input field).
@@ -1655,9 +1847,6 @@ def test_create_form_button_enabled_and_in_auto_command_bar():
     # Issue #138 bugs 2+3: parent 'AutoCommandBar' must place the button INSIDE the form's command
     # bar (not the form root), and the created button must export <enabled>true</enabled> (the model
     # default is false -> a disabled, half-transparent button in the client).
-    # 8.3.27 fixtures often have no persisted autoCommandBar — then the parent token is a miss,
-    # not a silent root placement.
-    has_bar = fixture_form_has_auto_command_bar()
     cmd, btn = "BarCmd", "BarBtn"
     r1 = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1667,11 +1856,6 @@ def test_create_form_button_enabled_and_in_auto_command_bar():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "command", "value": cmd},
                        {"name": "parent", "value": "AutoCommandBar"}]})
-    if not has_bar:
-        e = assert_error(r2, "button into AutoCommandBar when the form has no persisted bar")
-        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
-                             ctx="8.3.27 without autoCommandBar must refuse the parent token")
-        return
     assert_ok(r2, "create a Button inside the form's AutoCommandBar")
     poll_diff_contains(btn, ctx="the new button must land in the form's .form on disk")
     poll_diff_contains("<enabled>true</enabled>",
@@ -1692,7 +1876,6 @@ def test_create_form_button_enabled_and_in_auto_command_bar():
 @e2e_test(tool="create_metadata", kind="write-metadata")
 def test_create_form_button_parent_dotted_auto_command_bar_path():
     # The parent shapes reported in issue #138 ('Form.X.AutoCommandBar' / '...ChildItems') resolve too.
-    has_bar = fixture_form_has_auto_command_bar()
     cmd, btn = "BarCmd2", "BarBtn2"
     r1 = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1702,11 +1885,6 @@ def test_create_form_button_parent_dotted_auto_command_bar_path():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Button." + btn,
         "properties": [{"name": "command", "value": cmd},
                        {"name": "parent", "value": "Form.ItemForm.AutoCommandBar.ChildItems"}]})
-    if not has_bar:
-        e = assert_error(r2, "dotted AutoCommandBar path when the form has no persisted bar")
-        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
-                             ctx="a dotted bar path must not invent a bar 8.3.27 does not persist")
-        return
     assert_ok(r2, "a dotted AutoCommandBar parent path resolves to the form's bar")
     poll_diff_contains(btn, ctx="the button created via the dotted parent path must land on disk")
 
@@ -1731,7 +1909,6 @@ def test_create_form_unknown_parent_suggests_auto_command_bar():
 def test_create_form_popup_group_with_button():
     # A print-style submenu: a Group with an explicit type=Popup in the command bar, holding a
     # button. Inside the popup the platform requires command-bar buttons.
-    has_bar = fixture_form_has_auto_command_bar()
     cmd, grp, btn = "PopCmd", "PopMenu", "PopBtn"
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd})
@@ -1741,11 +1918,6 @@ def test_create_form_popup_group_with_button():
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Group." + grp,
         "properties": [{"name": "parent", "value": "AutoCommandBar"},
                        {"name": "type", "value": "Popup"}]})
-    if not has_bar:
-        e = assert_error(r, "Popup group into AutoCommandBar when the form has no persisted bar")
-        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
-                             ctx="8.3.27 without autoCommandBar must refuse parenting a popup there")
-        return
     assert_ok(r, "create a Popup group in the command bar")
     poll_diff_contains("<type>Popup</type>",
                        ctx="the explicit group type must serialize to the .form on disk")
@@ -1774,18 +1946,13 @@ def test_create_form_group_unknown_type_lists_allowed():
 @e2e_test(tool="create_metadata", kind="write-metadata")
 def test_create_form_decoration_in_command_bar_is_rejected():
     # The designer forbids decorations in command bars (FormItemTypeInformationService) - placing
-    # one would build a model the UI could never produce. Without a persisted bar (8.3.27) the
-    # parent token fails first — still a refusal, still no disk change.
+    # one would build a model the UI could never produce.
     r = call("create_metadata", {
         "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Decoration.BarDeco_zz",
         "properties": [{"name": "parent", "value": "AutoCommandBar"}]})
     e = assert_error(r, "decoration into the command bar")
-    if fixture_form_has_auto_command_bar():
-        assert_error_quality(e, names=["AutoCommandBar"], suggests=["cannot hold decorations"],
-                             ctx="the placement error must name the parent and the rule")
-    else:
-        assert_error_quality(e, names=["AutoCommandBar"], suggests=["not found"],
-                             ctx="without a persisted bar the parent token must miss, not place at root")
+    assert_error_quality(e, names=["AutoCommandBar"], suggests=["cannot hold decorations"],
+                         ctx="the placement error must name the parent and the rule")
     assert_no_diff("a rejected placement must not change the form on disk")
 
 
@@ -2529,3 +2696,104 @@ def test_nested_chain_reproduces_the_dead_end_parent_shape_of_342():
         "the ё-spelled chain must not be reported missing: %r" % (g.structured,)
     assert g.structured.get("objectsResolved") == [requested], \
         "the ё-spelled chain must resolve through the parent's е twin: %r" % (g.structured,)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# #643 - the written object's EDT markers, with an honest markersIncomplete
+#
+# A create success reports the validation markers of the top objects it exported. The flag is
+# the contract: false only when EDT confirmed the object's validation, and then the list IS
+# EDT's current view of the object. These tests check that against get_project_errors, and the
+# lie detector requires at least one confirmed-complete answer so an implementation that always
+# answers "incomplete" cannot pass.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# v8codestyle `mdo-name-length`: CRITICAL, NORMAL complexity, on a Name longer than 80 chars.
+_NAME_LENGTH_CHECK = "mdo-name-length"
+_LIE_DETECTOR_ATTEMPTS = 5
+
+
+def _markers_of(result, fqn, ctx):
+    """Assert the marker contract of a create success; return (incomplete, rows)."""
+    assert_ok(result, ctx)
+    incomplete, rows = assert_marker_contract(result.structured, ctx)
+    strays = [row for row in rows if row.get("object") != fqn]
+    if strays:
+        _fail("every row must belong to the written object %s (never the incidental "
+              "Configuration) [%s]: %r" % (fqn, ctx, strays))
+    return incomplete, rows
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_create_markers_are_never_a_false_clean():
+    """The lie detector: a Name over 80 chars gets EDT's `mdo-name-length` marker. A response
+    with markersIncomplete:false that lacks it - while EDT does report it - is a false clean."""
+    wait_for_project_ready()
+    attempts = []
+    for attempt in range(_LIE_DETECTOR_ATTEMPTS):
+        fqn = "Catalog.E2EMarkersLongName%s%d" % ("Abcdefghij" * 7, attempt)
+        r = call("create_metadata", {"projectName": PROJECT, "fqn": fqn})
+        if r.is_error:
+            raise E2ESkip("create_metadata refuses a Name over 80 characters on this stand, so "
+                          "the mdo-name-length case cannot be expressed: %s" % r.error_text()[:200])
+        incomplete, rows = _markers_of(r, fqn, "create %s" % fqn)
+        attempts.append((fqn, incomplete, any(row.get("checkId") == _NAME_LENGTH_CHECK for row in rows)))
+        wait_for_project_ready()
+
+    complete = [a for a in attempts if not a[1]]
+    if not complete:
+        _fail("no attempt out of %d came back markersIncomplete:false - an implementation that "
+              "always answers 'incomplete' must not pass: %r" % (len(attempts), attempts))
+    # Ground truth: the check must really run here, or the case proves nothing.
+    if not poll_project_error_check(attempts[0][0], _NAME_LENGTH_CHECK, timeout=60):
+        raise E2ESkip("check %s does not run on this stand (no marker on %s after 60s)"
+                      % (_NAME_LENGTH_CHECK, attempts[0][0]))
+    false_clean = [fqn for fqn, _incomplete, has_row in complete
+                   if not has_row and poll_project_error_check(fqn, _NAME_LENGTH_CHECK, timeout=30)]
+    if false_clean:
+        _fail("FALSE CLEAN: markersIncomplete:false without the %s marker EDT reports for %s"
+              % (_NAME_LENGTH_CHECK, false_clean))
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_create_complete_markers_equal_settled_project_errors():
+    """A confirmed-complete list is EDT's view of the object: the same (checkId, message) set as
+    get_project_errors objectFqns once everything settled - including when both are empty."""
+    wait_for_project_ready()
+    compared = 0
+    for attempt in range(3):
+        fqn = "Constant.E2EMarkersPlain%d" % attempt
+        r = call("create_metadata", {"projectName": PROJECT, "fqn": fqn})
+        incomplete, rows = _markers_of(r, fqn, "create %s" % fqn)
+        wait_for_project_ready()
+        if incomplete or r.structured["markerCount"] > len(rows):
+            continue
+        mine = sorted((row["checkId"], row["message"].replace("\r", "").replace("\n", " ").strip())
+                      for row in rows)
+        settled = sorted((check, message) for check, message, _location in project_error_rows(fqn))
+        if mine != settled:
+            _fail("a complete marker list must equal the settled get_project_errors view of %s:\n"
+                  "response: %r\nsettled:  %r" % (fqn, mine, settled))
+        compared += 1
+    if not compared:
+        _fail("no create of a plain Constant came back complete in 3 attempts - the marker report "
+              "never confirmed validation on the small fixture")
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_create_in_an_extension_reports_the_extension_object():
+    """The written project is the extension: its own model, its own markers, its own FQN."""
+    fqn = "DataProcessor.E2EMarkersExtDp"
+    r = call("create_metadata", {"projectName": TESTS_PROJECT, "fqn": fqn})
+    _markers_of(r, fqn, "create %s in the extension" % fqn)
+    assert r.structured.get("writtenProjects") == [TESTS_PROJECT], \
+        "the extension is the written project: %r" % (r.structured,)
+
+
+@e2e_test(tool="create_metadata", kind="write-metadata")
+def test_create_error_carries_no_marker_fields():
+    r = call("create_metadata", {"projectName": PROJECT, "fqn": "Catalog.Catalog"})
+    e = assert_error(r, "create an object that already exists")
+    assert_error_quality(e, names=["Catalog.Catalog"], suggests=["already exists"], ctx="duplicate create")
+    assert_no_marker_fields(r.structured, "an error reports no markers")
+    assert_no_diff("a refused create must not touch disk")

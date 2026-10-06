@@ -10,8 +10,10 @@ package fm.giper.edt.mcp.server.tools.base;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -112,6 +114,9 @@ public final class WriteScope
     /** Projects the platform's cascade may have written in. */
     private final Set<String> cascadedInto = new LinkedHashSet<>();
 
+    /** Per project: the top-object FQNs this call submitted for export, in submission order. */
+    private final Map<String, Set<String>> exportedTopObjects = new LinkedHashMap<>();
+
     /** A mutation boundary returned successfully, even if its project is not known here. */
     private volatile boolean mutationCommitted;
 
@@ -168,13 +173,15 @@ public final class WriteScope
      * way, and dropping it is how the barrier used to end up waiting for the wrong project.
      *
      * @param project the project whose export was submitted; ignored when {@code null}
+     * @param topObjectFqns the top-object FQNs submitted; recorded as this call's written objects
      */
-    public static void recordExportSubmission(IProject project)
+    public static void recordExportSubmission(IProject project, Collection<String> topObjectFqns)
     {
         WriteScope scope = BOUND.get();
-        if (scope != null)
+        if (scope != null && project != null)
         {
             scope.wrote(project);
+            scope.exported(project.getName(), topObjectFqns);
         }
     }
 
@@ -203,7 +210,7 @@ public final class WriteScope
      * <p>{@code BmTransactions.write} calls this centrally after {@code IBmModel.execute} returns,
      * so an exception in response/export work cannot reopen the post-commit plain-error hole. It
      * deliberately records only the commit fact; export routing still comes from
-     * {@link #recordWrite(IProject)} or {@link #recordExportSubmission(IProject)}.</p>
+     * {@link #recordWrite(IProject)} or {@link #recordExportSubmission(IProject, Collection)}.</p>
      */
     public static void recordMutationCommitted()
     {
@@ -311,6 +318,39 @@ public final class WriteScope
             written.add(projectName);
             mutationCommitted = true;
         }
+    }
+
+    /**
+     * Records the top objects an export was submitted for; name-taking so tests need no workspace.
+     *
+     * @param projectName the project; ignored when {@code null} or empty
+     * @param topObjectFqns the submitted top-object FQNs; {@code null}/blank entries are ignored
+     */
+    public void exported(String projectName, Collection<String> topObjectFqns)
+    {
+        if (projectName == null || projectName.isEmpty() || topObjectFqns == null)
+        {
+            return;
+        }
+        Set<String> fqns = exportedTopObjects.computeIfAbsent(projectName, k -> new LinkedHashSet<>());
+        for (String fqn : topObjectFqns)
+        {
+            if (fqn != null && !fqn.isEmpty())
+            {
+                fqns.add(fqn);
+            }
+        }
+    }
+
+    /**
+     * @param projectName the project
+     * @return the top-object FQNs this call submitted for export in that project, in order; empty
+     *     when none
+     */
+    public List<String> exportedTopObjects(String projectName)
+    {
+        Set<String> fqns = exportedTopObjects.get(projectName);
+        return fqns == null ? new ArrayList<>() : new ArrayList<>(fqns);
     }
 
     /**

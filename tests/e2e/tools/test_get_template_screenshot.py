@@ -210,3 +210,57 @@ def test_non_template_object_rejected_with_guidance():
     assert_error_quality(err, names=[bad, "is not a template"], suggests=["CommonTemplate."],
                          ctx="wrong-kind object names the value and the accepted shape")
     assert_no_diff("an invalid call must not touch the project on disk")
+
+
+@e2e_test(tool="get_template_screenshot", kind="action")
+def test_standalone_render_listener_is_released_before_project_clean():
+    """Render both template kinds, restart the model, and reject leaked Moxel callbacks."""
+    import glob
+    import os
+    from harness import RUN_STARTED_AT, E2ESkip, _workspace_dir, assert_ok
+    from tools.test_clean_project import _success_envelope
+    from tools.test_edt_log_ratchet import (
+        _ENTRY, _entry_epoch, _emit_log_probe, _collect_our_errors,
+    )
+
+    workspace = _workspace_dir()
+    if workspace is None:
+        raise E2ESkip("EDT workspace unavailable for the render listener regression")
+    probe = _emit_log_probe()
+    _, saw_probe = _collect_our_errors(workspace, probe)
+    assert saw_probe, "the SDK log must belong to the endpoint being tested"
+
+    fqns = ("CommonTemplate.PrintForm", "Catalog.Catalog.Template.Invoice")
+    for fqn in fqns:
+        _assert_nonempty_png(call("get_template_screenshot", {
+            "projectName": PROJECT, "templatePath": fqn,
+        }), fqn)
+    assert_no_diff("rendering both templates must leave the tracked project unchanged")
+
+    cleaned = call("clean_project", {"projectName": PROJECT})
+    assert_ok(cleaned, "model restart after standalone template rendering")
+    projects, count = _success_envelope(cleaned, "template render listener lifecycle")
+    assert projects == [PROJECT] and count == 1, "CLEAN must complete for the requested project"
+    for fqn in fqns:
+        _assert_nonempty_png(call("get_template_screenshot", {
+            "projectName": PROJECT, "templatePath": fqn,
+        }), fqn)
+    assert_no_diff("render/CLEAN/render must not rewrite project source files")
+
+    metadata = os.path.join(workspace, ".metadata")
+    log_paths = sorted(glob.glob(os.path.join(metadata, ".bak_*.log"))) + [
+        os.path.join(metadata, ".log")]
+    callbacks = []
+    for path in log_paths:
+        with open(path, encoding="utf-8", errors="strict") as stream:
+            lines = stream.readlines()
+        headers = [(i, _ENTRY.match(line)) for i, line in enumerate(lines)]
+        headers = [(i, match) for i, match in headers if match is not None]
+        for index, (begin, match) in enumerate(headers):
+            if match.group(2) != "4" or _entry_epoch(match.group(4)) < RUN_STARTED_AT - 1:
+                continue
+            end = headers[index+1][0] if index+1 < len(headers) else len(lines)
+            entry = "".join(lines[begin:end])
+            if "MoxelControl.lambda$17" in entry:
+                callbacks.append(entry)
+    assert not callbacks, "standalone Moxel language callback failed after model restart: %r" % callbacks

@@ -95,11 +95,11 @@ public class WorkmateGateway
 
     /**
      * The nudge sent as the continuation message. It is Russian because it is addressed to
-     * Workmate's model, whose conversation runs in the IDE language тАФ it is data for that model,
+     * Workmate's model, whose conversation runs in the IDE language — it is data for that model,
      * not surface text. Same intent as {@code DevAutopilot}'s own continuation prompt (answer with
      * the result, not with a plan), with one deliberate difference: it does NOT order a tool call.
-     * Measured live, "continue with tools" kept a model that wanted a documentation search тАФ a
-     * tool this toolset does not have тАФ announcing that search five times over. Naming the escape
+     * Measured live, "continue with tools" kept a model that wanted a documentation search — a
+     * tool this toolset does not have — announcing that search five times over. Naming the escape
      * hatch instead ("if the tool you need is unavailable, answer from your own knowledge") is
      * what turns the last continuation into an answer.
      */
@@ -118,7 +118,7 @@ public class WorkmateGateway
 
     /**
      * First-person announcements of intent, lowercase. A SHORT answer containing one of these is
-     * Workmate saying what it is about to do тАФ the exact shape issue #427 reported ("For a full
+     * Workmate saying what it is about to do — the exact shape issue #427 reported ("For a full
      * reference ... I will use the 1C documentation search"), which the platform then never
      * followed up on its own.
      *
@@ -190,7 +190,7 @@ public class WorkmateGateway
         + "\u044D\u0442\u043E\u0442 \u043C\u0430\u0440\u043A\u0435\u0440 \u043D\u0435 \u043F\u0438\u0448\u0438."; //$NON-NLS-1$
 
     /** The Russian negation particle that turns any of the verbs below into a refusal. */
-    private static final String NEGATION_PARTICLE = "\u043D\u0435"; // ╨╜╨╡
+    private static final String NEGATION_PARTICLE = "\u043D\u0435"; // не
 
     /** Words that turn a following "not" into a correlative rather than a denial. */
     private static final String[] CORRELATIVE_AFTER_NOT = {
@@ -204,22 +204,22 @@ public class WorkmateGateway
     };
 
     private static final String[] INTENT_MARKERS = {
-        "\u0432\u043E\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0441\u044C", // ╨▓╨╛╤Б╨┐╨╛╨╗╤М╨╖╤Г╤О╤Б╤М //$NON-NLS-1$
-        "\u043F\u043E\u0438\u0449\u0443", // ╨┐╨╛╨╕╤Й╤Г //$NON-NLS-1$
-        "\u043D\u0430\u0439\u0434\u0443", // ╨╜╨░╨╣╨┤╤Г //$NON-NLS-1$
-        "\u0438\u0437\u0443\u0447\u0443", // ╨╕╨╖╤Г╤З╤Г //$NON-NLS-1$
-        "\u043F\u043E\u0441\u043C\u043E\u0442\u0440\u044E", // ╨┐╨╛╤Б╨╝╨╛╤В╤А╤О //$NON-NLS-1$
-        "\u043F\u0440\u043E\u0432\u0435\u0440\u044E", // ╨┐╤А╨╛╨▓╨╡╤А╤О //$NON-NLS-1$
-        "\u0441\u043E\u0437\u0434\u0430\u043C", // ╤Б╨╛╨╖╨┤╨░╨╝ //$NON-NLS-1$
-        "\u043D\u0430\u0447\u043D\u0443", // ╨╜╨░╤З╨╜╤Г //$NON-NLS-1$
+        "\u0432\u043E\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0441\u044C", // воспользуюсь //$NON-NLS-1$
+        "\u043F\u043E\u0438\u0449\u0443", // поищу //$NON-NLS-1$
+        "\u043D\u0430\u0439\u0434\u0443", // найду //$NON-NLS-1$
+        "\u0438\u0437\u0443\u0447\u0443", // изучу //$NON-NLS-1$
+        "\u043F\u043E\u0441\u043C\u043E\u0442\u0440\u044E", // посмотрю //$NON-NLS-1$
+        "\u043F\u0440\u043E\u0432\u0435\u0440\u044E", // проверю //$NON-NLS-1$
+        "\u0441\u043E\u0437\u0434\u0430\u043C", // создам //$NON-NLS-1$
+        "\u043D\u0430\u0447\u043D\u0443", // начну //$NON-NLS-1$
         // Analytic future, restricted to an action verb for the same reason "let me" is:
         // the bare auxiliary also opens finished statements ("I will be glad to help").
-        "\u0431\u0443\u0434\u0443 \u0438\u0441\u043A\u0430\u0442\u044C", // ╨▒╤Г╨┤╤Г ╨╕╤Б╨║╨░╤В╤М //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0442\u044C", // ╨▒╤Г╨┤╤Г ╨┐╤А╨╛╨▓╨╡╤А╤П╤В╤М //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C", // ╨▒╤Г╨┤╤Г ╤Б╨╝╨╛╤В╤А╨╡╤В╤М //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0438\u0437\u0443\u0447\u0430\u0442\u044C", // ╨▒╤Г╨┤╤Г ╨╕╨╖╤Г╤З╨░╤В╤М //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C", // ╨▒╤Г╨┤╤Г ╤Б╨╛╨╖╨┤╨░╨▓╨░╤В╤М //$NON-NLS-1$
-        "\u0431\u0443\u0434\u0443 \u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0442\u044C\u0441\u044F", // ╨▒╤Г╨┤╤Г ╤А╨░╨╖╨▒╨╕╤А╨░╤В╤М╤Б╤П //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0438\u0441\u043A\u0430\u0442\u044C", // буду искать //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0442\u044C", // буду проверять //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C", // буду смотреть //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0438\u0437\u0443\u0447\u0430\u0442\u044C", // буду изучать //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C", // буду создавать //$NON-NLS-1$
+        "\u0431\u0443\u0434\u0443 \u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0442\u044C\u0441\u044F", // буду разбираться //$NON-NLS-1$
         "i will", //$NON-NLS-1$
         "i'll", //$NON-NLS-1$
         // "let me" alone is a discourse marker ("let me clarify: ..."), so only the phrases
@@ -1045,13 +1045,13 @@ public class WorkmateGateway
      * <p>Two shapes, both reported by issue #427 and both produced by the platform completing its
      * ask stream after one assistant turn:
      * <ul>
-     *   <li>an EMPTY answer тАФ nothing was said at all, so there is nothing to report;</li>
+     *   <li>an EMPTY answer — nothing was said at all, so there is nothing to report;</li>
      *   <li>a SHORT answer that states an intention ("For a full reference \u2026 I will use the 1C
      *       documentation search"). Length is what keeps this from eating real answers: a
      *       finished answer that happens to contain such a word is not {@value
      *       #PLAN_TEXT_MAX_CHARS} characters short.</li>
      * </ul>
-     * Over-eagerness here costs one extra round-trip and nothing else тАФ the continuation cannot
+     * Over-eagerness here costs one extra round-trip and nothing else — the continuation cannot
      * lose an answer, because the last NON-BLANK text is what the caller receives. Under-eagerness
      * is the bug itself.
      *
@@ -1224,7 +1224,7 @@ public class WorkmateGateway
 
     /**
      * Russian negation: the particle sits in front of the verb this list matches
-     * ("╨╜╨╡ ╨┐╤А╨╛╨▓╨╡╤А╤О").
+     * ("не проверю").
      *
      * @param text the lowercased answer
      * @param at where the marker starts

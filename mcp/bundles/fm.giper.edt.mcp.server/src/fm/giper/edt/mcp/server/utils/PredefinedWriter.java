@@ -24,6 +24,7 @@ import java.util.function.Consumer;
 
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.emf.ecore.util.EcoreUtil;
 
 import com._1c.g5.v8.dt.mcore.McoreFactory;
 import com._1c.g5.v8.dt.mcore.NumberValue;
@@ -1344,11 +1345,19 @@ public final class PredefinedWriter
         if (props.valueTypeSet && (props.valueType == null || props.valueType.isJsonNull()))
         {
             // A JSON-null valueType is a MODIFY concept (clearing an existing value); at create there
-            // is nothing to clear - omit the property to leave the value type unset. Checked up front
+            // is nothing to clear - omit the property to use the owner's default. Checked up front
             // (before any mutation), mirroring the code-null-at-create guard below.
             return WriteResult.fail("'valueType' cannot be JSON null at create - omit the property to " //$NON-NLS-1$
-                + "leave the value type unset (an explicit null clears an existing value type via " //$NON-NLS-1$
+                + "use the owner's default value type (an explicit null clears an existing value type via " //$NON-NLS-1$
                 + "modify_metadata)."); //$NON-NLS-1$
+        }
+
+        if (owner instanceof ChartOfCharacteristicTypes characteristicTypes
+            && characteristicTypes.getTypeDescription() == null)
+        {
+            return WriteResult.fail("Cannot create a predefined item on " + ownerLabel(owner) //$NON-NLS-1$
+                + ": the owner's typeDescription is missing. Set its value types with modify_metadata " //$NON-NLS-1$
+                + "before creating predefined items."); //$NON-NLS-1$
         }
 
         Predefined predefined = getOrCreatePredefined(owner);
@@ -1383,6 +1392,13 @@ public final class PredefinedWriter
             {
                 return WriteResult.fail(valueTypeErr);
             }
+        }
+        else if (item instanceof ChartOfCharacteristicTypesPredefinedItem characteristicItem)
+        {
+            // EDT's PredefinedCharacteristicTypeWizard clones the owner's type description,
+            // including its qualifiers. Copy the containment, preserving referenced TypeItems:
+            // sharing it would move the owner's type into this item; leaving it null crashes validation.
+            characteristicItem.setType(EcoreUtil.copy(((ChartOfCharacteristicTypes)owner).getTypeDescription()));
         }
         String ownerPropsErr = applyOwnerSpecificProps(owner, item, props);
         if (ownerPropsErr != null)
@@ -1988,7 +2004,17 @@ public final class PredefinedWriter
                 return "'code' must be a JSON number for " + ownerKind + " '" + ownerName //$NON-NLS-1$ //$NON-NLS-2$
                     + "' (codeType=Number); got '" + code + "'."; //$NON-NLS-1$ //$NON-NLS-2$
             }
-            BigDecimal bd = code.getAsBigDecimal();
+            BigDecimal bd;
+            try
+            {
+                bd = code.getAsBigDecimal();
+            }
+            catch (NumberFormatException e)
+            {
+                // Valid JSON, but its exponent is outside BigDecimal's int scale (e.g. 1e2147483648).
+                return "'code' " + code + " is out of range; a numeric " + ownerKind + " code must be a " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    + "non-negative integer."; //$NON-NLS-1$
+            }
             if (bd.signum() < 0)
             {
                 return "'code' " + bd + " is negative; a numeric " + ownerKind + " code must be a " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -2152,9 +2178,13 @@ public final class PredefinedWriter
      * (create_metadata / modify_metadata) supplies it - mirroring how the generic attribute-type path
      * (e.g. {@code ModifyMetadataTool#prepareTypeDescription}) resolves the same context.
      *
+     * <p>A caller REFUSAL is returned; a missing platform context is RAISED unmarked, because the
+     * calling tool marks every returned string as a refusal and a server failure must keep its ERROR.
+     *
      * @return {@code null} on success, or a ready, actionable error message
+     * @throws IllegalStateException when the platform context needed to build the type is missing
      */
-    private static String applyValueType(EObject owner, PredefinedItem item, ItemProps props)
+    static String applyValueType(EObject owner, PredefinedItem item, ItemProps props)
     {
         if (!(owner instanceof ChartOfCharacteristicTypes)
             || !(item instanceof ChartOfCharacteristicTypesPredefinedItem cctItem))
@@ -2166,19 +2196,27 @@ public final class PredefinedWriter
         JsonElement valueType = props.valueType;
         if (valueType == null || valueType.isJsonNull())
         {
-            cctItem.setType(null);
+            // The SDK type editor represents no selected concrete types with an empty description.
+            // The characteristic validator dereferences this reference even when the selection is empty.
+            cctItem.setType(McoreFactory.eINSTANCE.createTypeDescription());
             return null;
         }
         if (props.version == null)
         {
-            return "Cannot resolve the platform version needed to build 'valueType'."; //$NON-NLS-1$
+            throw new IllegalStateException(
+                "Cannot resolve the platform version needed to build 'valueType'."); //$NON-NLS-1$
         }
         if (props.config == null)
         {
-            return "Cannot build 'valueType': the configuration context is unavailable."; //$NON-NLS-1$
+            throw new IllegalStateException(
+                "Cannot build 'valueType': the configuration context is unavailable."); //$NON-NLS-1$
         }
         MetadataTypeBuilder.Result result =
             MetadataTypeBuilder.build(valueType, props.config, props.version, props.isExtensionProject);
+        if (result.platformFailure)
+        {
+            throw result.asException("Cannot build 'valueType': " + result.error); //$NON-NLS-1$
+        }
         if (result.error != null)
         {
             return "Invalid 'valueType': " + result.error; //$NON-NLS-1$

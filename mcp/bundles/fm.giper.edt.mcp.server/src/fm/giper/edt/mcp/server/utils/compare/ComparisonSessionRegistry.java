@@ -29,7 +29,7 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
  * <h2>Why a registry rather than the job record</h2>
  * A comparison is not a computation that ends: while it is registered EDT keeps a VIRTUAL PROJECT
  * and a private BM store alive, and only ending the comparison gives them back. The obvious place
- * to park the handle тАФ the background job's result тАФ cannot own that lifetime:
+ * to park the handle — the background job's result — cannot own that lifetime:
  * {@code BackgroundJobs} evicts the oldest completed record when the map fills up, and that
  * eviction is a bare map removal with NO dispose hook. The handle would vanish with the record and
  * the resources behind it would stay allocated until EDT is restarted. So the registry, and only
@@ -38,8 +38,8 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
  * <h2>Liveness is asked of EDT, not remembered</h2>
  * {@link #find(String)} does not merely look the id up: it re-asks EDT for the handles it currently
  * holds for that project ({@code IComparisonManager.getHandles}) and reports the session as GONE
- * when EDT no longer lists it. A comparison can end without going through us тАФ EDT restarts a
- * session, a user cancels one in the UI тАФ and a registry that trusted its own map would then hand
+ * when EDT no longer lists it. A comparison can end without going through us — EDT restarts a
+ * session, a user cancels one in the UI — and a registry that trusted its own map would then hand
  * out a handle whose store is closed. {@link #activeComparisonId()} and {@link #ids()} ask the same
  * question: the ids a refusal offers the caller are the ids EDT still holds, not the ids we once
  * issued.
@@ -61,8 +61,8 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
  *
  * <h2>ONE owner of the decision to give the slot back</h2>
  * {@link #handBack(String, SlotHandback.Ending)} is the only code in this bundle that ends a
- * comparison, and {@link SlotHandback} is what it answers with. Every other path here тАФ the idle
- * {@link #sweep()}, {@link #releaseAll()} on the way out of the bundle тАФ goes through the same
+ * comparison, and {@link SlotHandback} is what it answers with. Every other path here — the idle
+ * {@link #sweep()}, {@link #releaseAll()} on the way out of the bundle — goes through the same
  * private step, so all three obey one invariant:
  * <p>
  * <b>The record is dropped exactly when the slot is CONFIRMED free.</b>
@@ -326,7 +326,7 @@ public final class ComparisonSessionRegistry
         /**
          * Whether EDT has ever listed this handle. Until it has, an absence from
          * {@code getHandles} is "the scheduled launch has not surfaced yet" and not "the
-         * comparison is gone" тАФ see the class javadoc.
+         * comparison is gone" — see the class javadoc.
          */
         private boolean seenAliveByEdt;
 

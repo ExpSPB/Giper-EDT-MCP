@@ -15,12 +15,12 @@ set_breakpoint does NOT require an active debug session or a running infobase.
 A breakpoint is a workspace-level Eclipse artifact: it is registered on the
 IBreakpointManager and its backing IMarker lives on the workspace resource, NOT
 in the git-tracked TestConfiguration source tree. So against this EDT (no debug
-session, no launched application) set_breakpoint genuinely SUCCEEDS тАФ and the
+session, no launched application) set_breakpoint genuinely SUCCEEDS — and the
 project working tree must stay clean. That is the realistic happy contract here,
 so we exercise the real success path against the fixture's Calc module.
 
 The breakpoint MAY come back "degraded" (marker-only) if the EDT BSL breakpoint
-class is not on the runtime classpath тАФ BreakpointUtils falls back through EDT
+class is not on the runtime classpath — BreakpointUtils falls back through EDT
 marker types to a generic Eclipse marker and sets degraded=true + a warning. Both
 the native and the degraded outcome are correct *successes*; we assert the parts
 of the contract that hold in either case (success + echoed coordinates + a real
@@ -49,7 +49,7 @@ Real execute() error paths (SetBreakpointTool.java, all via ToolResult.error):
 
 Fixture inventory used (TestConfiguration, English Names):
   CommonModule.Calc -> src/CommonModules/Calc/Module.bsl, with
-    Function Add  on lines 1-3 (line 2 = "╨Т╨╛╨╖╨▓╤А╨░╤В A + B;", a real executable line)
+    Function Add  on lines 1-3 (line 2 = "Возврат A + B;", a real executable line)
     Procedure Test on lines 5-7
   This file is committed; line 2 is a deterministic, valid breakpoint target.
 
@@ -96,16 +96,16 @@ def _require_free_probe():
             )
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 # HAPPY PATH (set_breakpoint works WITHOUT a debug session; breakpoints are a
 # workspace artifact, so the project tree must stay clean)
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="set_breakpoint", kind="read")
 def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
     """Set a breakpoint at the fixture's Calc module, line 2 (a real executable
     line inside Function Add). The tool must SUCCEED even with no debug session,
     echo the exact coordinates, resolve to the real Calc module file, and return a
-    numeric breakpointId тАФ while leaving the git-tracked project source untouched
+    numeric breakpointId — while leaving the git-tracked project source untouched
     (a breakpoint lives in the workspace, not the project tree).
 
     Mutation sensitivity: a broken tool that no-ops, resolves the wrong file,
@@ -149,7 +149,7 @@ def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
         "breakpointId must be a positive marker id (a real breakpoint was created); got %r" % bp_id
 
     # If the EDT BSL breakpoint class was unavailable, the tool degrades to a
-    # marker-only breakpoint тАФ that is still a success, but it MUST announce itself
+    # marker-only breakpoint — that is still a success, but it MUST announce itself
     # with an actionable warning (so a silent degradation cannot pass unnoticed).
     degraded = bool(sc.get("degraded"))
     if degraded:
@@ -224,7 +224,7 @@ def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
         assert usc.get("conditionApplied") is False and usc.get("hitCountApplied") is False, \
             "a degraded update must report neither setting as applied; got %r" % usc
 
-    # The whole sequence must NOT have modified the git-tracked project source тАФ
+    # The whole sequence must NOT have modified the git-tracked project source —
     # breakpoints are a workspace artifact, never a project-tree edit.
     assert_no_diff("setting a breakpoint must not touch the project source tree")
 
@@ -238,9 +238,9 @@ def test_sets_breakpoint_on_calc_module_line_and_does_not_touch_project():
         "cleanup remove_breakpoint must report removed=true for our own breakpoint id"
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 # NEGATIVE MATRIX (mandatory: missing required, bad values, bad combinations)
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="set_breakpoint", kind="read")
 def test_missing_module_path_errors_clearly():
     """modulePath/module omitted -> the first guard fires -> "modulePath is
@@ -365,7 +365,7 @@ def test_nonexistent_project_errors():
     })
     e = assert_error(r, "non-existent project")
     # The downstream not-found branch names BOTH the module and the bad project.
-    # suggests=[] тАФ the list_projects discovery tail is a separate change.
+    # suggests=[] — the list_projects discovery tail is a separate change.
     assert_error_quality(e, names=[CALC_MODULE, bad], suggests=[],
                          ctx="non-existent project falls through to module-not-found, naming the project")
     assert_no_diff("an invalid call must not touch the project on disk")
@@ -397,7 +397,7 @@ def test_nonexistent_absolute_path_errors_and_names_value():
     straight to file resolution. A non-existent absolute .bsl path -> "Module file
     not found: <module>" (no " in project ..." suffix, since absolute resolution
     is by location, not by project). Exercises the absolute-path branch of the
-    modulePath-style detection тАФ distinct from the module-relative branch above."""
+    modulePath-style detection — distinct from the module-relative branch above."""
     bad_abs = "C:/no/such/dir/NoSuchModule_e2e.bsl"
     r = call("set_breakpoint", {"modulePath": bad_abs, "lineNumber": 2})
     e = assert_error(r, "non-existent absolute path")

@@ -17,6 +17,11 @@ extension, baseProjectName rejected for configuration, invalid externalObject sh
 duplicate name guard.
 """
 
+from pathlib import Path
+import time
+import uuid
+import xml.etree.ElementTree as ET
+
 from harness import (
     call,
     assert_ok,
@@ -26,6 +31,8 @@ from harness import (
     assert_no_diff,
     settle_or_fail,
     wait_for_project_ready,
+    read_disk,
+    split_markdown_row,
     e2e_test,
     PROJECT,
 )
@@ -41,6 +48,23 @@ SEEDED_ROOT = "ExternalDataProcessor.CreateProjSeededRoot_e2e"
 def _ensure_absent(name):
     """Best-effort pre/post cleanup: remove a leftover project from a prior crashed run."""
     call("delete_project", {"projectName": name, "deleteContent": True, "confirm": True})
+
+
+def _created_project_configuration(project_name, projects_markdown):
+    """Read the newly created project's persisted root from its reported location."""
+    rows = [split_markdown_row(line) for line in projects_markdown.splitlines()]
+    header = next(row for row in rows if "Name" in row and "Path" in row)
+    name_column, path_column = header.index("Name"), header.index("Path")
+    row = next(row for row in rows
+               if len(row) == len(header) and row[name_column] == project_name)
+    path = Path(row[path_column]) / "src" / "Configuration" / "Configuration.mdo"
+    deadline = time.monotonic() + 15
+    while True:
+        try:
+            return ET.fromstring(path.read_bytes())
+        except (FileNotFoundError, ET.ParseError):
+            assert time.monotonic() < deadline, "created Configuration must be exported: %s" % path
+            time.sleep(0.2)
 
 
 # ── NEGATIVE ──────────────────────────────────────────────────────────────────
@@ -150,6 +174,13 @@ def test_create_extension_then_delete():
     """Create a fresh extension from the fixture base, verify it, then clean up."""
     effective_name = PROJECT + "." + NEW_EXT
     _ensure_absent(effective_name)
+    base_xml = read_disk("src/Configuration/Configuration.mdo")
+    base = ET.fromstring(base_xml)
+    default_language_fqn = base.findtext("defaultLanguage")
+    assert default_language_fqn, "the base fixture must declare a default Language"
+    default_language_name = default_language_fqn.split(".", 1)[1]
+    base_language = next(language for language in base.findall("languages")
+                         if language.findtext("name") == default_language_name)
     try:
         r = call("create_project",
                  {"projectKind": "extension", "name": NEW_EXT, "baseProjectName": PROJECT})
@@ -170,6 +201,42 @@ def test_create_extension_then_delete():
         lp = call("list_projects", {})
         assert_contains(lp.text, ext_project_name,
                         "new extension must appear in list_projects")
+
+        # ADOPTED alone is insufficient: EDT derived updates require the typed extension
+        # property states, and the wizard also adopts the base's default Language.
+        stored = _created_project_configuration(ext_project_name, lp.text)
+        stored_uuid = stored.attrib.get("uuid")
+        uuid.UUID(stored_uuid)
+        assert stored_uuid != base.attrib["uuid"], "the new root must have a fresh UUID"
+        assert stored.findtext("objectBelonging") == "Adopted", "root must be adopted"
+        extension = stored.find("extension")
+        assert extension is not None, "ADOPTED root must persist its extension metadata"
+        xsi_type = "{http://www.w3.org/2001/XMLSchema-instance}type"
+        assert extension.attrib.get(xsi_type, "").split(":")[-1] == "ConfigurationExtension", \
+            "persisted extension must be the ConfigurationExtension subtype"
+        assert extension.findtext("defaultLanguage") == "Checked", \
+            "adopter must preserve the default-Language property state"
+        assert extension.findtext("compatibilityMode") == "Checked", \
+            "adopter must preserve the compatibility-mode property state"
+        assert stored.findtext("keepMappingToExtendedConfigurationObjectsByIDs") == "true", \
+            "the new root must retain mapping to base-object IDs"
+        assert stored.findtext("defaultLanguage") == default_language_fqn
+        language = next(language for language in stored.findall("languages")
+                        if language.findtext("name") == default_language_name)
+        assert language.findtext("objectBelonging") == "Adopted", \
+            "the default Language must be adopted, not a new unrelated Language"
+        assert language.attrib.get("extendedConfigurationObject") == base_language.attrib["uuid"], \
+            "adopted default Language must map to its source UUID"
+        details = call("get_metadata_details", {
+            "projectName": ext_project_name, "objectFqns": [default_language_fqn],
+        })
+        assert_ok(details, "read the default Language from the created extension model")
+        assert_contains(details.text, "Language: " + default_language_name,
+                        "model readback must resolve the adopted default Language")
+        assert_contains(details.text, "**Origin:** core (adopted)",
+                        "model readback must retain the default Language's base origin")
+        assert read_disk("src/Configuration/Configuration.mdo") == base_xml, \
+            "extension creation must not modify the base Configuration"
 
         # Duplicate guard: calling again with the same computed name must fail
         r2 = call("create_project",

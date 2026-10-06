@@ -34,7 +34,8 @@ REGISTRAR = (
 PROXY_TOOLS = {"router_status"}
 # Independent ratchet for tool names that lack the usual underscore signal.
 # Keep historical names until every agent-pack reference is deliberately gone.
-SINGLE_WORD_TOOL_NAMES = {"dcs", "git", "resume", "step"}
+SINGLE_WORD_TOOL_NAMES = {"dcs", "git", "launch", "resume", "step"}
+LEGACY_TOOL_ALIASES = {"debug_launch": "launch"}
 
 BACKTICK_TOKEN = re.compile(r"`([a-z][a-z0-9_]+)`")
 SKILL_NAME = re.compile(r"edt-mcp-project-[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -271,14 +272,15 @@ def main() -> int:
     errors: list[str] = []
     documented_names = {path.stem for path in TOOL_DOCS.glob("*.md") if path.name != "README.md"}
     registered_names = registered_tool_names(errors)
-    if documented_names != registered_names:
+    canonical_documented = {LEGACY_TOOL_ALIASES.get(name, name) for name in documented_names}
+    if canonical_documented != registered_names:
         fail(
             errors,
             "tool docs/implementation differ: "
-            f"docs-only={sorted(documented_names - registered_names)} "
-            f"registered-only={sorted(registered_names - documented_names)}",
+            f"docs-only={sorted(canonical_documented - registered_names)} "
+            f"registered-only={sorted(registered_names - canonical_documented)}",
         )
-    tool_names = registered_names | PROXY_TOOLS
+    tool_names = registered_names | PROXY_TOOLS | set(LEGACY_TOOL_ALIASES)
     untracked_single_word_tools = {
         name for name in tool_names if "_" not in name
     } - SINGLE_WORD_TOOL_NAMES

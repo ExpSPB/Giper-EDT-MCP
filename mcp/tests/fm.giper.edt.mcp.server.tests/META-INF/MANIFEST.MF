@@ -2,13 +2,15 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP Server Tests
 Bundle-SymbolicName: fm.giper.edt.mcp.server.tests
-Bundle-Version: 1.0.11.qualifier
+Bundle-Version: 1.0.12.qualifier
 Bundle-Vendor: ExpSPB
 Fragment-Host: fm.giper.edt.mcp.server;bundle-version="1.0.0"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Automatic-Module-Name: fm.giper.edt.mcp.server.tests
 Import-Package: com._1c.g5.v8.dt.dcs.typedvalue,
+ com._1c.g5.v8.dt.metadata.mdclass.extension.type;version="1.4.0",
  org.junit;version="4.13.0",
+ org.junit.function;version="4.13.2",
  org.junit.runner;version="4.13.0",
  org.junit.runners;version="4.13.0",
  org.mockito,

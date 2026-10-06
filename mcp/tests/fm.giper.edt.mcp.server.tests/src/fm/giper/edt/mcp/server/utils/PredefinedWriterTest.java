@@ -10,17 +10,24 @@ package fm.giper.edt.mcp.server.utils;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.junit.Assume;
 import org.junit.Test;
 import org.mockito.Mockito;
 
 import com._1c.g5.v8.dt.mcore.McoreFactory;
+import com._1c.g5.v8.dt.mcore.McorePackage;
+import com._1c.g5.v8.dt.platform.IEObjectProvider;
+import com._1c.g5.v8.dt.platform.version.Version;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
+import com._1c.g5.v8.dt.mcore.Type;
 import com._1c.g5.v8.dt.mcore.TypeItem;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogCodeType;
@@ -77,6 +84,7 @@ public class PredefinedWriterTest
         ChartOfCharacteristicTypes types = MdClassFactory.eINSTANCE.createChartOfCharacteristicTypes();
         types.setName(name);
         types.setCodeLength(codeLength);
+        types.setType(McoreFactory.eINSTANCE.createTypeDescription());
         return types;
     }
 
@@ -952,6 +960,19 @@ public class PredefinedWriterTest
         }
     }
 
+    /** An exponent past BigDecimal's int scale is valid JSON, so it is the caller's refusal, not a crash. */
+    @Test
+    public void testNumericCodeExponentOutOfBigDecimalRangeIsARefusal()
+    {
+        Catalog catalog = newNumberCodeCatalog("Codes", 5); //$NON-NLS-1$
+        PredefinedWriter.ItemProps props = new PredefinedWriter.ItemProps();
+        props.code = com.google.gson.JsonParser.parseString("1e2147483648"); //$NON-NLS-1$
+        props.codeSet = true;
+        PredefinedWriter.WriteResult result = PredefinedWriter.create(catalog, "Overflow", props, false); //$NON-NLS-1$
+        assertTrue(result.isError());
+        assertTrue(result.error, result.error.contains("out of range")); //$NON-NLS-1$
+    }
+
     /** A fractional numeric code is rejected - a catalog code is an integer. */
     @Test
     public void testNumericCodeFractionalRejected()
@@ -1214,6 +1235,70 @@ public class PredefinedWriterTest
     }
 
     // ==================== valueType (issue #296 P2: CCT predefined items) ==============================
+
+    @Test
+    public void testOmittedCharacteristicValueTypeCopiesOwnerConstraintsWithoutSharingContainment()
+    {
+        ChartOfCharacteristicTypes owner = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
+        TypeDescription ownerType = owner.getTypeDescription();
+        Type number = McoreFactory.eINSTANCE.createType();
+        number.setName("Number"); //$NON-NLS-1$
+        ownerType.getTypes().add(number);
+        ownerType.setNumberQualifiers(McoreFactory.eINSTANCE.createNumberQualifiers());
+        ownerType.getNumberQualifiers().setPrecision(7);
+        ownerType.getNumberQualifiers().setScale(2);
+        ownerType.getNumberQualifiers().setNonNegative(true);
+
+        PredefinedWriter.WriteResult created =
+            PredefinedWriter.create(owner, "Weight", new PredefinedWriter.ItemProps(), false); //$NON-NLS-1$
+        assertFalse(created.error, created.isError());
+        ChartOfCharacteristicTypesPredefinedItem item = (ChartOfCharacteristicTypesPredefinedItem)created.item;
+        assertNotNull(item.getType());
+        assertNotSame(ownerType, item.getType());
+        assertEquals(ownerType.getTypes(), item.getType().getTypes());
+        assertSame("type dictionary references must survive the copy", number, item.getType().getTypes().get(0)); //$NON-NLS-1$
+        assertEquals(7, item.getType().getNumberQualifiers().getPrecision());
+        assertEquals(2, item.getType().getNumberQualifiers().getScale());
+        assertTrue(item.getType().getNumberQualifiers().isNonNegative());
+        assertNotSame(ownerType.getNumberQualifiers(), item.getType().getNumberQualifiers());
+        item.getType().getNumberQualifiers().setPrecision(3);
+        assertEquals("editing the item must not alter the owner", 7, ownerType.getNumberQualifiers().getPrecision()); //$NON-NLS-1$
+        assertSame(ownerType, owner.getTypeDescription());
+        assertNotNull(item.getId());
+    }
+
+    @Test
+    public void testOmittedCharacteristicValueTypeCopiesEmptyOwnerAndUsesFreshItemIdentities()
+    {
+        ChartOfCharacteristicTypes owner = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
+        PredefinedWriter.WriteResult first =
+            PredefinedWriter.create(owner, "Weight", new PredefinedWriter.ItemProps(), false); //$NON-NLS-1$
+        PredefinedWriter.WriteResult second =
+            PredefinedWriter.create(owner, "Length", new PredefinedWriter.ItemProps(), false); //$NON-NLS-1$
+        assertFalse(first.error, first.isError());
+        assertFalse(second.error, second.isError());
+        TypeDescription firstType = ((ChartOfCharacteristicTypesPredefinedItem)first.item).getType();
+        TypeDescription secondType = ((ChartOfCharacteristicTypesPredefinedItem)second.item).getType();
+        assertNotNull(firstType);
+        assertTrue(firstType.getTypes().isEmpty());
+        assertNotSame(owner.getTypeDescription(), firstType);
+        assertNotSame(firstType, secondType);
+        assertFalse(first.item.getId().equals(second.item.getId()));
+    }
+
+    @Test
+    public void testMissingCharacteristicOwnerTypeRefusesBeforeAddingPredefinedContainment()
+    {
+        ChartOfCharacteristicTypes owner = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
+        owner.setType(null);
+        PredefinedWriter.WriteResult result =
+            PredefinedWriter.create(owner, "Weight", new PredefinedWriter.ItemProps(), false); //$NON-NLS-1$
+        assertTrue(result.isError());
+        assertTrue(result.error, result.error.contains("Properties")); //$NON-NLS-1$
+        assertTrue(result.error, result.error.contains("typeDescription")); //$NON-NLS-1$
+        assertTrue(result.error, result.error.contains("modify_metadata")); //$NON-NLS-1$
+        assertNull(owner.getPredefined());
+    }
     //
     // The SUCCESSFUL build (a real TypeDescription resolved via the platform type provider) needs a
     // live EDT platform and is E2E-covered (mirrors MetadataTypeBuilderTest's own documented split:
@@ -1292,20 +1377,83 @@ public class PredefinedWriterTest
     }
 
     @Test
-    public void testValueTypeMissingContextRejected()
+    public void testValueTypeMissingVersionIsRaisedUnmarked()
     {
-        // config/version deliberately left unset - exactly what every EXISTING caller of create()/
-        // modify() (none of which touch valueType) leaves them at; PredefinedWriter must still fail
-        // ACTIONABLY (not NPE) when a caller DOES set valueTypeSet without supplying the context.
+        // A missing platform version is a SERVER failure, not caller input: it must be RAISED
+        // unmarked (so it keeps its ERROR and stack), never returned as a refusal string that the
+        // calling tool would mark and demote. Still actionable, and still not an NPE.
         ChartOfCharacteristicTypes types = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
         PredefinedWriter.ItemProps props = new PredefinedWriter.ItemProps();
         props.valueType = typeSpec("String"); //$NON-NLS-1$
         props.valueTypeSet = true;
 
+        IllegalStateException raised = raisedBy(() -> PredefinedWriter.create(types, "Weight", props, false)); //$NON-NLS-1$
+        assertTrue(raised.getMessage(), raised.getMessage().contains("platform version")); //$NON-NLS-1$
+        assertFalse("a platform failure must not be marked as a refusal", raised instanceof Refusals.Marker); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testValueTypeMissingConfigurationIsRaisedUnmarked()
+    {
+        ChartOfCharacteristicTypes types = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
+        PredefinedWriter.ItemProps props = new PredefinedWriter.ItemProps();
+        props.valueType = typeSpec("String"); //$NON-NLS-1$
+        props.valueTypeSet = true;
+        props.version = Version.LATEST;
+
+        IllegalStateException raised = raisedBy(() -> PredefinedWriter.create(types, "Weight", props, false)); //$NON-NLS-1$
+        assertTrue(raised.getMessage(), raised.getMessage().contains("configuration context")); //$NON-NLS-1$
+        assertFalse(raised instanceof Refusals.Marker);
+    }
+
+    @Test
+    public void testValueTypeUnavailableTypeProviderIsRaisedUnmarked()
+    {
+        // Headlessly the platform type provider is not registered, which is exactly the platform
+        // failure under test. Skip, never fake-pass, on a runtime that does register one.
+        Assume.assumeTrue("the platform type provider is registered in this runtime", //$NON-NLS-1$
+            IEObjectProvider.Registry.INSTANCE.get(McorePackage.Literals.TYPE_ITEM, Version.LATEST) == null);
+        ChartOfCharacteristicTypes types = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
+        PredefinedWriter.ItemProps props = new PredefinedWriter.ItemProps();
+        props.valueType = typeSpec("String"); //$NON-NLS-1$
+        props.valueTypeSet = true;
+        props.version = Version.LATEST;
+        props.config = MdClassFactory.eINSTANCE.createConfiguration();
+
+        IllegalStateException raised = raisedBy(() -> PredefinedWriter.create(types, "Weight", props, false)); //$NON-NLS-1$
+        assertTrue(raised.getMessage(), raised.getMessage().contains("type provider")); //$NON-NLS-1$
+        assertFalse(raised instanceof Refusals.Marker);
+    }
+
+    @Test
+    public void testValueTypeBadSpecIsStillAReturnedRefusal()
+    {
+        // The other edge: a malformed spec IS the caller's mistake and must stay a returned refusal.
+        ChartOfCharacteristicTypes types = newCharacteristicTypes("Properties", 5); //$NON-NLS-1$
+        PredefinedWriter.ItemProps props = new PredefinedWriter.ItemProps();
+        JsonObject badSpec = new JsonObject();
+        badSpec.addProperty("types", "not-an-array"); //$NON-NLS-1$ //$NON-NLS-2$
+        props.valueType = badSpec;
+        props.valueTypeSet = true;
+        props.version = Version.LATEST;
+        props.config = MdClassFactory.eINSTANCE.createConfiguration();
+
         PredefinedWriter.WriteResult result = PredefinedWriter.create(types, "Weight", props, false); //$NON-NLS-1$
         assertTrue(result.isError());
-        assertTrue("a missing platform-version context must fail actionably, not NPE", //$NON-NLS-1$
-            result.error.contains("platform version")); //$NON-NLS-1$
+        assertTrue(result.error, result.error.startsWith("Invalid 'valueType': ")); //$NON-NLS-1$
+    }
+
+    private static IllegalStateException raisedBy(Runnable call)
+    {
+        try
+        {
+            call.run();
+        }
+        catch (IllegalStateException e)
+        {
+            return e;
+        }
+        throw new AssertionError("expected an IllegalStateException"); //$NON-NLS-1$
     }
 
     @Test
@@ -1318,15 +1466,34 @@ public class PredefinedWriterTest
             (ChartOfCharacteristicTypesPredefinedItem)created.item;
         // Set directly (bypassing the platform-resolving writer path) - this test targets the CLEAR,
         // which never touches MetadataTypeBuilder either way.
-        item.setType(McoreFactory.eINSTANCE.createTypeDescription());
-        assertNotNull("precondition: a value type is set before the clear", item.getType()); //$NON-NLS-1$
+        TypeDescription previous = McoreFactory.eINSTANCE.createTypeDescription();
+        Type number = McoreFactory.eINSTANCE.createType();
+        number.setName("Number"); //$NON-NLS-1$
+        previous.getTypes().add(number);
+        previous.setNumberQualifiers(McoreFactory.eINSTANCE.createNumberQualifiers());
+        previous.getNumberQualifiers().setPrecision(7);
+        previous.getNumberQualifiers().setScale(2);
+        item.setType(previous);
+        TypeDescription ownerType = types.getTypeDescription();
+        assertFalse("precondition: a concrete value type is set before the clear", //$NON-NLS-1$
+            item.getType().getTypes().isEmpty());
 
         PredefinedWriter.ItemProps mod = new PredefinedWriter.ItemProps();
         mod.valueType = JsonNull.INSTANCE;
         mod.valueTypeSet = true;
         PredefinedWriter.WriteResult result = PredefinedWriter.modify(types, "Weight", mod); //$NON-NLS-1$
         assertFalse(result.isError());
-        assertNull("an explicit JSON null must clear the value type", item.getType()); //$NON-NLS-1$
+        assertNotNull("a cleared value type must remain safe for EDT validation", item.getType()); //$NON-NLS-1$
+        assertNotSame(previous, item.getType());
+        assertTrue("an explicit JSON null clears the concrete type selection", item.getType().getTypes().isEmpty()); //$NON-NLS-1$
+        assertNull(item.getType().getNumberQualifiers());
+        assertNull(item.getType().getStringQualifiers());
+        assertNull(item.getType().getDateQualifiers());
+        assertNull(item.getType().getBinaryQualifiers());
+        assertSame("clearing an item must leave its owner type in place", ownerType, types.getTypeDescription()); //$NON-NLS-1$
+        assertEquals(1, previous.getTypes().size());
+        assertEquals(7, previous.getNumberQualifiers().getPrecision());
+        assertNull(PredefinedWriter.displayValueType(item));
     }
 
     @Test

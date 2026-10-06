@@ -30,15 +30,9 @@ import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
  * <p>
  * Covers tool metadata, the input schema, the {@code getResultFileName} naming
  * helper, the {@code checkId} required-argument guard, the pure UID -> symbolic
- * resolver, and the {@code hasCheckDocumentation} lookup. The headless boundary
- * is {@code Activator.getDefault().getPreferenceStore()} (the configured
- * check-descriptions folder): in the unit-test runtime the Activator is not
- * started, so any document-reading path degrades to an error payload /
- * {@code false} rather than returning content. {@code findCheckDocumentationFile}
- * swallows that and yields {@code null}, so {@code hasCheckDocumentation} is
- * headless-safe. Reading an actual check document needs the configured docs
- * folder and is covered by the E2E suite. (Uses the {@code IMcpTool} default
- * MARKDOWN response type.)
+ * resolver, and shipped-description lookup. The existing CheckDescriptionLoader handles
+ * optional preference overrides and resolves shipped resources even without an Activator.
+ * Uses the {@code IMcpTool} default MARKDOWN response type.
  */
 public class GetCheckDescriptionToolTest
 {
@@ -180,6 +174,36 @@ public class GetCheckDescriptionToolTest
         assertNotNull(result);
         assertTrue("an unresolvable checkId must yield a structured error payload", //$NON-NLS-1$
             result.contains("\"success\":false") || result.contains("\"success\": false")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("the refusal must name the unknown id", //$NON-NLS-1$
+            result.contains("no-such-check-xyz-unit")); //$NON-NLS-1$
+        assertTrue("the refusal must explain how to obtain a resolvable id", //$NON-NLS-1$
+            result.contains("symbolic") && result.contains("get_project_errors")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testShippedDescriptionReturnsItsMarkdownWithoutFolderConfiguration()
+    {
+        Map<String, String> params = new HashMap<>();
+        params.put("checkId", "begin-transaction"); //$NON-NLS-1$ //$NON-NLS-2$
+        String result = new GetCheckDescriptionTool().execute(params);
+        assertTrue("the shipped check must return its own Markdown document", //$NON-NLS-1$
+            result.startsWith("# begin-transaction")); //$NON-NLS-1$
+        assertTrue(result.contains("Try-catch must be after begin transaction")); //$NON-NLS-1$
+        assertFalse("the document must not be a JSON refusal envelope", //$NON-NLS-1$
+            result.contains("\"success\"")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testShippedDocumentationIsAdvertisedWithoutFolderConfiguration()
+    {
+        assertTrue(GetCheckDescriptionTool.hasCheckDocumentation("begin-transaction")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUpperCaseSymbolicIdLoadsTheShippedDescription()
+    {
+        assertTrue(GetCheckDescriptionTool.getCheckDescription("BEGIN-TRANSACTION") //$NON-NLS-1$
+            .startsWith("# begin-transaction")); //$NON-NLS-1$
     }
 
     // ==================== hasCheckDocumentation (headless-safe lookup) ====================
@@ -195,9 +219,7 @@ public class GetCheckDescriptionToolTest
     @Test
     public void testHasCheckDocumentationForUnknownCheckIsFalse()
     {
-        // findCheckDocumentationFile swallows the missing-folder / absent-Activator
-        // condition and returns null, so the public probe is a safe false. A unique
-        // synthetic id also guarantees no packaged/configured doc can match.
+        // A unique synthetic id guarantees no shipped/configured description can match.
         assertFalse(GetCheckDescriptionTool.hasCheckDocumentation("no-such-check-xyz-unit")); //$NON-NLS-1$
     }
 

@@ -21,7 +21,7 @@ import com.e1c.g5.dt.applications.ApplicationException;
  *
  * <h2>Why</h2>
  * EDT reports failures as {@link IStatus} objects and only then wraps them in exceptions, so
- * {@code getMessage()} тАФ what tools naturally concatenate into an error тАФ is frequently the
+ * {@code getMessage()} — what tools naturally concatenate into an error — is frequently the
  * LEAST informative part of the failure:
  * <ul>
  *   <li>{@code new ApplicationException(status)} takes {@code status.getMessage()}, which is the
@@ -34,9 +34,9 @@ import com.e1c.g5.dt.applications.ApplicationException;
  * All three read as "the tool broke" rather than "the platform refused, and here is why".
  *
  * <h2>What it does</h2>
- * {@link #describe(Throwable)} walks the failure тАФ the exception chain, and for each hop the
+ * {@link #describe(Throwable)} walks the failure — the exception chain, and for each hop the
  * {@link IStatus} it carries (failing children first, then other children, its message, and its
- * own exception) тАФ and
+ * own exception) — and
  * returns the first non-blank message it finds. When the whole failure genuinely carries no text
  * it says so, naming the exception type and the status severity, because "CANCEL, no message" is
  * itself the diagnosis: something aborted the operation rather than failing it.
@@ -44,9 +44,9 @@ import com.e1c.g5.dt.applications.ApplicationException;
  * <p>{@link #rootCause(Throwable)} answers a separate, complementary question: after
  * {@code describe} has selected the headline, what does the deepest distinct bounded
  * {@code getCause()} hop say? Child statuses are aggregate detail and are interpreted only by the
- * per-hop selection rule at their owning throwable. Callers that need both compose them explicitly;
- * the root-cause helper does not change {@code describe}'s established selection rule or invent an
- * ordering among aggregate statuses.
+ * per-hop selection rule at their owning throwable. {@link #describeStatus(IStatus)} composes both
+ * for status callers without changing {@code describe}'s selection rule or inventing an ordering
+ * among aggregate statuses.
  *
  * <p>{@link #withoutObjectIdentity(String)} answers a SEPARATE question and is meant to be
  * COMPOSED with {@code describe}, never substituted for it. {@code describe} selects the most
@@ -148,8 +148,8 @@ public final class PlatformFailures
      * {@code getCause()} chain. As a known limitation, a plain {@code MultiStatus} with no exception of
      * its own contributes no cause clause, even when its children carry one.
      *
-     * <p>This method returns only the diagnosis. A caller that displays both messages should compose
-     * English prose such as {@code describe(failure) + " Caused by: " + rootCause(failure)}.
+     * <p>This method returns only the diagnosis; {@link #describeStatus(IStatus)} composes it with
+     * the headline for status callers.
      *
      * @param failure the exception to inspect (may be {@code null})
      * @return the deepest distinct diagnosis, or the empty string when there is no additional text
@@ -180,6 +180,31 @@ public final class PlatformFailures
             current = current.getCause();
         }
         return deepest;
+    }
+
+    /** Describes a failure and appends its deepest distinct cause when one exists. */
+    public static String describeWithRootCause(Throwable failure)
+    {
+        String headline = describe(failure);
+        String cause = rootCause(failure);
+        return appendRootCause(headline, cause);
+    }
+
+    /** Describes a status and appends its deepest distinct cause when one exists. */
+    public static String describeStatus(IStatus status)
+    {
+        if (status == null)
+        {
+            return describe((Throwable)null);
+        }
+        return describeWithRootCause(new CoreException(status));
+    }
+
+    /** Appends a cause only when it adds information beyond the headline. */
+    private static String appendRootCause(String headline, String cause)
+    {
+        return cause.isEmpty() || headline.equals(cause)
+            ? headline : headline + " Caused by: " + cause; //$NON-NLS-1$
     }
 
     /**
@@ -272,14 +297,14 @@ public final class PlatformFailures
     }
 
     /**
-     * The first message ANYWHERE in the failure тАФ the exception chain and, at every hop, the
-     * {@link IStatus} tree it carries тАФ that satisfies {@code filter}.
+     * The first message ANYWHERE in the failure — the exception chain and, at every hop, the
+     * {@link IStatus} tree it carries — that satisfies {@code filter}.
      *
      * <p>Separate from {@link #describe(Throwable)} because the two questions are opposites.
      * {@code describe} answers "what do I show a human", and deliberately stops at the most
      * informative message it meets. Code that must RECOGNISE one specific platform refusal has
      * to look everywhere instead: EDT reports, for example, a refused standalone-server start as
-     * a generic "An internal error occurred during тАж" status whose cause тАФ three hops down тАФ
+     * a generic "An internal error occurred during …" status whose cause — three hops down —
      * carries the sentence that actually names the reason. Searching only the headline would
      * never see it.
      *
@@ -406,7 +431,7 @@ public final class PlatformFailures
 
     /**
      * The fallback used when neither the exception chain nor its statuses carry any text: name
-     * what failed and, when a status is available, its SEVERITY тАФ a message-less {@code CANCEL}
+     * what failed and, when a status is available, its SEVERITY — a message-less {@code CANCEL}
      * is a different (and far more actionable) event than a message-less error.
      *
      * @param failure the exception (never {@code null})
@@ -422,7 +447,7 @@ public final class PlatformFailures
 
     /**
      * First non-blank message among {@code children}, optionally restricted to those that FAILED
-     * ({@code ERROR}/{@code CANCEL}). Two passes over the same array rather than sorting it тАФ the
+     * ({@code ERROR}/{@code CANCEL}). Two passes over the same array rather than sorting it — the
      * array belongs to the platform.
      *
      * @param children the child statuses (never {@code null})
@@ -494,8 +519,8 @@ public final class PlatformFailures
         }
         visitedStatuses.put(status, Integer.valueOf(depth));
         // CHILDREN FIRST when there are any. EDT wraps its results in a MultiStatus whose own
-        // message is the generic headline ("Database update failed") while the reason тАФ the busy
-        // port, the rejected object тАФ sits in a child. Returning the root first made this helper
+        // message is the generic headline ("Database update failed") while the reason — the busy
+        // port, the rejected object — sits in a child. Returning the root first made this helper
         // hand back exactly the uninformative text it exists to replace.
         IStatus[] children = status.getChildren();
         if (children != null)

@@ -23,7 +23,9 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
@@ -243,15 +245,35 @@ public final class BslModuleUtils
     }
 
     /**
-     * Loads BSL Module EMF model via BmAwareResourceSetProvider.
-     * Tries ServiceTracker first, falls back to IResourceServiceProvider (Guice injector).
+     * Loads the BSL Module EMF model of the file {@link #resolveModuleFile} finds for
+     * {@code modulePath}, so "where is the module" has one answer for both.
      *
      * @param project the EDT project
-     * @param modulePath path from src/, e.g. "CommonModules/MyModule/Module.bsl"
+     * @param modulePath path from the source folder, e.g. "CommonModules/MyModule/Module.bsl",
+     *                   or an absolute filesystem path of a workspace file
      * @return loaded Module or null if not found
      */
     public static Module loadModule(IProject project, String modulePath)
     {
+        IFile file = resolveModuleFile(project, modulePath);
+        if (file == null)
+        {
+            Activator.logWarning("BSL module not found in the workspace: " + modulePath); //$NON-NLS-1$
+            return null;
+        }
+        return loadModule(file);
+    }
+
+    /**
+     * Loads the BSL Module EMF model of a workspace file via BmAwareResourceSetProvider.
+     * Tries ServiceTracker first, falls back to IResourceServiceProvider (Guice injector).
+     *
+     * @param file the module file
+     * @return loaded Module or null if not found
+     */
+    public static Module loadModule(IFile file)
+    {
+        IProject project = file.getProject();
         // Try to obtain BmAwareResourceSetProvider
         BmAwareResourceSetProvider resourceSetProvider = Activator.getDefault().getResourceSetProvider();
 
@@ -288,8 +310,7 @@ public final class BslModuleUtils
             return null;
         }
 
-        // Use createPlatformResourceURI for proper encoding (handles Cyrillic paths)
-        URI uri = URI.createPlatformResourceURI(project.getName() + "/" + SOURCE_FOLDER + "/" + modulePath, true); //$NON-NLS-1$ //$NON-NLS-2$
+        URI uri = moduleUri(file);
         Activator.logInfo("Loading BSL module: " + uri.toString()); //$NON-NLS-1$
 
         try
@@ -314,10 +335,64 @@ public final class BslModuleUtils
         }
         catch (Exception e)
         {
-            Activator.logError("Failed to load BSL module: " + uri, e); //$NON-NLS-1$
+            Log.log(moduleLoadStatus(uriExists(resourceSet, uri), uri, e));
         }
 
         return null;
+    }
+
+    /**
+     * The URI of a module file, built from the file's own full path (encoded, so Cyrillic paths
+     * load), whichever top-level folder it lives in.
+     *
+     * @param file the module file
+     * @return its platform resource URI
+     */
+    static URI moduleUri(IFile file)
+    {
+        return URI.createPlatformResourceURI(file.getFullPath().toString(), true);
+    }
+
+    /**
+     * The status for a failed {@code getResource}: a module that is simply ABSENT is not a failure
+     * (the three checks above already treat "nothing to load" as a warning, and this method's
+     * contract is to answer {@code null}), so it logs at WARNING with no stack. A load that failed
+     * for any OTHER reason keeps its ERROR and its stack - the demotion is decided by whether the
+     * resource EXISTS, never by the exception's class.
+     *
+     * @param resourceExists whether the URI names a resource that is actually there
+     * @param uri the module URI the load was attempted for
+     * @param e the exception the load threw
+     * @return the status to emit
+     */
+    static IStatus moduleLoadStatus(boolean resourceExists, URI uri, Exception e)
+    {
+        if (resourceExists)
+        {
+            return new Status(IStatus.ERROR, Log.pluginId(), "Failed to load BSL module: " + uri, e); //$NON-NLS-1$
+        }
+        return new Status(IStatus.WARNING, Log.pluginId(), "BSL module does not exist: " + uri, null); //$NON-NLS-1$
+    }
+
+    /**
+     * Asks the resource set's own URI converter whether {@code uri} names something that exists -
+     * the same question, about the same URI, that the failed load asked. A probe that cannot answer
+     * reports {@code true} so the caller stays LOUD: an unknown state must never silence an error.
+     *
+     * @param resourceSet the resource set the load was attempted on
+     * @param uri the module URI
+     * @return whether the resource exists ({@code true} also when the probe itself failed)
+     */
+    static boolean uriExists(ResourceSet resourceSet, URI uri)
+    {
+        try
+        {
+            return resourceSet.getURIConverter().exists(uri, null);
+        }
+        catch (RuntimeException probeFailed) // NOSONAR an unanswerable probe must not silence the error
+        {
+            return true;
+        }
     }
 
     /**

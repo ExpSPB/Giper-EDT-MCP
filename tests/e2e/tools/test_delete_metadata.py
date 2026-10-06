@@ -27,6 +27,7 @@ Fixture inventory (TestConfiguration, English Names):
 
 from harness import (
     call,
+    assert_no_marker_fields,
     assert_ok,
     assert_error,
     assert_error_quality,
@@ -289,6 +290,40 @@ def test_preview_without_confirm_lists_changepoints_and_does_not_mutate():
 # ──────────────────────────────────────────────────────────────────────────────
 
 _FORM = "src/Catalogs/Catalog/Forms/ItemForm/Form.form"
+
+
+@e2e_test(tool="delete_metadata", kind="write-metadata")
+def test_preview_accepts_explicit_timeout_and_clamps_out_of_range_value():
+    assert_contains(_list_commonmodules(), "Calc", "baseline: CommonModule.Calc must exist")
+
+    for timeout in (600, 1):
+        r = call("delete_metadata", {
+            "projectName": PROJECT,
+            "fqn": "CommonModule.Calc",
+            "timeout": timeout,
+        })
+        assert_ok(r, "preview with timeout=%s" % timeout)
+        assert r.structured is not None, "a JSON tool must return structuredContent"
+        assert r.structured.get("action") == "preview", \
+            "timeout=%s must still return a normal preview: %r" % (timeout, r.structured)
+        assert r.structured.get("fqn") == "CommonModule.Calc", \
+            "the preview must echo its target when timeout=%s" % timeout
+        assert r.structured.get("writtenProjects") == [], \
+            "a bounded preview must still declare that it wrote nowhere: %r" % (r.structured,)
+
+    assert_contains(_list_commonmodules(), "Calc",
+                    "explicit and clamped preview timeouts must not delete CommonModule.Calc")
+    assert_no_diff("explicit and clamped preview timeouts must not touch the project on disk")
+
+    # The other half of #509: the guide has to SAY what a timeout leaves the model in. This is what
+    # makes the test fail on a pre-fix server - an unknown 'timeout' argument is simply ignored, so
+    # the calls above would pass there too.
+    g = call("get_tool_guide", {"toolName": "delete_metadata"})
+    assert_ok(g, "the delete_metadata guide must be readable")
+    assert_contains(g.text, "Timeout, and what the model is left in",
+                    "the guide must document what a timed-out delete leaves the model in")
+    assert_contains(g.text, "`timeout`",
+                    "the guide's parameter list must name the timeout parameter")
 
 
 def _seed_form_attribute(attr):
@@ -948,3 +983,15 @@ def test_preview_of_a_collection_attribute_lists_its_columns():
     names = [str(item.get("name")) for item in (r.structured.get("items") or [])]
     assert col in names, \
         "the preview must list the column the delete will remove: %r" % (names,)
+
+
+@e2e_test(tool="delete_metadata", kind="write-metadata")
+def test_delete_success_carries_no_marker_fields():
+    """#643 reports markers for create/modify only: a delete's consequences land on its REFERRERS,
+    which blockingReferences already names, so a delete success carries none of the four members."""
+    settle_or_fail("this delete")
+    r = call("delete_metadata", {"projectName": PROJECT, "fqn": "CommonModule.Calc", "confirm": True})
+    assert_ok(r, "delete CommonModule.Calc (confirm=true)")
+    assert r.structured.get("action") == "executed", "must take the execute branch: %r" % (r.structured,)
+    assert_no_marker_fields(r.structured, "a delete success reports no written-object markers")
+    assert_not_contains(_list_commonmodules(), "| Calc ", "MODEL read-back: CommonModule.Calc is gone")

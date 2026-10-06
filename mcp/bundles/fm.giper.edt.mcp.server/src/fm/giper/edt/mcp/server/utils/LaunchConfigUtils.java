@@ -29,14 +29,14 @@ import fm.giper.edt.mcp.server.Activator;
  *
  * <p>Covers two families:
  * <ul>
- *   <li>Runtime client configs ({@link #LAUNCH_CONFIG_TYPE_ID}) тАФ launch a new
+ *   <li>Runtime client configs ({@link #LAUNCH_CONFIG_TYPE_ID}) — launch a new
  *       1cv8c client and attach the debugger to it. Carry {@link #ATTR_PROJECT_NAME},
- *       and {@link #ATTR_APPLICATION_ID} when they were bound to an application тАФ
+ *       and {@link #ATTR_APPLICATION_ID} when they were bound to an application —
  *       one created without that binding has the attribute EMPTY, which is why the
  *       tools that consume it must decide what an empty value means rather than
  *       assume it cannot happen.</li>
  *   <li>Attach configs ({@link #TYPE_REMOTE_RUNTIME}, {@link #TYPE_LOCAL_RUNTIME})
- *       тАФ attach to an already-running 1C:Enterprise debug server (ragent/rphost).
+ *       — attach to an already-running 1C:Enterprise debug server (ragent/rphost).
  *       These carry {@link #ATTR_PROJECT_NAME} but typically no
  *       {@link #ATTR_APPLICATION_ID}; instead the infobase is identified via
  *       {@link #ATTR_DEBUG_INFOBASE_ALIAS}, {@link #ATTR_INFOBASE_UUID} and
@@ -46,7 +46,7 @@ import fm.giper.edt.mcp.server.Activator;
 public final class LaunchConfigUtils
 {
     /**
-     * Poll interval (milliseconds) for waiting on launch state transitions тАФ
+     * Poll interval (milliseconds) for waiting on launch state transitions —
      * termination, disconnection, DB update settling. Shared by all callers
      * that need to spin-wait on Eclipse debug API state.
      */
@@ -121,8 +121,8 @@ public final class LaunchConfigUtils
     public static final String ATTR_DEBUG_SERVER_URL = "com._1c.g5.v8.dt.debug.core.ATTR_DEBUG_SERVER_URL"; //$NON-NLS-1$
 
     /**
-     * Launch attribute: the infobase user the CLIENT connects as ("╨Я╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╤М ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╨╛╨╜╨╜╨╛╨╣
-     * ╨▒╨░╨╖╤Л" in the launch dialog). The client is a separate process from the designer agent and
+     * Launch attribute: the infobase user the CLIENT connects as ("Пользователь информационной
+     * базы" in the launch dialog). The client is a separate process from the designer agent and
      * takes its credentials from here, NOT from the infobase access settings.
      */
     public static final String ATTR_LAUNCH_USER_NAME =
@@ -133,13 +133,13 @@ public final class LaunchConfigUtils
         "com._1c.g5.v8.dt.launching.core.ATTR_LAUNCH_USER_PASSWORD"; //$NON-NLS-1$
 
     /**
-     * Launch attribute: "╨Ш╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М ╨╜╨░╤Б╤В╤А╨╛╨╣╨║╨╕ ╨┤╨╛╤Б╤В╤Г╨┐╨░ ╨║ ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╨╛╨╜╨╜╨╛╨╣ ╨▒╨░╨╖╨╡" - the first radio
+     * Launch attribute: "Использовать настройки доступа к информационной базе" - the first radio
      * of the launch dialog's client-user section. Mutually exclusive with an explicit user.
      */
     public static final String ATTR_LAUNCH_USER_USE_INFOBASE_ACCESS =
         "com._1c.g5.v8.dt.launching.core.ATTR_LAUNCH_USER_USE_INFOBASE_ACCESS"; //$NON-NLS-1$
 
-    /** Launch attribute: "╨Ш╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М ╨░╤Г╤В╨╡╨╜╤В╨╕╤Д╨╕╨║╨░╤Ж╨╕╤О ╨Ю╨б" - the second radio of that section. */
+    /** Launch attribute: "Использовать аутентификацию ОС" - the second radio of that section. */
     public static final String ATTR_LAUNCH_OS_INFOBASE_ACCESS =
         "com._1c.g5.v8.dt.launching.core.ATTR_LAUNCH_OS_INFOBASE_ACCESS"; //$NON-NLS-1$
 
@@ -148,7 +148,7 @@ public final class LaunchConfigUtils
 
     /**
      * Synthetic applicationId prefix for any other EDT/1C debug launch that carries
-     * no real {@code ATTR_APPLICATION_ID} and is not an Attach config тАФ typically a
+     * no real {@code ATTR_APPLICATION_ID} and is not an Attach config — typically a
      * session a user started from the EDT UI ("Debug As"), a file-mode standalone
      * server, or a runtime-client config whose application id was never persisted.
      */
@@ -193,11 +193,11 @@ public final class LaunchConfigUtils
      * <p>For runtime-client launches this is the real {@code ATTR_APPLICATION_ID} when it is
      * set and readable. The read is lenient (see {@link #readAttribute}), so a binding that
      * exists but cannot be read falls into the synthetic branch below exactly like an absent
-     * one тАФ a caller that must tell the two apart has to read the attribute itself.
+     * one — a caller that must tell the two apart has to read the attribute itself.
      * For Attach launches, {@code ATTR_APPLICATION_ID} may be absent; in that case
-     * we fall back to {@code attach:<configName>} тАФ stable across calls for the
+     * we fall back to {@code attach:<configName>} — stable across calls for the
      * same EDT launch configuration, and addressable via {@code debug_status}.
-     * For any other EDT/1C debug launch (e.g. one a user started from the EDT UI тАФ
+     * For any other EDT/1C debug launch (e.g. one a user started from the EDT UI —
      * a file-mode standalone server, or a runtime client that carries no
      * {@code ATTR_APPLICATION_ID}) we fall back to {@code launch:<configName>}. All
      * three forms are stable across calls for the same EDT launch configuration and
@@ -223,7 +223,7 @@ public final class LaunchConfigUtils
         }
         // Any other EDT/1C debug launch (incl. UI-started "Debug As" sessions) still
         // gets a stable, addressable id so the suspend registry and debug tools can
-        // track it. Non-1C launches (Java apps, Ant tasks, тАж) still return null.
+        // track it. Non-1C launches (Java apps, Ant tasks, …) still return null.
         if (isEdtConfig(config))
         {
             return LAUNCH_APP_ID_PREFIX + config.getName();
@@ -234,24 +234,24 @@ public final class LaunchConfigUtils
     /**
      * Returns {@code true} if the given applicationId carries a prefix this plugin also
      * mints itself rather than reading it from a real 1C {@code ATTR_APPLICATION_ID}:
-     * {@code attach:тАж} / {@code launch:тАж} (minted by
-     * {@link #getApplicationIdFor(ILaunchConfiguration)}) or {@code ServerApplication.тАж}
+     * {@code attach:…} / {@code launch:…} (minted by
+     * {@link #getApplicationIdFor(ILaunchConfiguration)}) or {@code ServerApplication.…}
      * (minted by {@link DebugServerTargetSupport} for 1C debug-server targets). All three
      * are addressable for debug tracking; this predicate exists so a preflight can SKIP
      * the {@link com.e1c.g5.dt.applications.IApplicationManager} lookup for them.
      * <p>
-     * This is THE single authority for that skip classification тАФ every minted prefix must
+     * This is THE single authority for that skip classification — every minted prefix must
      * be known here, or a preflight that feeds an id into {@code IApplicationManager} fails
      * with "Application not found" for a perfectly trackable session.
      * <p>
      * <b>It is NOT a "this is not a real application id" test.</b> The two {@code :}-forms
      * never resolve through {@code IApplicationManager}, but {@code ServerApplication.} is
      * the literal prefix REAL 1C standalone-server applications carry in their own
-     * {@link com.e1c.g5.dt.applications.IApplication#getId()} тАФ the minted debug-server ids
+     * {@link com.e1c.g5.dt.applications.IApplication#getId()} — the minted debug-server ids
      * mirror that form on purpose (see {@link DebugServerTargetSupport#SERVER_APP_ID_PREFIX}).
      * A diagnosis that tells the caller "this is not an application id" must therefore test
      * the two prefixes explicitly instead of calling this method, or it will mis-describe a
-     * genuine тАФ merely missing or stale тАФ standalone-server application.
+     * genuine — merely missing or stale — standalone-server application.
      *
      * @param applicationId the id to test (may be {@code null})
      * @return {@code true} if the id starts with one of the three prefixes above
@@ -284,7 +284,7 @@ public final class LaunchConfigUtils
      *
      * <p>Historically this method also fell back to "first config for the same
      * project" which silently routed runs to an unrelated launch configuration.
-     * That fallback has been removed тАФ callers should either use this strict
+     * That fallback has been removed — callers should either use this strict
      * lookup or {@link #findLaunchConfigByName(ILaunchManager, String)}.
      *
      * @param launchManager Eclipse launch manager (must not be null)
@@ -349,7 +349,7 @@ public final class LaunchConfigUtils
      *
      * <p>At least one of the two must be provided. When both are provided and
      * the named config doesn't match the given {@code projectName}/{@code applicationId},
-     * the name wins тАФ callers pre-resolve the config and can then cross-check.
+     * the name wins — callers pre-resolve the config and can then cross-check.
      *
      * @return resolved config, or {@code null} if nothing matches.
      */
@@ -496,7 +496,7 @@ public final class LaunchConfigUtils
     }
 
     /**
-     * Returns all 1C:EDT launch configurations тАФ any config whose type id is
+     * Returns all 1C:EDT launch configurations — any config whose type id is
      * in the 1C namespace ({@code com._1c.} or {@code com.e1c.}). Covers runtime
      * client, attach (remote/local) and mobile types; ignores unrelated Eclipse
      * launches (Java apps, Ant tasks, etc.).
@@ -587,7 +587,7 @@ public final class LaunchConfigUtils
      *
      * <p>This is the exhaustive set of 1C processes that the current EDT instance
      * spawned (runtime-client) or attached to (Attach). Externally started 1C
-     * clients never appear here тАФ that is a constructive guarantee of the
+     * clients never appear here — that is a constructive guarantee of the
      * Eclipse Debug Platform.
      *
      * @param launchManager Eclipse launch manager (must not be null)
@@ -646,7 +646,7 @@ public final class LaunchConfigUtils
                 continue;
             }
             ILaunchConfiguration config = launch.getLaunchConfiguration();
-            // Filter to EDT/1C configs only тАФ config names are not unique across
+            // Filter to EDT/1C configs only — config names are not unique across
             // Eclipse launch types, so without this an unrelated Java/JUnit/etc.
             // launch with a matching name would be selected and (with force=true)
             // killed.
@@ -660,7 +660,7 @@ public final class LaunchConfigUtils
 
     /**
      * The client-user attributes a launch configuration must carry for the CLIENT process to
-     * authenticate without the platform's "╨Ф╨╛╤Б╤В╤Г╨┐ ╨║ ╨╕╨╜╤Д╨╛╤А╨╝╨░╤Ж╨╕╨╛╨╜╨╜╨╛╨╣ ╨▒╨░╨╖╨╡" prompt.
+     * authenticate without the platform's "Доступ к информационной базе" prompt.
      *
      * <p>Kept separate from the write below so the mapping - which radio of the launch dialog's
      * client-user section ends up selected - is pinnable without a live launch configuration. The
@@ -697,8 +697,8 @@ public final class LaunchConfigUtils
     /**
      * Refuses to put a SECRET into a launch configuration that is SHARED.
      *
-     * <p>A launch configuration is either <em>local</em> тАФ kept in the workspace metadata
-     * ({@code .metadata/.plugins/org.eclipse.debug.core/.launches/*.launch}) тАФ or <em>shared</em>, in
+     * <p>A launch configuration is either <em>local</em> — kept in the workspace metadata
+     * ({@code .metadata/.plugins/org.eclipse.debug.core/.launches/*.launch}) — or <em>shared</em>, in
      * which case its {@code .launch} file is an ordinary resource inside a project and is therefore
      * normally committed to version control. The platform reads
      * {@link #ATTR_LAUNCH_USER_PASSWORD} back as a plain launch attribute
@@ -708,7 +708,7 @@ public final class LaunchConfigUtils
      *
      * <p>The refusal is scoped to the case where something secret would actually be written. OS
      * authentication stores no password at all, and an empty password (the demo-base case) is not a
-     * secret тАФ those keep working on a shared configuration, so the guard costs no legitimate use.
+     * secret — those keep working on a shared configuration, so the guard costs no legitimate use.
      * The user name is not treated as a secret: it is what a human puts in the very same section of
      * the launch dialog when sharing a configuration on purpose.
      *
@@ -744,7 +744,7 @@ public final class LaunchConfigUtils
      * Removes a secret from a platform message before it becomes part of a tool answer.
      *
      * <p>The messages reported below are the platform's own and normally name a resource, not an
-     * attribute value тАФ but nothing in the API guarantees that, and the tool's contract is that the
+     * attribute value — but nothing in the API guarantees that, and the tool's contract is that the
      * password is never returned. Cheap insurance on the one string that travels back to the caller.
      *
      * @param message the platform's message (may be {@code null})
@@ -762,15 +762,15 @@ public final class LaunchConfigUtils
 
     /**
      * The EDT-log line for a failed credential write: what failed, and the exception TYPES behind
-     * it тАФ never any message the platform produced.
+     * it — never any message the platform produced.
      *
      * <p>The failing call is a save of the launch attribute that HOLDS the infobase password, so
      * the platform's own text is exactly where that value can surface, and it does so by three
      * separate routes once the throwable is attached to a {@link org.eclipse.core.runtime.Status}:
      * Eclipse renders the throwable's stack trace (its {@code toString()}, i.e. the message, and
      * every {@code Caused by:} link), and for a {@link CoreException} it additionally writes the
-     * statuses behind it тАФ the exception's own {@link org.eclipse.core.runtime.IStatus} and that
-     * status's children тАФ as nested log entries. Masking cannot be relied on there: the workspace
+     * statuses behind it — the exception's own {@link org.eclipse.core.runtime.IStatus} and that
+     * status's children — as nested log entries. Masking cannot be relied on there: the workspace
      * log is a permanent file read by whoever opens the workspace, while the response the caller
      * gets is a one-off answer to the very agent that supplied the password, so the two are
      * scrubbed to different depths on purpose. Withholding the text closes all three routes at
@@ -803,7 +803,7 @@ public final class LaunchConfigUtils
      * Writes {@link #clientCredentialAttributes} onto a launch configuration, so the launched
      * CLIENT authenticates by itself.
      *
-     * <p>Refuses the write entirely when it would put a password into a SHARED configuration тАФ see
+     * <p>Refuses the write entirely when it would put a password into a SHARED configuration — see
      * {@link #sharedSecretRefusal}. All or nothing: a half-written client-user section (mode
      * switched, credentials missing) leaves the launch dialog in a state nobody asked for.
      *

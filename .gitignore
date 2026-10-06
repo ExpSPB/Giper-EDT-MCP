@@ -26,6 +26,8 @@ log.log
 !.claude/settings.json
 /mcp/repositories/fm.giper.edt.mcp.server.repository/target
 /tests/e2e/__pycache__/
+**/__pycache__/
+*.py[cod]
 # grade.py now imports a sibling module, so this directory grows one too.
 /tests/tool-choice/__pycache__/
 /tests/e2e/*.xml

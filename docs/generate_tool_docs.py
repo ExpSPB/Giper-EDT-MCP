@@ -5,6 +5,8 @@ Generate per-tool documentation from the LIVE MCP server — the single source o
 Each tool's doc is exactly what `get_tool_guide` renders (name + description +
 Parameters table from the input schema + the in-code Guide), so the docs never drift
 from the Java tools: re-run this whenever tools change.
+If the selected profile denies a hidden tool's guide, preserve its valid published
+page and index summary with a warning. A missing or invalid page fails before writes.
 
 Outputs:
   docs/tools/<tool>.md     one rendered guide per tool
@@ -27,6 +29,32 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "tools")
+
+
+class ToolCallError(RuntimeError):
+    """A tools/call failure is not documentation content."""
+
+    def __init__(self, name, details):
+        self.details = str(details)
+        super().__init__("%s -> %s" % (name, self.details))
+
+    def is_profile_denial_for(self, tool_name):
+        prefix = "Tool '%s' is not allowed by profile '" % tool_name
+        suffix = ("'. Ask the user to add it to that profile: EDT Preferences "
+                  "\u2192 MCP Server \u2192 Tools.")
+        if not self.details.startswith(prefix) or not self.details.endswith(suffix):
+            return False
+        profile_id = self.details[len(prefix):-len(suffix)]
+        return bool(profile_id) and "'" not in profile_id and "\n" not in profile_id
+
+
+def reject_call_error(result, name):
+    if result.get("isError"):
+        details = (result.get("structuredContent") or {}).get("error")
+        if not details:
+            details = next((item.get("text") for item in result.get("content", [])
+                            if item.get("text")), "tools/call returned isError")
+        raise ToolCallError(name, details)
 
 
 def parse_args():
@@ -55,6 +83,7 @@ def call_text(url, name, arguments):
     """Return the textual payload of a tools/call (handles content[].text and the
     embedded-resource shape get_tool_guide uses)."""
     res = rpc(url, "tools/call", {"name": name, "arguments": arguments})
+    reject_call_error(res, name)
     for item in res.get("content", []):
         if item.get("type") == "resource":
             txt = (item.get("resource") or {}).get("text")
@@ -67,6 +96,7 @@ def call_text(url, name, arguments):
 
 def call_structured(url, name, arguments):
     res = rpc(url, "tools/call", {"name": name, "arguments": arguments})
+    reject_call_error(res, name)
     if isinstance(res.get("structuredContent"), dict):
         return res["structuredContent"]
     for item in res.get("content", []):
@@ -76,6 +106,22 @@ def call_structured(url, name, arguments):
             except ValueError:
                 pass
     return {}
+
+
+def existing_index_summaries():
+    """Retain published summaries when the selected profile cannot refresh a guide."""
+    path = os.path.join(OUT_DIR, "README.md")
+    if not os.path.isfile(path):
+        return {}
+    summaries = {}
+    with open(path, encoding="utf-8") as index:
+        for line in index:
+            if not line.startswith("| [`"):
+                continue
+            name = line.split("`", 2)[1]
+            summary = line.split("|", 2)[2].rsplit("|", 1)[0].strip()
+            summaries[name] = summary
+    return summaries
 
 
 def main():
@@ -95,8 +141,8 @@ def main():
     # default (today: `git`) stays hidden until the user enables it. Generating solely from
     # tools/list therefore silently dropped such a tool from a reference that calls itself full -
     # the count read one short and the page did not exist at all. Their names are collected here
-    # and their pages are generated from get_tool_guide, which answers for a hidden tool too, so
-    # nothing has to be enabled on the server to document it.
+    # and their pages are generated from get_tool_guide when the selected profile allows it.
+    # A profile denial preserves an existing page instead of publishing the refusal as a guide.
     groups = []  # list of (title, description, [tool names])
     hidden = set()
     # Absence from tools/list has TWO different causes and only one of them means "disabled":
@@ -114,6 +160,8 @@ def main():
             if tnames:
                 groups.append((toolset.get("title") or toolset.get("id"),
                                toolset.get("description") or "", tnames))
+    except ToolCallError:
+        raise
     except Exception as e:  # noqa: BLE001
         print("list_toolsets unavailable (%s) — using a flat index" % e, file=sys.stderr)
 
@@ -130,11 +178,33 @@ def main():
     if ungrouped:
         groups.append(("Other", "", ungrouped))
 
-    os.makedirs(OUT_DIR, exist_ok=True)
-    written = 0
+    previous_summaries = existing_index_summaries()
+    preserved_summaries = {}
+    rendered_docs = {}
     guide_summary = {}
     for name in names:
-        md = call_text(url, "get_tool_guide", {"toolName": name})
+        preserved = False
+        try:
+            md = call_text(url, "get_tool_guide", {"toolName": name})
+        except ToolCallError as error:
+            if name not in hidden or not error.is_profile_denial_for(name):
+                raise RuntimeError("Cannot generate %s: %s" % (name, error)) from error
+            path = os.path.join(OUT_DIR, name + ".md")
+            md = ""
+            if name in hidden and os.path.isfile(path):
+                with open(path, encoding="utf-8") as existing:
+                    md = existing.read()
+            if (not md.startswith("# %s\n" % name)
+                    or "\n## Parameters\n" not in md or "\n## Guide\n" not in md):
+                raise RuntimeError(
+                    "Cannot generate %s: %s; no valid existing guide can be preserved. "
+                    "Generate from a profile that allows this tool." % (name, error)) from error
+            preserved = True
+            if name in previous_summaries:
+                preserved_summaries[name] = previous_summaries[name]
+            print("WARNING: %s; preserving %s and its published summary. "
+                  "To refresh it, generate from a profile that allows this tool."
+                  % (error, path), file=sys.stderr)
         if name in hidden and md:
             # First non-heading, non-empty line of the guide: the tool's own description.
             for line in md.replace("\r\n", "\n").split("\n"):
@@ -145,7 +215,8 @@ def main():
         if not md:
             md = "# %s\n\n%s\n" % (name, tools_by_name[name].get("description", ""))
         # Footer: these are generated; point readers at the generator.
-        md = md.rstrip() + ("\n\n---\n*Generated from the live MCP server "
+        if not preserved:
+            md = md.rstrip() + ("\n\n---\n*Generated from the live MCP server "
                             "(`get_tool_guide`) by `docs/generate_tool_docs.py`. "
                             "Do not edit this file. Edit the tool's description/schema in its Java "
                             "source and its guide body in "
@@ -153,9 +224,15 @@ def main():
         # Normalize to LF regardless of the server's line endings and the host platform
         # (text mode on Windows would otherwise emit CRLF / mixed endings into the repo).
         md = md.replace("\r\n", "\n").replace("\r", "\n")
+        rendered_docs[name] = md
+
+    # Complete the read-only preflight before writing any file: an undocumented hidden
+    # tool must fail the run without leaving a partially regenerated reference.
+    os.makedirs(OUT_DIR, exist_ok=True)
+    for name, md in rendered_docs.items():
         with open(os.path.join(OUT_DIR, name + ".md"), "w", encoding="utf-8", newline="\n") as f:
             f.write(md)
-        written += 1
+    written = len(rendered_docs)
 
     # Grouped index table — reused for the docs/tools/ index and (with a path prefix)
     # for the README block, so there is ONE generated source for both.
@@ -167,6 +244,10 @@ def main():
                 out += ["", "> %s" % desc]
             out += ["", "| Tool | Description |", "|------|-------------|"]
             for n in ns:
+                if n in preserved_summaries:
+                    out.append("| [`%s`](%s%s.md) | %s |"
+                               % (n, link_prefix, n, preserved_summaries[n]))
+                    continue
                 d = (tools_by_name.get(n, {}).get("description") or "").replace("\n", " ").strip()
                 if not d:
                     # A tool hidden from tools/list has no description there; take the guide's

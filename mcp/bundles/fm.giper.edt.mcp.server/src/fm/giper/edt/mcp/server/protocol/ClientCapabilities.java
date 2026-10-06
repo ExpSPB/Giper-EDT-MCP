@@ -17,10 +17,8 @@ import com.google.gson.JsonObject;
  * features (elicitation, tasks, resources, etc.) can gate on what the client
  * said it supports.
  * <p>
- * <b>Single-client assumption.</b> This EDT MCP server is effectively a
- * single-client server over localhost (one EDT workbench, one connected MCP
- * client at a time). The handler stores a single instance of this holder rather
- * than tracking capabilities per session; that is acceptable for this transport.
+ * Capabilities belong to the request context and its path-bound session. They
+ * are never stored as a process-wide last-client snapshot.
  * </p>
  * <p>
  * <b>No-regression default.</b> The capabilities object is OPTIONAL in the MCP
@@ -72,6 +70,27 @@ public final class ClientCapabilities
             return ABSENT;
         }
         return new ClientCapabilities(capabilities.getAsJsonObject());
+    }
+
+    /**
+     * Keeps only consulted flags from an oversized declaration, without retaining
+     * any reference to the client's tree. Explicit structured-content opt-out
+     * survives the memory bound; all other fields are discarded.
+     *
+     * @param capabilities the client's declaration
+     * @return a constant-size projection, or ABSENT when no consulted opt-out exists
+     */
+    public static ClientCapabilities distill(JsonElement capabilities)
+    {
+        if (from(capabilities).allowsStructuredContent())
+        {
+            return ABSENT;
+        }
+        JsonObject experimental = new JsonObject();
+        experimental.addProperty("structuredContent", false); //$NON-NLS-1$
+        JsonObject kept = new JsonObject();
+        kept.add("experimental", experimental); //$NON-NLS-1$
+        return new ClientCapabilities(kept);
     }
 
     /**

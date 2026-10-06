@@ -167,9 +167,9 @@ def _assert_honest_about_the_lazy_tree(text, ctx):
               "differences - one of those is a lie: %s" % (ctx, text[:400]))
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# ERROR PATHS тАФ no comparison required, so these run even with the slot busy
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# ERROR PATHS — no comparison required, so these run even with the slot busy
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="get_comparison_node", kind="read")
 def test_unknown_comparison_is_refused_and_names_the_remedy():
     """An id that belongs to no live comparison must say so and point at the tool that
@@ -246,9 +246,9 @@ def test_out_of_range_wait_seconds_is_refused():
     assert_no_diff("a rejected call must not touch the project")
 
 
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
-# INTEGRATION тАФ one comparison, several expansions, always cancelled
-# тФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФАтФА
+# ──────────────────────────────────────────────────────────────────────────────
+# INTEGRATION — one comparison, several expansions, always cancelled
+# ──────────────────────────────────────────────────────────────────────────────
 @e2e_test(tool="get_comparison_node", kind="read")
 def test_expands_a_node_of_a_live_comparison():
     """The end-to-end path: start a real three-way comparison, expand one of its nodes

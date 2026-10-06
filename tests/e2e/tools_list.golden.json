@@ -143,7 +143,7 @@
           "type": "string"
         },
         "recordBuildTime": {
-          "description": "Optional, default true. When true, the build time is written into each built object's Comment property (\"╨Т╤А╨╡╨╝╤П ╤Б╨▒╨╛╤А╨║╨╕: <yyyy-MM-dd HH:mm:ss>\") and the .mdo is flushed to disk, so the object records when it was last built. Set false to build without modifying the object (no Comment change, no .mdo diff); the build time is still reported in the response message either way.",
+          "description": "Optional, default true. When true, the build time is written into each built object's Comment property (\"Время сборки: <yyyy-MM-dd HH:mm:ss>\") and the .mdo is flushed to disk, so the object records when it was last built. Set false to build without modifying the object (no Comment change, no .mdo diff); the build time is still reported in the response message either way.",
           "type": "boolean"
         }
       },
@@ -423,7 +423,7 @@
           "type": "boolean"
         },
         "user": {
-          "description": "Infobase connection user to store so update_database / launch can authenticate the update agent (issue #194). Selects an EXISTING user; most useful with mode='register' (the existing base already has users). Omit to store no credentials. Accepted for applicationKind='infobase', and for applicationKind='standaloneServer' with mode='register'; rejected for a newly created standalone server (mode='create').",
+          "description": "Infobase connection user to store so update_database / debug_launch can authenticate the update agent (issue #194). Selects an EXISTING user; most useful with mode='register' (the existing base already has users). Omit to store no credentials. Accepted for applicationKind='infobase', and for applicationKind='standaloneServer' with mode='register'; rejected for a newly created standalone server (mode='create').",
           "type": "string"
         }
       },
@@ -471,6 +471,17 @@
         },
         "success": {
           "type": "boolean"
+        },
+        "verification": {
+          "enum": [
+            "verified",
+            "mismatched",
+            "not_verifiable"
+          ],
+          "type": "string"
+        },
+        "verificationReason": {
+          "type": "string"
         },
         "webUrl": {
           "type": "string"
@@ -587,7 +598,7 @@
           "type": "boolean"
         },
         "normalizeYo": {
-          "description": "Normalize the Russian letter '╤С'->'╨╡' / '╨Б'->'╨Х' in the new node's NAME (the trailing FQN segment) and in any synonym / comment / predefined-item description value (default true). '╤С' in a Name is flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. Set false to keep '╤С' exactly as supplied.",
+          "description": "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in the new node's NAME (the trailing FQN segment) and in any synonym / comment / predefined-item description value (default true). 'ё' in a Name is flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. Set false to keep 'ё' exactly as supplied.",
           "type": "boolean"
         },
         "objectFields": {
@@ -674,6 +685,28 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "markerCount": {
+          "type": "integer"
+        },
+        "markers": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "markersIncomplete": {
+          "type": "boolean"
+        },
+        "markersIncompleteReason": {
+          "enum": [
+            "readFailed",
+            "objectUnresolved",
+            "validationUnobservable",
+            "validationPending",
+            "checksDisabled"
+          ],
+          "type": "string"
         },
         "message": {
           "type": "string"
@@ -775,7 +808,7 @@
           "type": "string"
         },
         "scriptVariant": {
-          "description": "Script variant (Russian or English). configuration: sets the Configuration scriptVariant and default Language code (default Russian). externalObjects: applied post-create via setScriptVariant (non-fatal on failure). extension: REJECTED тАФ scriptVariant is always inherited from the base configuration.",
+          "description": "Script variant (Russian or English). configuration: sets the Configuration scriptVariant and default Language code (default Russian). externalObjects: applied post-create via setScriptVariant (non-fatal on failure). extension: REJECTED — scriptVariant is always inherited from the base configuration.",
           "enum": [
             "Russian",
             "English"
@@ -789,7 +822,7 @@
           "type": "string"
         },
         "version": {
-          "description": "Platform version string, e.g. '8.3.27' (configuration and externalObjects only; for extension: REJECTED тАФ version is always inherited from the base configuration). Default: Version.LATEST when omitted.",
+          "description": "Platform version string, e.g. '8.3.27' (configuration and externalObjects only; for extension: REJECTED — version is always inherited from the base configuration). Default: Version.LATEST when omitted.",
           "type": "string"
         }
       },
@@ -935,6 +968,7 @@
             "order",
             "conditionalAppearance",
             "table",
+            "chart",
             "userField",
             "outputParameter",
             "userSettings"
@@ -958,6 +992,77 @@
       "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": false
+    },
+    "description": "Pause a running 1C debug session now and return where it is executing (thread and stack frames); unlike wait_for_break, it requests the suspend itself. Parameters and examples: get_tool_guide('debug_pause').",
+    "inputSchema": {
+      "properties": {
+        "applicationId": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "debug_pause",
+    "outputSchema": {
+      "properties": {
+        "alreadySuspended": {
+          "type": "boolean"
+        },
+        "applicationId": {
+          "type": "string"
+        },
+        "autoResolved": {
+          "type": "boolean"
+        },
+        "frames": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "serverTarget": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "threadId": {
+          "type": "integer"
+        },
+        "threadName": {
+          "type": "string"
+        },
+        "topFrameRef": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
     },
     "description": "Check which EDT debug sessions are running or paused. Parameters and examples: get_tool_guide('debug_status').",
     "inputSchema": {
@@ -1063,7 +1168,7 @@
           "type": "integer"
         },
         "updateBeforeLaunch": {
-          "description": "Default true: terminate any live client and run a silent DB update first so no modal 'Update database?' dialog blocks the call; false keeps legacy delegate behaviour тАФ no client sweep, no auto-confirmed update dialog; platform dialogs may appear.",
+          "description": "Default true: terminate any live client and run a silent DB update first so no modal 'Update database?' dialog blocks the call; false keeps legacy delegate behaviour — no client sweep, no auto-confirmed update dialog; platform dialogs may appear.",
           "type": "boolean"
         },
         "updateScope": {
@@ -1092,7 +1197,7 @@
           "type": "boolean"
         },
         "deleteDatabaseFiles": {
-          "description": "true = ALSO delete the infobase database files/directory from disk (the 1Cv8.1CD directory) тАФ IRREVERSIBLE. Default false = keep the database files on disk (the registration is removed but the data stays). Works for both a file infobase and a standalone server (deletes the served database directory).",
+          "description": "true = ALSO delete the infobase database files/directory from disk (the 1Cv8.1CD directory) — IRREVERSIBLE. Default false = keep the database files on disk (the registration is removed but the data stays). Works for both a file infobase and a standalone server (deletes the served database directory).",
           "type": "boolean"
         },
         "deleteRegistration": {
@@ -1128,6 +1233,17 @@
         },
         "databaseFilesDeleted": {
           "type": "boolean"
+        },
+        "databaseFilesKept": {
+          "enum": [
+            "notRequested",
+            "noDirectory",
+            "shared",
+            "unknown",
+            "deleteFailed",
+            "deregistrationFailed"
+          ],
+          "type": "string"
         },
         "deleteRegistration": {
           "type": "boolean"
@@ -1209,7 +1325,7 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Delete a metadata object or member (FQN-addressed). DESTRUCTIVE and CASCADING: on the md-refactoring path EDT cleans the REFERENCES to the deleted object across BSL, forms and metadata - the referring objects themselves are NOT deleted. Two-phase: call once WITHOUT confirm to preview what will be removed, then again with confirm=true to apply. A reference EDT cannot auto-clean leaves the delete BLOCKED and lists the referring objects; an EDT platform prohibition is listed separately and also blocks. force=true overrides either block and leaves only genuine incoming references dangling. EXCEPTION - an owned FORM object, a FORM member or an XDTO package member is removed straight from its container: NOTHING blocks it (force is ignored) and no cross-object cascade runs, so references from elsewhere (a field's dataPath, a command, an XDTO type) are left broken - re-check with get_metadata_details (find_references takes TOP-level FQNs only, not these members). Parameters and examples: get_tool_guide('delete_metadata').",
+    "description": "Delete a metadata object or member (FQN-addressed). DESTRUCTIVE and CASCADING: on the md-refactoring path EDT cleans the REFERENCES to the deleted object across BSL, forms and metadata - the referring objects themselves are NOT deleted. Two-phase: call once WITHOUT confirm to preview what will be removed, then again with confirm=true to apply. A reference EDT cannot auto-clean leaves the delete BLOCKED and lists the referring objects; an EDT platform prohibition is listed separately and also blocks. force=true overrides either block and leaves only genuine incoming references dangling, but never vendor support: a delete touching an object whose support rule forbids changes is refused. EXCEPTION - an owned FORM object, a FORM member or an XDTO package member is removed straight from its container: nothing else blocks it (force is ignored) and no cross-object cascade runs, so references from elsewhere (a field's dataPath, a command, an XDTO type) are left broken - re-check with get_metadata_details (find_references takes TOP-level FQNs only, not these members). Parameters and examples: get_tool_guide('delete_metadata').",
     "inputSchema": {
       "properties": {
         "confirm": {
@@ -1437,7 +1553,7 @@
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "destructiveHint": true,
       "openWorldHint": false,
       "readOnlyHint": false
     },
@@ -1532,6 +1648,43 @@
       ],
       "type": "object"
     }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Export the configuration (.cf) or an extension (.cfe) FROM an application's infobase to a file via the 1C thick client - the infobase's content, not the project's (for project sources use export_configuration_to_xml). An extension project in projectName exports that extension. Refused while EDT reports the infobase out of date with the project: run update_database first, or pass allowOutOfDate=true. outputFile must not exist - it is never overwritten. Returns a jobId when not finished within waitSeconds; poll get_job_status. Full parameters and examples: call get_tool_guide('export_configuration_to_file').",
+    "inputSchema": {
+      "properties": {
+        "allowOutOfDate": {
+          "type": "boolean"
+        },
+        "applicationId": {
+          "type": "string"
+        },
+        "extensionName": {
+          "type": "string"
+        },
+        "outputFile": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "waitSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "projectName",
+        "outputFile"
+      ],
+      "type": "object"
+    },
+    "name": "export_configuration_to_file",
+    "outputSchema": null
   },
   {
     "annotations": {
@@ -1664,6 +1817,14 @@
         "count": {
           "type": "integer"
         },
+        "defaultApplication": {
+          "enum": [
+            "resolved",
+            "none",
+            "unknown"
+          ],
+          "type": "string"
+        },
         "defaultApplicationId": {
           "type": "string"
         },
@@ -1696,7 +1857,7 @@
     "inputSchema": {
       "properties": {
         "checkId": {
-          "description": "Check id: the symbolic dash-cased id (e.g. 'begin-transaction', 'ql-temp-table-index') OR the short UID code from get_project_errors (e.g. 'SU23'); a UID is resolved when projectName is also supplied. Precondition: a check-descriptions folder must be configured in MCP preferences, else the tool returns a configuration error.",
+          "description": "Check id: the symbolic dash-cased id (e.g. 'begin-transaction', 'ql-temp-table-index') OR the short UID code from get_project_errors (e.g. 'SU23'); a UID is resolved when projectName is also supplied.",
           "type": "string"
         },
         "projectName": {
@@ -2204,7 +2365,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Inspect the properties and structure of a metadata object or member. Parameters and examples: get_tool_guide('get_metadata_details').",
+    "description": "Inspect metadata objects and members, including managed-form root properties and structure, and a section's command interface. Parameters and examples: get_tool_guide('get_metadata_details').",
     "inputSchema": {
       "properties": {
         "assignable": {
@@ -2927,9 +3088,9 @@
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
-      "readOnlyHint": false
+      "readOnlyHint": true
     },
     "description": "Locate the source definition of a BSL symbol or metadata object. Parameters and examples: get_tool_guide('go_to_definition').",
     "inputSchema": {
@@ -2966,6 +3127,9 @@
     "description": "Create an EDT project from exported 1C configuration XML files. Parameters and examples: get_tool_guide('import_configuration_from_xml').",
     "inputSchema": {
       "properties": {
+        "baseProjectName": {
+          "type": "string"
+        },
         "importPath": {
           "type": "string"
         },
@@ -2973,6 +3137,9 @@
           "type": "string"
         },
         "projectNature": {
+          "type": "string"
+        },
+        "runtimeVersion": {
           "type": "string"
         },
         "xmlVersion": {
@@ -2987,6 +3154,161 @@
     },
     "name": "import_configuration_from_xml",
     "outputSchema": null
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Create a NEW EDT project from a 1C binary file: .cf (configuration), .cfe (extension; baseProjectName required) or .epf/.erf (external data processor/report). Needs an installed 1C:Enterprise platform. Runs in background: an unfinished call returns a jobId - poll get_job_status, do not call again. Parameters and examples: get_tool_guide('import_project_from_file').",
+    "inputSchema": {
+      "properties": {
+        "baseProjectName": {
+          "description": "Configuration project the result depends on: REQUIRED for .cfe, optional for .epf/.erf, refused for .cf.",
+          "type": "string"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "platformVersion": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "waitSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filePath",
+        "projectName"
+      ],
+      "type": "object"
+    },
+    "name": "import_project_from_file",
+    "outputSchema": null
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "List or terminate sessions on a running standalone-server infobase. DESTRUCTIVE for terminate: pass confirm=true; bulk termination skips Designer, while its exact full UUID can target it. Full parameters and examples: call get_tool_guide('infobase_sessions').",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "description": "list (default) reads sessions; terminate ends the selected session(s).",
+          "enum": [
+            "list",
+            "terminate"
+          ],
+          "type": "string"
+        },
+        "all": {
+          "description": "For terminate, true selects every non-agent session; Designer is always excluded.",
+          "type": "boolean"
+        },
+        "applicationId": {
+          "description": "Application ID from get_applications; defaults to the project's default application.",
+          "type": "string"
+        },
+        "confirm": {
+          "description": "Required true for terminate; list never changes sessions.",
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "For terminate, the full session UUID or numeric session-id returned by list; a Designer session requires its exact full UUID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectName"
+      ],
+      "type": "object"
+    },
+    "name": "infobase_sessions",
+    "outputSchema": {
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "applicationId": {
+          "type": "string"
+        },
+        "attemptedCount": {
+          "type": "integer"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "mutationCommitted": {
+          "type": "boolean"
+        },
+        "mutationOutcomeUnknown": {
+          "type": "boolean"
+        },
+        "outstandingCount": {
+          "type": "integer"
+        },
+        "outstandingSessionIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": "string"
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "sessions": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "terminatedCount": {
+          "type": "integer"
+        },
+        "unreachableReason": {
+          "type": "string"
+        },
+        "verification": {
+          "enum": [
+            "verified",
+            "mismatched",
+            "not_verifiable"
+          ],
+          "type": "string"
+        },
+        "verificationReason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
   },
   {
     "annotations": {
@@ -3014,7 +3336,7 @@
           "type": "string"
         },
         "mode": {
-          "description": "Launch mode: debug (default) or run. Attach configurations support debug only.",
+          "description": "Launch mode: debug (default) or run. Attach configurations support debug only; standalone servers always start in debug mode.",
           "enum": [
             "debug",
             "run"
@@ -3036,7 +3358,7 @@
           "type": "string"
         },
         "updateBeforeLaunch": {
-          "description": "Default true: silently apply the configuration->DB update before launching so no 'Update database?' modal blocks the call (even on a Russian-locale EDT the dialog is auto-confirmed); false skips the update and the platform may then show that modal. Ignored for Attach.",
+          "description": "Default true: silently apply the configuration->DB update before launching so no 'Update database?' modal blocks the call (even on a Russian-locale EDT the dialog is auto-confirmed); false skips the update and the platform may then show that modal. Ignored for Attach. A standalone-server configuration performs no database update on this route even when omitted, and an explicit true is refused - run update_database separately.",
           "type": "boolean"
         }
       },
@@ -3075,6 +3397,9 @@
         },
         "project": {
           "type": "string"
+        },
+        "standaloneServerPortsReassigned": {
+          "type": "boolean"
         },
         "startupOption": {
           "type": "string"
@@ -3423,11 +3748,18 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Set properties of any metadata node (object or member, including form items, attributes, commands, and handlers). Parameters and examples: get_tool_guide('modify_metadata').",
+    "description": "Set properties of any metadata node, including managed-form roots, items, attributes, commands, and handlers, and edit a section's command interface. Parameters and examples: get_tool_guide('modify_metadata').",
     "inputSchema": {
       "properties": {
+        "commands": {
+          "description": "COMMAND INTERFACE FQN only ('Subsystem.<Name>.CommandInterface' or 'Configuration.MainSectionCommandInterface'): section commands to change, as [{command, visible?, roles?, group?, after? | before?}], applied in order and validated as one batch. 'command' is the command FQN, e.g. 'Report.Sales.StandardCommand.Open' or 'CommonCommand.Print'; 'visible' the common visibility; 'roles' [{role: 'Role.<Name>', visible: true | false | 'default' (drops the override)}]; 'group' the panel group to move it to, e.g. 'NavigationPanelImportant', 'ActionsPanelReports' or 'CommandGroup.<Name>'; 'after' / 'before' another command of that group to order it by. get_metadata_details on the same FQN lists the section's commands and groups. Cannot be combined with other payloads.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
         "content": {
-          "description": "Members to attach / detach in a structured membership list, dispatched by the FQN's kind (a COMMON ATTRIBUTE's owners, an EXCHANGE PLAN's content objects, a CATALOG's owners, a DOCUMENT's register records, a SUBSYSTEM's content objects), as [{op?, metadata, use?, autoRecord?}]. 'op' is 'add' (default) / 'remove'; 'metadata' is the member object FQN (e.g. 'Catalog.Products' or the Russian '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л' - only the type token is bilingual). 'use' (CommonAttribute only, add only, default 'Use') is 'Use' / 'DontUse' / 'Auto'; 'autoRecord' (ExchangePlan only, add only) is 'Allow' / 'Deny' (omit to keep the platform default). A Catalog owner, a Document register record and a Subsystem content object are plain references (no flag). Adding is idempotent (a re-added CommonAttribute owner has its 'use' updated, a re-added ExchangePlan object its 'autoRecord'; a re-added plain reference is a no-op). Valid only for a CommonAttribute / ExchangePlan / Catalog / Document / Subsystem FQN (a Subsystem FQN may be nested); cannot be combined with 'properties'.",
+          "description": "Members to attach / detach in a structured membership list, dispatched by the FQN's kind (a COMMON ATTRIBUTE's owners, an EXCHANGE PLAN's content objects, a CATALOG's owners, a DOCUMENT's register records, a SUBSYSTEM's content objects), as [{op?, metadata, use?, autoRecord?}]. 'op' is 'add' (default) / 'remove'; 'metadata' is the member object FQN (e.g. 'Catalog.Products' or the Russian 'Справочник.Товары' - only the type token is bilingual). 'use' (CommonAttribute only, add only, default 'Use') is 'Use' / 'DontUse' / 'Auto'; 'autoRecord' (ExchangePlan only, add only) is 'Allow' / 'Deny' (omit to keep the platform default). A Catalog owner, a Document register record and a Subsystem content object are plain references (no flag). Adding is idempotent (a re-added CommonAttribute owner has its 'use' updated, a re-added ExchangePlan object its 'autoRecord'; a re-added plain reference is a no-op). Valid only for a CommonAttribute / ExchangePlan / Catalog / Document / Subsystem FQN (a Subsystem FQN may be nested); cannot be combined with 'properties'.",
           "items": {
             "type": "object"
           },
@@ -3437,7 +3769,7 @@
           "type": "string"
         },
         "normalizeYo": {
-          "description": "Normalize the Russian letter '╤С'->'╨╡' / '╨Б'->'╨Х' in localized-string values (synonym / title) and in the 'comment' property (default true). Matches the 1C standard mdo-ru-name-unallowed-letter. Other free-text strings can be identifier-like (e.g. XDTOPackage.namespace is a URI) and always keep the supplied value. Set false to keep '╤С' exactly as supplied everywhere.",
+          "description": "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in localized-string values (synonym / title) and in the 'comment' property (default true). Matches the 1C standard mdo-ru-name-unallowed-letter. Other free-text strings can be identifier-like (e.g. XDTOPackage.namespace is a URI) and always keep the supplied value. Set false to keep 'ё' exactly as supplied everywhere.",
           "type": "boolean"
         },
         "projectName": {
@@ -3451,7 +3783,7 @@
           "type": "array"
         },
         "rights": {
-          "description": "ROLE only: per-object access rights to set, as [{object, right, value?, rls?, rlsFields?}]. 'object' is a metadata FQN (e.g. 'Catalog.Products' or the Russian '╨б╨┐╤А╨░╨▓╨╛╤З╨╜╨╕╨║.╨в╨╛╨▓╨░╤А╤Л'); 'right' is a bilingual right name (e.g. 'Read'/'╨з╤В╨╡╨╜╨╕╨╡', 'Update'/'╨Ш╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╡'); 'value' is 'set' (allowed, default) / 'unset' (denied) / 'provided' (default/inherited), or a boolean (true=set, false=unset). 'rls' is an optional Row-Level-Security restriction condition (1C query text); 'rlsFields' is an optional array of field names the RLS applies to (omit / empty = whole-object restriction).",
+          "description": "ROLE only: per-object access rights to set, as [{object, right, value?, rls?, rlsFields?}]. 'object' is a metadata FQN (e.g. 'Catalog.Products' or the Russian 'Справочник.Товары'); 'right' is a bilingual right name (e.g. 'Read'/'Чтение', 'Update'/'Изменение'); 'value' is 'set' (allowed, default) / 'unset' (denied) / 'provided' (default/inherited), or a boolean (true=set, false=unset). 'rls' is an optional Row-Level-Security restriction condition (1C query text); 'rlsFields' is an optional array of field names the RLS applies to (omit / empty = whole-object restriction).",
           "items": {
             "type": "object"
           },
@@ -3462,7 +3794,7 @@
           "type": "object"
         },
         "template": {
-          "description": "SpreadsheetDocument (print form / ╨╝╨░╨║╨╡╤В) TEMPLATE FQN only: the spreadsheet content to author, instead of 'properties'. An object with any of: 'cells' [{row, col (both 0-based, required), text? OR parameter? (a print-time parameter name), bold?, fontSize?, hAlign? ('Left'/'Center'/'Right'/'Auto'/'Width'), vAlign? ('Top'/'Center'/'Bottom'), wrap? (true word-wraps the cell text)}]; 'merges' [{fromRow, fromCol, toRow, toCol}] merged cell ranges; 'areas' [{name, fromRow, fromCol, toRow, toCol}] named areas (for ╨Я╨╛╨╗╤Г╤З╨╕╤В╤М╨Ю╨▒╨╗╨░╤Б╤В╤М / ╨Т╤Л╨▓╨╡╤Б╤В╨╕ output); 'columnWidths' [{col, width}] and 'rowHeights' [{row, height}] column / row sizes. Setting a cell overwrites that (row, col); the rest of the content is kept. Valid only for a SpreadsheetDocument template FQN; cannot be combined with 'properties' / 'content' / a Role payload.",
+          "description": "SpreadsheetDocument (print form / макет) TEMPLATE FQN only: the spreadsheet content to author, instead of 'properties'. An object with any of: 'cells' [{row, col (both 0-based, required), text? OR parameter? (a print-time parameter name), bold?, fontSize?, hAlign? ('Left'/'Center'/'Right'/'Auto'/'Width'), vAlign? ('Top'/'Center'/'Bottom'), wrap? (true word-wraps the cell text), textOrientation? (rotation in the platform's own unit - TENTHS of a degree, 0..3600, so 90 degrees is 900), autoIndent? (0..100), autoMarkIncomplete?}]; 'merges' [{fromRow, fromCol, toRow, toCol}] merged cell ranges; 'areas' [{name, fromRow, fromCol, toRow, toCol}] named areas (for ПолучитьОбласть / Вывести output); 'columnWidths' [{col, width?, autoWidthCalculation?, widthWeightFactor? - the share of the free width, only alongside autoWidthCalculation:true}] and 'rowHeights' [{row, height}] column / row sizes. An omitted formatting key leaves that property UNSET (the cell inherits it). For textOrientation / autoIndent / autoMarkIncomplete / autoWidthCalculation / widthWeightFactor an explicit 0 / false overrides that inheritance and null counts as omitted; bold:false alone and wrap:false are the same as omitting them. Setting a cell overwrites that (row, col); the rest of the content is kept. Valid only for a SpreadsheetDocument template FQN; cannot be combined with 'properties' / 'content' / a Role payload.",
           "type": "object"
         },
         "templates": {
@@ -3491,6 +3823,9 @@
           },
           "type": "array"
         },
+        "commands": {
+          "type": "object"
+        },
         "content": {
           "type": "object"
         },
@@ -3518,6 +3853,28 @@
           },
           "type": "array"
         },
+        "markerCount": {
+          "type": "integer"
+        },
+        "markers": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "markersIncomplete": {
+          "type": "boolean"
+        },
+        "markersIncompleteReason": {
+          "enum": [
+            "readFailed",
+            "objectUnresolved",
+            "validationUnobservable",
+            "validationPending",
+            "checksDisabled"
+          ],
+          "type": "string"
+        },
         "message": {
           "type": "string"
         },
@@ -3530,11 +3887,20 @@
         "persisted": {
           "type": "boolean"
         },
+        "stored": {
+          "type": "object"
+        },
         "success": {
           "type": "boolean"
         },
         "template": {
           "type": "object"
+        },
+        "unchanged": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "writtenProjects": {
           "items": {
@@ -3755,10 +4121,13 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Write the in-memory model back out to the on-disk src/ .mdo files and report model-to-disk desync; fixes 'object file does not exist' failures and dangling Configuration.mdo references. Direction MODEL -> DISK, the opposite of clean_project. Dangling references are REPORTED by default, not removed. Two opt-in modes are DESTRUCTIVE: re-exporting every object overwrites on-disk edits, and removing dangling references rewrites Configuration.mdo. Parameters and examples: get_tool_guide('resync_to_disk').",
+    "description": "Write the in-memory model back out to the on-disk src/ .mdo files and report model-to-disk desync; fixes 'object file does not exist' failures and dangling Configuration.mdo references. Direction MODEL -> DISK, the opposite of clean_project. Dangling references are REPORTED by default, not removed. Two opt-in modes are DESTRUCTIVE: re-exporting every object overwrites on-disk edits, and removing dangling references rewrites Configuration.mdo. Role-rights entries whose object no longer exists are also REPORTED by default; call once to review them, then again with cleanOrphanRoleRights=true to remove the proven-absent ones. Parameters and examples: get_tool_guide('resync_to_disk').",
     "inputSchema": {
       "properties": {
         "cleanDanglingReferences": {
+          "type": "boolean"
+        },
+        "cleanOrphanRoleRights": {
           "type": "boolean"
         },
         "fullExport": {
@@ -3784,6 +4153,9 @@
     "outputSchema": {
       "properties": {
         "cleanDanglingReferences": {
+          "type": "boolean"
+        },
+        "cleanOrphanRoleRights": {
           "type": "boolean"
         },
         "danglingDetails": {
@@ -3824,6 +4196,33 @@
         },
         "objectsExported": {
           "type": "integer"
+        },
+        "orphanRlsFields": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "orphanRlsFieldsFound": {
+          "type": "integer"
+        },
+        "orphanRoleRights": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "orphanRoleRightsFound": {
+          "type": "integer"
+        },
+        "orphanRoleRightsRemovedCount": {
+          "type": "integer"
+        },
+        "orphanRoleRightsUndetermined": {
+          "type": "integer"
+        },
+        "orphanRoleRightsWarning": {
+          "type": "string"
         },
         "projectName": {
           "type": "string"
@@ -3950,7 +4349,7 @@
           "type": "integer"
         },
         "updateBeforeLaunch": {
-          "description": "Auto-chain (default: true): recompute only the projects whose sources changed (the configuration is not exempt), terminate a live client and run a silent DB update first, so a freshly edited extension runs fresh (not stale), auto-answering the platform's update dialogs. This makes a blocking dialog unlikely, NOT impossible: a dialog EDT raises outside the tool's own windows still waits for a human, and the tool reports it as a Pending whose phase stops changing. false: legacy delegate behaviour тАФ no client sweep, no auto-confirmed update dialog; platform dialogs may appear and block. Results are retained by jobId until registry eviction, while a new start after completion always executes a fresh run regardless of this flag.",
+          "description": "Auto-chain (default: true): recompute only the projects whose sources changed (the configuration is not exempt), terminate a live client and run a silent DB update first, so a freshly edited extension runs fresh (not stale), auto-answering the platform's update dialogs. This makes a blocking dialog unlikely, NOT impossible: a dialog EDT raises outside the tool's own windows still waits for a human, and the tool reports it as a Pending whose phase stops changing. false: legacy delegate behaviour — no client sweep, no auto-confirmed update dialog; platform dialogs may appear and block. Results are retained by jobId until registry eviction, while a new start after completion always executes a fresh run regardless of this flag.",
           "type": "boolean"
         },
         "updateScope": {
@@ -4066,6 +4465,9 @@
           "type": "object"
         },
         "branch": {
+          "type": "string"
+        },
+        "message": {
           "type": "string"
         },
         "success": {
@@ -4306,16 +4708,33 @@
         "message": {
           "type": "string"
         },
+        "passwordMatched": {
+          "type": "boolean"
+        },
         "passwordSet": {
           "type": "boolean"
         },
         "project": {
           "type": "string"
         },
+        "storedFor": {
+          "type": "object"
+        },
         "success": {
           "type": "boolean"
         },
         "user": {
+          "type": "string"
+        },
+        "verification": {
+          "enum": [
+            "verified",
+            "mismatched",
+            "not_verifiable"
+          ],
+          "type": "string"
+        },
+        "verificationReason": {
           "type": "string"
         }
       },
@@ -4344,7 +4763,7 @@
           "type": "integer"
         },
         "value": {
-          "description": "New value as a BSL literal/expression (e.g. 42, \"text\", True, ╨Ф╨░╤В╨░(2025,1,1))",
+          "description": "New value as a BSL literal/expression (e.g. 42, \"text\", True, Дата(2025,1,1))",
           "type": "string"
         },
         "variableName": {
@@ -4661,11 +5080,15 @@
       "openWorldHint": false,
       "readOnlyHint": false
     },
-    "description": "Apply the current EDT configuration to an infobase. DESTRUCTIVE - restructures data and can evict live sessions. Two-phase: call once WITHOUT confirm to preview, then again with confirm=true to apply. Parameters and examples: get_tool_guide('update_database').",
+    "description": "Apply the current EDT configuration to an infobase. Before applying, call infobase_sessions(action='list'); any non-agent session blocks the update, so clear it with action='terminate' and confirm=true. DESTRUCTIVE: call once WITHOUT confirm to preview, then again with confirm=true to apply. Full parameters and examples: call get_tool_guide('update_database').",
     "inputSchema": {
       "properties": {
         "applicationId": {
           "type": "string"
+        },
+        "checkInfobaseSessions": {
+          "description": "Before applying, refuse when infobase_sessions finds a non-agent standalone-server session (default true). false skips this safety pre-flight.",
+          "type": "boolean"
         },
         "confirm": {
           "type": "boolean"
@@ -4675,6 +5098,10 @@
           "type": "string"
         },
         "fullUpdate": {
+          "type": "boolean"
+        },
+        "ignoreBranchBinding": {
+          "description": "true skips the refusal of a target whose infobase is not bound to the project's current Git branch (default false).",
           "type": "boolean"
         },
         "launchConfigurationName": {
@@ -4688,7 +5115,7 @@
           "type": "string"
         },
         "terminateRunningClients": {
-          "description": "Before applying, terminate any 1C client THIS EDT launched on the target infobase to free the exclusive lock (default true). false keeps a running client тАФ the update then fails if that client holds the infobase exclusively.",
+          "description": "Before applying, terminate any 1C client THIS EDT launched on the target infobase to free the exclusive lock (default true). false keeps a running client — the update then fails if that client holds the infobase exclusively.",
           "type": "boolean"
         }
       },
@@ -4707,14 +5134,38 @@
         "applicationName": {
           "type": "string"
         },
+        "causeMessage": {
+          "type": "string"
+        },
+        "causeType": {
+          "type": "string"
+        },
         "confirmationRequired": {
           "type": "boolean"
+        },
+        "error": {
+          "type": "string"
         },
         "message": {
           "type": "string"
         },
+        "mutationCommitted": {
+          "type": "boolean"
+        },
+        "mutationOutcomeUnknown": {
+          "type": "boolean"
+        },
         "project": {
           "type": "string"
+        },
+        "reachable": {
+          "type": "boolean"
+        },
+        "sessions": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
         },
         "standaloneServerPortsReassigned": {
           "type": "boolean"
@@ -4734,6 +5185,9 @@
         "updateType": {
           "type": "string"
         },
+        "willCheckInfobaseSessions": {
+          "type": "boolean"
+        },
         "willTerminateRunningClients": {
           "type": "boolean"
         }
@@ -4750,7 +5204,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Check ONE managed form for structural defects computed from the model NOW. Parameters and examples: get_tool_guide('validate_form_model').",
+    "description": "Check ONE managed form for structural defects: duplicate names or ids, a data path that names no attribute, a button with no command, a handler with no procedure or no event, a missing type-specific extInfo, more than one main attribute. Computed from the model NOW, so it is current right after an edit - unlike get_project_errors, which reports what EDT validated earlier. Changes nothing. Full parameters and examples: call get_tool_guide('validate_form_model').",
     "inputSchema": {
       "properties": {
         "formFqn": {
@@ -4886,9 +5340,9 @@
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
-      "readOnlyHint": false
+      "readOnlyHint": true
     },
     "description": "Wait until a running 1C debug session reaches a breakpoint or other suspend event. Parameters and examples: get_tool_guide('wait_for_break').",
     "inputSchema": {
@@ -4960,7 +5414,7 @@
           "type": "string"
         },
         "expectedHash": {
-          "description": "Lost-update guard: the hash from the read that produced your edit. The write is rejected if the module changed since.",
+          "description": "Lost-update guard: the hash from the read that produced your edit. The write is rejected if the module changed since; required for every method-targeted mode.",
           "type": "string"
         },
         "expectedSource": {
@@ -4970,12 +5424,19 @@
           "description": "Form name; required when moduleType=FormModule (e.g. 'ItemForm').",
           "type": "string"
         },
+        "methodName": {
+          "description": "Existing anchor method; required for replaceMethod, insertBefore, and insertAfter.",
+          "type": "string"
+        },
         "mode": {
           "description": "Write mode (default searchReplace).",
           "enum": [
             "searchReplace",
             "replace",
-            "append"
+            "append",
+            "replaceMethod",
+            "insertBefore",
+            "insertAfter"
           ],
           "type": "string"
         },
@@ -4993,6 +5454,9 @@
             "Module"
           ],
           "type": "string"
+        },
+        "normalizeInvalidCharacters": {
+          "type": "boolean"
         },
         "objectName": {
           "type": "string"

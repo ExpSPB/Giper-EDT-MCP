@@ -7,9 +7,17 @@
 
 package fm.giper.edt.mcp.server.utils;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -18,6 +26,9 @@ import org.eclipse.core.runtime.jobs.IJobManager;
 import org.eclipse.core.runtime.jobs.Job;
 
 import com._1c.g5.v8.derived.IDerivedDataManager;
+import com._1c.g5.v8.derived.DerivedDataStatus;
+import com._1c.g5.v8.derived.pipeline.DerivedDataSegmentBucket;
+import com._1c.g5.v8.derived.pipeline.PipelineStatus;
 import com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.core.platform.IDtProjectManager;
@@ -57,6 +68,24 @@ public final class BuildUtils
      * starting a second one would add another Job nobody can stop.
      */
     private static final ConcurrentMap<String, ExportWaitSlot> EXPORT_WAIT_RETURNED = new ConcurrentHashMap<>();
+
+    /** Slot-key prefix of the per-object validation wait, kept apart from the export slot. */
+    private static final String VALIDATION_SLOT_PREFIX = "validation:"; //$NON-NLS-1$
+
+    /** Slot-key prefix of the bounded marker read of a write, apart from both waits. */
+    private static final String MARKER_READ_SLOT_PREFIX = "markers:"; //$NON-NLS-1$
+
+    /**
+     * The derived-data segments EDT's validation runs under: the check framework's model checks
+     * (critical-data-integrity, normal, complex) and the validator segments. Mirrored, not imported,
+     * for the same reason as {@link #EXPORT_OBJECTS_SEGMENT}: the declaring classes are internal.
+     * The BSL language checks are left out - their markers are keyed by module URI, not by a BM top
+     * object. A segment that does not apply to an object is never pending for it, so one list serves
+     * every object kind. Only the ids a project's pipeline registers are ever sent (see
+     * {@link #registeredSegments}).
+     */
+    static final List<String> VALIDATION_SEGMENTS = List.of("CDI_CHECKS_SEGMENT", //$NON-NLS-1$
+        "M_CHECKS_SEGMENT", "CM_CHECKS_SEGMENT", "XDTO_VAL", "STYLE_VAL", "CMI_VAL", "AGGR_VAL"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
 
 
     private BuildUtils()
@@ -172,6 +201,250 @@ public final class BuildUtils
         {
             Activator.logError("Error waiting for derived data", e); //$NON-NLS-1$
         }
+    }
+
+    /** Observed completion of an all-derived-data wait, without a model-only fallback. */
+    public enum DerivedDataCompletion
+    {
+        COMPLETE,
+        PENDING,
+        UNOBSERVABLE
+    }
+
+    /**
+     * Checked post-restart rebuild wait for callers that have already observed lifecycle STARTED.
+     * An empty pipeline before model derivation is activated is not a completed rebuild.
+     * Legacy void callers retain their existing behaviour. Platform failures propagate so the
+     * caller can preserve mutation evidence and diagnose the real exception.
+     *
+     * @param project the project whose derived data must complete
+     * @return the observed completion state
+     * @throws InterruptedException when the platform wait is interrupted
+     */
+    public static DerivedDataCompletion waitForDerivedDataCompletion(IProject project)
+        throws InterruptedException
+    {
+        IDerivedDataManager manager = project == null ? null : resolveDerivedDataManager(project);
+        logCheckedDerivedDataSnapshot(project, manager, "before wait"); //$NON-NLS-1$
+        try
+        {
+            DerivedDataCompletion completion = waitForRebuildCompletion(
+                () -> project == null ? null : resolveDerivedDataManager(project), DEFAULT_DD_TIMEOUT_MS,
+                System::nanoTime, TimeUnit.NANOSECONDS::sleep);
+            if (completion != DerivedDataCompletion.COMPLETE)
+            {
+                logCheckedDerivedDataSnapshot(project, manager, completion.name());
+            }
+            return completion;
+        }
+        catch (InterruptedException | RuntimeException e)
+        {
+            logCheckedDerivedDataSnapshot(project, manager, "failed: " + e.getClass().getSimpleName()); //$NON-NLS-1$
+            throw e;
+        }
+    }
+
+    /** One read-only target/base observation; unavailable diagnostics never decide completion. */
+    private static void logCheckedDerivedDataSnapshot(IProject project, IDerivedDataManager manager, String phase)
+    {
+        try
+        {
+            String target = project == null ? "unobservable" : diagnosticValue(project::getName); //$NON-NLS-1$
+            String base = "unobservable or no registered parent"; //$NON-NLS-1$
+            try
+            {
+                IDtProjectManager projects = Activator.getDefault().getDtProjectManager();
+                IDerivedDataManagerProvider provider = Activator.getDefault().getDerivedDataManagerProvider();
+                IDtProject dtProject = projects == null || project == null ? null : projects.getDtProject(project);
+                IDtProject parent = dtProject == null ? null : projects.findParentProject(dtProject);
+                if (parent != null)
+                {
+                    base = diagnosticValue(parent::getName) + " {" //$NON-NLS-1$
+                        + derivedDataSnapshot(provider == null ? null : provider.get(parent)) + "}"; //$NON-NLS-1$
+                }
+            }
+            catch (RuntimeException e)
+            {
+                base = "unobservable(" + e.getClass().getSimpleName() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            Activator.logInfo("Checked DD snapshot [" + phase + "] target=" + target + " {" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                + derivedDataSnapshot(manager) + "}; base=" + base); //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            // Even a diagnostic sink failure must not replace the actual wait's result/failure.
+        }
+    }
+
+    /** Exact public SDK getters, each isolated so one unavailable field cannot hide the others. */
+    static String derivedDataSnapshot(IDerivedDataManager manager)
+    {
+        if (manager == null)
+        {
+            return "manager=unobservable"; //$NON-NLS-1$
+        }
+        String statusFields;
+        try
+        {
+            DerivedDataStatus status = manager.getDerivedDataStatus();
+            statusFields = status == null ? "status=unobservable" //$NON-NLS-1$
+                : "pipelineStatus=" + diagnosticValue(status::getPipelineStatus) //$NON-NLS-1$
+                    + ", activeStage=" + diagnosticValue(status::getActiveStage) //$NON-NLS-1$
+                    + ", readySegments=" + diagnosticValue(status::getReadySegments) //$NON-NLS-1$
+                    + ", modelSyncActive=" + diagnosticValue(status::isModelSyncActive); //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            statusFields = "status=unobservable(" + e.getClass().getSimpleName() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return statusFields + ", isIdle=" + diagnosticValue(manager::isIdle) //$NON-NLS-1$
+            + ", isAllComputed=" + diagnosticValue(manager::isAllComputed); //$NON-NLS-1$
+    }
+
+    private static String diagnosticValue(Supplier<?> getter)
+    {
+        try
+        {
+            Object value = getter.get();
+            if (value == null)
+            {
+                return "unobservable"; //$NON-NLS-1$
+            }
+            String text = value.toString().replace('\r', ' ').replace('\n', ' ');
+            return text.length() <= 512 ? text : text.substring(0, 512) + "..."; //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            return "unobservable(" + e.getClass().getSimpleName() + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+    }
+
+    /** The exact SDK predicate, also reachable without a live workspace in unit tests. */
+    public static DerivedDataCompletion waitForDerivedDataCompletion(IDerivedDataManager manager, long timeoutMs)
+        throws InterruptedException
+    {
+        if (manager == null)
+        {
+            return DerivedDataCompletion.UNOBSERVABLE;
+        }
+        if (timeoutMs <= 0)
+        {
+            // SDK timeout zero is unbounded; a spent budget cannot start that wait.
+            return DerivedDataCompletion.PENDING;
+        }
+        // EDT can also return true while closing. Recheck the completion predicate rather than
+        // interpreting that shutdown branch as a completed rebuild.
+        return manager.waitAllComputations(timeoutMs) && manager.isAllComputed()
+            ? DerivedDataCompletion.COMPLETE : DerivedDataCompletion.PENDING;
+    }
+
+    /** Interruptible conditional polling while the SDK activates post-import build stages. */
+    @FunctionalInterface
+    interface RebuildPause
+    {
+        void await(long nanos) throws InterruptedException;
+    }
+
+    /**
+     * Post-restart completion, separate from the general manager wait used by rename.
+     * The exact SDK can report an empty SYNC pipeline before MD and FORM are activated.
+     * Require the post-build stage and named model readiness, with status observations around
+     * live predicates. A cached sync-active flag alone is not a refusal (SDK issue #699).
+     *
+     * One monotonic budget covers every pass; SDK waits are positive and clipped. SDK getter
+     * locks and the SDK's internal accumulated-context wait do not provide a hard wall-time bound.
+     * No model writes, stage locks, global exclusions or new derived-data work are introduced.
+     */
+    static DerivedDataCompletion waitForRebuildCompletion(Supplier<IDerivedDataManager> managers,
+        long timeoutMs, LongSupplier clock, RebuildPause pause) throws InterruptedException
+    {
+        if (Thread.currentThread().isInterrupted())
+        {
+            throw new InterruptedException("Rebuild completion wait cancelled"); //$NON-NLS-1$
+        }
+        if (timeoutMs <= 0)
+        {
+            return DerivedDataCompletion.PENDING;
+        }
+        long deadline = clock.getAsLong() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        IDerivedDataManager manager = managers.get();
+        if (manager == null)
+        {
+            return DerivedDataCompletion.UNOBSERVABLE;
+        }
+        while (true)
+        {
+            if (Thread.currentThread().isInterrupted())
+            {
+                throw new InterruptedException("Rebuild completion wait cancelled"); //$NON-NLS-1$
+            }
+            long remaining = deadline - clock.getAsLong();
+            if (remaining <= 0)
+            {
+                return DerivedDataCompletion.PENDING;
+            }
+            if (managers.get() != manager)
+            {
+                // A second lifecycle invalidates observations of the first manager.
+                return DerivedDataCompletion.UNOBSERVABLE;
+            }
+            DerivedDataCompletion completion = waitForDerivedDataCompletion(manager,
+                Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remaining)));
+            if (Thread.currentThread().isInterrupted())
+            {
+                throw new InterruptedException("Rebuild completion wait cancelled"); //$NON-NLS-1$
+            }
+            if (deadline - clock.getAsLong() <= 0 || completion == DerivedDataCompletion.PENDING)
+            {
+                return DerivedDataCompletion.PENDING;
+            }
+            DerivedDataStatus before = manager.getDerivedDataStatus();
+            if (!rebuildStatusObservable(before))
+            {
+                return DerivedDataCompletion.UNOBSERVABLE;
+            }
+            if (rebuildStatusComplete(before) && ProjectStateChecker.isModelDataComputedChecked(manager)
+                && manager.isAllComputed())
+            {
+                DerivedDataStatus after = manager.getDerivedDataStatus();
+                if (!rebuildStatusObservable(after))
+                {
+                    return DerivedDataCompletion.UNOBSERVABLE;
+                }
+                if (managers.get() != manager)
+                {
+                    return DerivedDataCompletion.UNOBSERVABLE;
+                }
+                if (rebuildStatusComplete(after) && manager.isAllComputed()
+                    && deadline - clock.getAsLong() > 0)
+                {
+                    if (Thread.currentThread().isInterrupted())
+                    {
+                        throw new InterruptedException("Rebuild completion wait cancelled"); //$NON-NLS-1$
+                    }
+                    return DerivedDataCompletion.COMPLETE;
+                }
+            }
+            remaining = deadline - clock.getAsLong();
+            if (remaining <= 0)
+            {
+                return DerivedDataCompletion.PENDING;
+            }
+            pause.await(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(25L)));
+        }
+    }
+
+    private static boolean rebuildStatusObservable(DerivedDataStatus status)
+    {
+        return status != null && status.getActiveStage() != null && status.getPipelineStatus() != null
+            && status.getReadySegments() != null;
+    }
+
+    private static boolean rebuildStatusComplete(DerivedDataStatus status)
+    {
+        return status.getActiveStage() == DerivedDataSegmentBucket.AFTER_BUILD
+            && status.getPipelineStatus() == PipelineStatus.EMPTY
+            && status.getReadySegments().containsAll(ProjectStateChecker.modelSegments());
     }
 
     /**
@@ -318,6 +591,270 @@ public final class BuildUtils
         return DiskExportState.PENDING;
     }
 
+    /** How a bounded {@link #waitForObjectValidation} ended. */
+    public enum ValidationState
+    {
+        /** EDT confirmed the validation segments computed for every named object. */
+        COMPLETE,
+        /** Not confirmed within the deadline, or a previous wait for the project is still out. */
+        PENDING,
+        /**
+         * Could not be asked or answered: no derived-data service, not a DT project, no registered
+         * validation segment, a failed (broken) record, or the job never ran.
+         */
+        UNOBSERVABLE
+    }
+
+    /**
+     * The derived-data calls one validation wait makes; a seam so the segment guard is testable
+     * without a live pipeline.
+     */
+    interface ValidationPipeline
+    {
+        /**
+         * @param segmentId a segment id
+         * @return whether this project's pipeline registers it; {@code false} when unprovable
+         */
+        boolean registers(String segmentId);
+
+        /**
+         * {@code IDerivedDataManager.waitComputation(Map, long)}.
+         *
+         * @param scope per top-object id, registered segment ids only
+         * @param timeoutMs the platform timeout, positive
+         * @return the platform's answer
+         * @throws InterruptedException when the waiting thread is interrupted
+         */
+        boolean waitComputation(Map<Long, Collection<String>> scope, long timeoutMs) throws InterruptedException;
+
+        /**
+         * {@code IDerivedDataManager.isComputed(long, Collection)}: none of the segments is still
+         * pending on the object's record.
+         *
+         * @param topObjectId the BM top-object id
+         * @param segmentIds registered segment ids, not empty
+         * @return whether the object's record has none of them pending
+         */
+        boolean isComputed(long topObjectId, Collection<String> segmentIds);
+    }
+
+    /**
+     * Waits until EDT has validated the given top objects - per object, not project-wide.
+     * <p>
+     * {@code IDerivedDataManager.waitComputation(Map, long)} first drains the accumulated change
+     * contexts, then waits until none of the registered {@link #VALIDATION_SEGMENTS} is pending for
+     * the named objects, raising their pipeline priority meanwhile. Its timeout is advisory (it
+     * retries once), so it runs inside a {@link BoundedJob}, with at most one outstanding validation
+     * wait per project, exactly like {@link #waitForDiskExport}. Must not be called inside a BM
+     * transaction.
+     *
+     * @param project the workspace project owning the objects
+     * @param topObjectIds BM ids of the top objects to wait for; empty yields UNOBSERVABLE
+     * @param timeoutMs the hard deadline in milliseconds
+     * @return how the wait ended; never {@code null}
+     */
+    public static ValidationState waitForObjectValidation(IProject project, Collection<Long> topObjectIds,
+        long timeoutMs)
+    {
+        if (topObjectIds == null || topObjectIds.isEmpty())
+        {
+            // The platform rejects an empty scope; there is nothing to observe.
+            return ValidationState.UNOBSERVABLE;
+        }
+        IDerivedDataManager ddManager;
+        try
+        {
+            ddManager = resolveDerivedDataManager(project);
+        }
+        catch (RuntimeException e)
+        {
+            Activator.logWarning("Could not resolve the derived data manager for validation: " + e); //$NON-NLS-1$
+            return ValidationState.UNOBSERVABLE;
+        }
+        if (ddManager == null)
+        {
+            return ValidationState.UNOBSERVABLE;
+        }
+        return waitForObjectValidation(pipelineOf(ddManager), project.getName(), topObjectIds, timeoutMs);
+    }
+
+    /**
+     * The bounded wait over a {@link ValidationPipeline}: slot, job, outcome mapping.
+     *
+     * @param pipeline the project's derived-data calls
+     * @param key the project name, the slot key
+     * @param topObjectIds BM ids of the top objects, not empty
+     * @param timeoutMs the hard deadline in milliseconds
+     * @return how the wait ended; never {@code null}
+     */
+    static ValidationState waitForObjectValidation(ValidationPipeline pipeline, String key,
+        Collection<Long> topObjectIds, long timeoutMs)
+    {
+        long platformTimeoutMs = platformTimeoutMs(timeoutMs);
+        AtomicBoolean returned = beginValidationWait(key, platformTimeoutMs);
+        if (returned == null)
+        {
+            Activator.logInfo("A previous validation wait for " + key //$NON-NLS-1$
+                + " has not returned yet; not starting another one"); //$NON-NLS-1$
+            return ValidationState.PENDING;
+        }
+
+        ValidationState[] state = { ValidationState.PENDING };
+        BoundedJob.Result result = BoundedJob.run("Waiting for the validation of written objects in " + key, //$NON-NLS-1$
+            platformTimeoutMs, monitor -> {
+                try
+                {
+                    state[0] = validate(pipeline, topObjectIds, platformTimeoutMs);
+                }
+                finally
+                {
+                    returned.set(true);
+                }
+            });
+        if (result.getOutcome() == BoundedJob.Outcome.TIMED_OUT_BEFORE_START)
+        {
+            // Never ran and never will: nothing outstanding, reopen at once (see waitForDiskExport).
+            returned.set(true);
+        }
+        if (result.getOutcome() == BoundedJob.Outcome.COMPLETED && result.getFailure() == null)
+        {
+            if (state[0] == ValidationState.UNOBSERVABLE)
+            {
+                Activator.logInfo("Validation of the written objects in " + key //$NON-NLS-1$
+                    + " is not observable: no registered validation segment, or a failed record"); //$NON-NLS-1$
+            }
+            return state[0];
+        }
+        if (result.getFailure() != null || result.getOutcome() == BoundedJob.Outcome.NOT_RUN)
+        {
+            // The pipeline was never successfully asked: unobserved, not pending. Not an ERROR -
+            // it degrades a write's marker report, it does not fail the write.
+            Activator.logWarning("Validation wait for " + key + " was not observable (" //$NON-NLS-1$ //$NON-NLS-2$
+                + result.getOutcome() + ", " + result.getFailure() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+            return ValidationState.UNOBSERVABLE;
+        }
+        return ValidationState.PENDING;
+    }
+
+    /**
+     * One wait, run inside the bounded job: registered segments only, then the platform wait, then
+     * the record re-check.
+     * <p>
+     * An unregistered id must never reach the platform: on EDT 2026.2.1
+     * {@code AsyncProcessingPipeline.increasePriority(Map)} queues it in the priority task queue
+     * even without a segment group, and {@code PriorityTaskQueue.hasAllowedPriorityTasks} then
+     * dereferences its missing dependency set on every scheduling pass.
+     * <p>
+     * {@code waitComputation} counts a BROKEN record (a validator failed three times) as done
+     * while the failed segment stays unconfirmed on it, so a {@code true} is re-checked per object
+     * with {@code isComputed(long, Collection)}, which ignores the broken flag.
+     *
+     * @param pipeline the project's derived-data calls
+     * @param topObjectIds BM ids of the top objects, not empty
+     * @param platformTimeoutMs the platform timeout, positive
+     * @return how the wait ended
+     * @throws InterruptedException when the job thread is interrupted
+     */
+    static ValidationState validate(ValidationPipeline pipeline, Collection<Long> topObjectIds,
+        long platformTimeoutMs) throws InterruptedException
+    {
+        List<String> segments = registeredSegments(pipeline);
+        if (segments.isEmpty())
+        {
+            return ValidationState.UNOBSERVABLE;
+        }
+        Map<Long, Collection<String>> scope = new LinkedHashMap<>();
+        for (Long id : topObjectIds)
+        {
+            scope.put(id, segments);
+        }
+        if (!pipeline.waitComputation(scope, platformTimeoutMs))
+        {
+            return ValidationState.PENDING;
+        }
+        for (Long id : topObjectIds)
+        {
+            if (!pipeline.isComputed(id.longValue(), segments))
+            {
+                return ValidationState.UNOBSERVABLE;
+            }
+        }
+        return ValidationState.COMPLETE;
+    }
+
+    /**
+     * The {@link #VALIDATION_SEGMENTS} this project's pipeline registers.
+     *
+     * @param pipeline the project's derived-data calls
+     * @return the registered ids, in list order; empty when none is provably registered
+     */
+    static List<String> registeredSegments(ValidationPipeline pipeline)
+    {
+        List<String> registered = new ArrayList<>();
+        for (String segmentId : VALIDATION_SEGMENTS)
+        {
+            if (pipeline.registers(segmentId))
+            {
+                registered.add(segmentId);
+            }
+        }
+        return registered;
+    }
+
+    /**
+     * The production {@link ValidationPipeline}.
+     * <p>
+     * EDT has no API that lists a pipeline's segments. {@code IDerivedDataManager.isComputed(String...)}
+     * reaches {@code AsyncProcessingPipeline.isSegmentComputed}, which asserts "Unsupported segment
+     * is specified" on the same map whose entries are added together with the segment group and
+     * the dependency set; so a probe that returns proves the id is registered, and a throw of any
+     * kind counts as unregistered.
+     */
+    private static ValidationPipeline pipelineOf(IDerivedDataManager ddManager)
+    {
+        return new ValidationPipeline()
+        {
+            @Override
+            public boolean registers(String segmentId)
+            {
+                try
+                {
+                    ddManager.isComputed(new String[] { segmentId });
+                    return true;
+                }
+                catch (RuntimeException e)
+                {
+                    return false;
+                }
+            }
+
+            @Override
+            public boolean waitComputation(Map<Long, Collection<String>> scope, long timeoutMs)
+                throws InterruptedException
+            {
+                return ddManager.waitComputation(scope, timeoutMs);
+            }
+
+            @Override
+            public boolean isComputed(long topObjectId, Collection<String> segmentIds)
+            {
+                return ddManager.isComputed(topObjectId, segmentIds);
+            }
+        };
+    }
+
+    /**
+     * The timeout handed to the platform: always positive, because EDT 2026.1.1 asserts
+     * {@code timeout > 0} in {@code waitComputationExt}.
+     *
+     * @param timeoutMs the requested deadline
+     * @return a deadline of at least one millisecond
+     */
+    static long platformTimeoutMs(long timeoutMs)
+    {
+        return Math.max(1L, timeoutMs);
+    }
+
     /**
      * Claims the single export-wait slot for a project.
      * <p>
@@ -332,12 +869,45 @@ public final class BuildUtils
      */
     static AtomicBoolean beginExportWait(String projectName, long timeoutMs)
     {
+        return beginWait(projectName, timeoutMs);
+    }
+
+    /**
+     * Claims the single validation-wait slot for a project. A separate key from the export slot, so
+     * the two waits of one write never block each other.
+     *
+     * @param projectName the project whose slot to claim
+     * @param timeoutMs the wait's deadline, which also sizes how long an unreturned claim holds
+     * @return the flag the wait must set when it returns, or {@code null} when a previous
+     *     validation wait for this project has not come back yet
+     */
+    static AtomicBoolean beginValidationWait(String projectName, long timeoutMs)
+    {
+        return beginWait(VALIDATION_SLOT_PREFIX + projectName, timeoutMs);
+    }
+
+    /**
+     * Claims the single bounded-marker-read slot for a project, so reads stuck behind a model
+     * service operation do not pile up one job per write.
+     *
+     * @param projectName the project whose slot to claim
+     * @param timeoutMs the read's deadline, which also sizes how long an unreturned claim holds
+     * @return the flag the read must set when it returns, or {@code null} when a previous read for
+     *     this project has not come back yet
+     */
+    static AtomicBoolean beginMarkerRead(String projectName, long timeoutMs)
+    {
+        return beginWait(MARKER_READ_SLOT_PREFIX + projectName, timeoutMs);
+    }
+
+    private static AtomicBoolean beginWait(String slotKey, long timeoutMs)
+    {
         AtomicBoolean[] granted = new AtomicBoolean[1];
         long reopenAtMs = System.currentTimeMillis() + slotHoldMs(timeoutMs);
         // compute(), not get()+put(): the map holds the bin lock across the whole decision, so two
         // writes finishing together cannot both see a free slot and both schedule a Job. A
         // check-then-act here would have made the limit hold only when it was not needed.
-        EXPORT_WAIT_RETURNED.compute(projectName, (name, prior) -> {
+        EXPORT_WAIT_RETURNED.compute(slotKey, (name, prior) -> {
             if (prior != null && !prior.returned.get() && System.currentTimeMillis() < prior.reopenAtMs)
             {
                 return prior;

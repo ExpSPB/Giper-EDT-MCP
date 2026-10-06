@@ -12,14 +12,19 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.junit.Test;
+import org.eclipse.jface.preference.PreferenceStore;
 
+import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
 import fm.giper.edt.mcp.server.profiles.FallbackReason;
@@ -101,6 +106,58 @@ public class GetServerStatusToolTest
         assertNotNull(json);
         assertFalse(json.contains("authToken")); //$NON-NLS-1$
         assertFalse(json.contains("checksFolder\"")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testWhitespaceOnlyTokenReportsAuthenticationDisabled() throws Exception
+    {
+        JsonObject result = statusWithPreferences(" \t\r\n", ""); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse(result.get("authEnabled").getAsBoolean()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testPaddedRealTokenReportsAuthenticationEnabledWithoutLeakingIt() throws Exception
+    {
+        String token = "  status-test-secret \t"; //$NON-NLS-1$
+        JsonObject result = statusWithPreferences(token, ""); //$NON-NLS-1$
+        assertTrue(result.get("authEnabled").getAsBoolean()); //$NON-NLS-1$
+        assertFalse(result.toString().contains("status-test-secret")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testChecksFolderReportsOptionalOverridePresenceWithoutLeakingPath() throws Exception
+    {
+        assertFalse(statusWithPreferences("", " \t\n") //$NON-NLS-1$ //$NON-NLS-2$
+            .get("checksFolderConfigured").getAsBoolean()); //$NON-NLS-1$
+        String folder = "not-existing-checks-override-folder"; //$NON-NLS-1$
+        JsonObject result = statusWithPreferences("", folder); //$NON-NLS-1$
+        assertTrue("configured reports the override preference, not directory existence", //$NON-NLS-1$
+            result.get("checksFolderConfigured").getAsBoolean()); //$NON-NLS-1$
+        assertFalse(result.toString().contains(folder));
+    }
+
+    private static JsonObject statusWithPreferences(String token, String checksFolder) throws Exception
+    {
+        // Substitute only this tool invocation's service boundary; restore it before any
+        // other test can observe the preferences. No server or real preference store is touched.
+        Field plugin = Activator.class.getDeclaredField("plugin"); //$NON-NLS-1$
+        plugin.setAccessible(true);
+        Object saved = plugin.get(null);
+        Activator activator = mock(Activator.class);
+        PreferenceStore store = new PreferenceStore();
+        store.setValue(PreferenceConstants.PREF_AUTH_TOKEN, token);
+        store.setValue(PreferenceConstants.PREF_CHECKS_FOLDER, checksFolder);
+        when(activator.getPreferenceStore()).thenReturn(store);
+        try
+        {
+            plugin.set(null, activator);
+            return JsonParser.parseString(new GetServerStatusTool().execute(java.util.Collections.emptyMap()))
+                .getAsJsonObject();
+        }
+        finally
+        {
+            plugin.set(null, saved);
+        }
     }
 
     @Test

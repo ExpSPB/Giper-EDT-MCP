@@ -2,15 +2,12 @@
 e2e tests for modify_metadata WRITING a role's access rights - the `rights` / `roleProperties`
 payload on a `Role.<Name>` FQN (#454), and the regression proof for #452.
 
-#452: a role created through create_metadata carries NO editable rights model. The writer
-materialised a RoleDescription with RightsFactory and set it on the role, but never registered that
-description as a BM top object, so the transaction could not build a persistable reference to it and
-the commit died with `Failed to persist reference value ...RoleDescriptionImpl@<hash>` - every FIRST
-rights write on a freshly created role failed, and the failure text leaked the EMF implementation's
-identity to the caller. These tests drive that exact path over the wire: seed a role, write one
-right, and require the cell to land in the role's own `Rights.rights` resource on disk AND to read
-back through get_metadata_details. On the pre-fix build the write returns isError and
-`Rights.rights` is never created, so no assertion here can be satisfied by substring accident.
+#452 originally covered bootstrapping the rights model on a freshly created role. Creation now
+attaches and exports a concrete empty RoleDescription in the CREATING transaction because the
+configurator cannot load a configuration whose role lacks Rights.rights. These tests prove the
+current public path: seed a role with an empty matrix, write its FIRST authored right, and require
+that cell to land in the role's own Rights.rights AND read back through get_metadata_details.
+The writer bootstrap for legacy/null models remains covered by the unit tests.
 
 WHAT THE PLATFORM DOES WITH A RIGHT VALUE (measured in RightsModelUtil, EDT 2026.2 - not assumed).
 AddRightValuesTask calls `changeObjectRight(newValue, defaultValue, ...)`, and
@@ -46,6 +43,7 @@ FIXTURE TRUTH (TestConfiguration, English Names)
 """
 
 import os
+import xml.etree.ElementTree as ET
 
 from harness import (
     call,
@@ -69,8 +67,8 @@ from harness import (
 # object (so its default right value follows setForNewObjects - see the module docstring).
 GUARDED_OBJECT = "Catalog.Catalog"
 
-# The literal note get_metadata_details renders for a role that has NO editable rights model. This
-# is the #452 precondition; it must be present before the first write and gone after it.
+# The literal note for a role with NO editable rights model. A newly created role has a concrete
+# empty model and must never render this degraded note, before or after its first rights write.
 NO_MATRIX_NOTE = "_(this role has no editable rights model)_"
 
 # "Read" written in Russian, spelled from code points so this source file stays pure ASCII:
@@ -85,8 +83,8 @@ _MATRIX_HEADER = ["Object", "Right", "Value"]
 def _seed_role(name):
     """create_metadata a fresh Role and return its FQN.
 
-    A role created this way has no rights model whatsoever - that is the #452 precondition, and it
-    is asserted explicitly in the test that depends on it rather than assumed everywhere."""
+    Creation persists a concrete empty rights model; tests that depend on that state verify both
+    the read-back and its Rights.rights resource before the operation under test."""
     fqn = "Role." + name
     r = call("create_metadata", {"projectName": PROJECT, "fqn": fqn})
     assert_ok(r, "seed role " + fqn)
@@ -104,14 +102,28 @@ def _rights_file_text(name):
     """The role's Rights.rights exactly as it is on disk right now, or None when the file does not
     exist yet.
 
-    Deliberately NOT poll_disk_lacks / assert_disk_lacks: this is used for the "it is not there
-    AT ALL" precondition and for a refused call's "nothing was created", where polling would only
-    burn the budget and assert_disk_lacks would fail on the missing file it is meant to accept."""
+    It observes the resource already persisted by creation or the preceding write without
+    inventing empty XML for a missing resource."""
     full = os.path.join(PROJECT_DIR, *_rights_file(name).split("/"))
     if not os.path.isfile(full):
         return None
     with open(full, encoding="utf-8", errors="replace") as f:
         return f.read()
+
+
+def _assert_empty_rights_file(name):
+    """Prove creation persisted only the three false flags, with no authored rights or templates."""
+    text = _rights_file_text(name)
+    assert text is not None, "creation must persist %s before any rights write" % _rights_file(name)
+    root = ET.fromstring(text)
+    namespace = "{http://v8.1c.ru/8.2/roles}"
+    assert root.tag == namespace + "Rights", "the persisted resource must be the role's Rights XML"
+    flags = ("setForNewObjects", "setForAttributesByDefault", "independentRightsOfChildObjects")
+    assert sorted(child.tag for child in root) == sorted(namespace + flag for flag in flags), \
+        "a newly created role must contain only its three flags, no rights or RLS templates: %s" % text
+    for flag in flags:
+        assert root.findtext(namespace + flag) == "false", \
+            "the persisted default %s must be false: %s" % (flag, text)
 
 
 def _details(fqn):
@@ -149,38 +161,35 @@ def _matrix_rows(text):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# THE #452 CASE — the first rights write on a role created through create_metadata
+# The first authored right on a role created with its persisted empty rights model
 # ──────────────────────────────────────────────────────────────────────────────
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_role_rights_first_write_on_a_freshly_created_role_lands_on_disk():
-    """#452: a role created by create_metadata must accept a rights write end to end.
+    """Prove the first rights write adds a NEW cell to creation's existing empty resource.
 
-    The steps are ordered so that a failure cannot be misread. The role is first PROVEN to have no
-    rights model (the note) and no rights resource on disk, so "the write created it" is a real
-    claim rather than an observation of something that was already there. Then the call must report
-    success AND `persisted` - the rights matrix is its own BM resource with its own FQN, so a write
-    that reached the model but not the disk would otherwise pass. Only then is the file required to
-    carry the cell, and the same read required to have changed its answer.
-
-    On the pre-fix build the write returns isError and no Rights.rights is ever written, so every
-    assertion from the modify_metadata call onwards is unreachable there."""
+    Before the write, both model and disk must have no authored cells and all three flags false.
+    Afterwards, the call must report persisted=true and exactly one applied entry, and the cell
+    must exist on disk and read back as allowed. A no-op write cannot pass these assertions."""
     name = "E2ERoleRightsFresh"
     fqn = _seed_role(name)
 
+    _assert_empty_rights_file(name)
     before = _details(fqn)
-    assert_contains(before, NO_MATRIX_NOTE,
-                    "a freshly created role must have NO editable rights model yet - that is the "
-                    "#452 precondition this test exists for")
-    assert _rights_file_text(name) is None, (
-        "setup: %s must not exist before the first rights write, otherwise the disk assertions "
-        "below would be satisfied by a file this call never wrote" % _rights_file(name))
+    assert_not_contains(before, NO_MATRIX_NOTE,
+                        "creation must attach the concrete rights model before the first write")
+    assert_contains(before, "_(no non-default rights)_", "the initial concrete matrix is empty")
+    assert _matrix_rows(before) == [], "no authored cell may pre-exist the first rights write"
+    for label in ("Set rights for new objects", "Set rights for attributes by default",
+                  "Independent rights of child objects"):
+        assert_contains(before, "| %s | false |" % label,
+                        "the initial model flag must agree with the persisted XML")
 
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": fqn,
         "rights": [{"object": GUARDED_OBJECT, "right": "Read", "value": "set"}],
     })
-    assert_ok(r, "the FIRST rights write on a freshly created role (#452)")
+    assert_ok(r, "the FIRST authored rights write on a freshly created role")
     structured = r.structured or {}
     assert structured.get("persisted") is True, (
         "the rights write must report persisted=true: the matrix lives in its own resource and is "
@@ -193,11 +202,19 @@ def test_role_rights_first_write_on_a_freshly_created_role_lands_on_disk():
                        ctx="the guarded object must reach the role's own rights resource")
     poll_disk_contains(_rights_file(name), "<value>true</value>",
                        ctx="a granted right serializes as the 'true' RightValue literal")
+    namespace = "{http://v8.1c.ru/8.2/roles}"
+    disk = ET.fromstring(_rights_file_text(name))
+    objects = disk.findall(namespace + "object")
+    assert len(objects) == 1 and objects[0].findtext(namespace + "name") == GUARDED_OBJECT, \
+        "the first write must persist exactly the requested object in the previously empty matrix"
+    cells = [(right.findtext(namespace + "name"), right.findtext(namespace + "value"))
+             for right in objects[0].findall(namespace + "right")]
+    assert cells == [("Read", "true")], \
+        "the first write must persist the specific Read cell as allowed, got %r" % (cells,)
 
     after = _details(fqn)
     assert_not_contains(after, NO_MATRIX_NOTE,
-                        "the role now HAS an editable rights model, so the degraded note must be "
-                        "gone from the read")
+                        "the existing editable rights model must remain available after the write")
     assert_contains(after, "## Properties",
                     "a role with a rights model renders its three role-property booleans")
     assert (GUARDED_OBJECT, "Read", "allowed") in _matrix_rows(after), \
@@ -208,6 +225,49 @@ def test_role_rights_first_write_on_a_freshly_created_role_lands_on_disk():
 # Round trip — grant, then deny the SAME object+right; each proven in the reader
 # AND in the file on disk
 # ──────────────────────────────────────────────────────────────────────────────
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_role_rights_bad_rls_field_refuses_without_granting_the_right():
+    """#471: an RLS-field resolution refusal must not leave the right value committed.
+
+    The object, right and RLS condition are valid; only the requested field name is bogus. Before
+    the fix the value task committed first, then field resolution refused the call, so the caller saw
+    an error while get_metadata_details exposed a silently widened `allowed` right. The read-back is
+    therefore the central assertion: this test must fail if the writer merely preserves the error
+    message while still granting the right."""
+    name = "E2ERoleRightsBadRlsField"
+    fqn = _seed_role(name)
+    bogus_field = "E2EFieldThatDoesNotExist"
+    before = tree_snapshot()
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "rights": [{
+            "object": GUARDED_OBJECT,
+            "right": "Read",
+            "value": "set",
+            "rls": "WHERE TRUE",
+            "rlsFields": [bogus_field],
+        }],
+    })
+    e = assert_error(r, "an unknown RLS field on an otherwise valid rights entry")
+    assert_error_quality(e, names=[bogus_field], suggests=["rlsFields"],
+                         ctx="the refusal must name the bad field and explain how to request a "
+                             "whole-object restriction instead")
+
+    assert_not_contains(_rights_file_text(name), GUARDED_OBJECT,
+                        "the refusal must not add the guarded object's cell to the existing rights "
+                        "resource")
+    after = _details(fqn)
+    assert_contains(after, "## Rights matrix",
+                    "the refusal must leave the fresh role's empty rights model readable")
+    after_rows = _matrix_rows(after)
+    assert all(obj != GUARDED_OBJECT for obj, _right, _value in after_rows), (
+        "the refused call must leave NO row for %s; matrix rows were %r"
+        % (GUARDED_OBJECT, after_rows))
+    assert_tree_unchanged(before,
+                          "the RLS-field refusal must leave the seeded role byte-for-byte unchanged")
+
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_role_rights_round_trip_grant_then_deny():
@@ -308,11 +368,15 @@ def test_role_rights_combined_with_properties_is_refused_and_writes_nothing():
     The "changed nothing" claim is measured from a snapshot taken AFTER the seed, not from HEAD:
     seeding the role legitimately dirties the tree, so plain assert_no_diff here would fail on the
     setup instead of on the operation under test (harness.tree_snapshot exists for exactly this
-    shape). The rights resource is additionally required to be absent, which is the specific thing
-    a half-applied call would have created."""
+    shape). The existing empty rights resource must also remain byte-identical; a half-applied
+    call would add an authored cell to that resource."""
     name = "E2ERoleRightsMixed"
     fqn = _seed_role(name)
 
+    _assert_empty_rights_file(name)
+    rights_path = os.path.join(PROJECT_DIR, *_rights_file(name).split("/"))
+    with open(rights_path, "rb") as source:
+        rights_before = source.read()
     before = tree_snapshot()
     r = call("modify_metadata", {
         "projectName": PROJECT, "fqn": fqn,
@@ -324,9 +388,9 @@ def test_role_rights_combined_with_properties_is_refused_and_writes_nothing():
                          ctx="the refusal must name the payload that cannot be mixed and say what "
                              "to do instead (set the role's own properties in a separate call)")
 
-    assert _rights_file_text(name) is None, (
-        "a refused call must not have created %s - nothing may be applied when the payload is "
-        "rejected" % _rights_file(name))
+    with open(rights_path, "rb") as source:
+        assert source.read() == rights_before, \
+            "a refused call must leave %s byte-identical, without applying any rights" % _rights_file(name)
     assert_tree_unchanged(before,
                           "a refused role rights write must leave the project byte-for-byte as the "
                           "seed left it")

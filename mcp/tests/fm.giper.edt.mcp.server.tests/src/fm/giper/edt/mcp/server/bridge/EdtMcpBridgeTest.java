@@ -13,7 +13,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.List;
@@ -32,9 +40,12 @@ import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
 
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
+import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
 import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
 import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
+import fm.giper.edt.mcp.server.protocol.McpRequestContext;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import com.google.gson.JsonArray;
@@ -168,17 +179,139 @@ public class EdtMcpBridgeTest
     }
 
     @Test
-    public void testBridgeIsNotPublishedAsJdkFunctionTypes() throws Exception
+    @SuppressWarnings("unchecked")
+    public void testBridgeJdkFunctionTypesDelegateToDefaultProfile() throws Exception
     {
         Object service = newReflectiveService();
-        assertFalse(service instanceof BiFunction);
-        assertFalse(service instanceof Supplier);
-        Method callTool = service.getClass().getMethod("callTool", //$NON-NLS-1$
-            String.class, String.class, String.class);
-        String json = (String) callTool.invoke(service, PROBE_TOOL_NAME,
-            "{\"value\":\"typed\"}", "default"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(service instanceof BiFunction);
+        assertTrue(service instanceof Supplier);
+        assertTrue(((Supplier<String>) service).get().contains(PROBE_TOOL_NAME));
+        String json = ((BiFunction<String, String, String>) service).apply(PROBE_TOOL_NAME,
+            "{\"value\":\"typed\"}"); //$NON-NLS-1$
         assertEquals("typed", receivedValue.get()); //$NON-NLS-1$
         assertTrue(json.contains("echo:typed")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testJdkAliasesCannotBypassTheDefaultAllowlist()
+    {
+        EdtMcpBridge bridge = new EdtMcpBridge(McpToolRegistry.getInstance(), new McpProtocolHandler(),
+            () -> ToolProfileSnapshot.of(1L,
+                List.of(DefaultToolProfileFactory.createDefault(Set.of(PROBE_TOOL_NAME)))));
+        Supplier<String> tools = bridge;
+        assertTrue(tools.get().contains(PROBE_TOOL_NAME));
+        assertFalse(tools.get().contains(SECRET_TOOL_NAME));
+        BiFunction<String, String, String> call = bridge;
+        JsonObject denied = JsonParser.parseString(
+            call.apply(SECRET_TOOL_NAME, "{\"value\":\"blocked\"}")).getAsJsonObject(); //$NON-NLS-1$
+        assertTrue(denied.has("error")); //$NON-NLS-1$
+        assertNull(receivedValue.get());
+    }
+
+    @Test
+    public void testPublicBridgeWithoutActivatorUsesStatusOnlyPolicy() throws Exception
+    {
+        withActivator(null, () -> {
+            EdtMcpBridge bridge = new EdtMcpBridge();
+            assertUnavailablePolicyCannotDispatch(bridge, isolatedHandler(bridge));
+        });
+    }
+
+    @Test
+    public void testPublicBridgeWithoutProfileRepositoryUsesStatusOnlyPolicy() throws Exception
+    {
+        withActivator(mock(Activator.class), () -> {
+            EdtMcpBridge bridge = new EdtMcpBridge();
+            assertUnavailablePolicyCannotDispatch(bridge, isolatedHandler(bridge));
+        });
+    }
+
+    @Test
+    public void testRetainedPublicBridgeLosingRepositoryCannotWidenItsRestrictedPolicy() throws Exception
+    {
+        ToolProfileRepository repository = mock(ToolProfileRepository.class);
+        when(repository.getSnapshot()).thenReturn(ToolProfileSnapshot.of(1L,
+            List.of(DefaultToolProfileFactory.createDefault(Set.of(PROBE_TOOL_NAME)))));
+        AtomicReference<ToolProfileRepository> current = new AtomicReference<>(repository);
+        Activator activator = mock(Activator.class);
+        when(activator.getToolProfileRepository()).thenAnswer(invocation -> current.get());
+        withActivator(activator, () -> {
+            EdtMcpBridge bridge = new EdtMcpBridge();
+            McpProtocolHandler handler = isolatedHandler(bridge);
+            String allowed = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[]}}"; //$NON-NLS-1$
+            when(handler.processRequest(anyString(), any(McpRequestContext.class))).thenReturn(allowed);
+            assertTrue(bridge.listTools().contains(PROBE_TOOL_NAME));
+            assertFalse(bridge.listTools().contains(SECRET_TOOL_NAME));
+            assertTrue(JsonParser.parseString(bridge.callTool(SECRET_TOOL_NAME, "{}")) //$NON-NLS-1$
+                .getAsJsonObject().has("error")); //$NON-NLS-1$
+            verifyZeroInteractions(handler);
+            assertEquals(allowed, bridge.callTool(PROBE_TOOL_NAME, "{}")); //$NON-NLS-1$
+            verify(handler).processRequest(anyString(), any(McpRequestContext.class));
+
+            // The same object must read the current policy; losing it cannot resurrect any tools.
+            reset(handler);
+            current.set(null);
+            assertUnavailablePolicyCannotDispatch(bridge, handler);
+        });
+    }
+
+    private void assertUnavailablePolicyCannotDispatch(EdtMcpBridge bridge, McpProtocolHandler handler)
+        throws Exception
+    {
+        McpToolRegistry.getInstance().register(new EchoProbeTool("get_server_status", receivedValue)); //$NON-NLS-1$
+        Supplier<String> typedList = bridge;
+        JsonArray listed = JsonParser.parseString(typedList.get()).getAsJsonArray();
+        assertEquals(1, listed.size());
+        assertTrue(containsName(listed, "get_server_status")); //$NON-NLS-1$
+        Object untyped = bridge;
+        String reflectedList = (String)untyped.getClass().getMethod("listTools").invoke(untyped); //$NON-NLS-1$
+        assertEquals(listed, JsonParser.parseString(reflectedList).getAsJsonArray());
+
+        BiFunction<String, String, String> typedCall = bridge;
+        String direct = bridge.callTool(SECRET_TOOL_NAME, "{\"value\":\"forbidden\"}"); //$NON-NLS-1$
+        String typed = typedCall.apply(PROBE_TOOL_NAME, "{\"value\":\"forbidden\"}"); //$NON-NLS-1$
+        String reflected = (String)untyped.getClass().getMethod("callTool", String.class, String.class) //$NON-NLS-1$
+            .invoke(untyped, SECRET_TOOL_NAME, "{\"value\":\"forbidden\"}"); //$NON-NLS-1$
+        for (String denied : List.of(direct, typed, reflected))
+        {
+            JsonObject response = JsonParser.parseString(denied).getAsJsonObject();
+            assertEquals(-32601, response.getAsJsonObject("error").get("code").getAsInt()); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        assertNull("a forbidden tool must never execute", receivedValue.get()); //$NON-NLS-1$
+        verifyZeroInteractions(handler);
+    }
+
+    /** Replace only this bridge's handler to prove refusal precedes the protocol dispatcher. */
+    private static McpProtocolHandler isolatedHandler(EdtMcpBridge bridge) throws Exception
+    {
+        Field field = EdtMcpBridge.class.getDeclaredField("protocolHandler"); //$NON-NLS-1$
+        field.setAccessible(true);
+        McpProtocolHandler handler = mock(McpProtocolHandler.class);
+        field.set(bridge, handler);
+        return handler;
+    }
+
+    /** Mirrors the existing Activator-boundary tests and always restores the real singleton. */
+    private static void withActivator(Activator activator, CheckedAssertion assertion) throws Exception
+    {
+        Field field = Activator.class.getDeclaredField("plugin"); //$NON-NLS-1$
+        field.setAccessible(true);
+        Object saved = field.get(null);
+        try
+        {
+            field.set(null, activator);
+            assertion.run();
+        }
+        finally
+        {
+            field.set(null, saved);
+        }
+    }
+
+    @FunctionalInterface
+    private interface CheckedAssertion
+    {
+        void run() throws Exception;
     }
 
     @Test
@@ -201,7 +334,10 @@ public class EdtMcpBridgeTest
             assertEquals("the bridge must be findable by IEdtMcpBridge + service property", //$NON-NLS-1$
                 1, byName.length);
             Object mcp = context.getService(byName[0]);
-            assertFalse(mcp instanceof BiFunction);
+            assertTrue(mcp instanceof BiFunction);
+            assertTrue(mcp instanceof Supplier);
+            assertEquals(1, context.getServiceReferences(BiFunction.class, filter).size());
+            assertEquals(1, context.getServiceReferences(Supplier.class, filter).size());
             Method callTool = mcp.getClass().getMethod("callTool", //$NON-NLS-1$
                 String.class, String.class, String.class);
             String json = (String) callTool.invoke(mcp, PROBE_TOOL_NAME,
@@ -216,7 +352,8 @@ public class EdtMcpBridgeTest
         JsonObject envelope = JsonParser.parseString(json).getAsJsonObject();
         assertEquals("2.0", envelope.get("jsonrpc").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue(envelope.has("result") || envelope.has("error")); //$NON-NLS-1$ //$NON-NLS-2$
-        assertEquals(0, context.getServiceReferences(BiFunction.class, filter).size());
+        assertEquals(1, context.getServiceReferences(BiFunction.class, filter).size());
+        assertEquals(1, context.getServiceReferences(Supplier.class, filter).size());
     }
 
     private static boolean containsName(JsonArray tools, String name)

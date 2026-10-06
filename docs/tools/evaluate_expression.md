@@ -1,6 +1,6 @@
 # evaluate_expression
 
-Evaluate a BSL expression in the context of a suspended stack frame. Pass frameRef from wait_for_break and the expression text. WARNING: this executes arbitrary BSL code in the running 1C application.
+Evaluate a BSL expression in a paused debug frame and return the value. WARNING: this executes arbitrary code in the running application - it can change state, not just read it. Parameters and examples: get_tool_guide('evaluate_expression').
 
 ## Parameters
 | Parameter | Required | Type | Description |

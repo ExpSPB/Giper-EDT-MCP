@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.swt.widgets.Display;
 
+import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
@@ -37,6 +38,7 @@ import fm.giper.edt.mcp.server.tools.base.WriteScope;
 import fm.giper.edt.mcp.server.utils.BmTransactions;
 import fm.giper.edt.mcp.server.utils.ConsentPreview;
 import fm.giper.edt.mcp.server.utils.DcsAddress;
+import fm.giper.edt.mcp.server.utils.DcsChartReferences;
 import fm.giper.edt.mcp.server.utils.DcsDynamicListWriter;
 import fm.giper.edt.mcp.server.utils.DcsFormAppearanceContent;
 import fm.giper.edt.mcp.server.utils.DcsHash;
@@ -60,6 +62,7 @@ import fm.giper.edt.mcp.server.utils.FormValidationException;
 import fm.giper.edt.mcp.server.utils.StyleValueBuilder;
 import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.VendorSupportGuard;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -96,7 +99,7 @@ public class DcsTool implements IMcpTool
         "schema", "dynamicList", //$NON-NLS-1$ //$NON-NLS-2$
         "dataSource", "dataSet", "field", "fieldFolder", "parameter", "calculatedField", "totalField", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$
         "variant", "grouping", "selection", "filter", "dataParameter", "order", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
-        "conditionalAppearance", "table", "userField", "outputParameter", "userSettings" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+        "conditionalAppearance", "table", "chart", "userField", "outputParameter", "userSettings" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
     };
 
     private static final Set<String> ACTION_SET = new LinkedHashSet<>(Arrays.asList(ACTIONS));
@@ -702,6 +705,11 @@ public class DcsTool implements IMcpTool
             {
                 outcome = BmTransactions.write(model, "DcsSchemaWrite", (tx, monitor) -> //$NON-NLS-1$
                 {
+                    String locked = vendorSupportRefusal(tx, context, target, address);
+                    if (locked != null)
+                    {
+                        throw DcsWriteFailure.message(locked);
+                    }
                     DcsRootReader.Result current = DcsRootReader.read(tx, target);
                     if (!current.isSuccess())
                     {
@@ -756,6 +764,8 @@ public class DcsTool implements IMcpTool
                         return new WriteOutcome(DcsHash.compute(content.schema()), content.contentFqn(),
                             null, false, true);
                     }
+                    DcsChartReferences.Census chartsBefore =
+                        DcsChartReferences.census(content.schema(), address.rootFqn());
                     DcsSettingsWriter.SchemaResult settings = null;
                     if (settingsWrite)
                     {
@@ -790,6 +800,14 @@ public class DcsTool implements IMcpTool
                     if (settings != null)
                     {
                         settings.plan().commit(content.schema());
+                    }
+                    // The end state of the whole call, so a chart may measure a resource the call
+                    // declares and a schema edit that breaks an unchanged chart is refused too.
+                    String chartError = DcsChartReferences.error(chartsBefore,
+                        DcsChartReferences.census(content.schema(), address.rootFqn()));
+                    if (chartError != null)
+                    {
+                        throw DcsWriteFailure.message(chartError);
                     }
                     return new WriteOutcome(DcsHash.compute(content.schema()), content.contentFqn(),
                         counts, settingsWrite, false);
@@ -908,6 +926,11 @@ public class DcsTool implements IMcpTool
         boolean formPersisted = FormElementWriter.writeEditableForm(fctx, "DcsDynamicListWrite", //$NON-NLS-1$
             (formModel, tx) ->
             {
+                String locked = vendorSupportRefusal(tx, context, target, address);
+                if (locked != null)
+                {
+                    throw new FormValidationException(ToolResult.error(locked).toJson());
+                }
                 EObject member = FormElementWriter.resolveFormMember(formModel, ref);
                 if (member == null)
                 {
@@ -924,7 +947,7 @@ public class DcsTool implements IMcpTool
                 }
                 // The same refusal the schema path applies, now that replace actually reaches the
                 // settings writer here: an authoritative replacement must not silently discard
-                // content this writer cannot reproduce (a chart, a nested schema, an area template)
+                // content this writer cannot reproduce (nested parameter values, nested-object settings)
                 // that still lives under the target. A dynamic list's listSettings is the same
                 // settings model a report variant uses, so it can hold exactly those subtypes.
                 if (ACTION_REPLACE.equals(action))
@@ -1073,6 +1096,11 @@ public class DcsTool implements IMcpTool
         boolean persisted = FormElementWriter.writeEditableForm(fctx,
             "DcsFormConditionalAppearanceWrite", (formModel, tx) -> //$NON-NLS-1$
             {
+                String locked = vendorSupportRefusal(tx, context, target, address);
+                if (locked != null)
+                {
+                    throw new FormValidationException(ToolResult.error(locked).toJson());
+                }
                 if (!(formModel instanceof Form))
                 {
                     throw new FormValidationException(ToolResult.error("Form target '" //$NON-NLS-1$
@@ -1448,6 +1476,27 @@ public class DcsTool implements IMcpTool
         {
             return new DcsWriteFailure(errorJson);
         }
+    }
+
+    /**
+     * The vendor-support refusal for a DCS write, judged inside the write transaction on the
+     * metadata object that owns the root: its template, its form, or the report itself (#642).
+     */
+    private static String vendorSupportRefusal(IBmTransaction tx, ProjectContext.ConfigurationResult context,
+        DcsTargetResolver.Target target, DcsAddress address)
+    {
+        Long id = target.bmId(DcsTargetResolver.BmRole.TEMPLATE);
+        if (id == null)
+        {
+            id = target.bmId(DcsTargetResolver.BmRole.MD_FORM);
+        }
+        if (id == null)
+        {
+            id = target.bmId(DcsTargetResolver.BmRole.ROOT_OWNER);
+        }
+        EObject owner = id == null ? null : tx.getObjectById(id.longValue());
+        return VendorSupportGuard.refusalFor(owner, context.scope(), target.normalizedRootFqn(),
+            String.valueOf(address), "changed"); //$NON-NLS-1$
     }
 
     private static String resolveLanguage(ProjectContext.ConfigurationResult context, String requested)

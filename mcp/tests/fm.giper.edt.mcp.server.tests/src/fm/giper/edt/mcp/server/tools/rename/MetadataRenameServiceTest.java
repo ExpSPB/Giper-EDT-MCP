@@ -11,16 +11,24 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
+import static org.mockito.Mockito.verifyZeroInteractions;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.core.resources.IProject;
+import org.eclipse.emf.common.util.BasicEList;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
@@ -35,9 +43,16 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import com._1c.g5.v8.bm.integration.IBmModel;
+import com._1c.g5.v8.bm.integration.IBmTask;
+import com._1c.g5.v8.bm.core.IBmEngine;
+import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.md.refactoring.core.IMdRefactoringService;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.mcore.NamedElement;
+import com._1c.g5.v8.dt.form.refactoring.IFormRefactoringService;
+import com._1c.g5.v8.dt.refactoring.core.IRefactoring;
 import fm.giper.edt.mcp.server.utils.BmModelResolver;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
 import fm.giper.edt.mcp.server.utils.FormElementWriter.FormMemberRef;
@@ -67,6 +82,257 @@ import fm.giper.edt.mcp.server.utils.FormElementWriter.FormMemberRef;
  */
 public class MetadataRenameServiceTest
 {
+    @Test
+    public void testFormFactoryRunsAfterReadsCloseAndReceivesFreshGlobalIdentity() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        IRefactoring refactoring = mock(IRefactoring.class);
+        when(fixture.service.createFormRenameRefactoring(fixture.global, "Renamed")) //$NON-NLS-1$
+            .thenAnswer(invocation -> {
+                // Mimic the SDK's synchronous builder starting a second transaction on this thread.
+                fixture.engine.beginReadWriteTransaction();
+                assertFalse(fixture.inRead);
+                assertEquals(2, fixture.reads);
+                assertSame(fixture.global, invocation.getArgument(0));
+                return refactoring;
+            });
+        MetadataRenameService.FormRenameTarget target = fixture.prepare("Renamed"); //$NON-NLS-1$
+        assertNull(target.error);
+        assertEquals("Price", target.oldName); //$NON-NLS-1$
+        assertSame(refactoring, target.refactoring);
+        verify(fixture.engine).getObjectById(FormRenameFixture.MEMBER_ID);
+        verify(fixture.engine).beginReadWriteTransaction();
+        verify(fixture.model, never()).execute(any());
+        verify((IBmObject)fixture.member, never()).bmGetTransaction();
+    }
+
+    @Test
+    public void testFormPreparationPreservesCyrillicNameThroughEnglishAndRussianTypeTokens() throws Exception
+    {
+        String name = fromCp(0x0426, 0x0435, 0x043d, 0x0430);
+        String newName = fromCp(0x0426, 0x0435, 0x043d, 0x0430, 0x041d, 0x043e, 0x0432, 0x0430, 0x044f);
+        for (String address : List.of("Catalog.Catalog.Form.ItemForm.Attribute." + name, //$NON-NLS-1$
+            RU_CATALOG + ".Catalog." + RU_FORM + ".ItemForm." + RU_ATTRIBUTE + '.' + name)) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            FormRenameFixture fixture = new FormRenameFixture();
+            fixture.name.set(name);
+            IRefactoring refactoring = mock(IRefactoring.class);
+            when(fixture.service.createFormRenameRefactoring(fixture.global, newName)).thenReturn(refactoring);
+            FormMemberRef reference = FormElementWriter.parse(address);
+            assertNotNull(reference);
+            MetadataRenameService.FormRenameTarget target = MetadataRenameService.prepareFormRename(
+                fixture.context, reference, address, newName, fixture.service);
+            assertNull(target.error);
+            assertEquals(name, target.oldName);
+            assertSame(refactoring, target.refactoring);
+            assertEquals(2, fixture.reads);
+            assertFalse(fixture.inRead);
+        }
+    }
+
+    @Test
+    public void testMissingFormMemberRefusesBeforeGlobalLookupOrSdkFactory() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        fixture.attributes.clear();
+        assertTrue(fixture.prepare("Renamed").error.contains("Form element not found")); //$NON-NLS-1$ //$NON-NLS-2$
+        verifyZeroInteractions(fixture.service, fixture.engine);
+    }
+
+    @Test
+    public void testDuplicateFormNameRefusesBeforeGlobalLookupOrSdkFactory() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        fixture.attributes.add(named(MODEL.formAttribute, "Renamed")); //$NON-NLS-1$
+        assertTrue(fixture.prepare("Renamed").error.contains("already exists")); //$NON-NLS-1$ //$NON-NLS-2$
+        verifyZeroInteractions(fixture.service, fixture.engine);
+    }
+
+    @Test
+    public void testFormMemberWithoutBmIdentityRefusesBeforeSdkFactory() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        NamedElement plain = mock(NamedElement.class);
+        when(plain.eClass()).thenReturn(MODEL.formAttribute);
+        when(plain.eGet(MODEL.formAttribute.getEStructuralFeature("name"))).thenReturn("Price"); //$NON-NLS-1$ //$NON-NLS-2$
+        fixture.attributes.clear();
+        fixture.attributes.add(plain);
+        assertTrue(fixture.prepare("Renamed").error.contains("stable BM identity")); //$NON-NLS-1$ //$NON-NLS-2$
+        verifyZeroInteractions(fixture.service, fixture.engine);
+    }
+
+    @Test
+    public void testDisappearedGlobalFormMemberRefusesWithoutSdkFactory() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        when(fixture.engine.getObjectById(FormRenameFixture.MEMBER_ID)).thenReturn(null);
+        assertTrue(fixture.prepare("Renamed").error.contains("Nothing was renamed")); //$NON-NLS-1$ //$NON-NLS-2$
+        verifyZeroInteractions(fixture.service);
+        assertEquals(1, fixture.reads);
+    }
+
+    @Test
+    public void testWrongOrTransactionBoundGlobalIdentityRefusesWithoutSdkFactory() throws Exception
+    {
+        for (int invalid = 0; invalid < 3; invalid++)
+        {
+            FormRenameFixture fixture = new FormRenameFixture();
+            if (invalid == 0)
+            {
+                when(fixture.engine.getObjectById(FormRenameFixture.MEMBER_ID)).thenReturn(mock(IBmObject.class));
+            }
+            else if (invalid == 1)
+            {
+                when(((IBmObject)fixture.global).bmGetId()).thenReturn(99L);
+            }
+            else
+            {
+                when(((IBmObject)fixture.global).bmGetTransaction()).thenReturn(fixture.tx);
+            }
+            assertTrue(fixture.prepare("Renamed").error.contains("prepared BM identity")); //$NON-NLS-1$ //$NON-NLS-2$
+            verifyZeroInteractions(fixture.service);
+        }
+    }
+
+    @Test
+    public void testNameChangedAfterSelectionRefusesInsideSecondReadWithoutSdkFactory() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        when(fixture.engine.getObjectById(FormRenameFixture.MEMBER_ID)).thenAnswer(invocation -> {
+            assertFalse(fixture.inRead);
+            fixture.name.set("ChangedElsewhere"); //$NON-NLS-1$
+            return (IBmObject)fixture.global;
+        });
+        assertTrue(fixture.prepare("Renamed").error.contains("prepared BM identity")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(2, fixture.reads);
+        assertFalse(fixture.inRead);
+        verifyZeroInteractions(fixture.service);
+    }
+
+    @Test
+    public void testUnexpectedActiveTransactionRefusesBeforeSdkFactory() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        when(fixture.engine.getCurrentTransaction()).thenReturn(fixture.tx);
+        assertTrue(fixture.prepare("Renamed").error.contains("Nothing was renamed")); //$NON-NLS-1$ //$NON-NLS-2$
+        verify(fixture.engine, never()).getObjectById(org.mockito.ArgumentMatchers.anyLong());
+        verifyZeroInteractions(fixture.service);
+    }
+
+    @Test
+    public void testNullFormRefactoringIsActionableRefusalAfterReadsClose() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        assertTrue(fixture.prepare("Renamed").error.contains("EDT created no rename refactoring")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse(fixture.inRead);
+        verify(fixture.service).createFormRenameRefactoring(fixture.global, "Renamed"); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testFormFactoryFailurePropagatesToExistingToolErrorBoundaryAfterReadsClose() throws Exception
+    {
+        FormRenameFixture fixture = new FormRenameFixture();
+        IllegalStateException failure = new IllegalStateException("SDK creation failed"); //$NON-NLS-1$
+        when(fixture.service.createFormRenameRefactoring(fixture.global, "Renamed")).thenThrow(failure); //$NON-NLS-1$
+        try
+        {
+            fixture.prepare("Renamed"); //$NON-NLS-1$
+            fail("SDK failures must reach the existing diagnostic error boundary"); //$NON-NLS-1$
+        }
+        catch (IllegalStateException actual)
+        {
+            assertSame(failure, actual);
+        }
+        assertFalse(fixture.inRead);
+    }
+
+    /** Only the existing reflective form scaffold needs this getForm shape. */
+    public interface FormCarrier
+    {
+        EObject getForm();
+    }
+
+    /** Executes real preparation task bodies; tx-member properties fail if accessed after close. */
+    private static final class FormRenameFixture
+    {
+        static final long MEMBER_ID = 42L;
+        final IBmModel model = mock(IBmModel.class);
+        final IBmEngine engine = mock(IBmEngine.class);
+        final IBmTransaction tx = mock(IBmTransaction.class);
+        final IFormRefactoringService service = mock(IFormRefactoringService.class);
+        final NamedElement member = mock(NamedElement.class, withSettings().extraInterfaces(IBmObject.class));
+        final NamedElement global = mock(NamedElement.class, withSettings().extraInterfaces(IBmObject.class));
+        final BasicEList<EObject> attributes = new BasicEList<>();
+        final AtomicReference<String> name = new AtomicReference<>("Price"); //$NON-NLS-1$
+        final FormElementWriter.FormEditContext context;
+        boolean inRead;
+        int reads;
+
+        FormRenameFixture() throws Exception
+        {
+            when(model.executeReadonlyTask(any())).thenAnswer(invocation -> {
+                assertFalse("nested plugin read", inRead); //$NON-NLS-1$
+                inRead = true;
+                reads++;
+                try
+                {
+                    IBmTask<?> task = invocation.getArgument(0);
+                    return task.execute(tx, null);
+                }
+                finally
+                {
+                    inRead = false;
+                }
+            });
+            when(model.getEngine()).thenReturn(engine);
+            when(member.eClass()).thenReturn(MODEL.formAttribute);
+            when(member.eGet(MODEL.formAttribute.getEStructuralFeature("name"))).thenAnswer(invocation -> { //$NON-NLS-1$
+                assertTrue("tx property outside read", inRead); //$NON-NLS-1$
+                return name.get();
+            });
+            when(member.getName()).thenAnswer(invocation -> {
+                assertTrue("tx name outside read", inRead); //$NON-NLS-1$
+                return name.get();
+            });
+            when(((IBmObject)member).bmGetId()).thenAnswer(invocation -> {
+                assertTrue("tx identity outside read", inRead); //$NON-NLS-1$
+                return MEMBER_ID;
+            });
+            when(global.getName()).thenThrow(new AssertionError("plugin global-property read outside boundary")); //$NON-NLS-1$
+            when(((IBmObject)global).bmGetId()).thenReturn(MEMBER_ID);
+            when(engine.getObjectById(MEMBER_ID)).thenAnswer(invocation -> {
+                assertFalse("global lookup inside outer read", inRead); //$NON-NLS-1$
+                return (IBmObject)global;
+            });
+            when(engine.beginReadWriteTransaction()).thenAnswer(invocation -> {
+                assertFalse("SDK synchronous builder cannot start inside plugin read", inRead); //$NON-NLS-1$
+                return mock(IBmTransaction.class);
+            });
+            EObject form = mock(EObject.class);
+            when(form.eClass()).thenReturn(MODEL.form);
+            when(form.eGet(MODEL.form.getEStructuralFeature("attributes"))).thenReturn(attributes); //$NON-NLS-1$
+            attributes.add(member);
+            MdObject mdForm = mock(MdObject.class, withSettings().extraInterfaces(FormCarrier.class));
+            when(((FormCarrier)mdForm).getForm()).thenReturn(form);
+            // The MD-form is only a scaffold carrier; the form member has a distinct stable identity.
+            MdObject txMdForm = mock(MdObject.class, withSettings().extraInterfaces(FormCarrier.class, IBmObject.class));
+            when(((FormCarrier)txMdForm).getForm()).thenReturn(form);
+            when(tx.getObjectById(11L)).thenReturn((IBmObject)txMdForm);
+            when(tx.getObjectById(MEMBER_ID)).thenReturn((IBmObject)member);
+            Constructor<FormElementWriter.FormEditContext> constructor = FormElementWriter.FormEditContext.class
+                .getDeclaredConstructor(IProject.class, IBmModel.class, MdObject.class, long.class, String.class);
+            constructor.setAccessible(true);
+            context = constructor.newInstance(mock(IProject.class), model, mdForm, 11L, "CommonForm.Form"); //$NON-NLS-1$
+        }
+
+        MetadataRenameService.FormRenameTarget prepare(String newName)
+        {
+            return MetadataRenameService.prepareFormRename(context,
+                FormElementWriter.parse("CommonForm.Form.Attribute.Price"), //$NON-NLS-1$
+                "CommonForm.Form.Attribute.Price", newName, service); //$NON-NLS-1$
+        }
+    }
+
     @Test
     public void testMdClassRenameRefusesNullDependentModelBeforeCallingEdtRefactoring()
     {
@@ -727,4 +993,498 @@ public class MetadataRenameServiceTest
             return reference;
         }
     }
+
+    @Test
+    public void testFirstCompletionRefusalCannotFlipFlagsEnterApplyOrDispatchSdk()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        java.util.concurrent.atomic.AtomicBoolean flags = new java.util.concurrent.atomic.AtomicBoolean();
+        RenameProgress progress = new RenameProgress();
+        MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+            List.of(first), progress, () -> flags.set(true), () -> "Project is still busy");
+        assertFalse(flags.get());
+        verifyZeroInteractions(first);
+        assertEquals(RenameProgress.Phase.WAITING_FOR_DERIVED_DATA, progress.getPhase());
+        JsonObject result = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", outcome)).getAsJsonObject();
+        assertFalse(result.get("success").getAsBoolean());
+        assertFalse(result.has("mutationCommitted"));
+        assertFalse(result.has("mutationOutcomeUnknown"));
+        assertTrue(result.get("error").getAsString().contains("Nothing was renamed"));
+    }
+
+    @Test
+    public void testLaterCompletionRefusalStopsRemainingPerformsAndReportsCommit()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        IRefactoring third = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("Base rename");
+        java.util.concurrent.atomic.AtomicInteger waits = new java.util.concurrent.atomic.AtomicInteger();
+        RenameProgress progress = new RenameProgress();
+        MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+            List.of(first, second, third), progress, () -> { },
+            () -> waits.incrementAndGet() == 1 ? null : "Extension is still busy");
+        verify(first).perform();
+        verifyZeroInteractions(second, third);
+        assertEquals(RenameProgress.Phase.APPLYING, progress.getPhase());
+        JsonObject result = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", outcome)).getAsJsonObject();
+        assertFalse(result.get("success").getAsBoolean());
+        assertTrue(result.get("mutationCommitted").getAsBoolean());
+        assertEquals(1, result.get("performedCount").getAsInt());
+        assertFalse(result.has("mutationOutcomeUnknown"));
+    }
+
+    @Test
+    public void testFirstInterruptedBarrierPreservesInterruptAndDoesNotMutate()
+    {
+        try
+        {
+            IRefactoring first = mock(IRefactoring.class);
+            java.util.concurrent.atomic.AtomicBoolean flags = new java.util.concurrent.atomic.AtomicBoolean();
+            RenameProgress progress = new RenameProgress();
+            MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+                List.of(first), progress, () -> flags.set(true), () -> { throw new InterruptedException(); });
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertFalse(flags.get());
+            verifyZeroInteractions(first);
+            assertEquals(0, outcome.attempted);
+            assertNotNull(outcome.barrierError);
+        }
+        finally
+        {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    public void testLaterInterruptedBarrierKeepsPartialCommitAndStopsNextSdk()
+    {
+        try
+        {
+            IRefactoring first = mock(IRefactoring.class);
+            IRefactoring second = mock(IRefactoring.class);
+            when(first.getTitle()).thenReturn("Base rename");
+            java.util.concurrent.atomic.AtomicInteger waits = new java.util.concurrent.atomic.AtomicInteger();
+            RenameProgress progress = new RenameProgress();
+            MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+                List.of(first, second), progress, () -> { }, () -> {
+                    if (waits.incrementAndGet() > 1) throw new InterruptedException();
+                    return null;
+                });
+            assertTrue(Thread.currentThread().isInterrupted());
+            verifyZeroInteractions(second);
+            assertEquals(RenameProgress.Phase.APPLYING, progress.getPhase());
+            JsonObject result = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", outcome)).getAsJsonObject();
+            assertTrue(result.get("mutationCommitted").getAsBoolean());
+        }
+        finally
+        {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    public void testSuccessfulSequenceDrainsBeforeEveryPerformAndFlipsFlagsOnlyOnce()
+    {
+        List<String> order = new java.util.ArrayList<>();
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("base");
+        when(second.getTitle()).thenReturn("extension");
+        org.mockito.Mockito.doAnswer(i -> { order.add("base"); return null; }).when(first).perform();
+        org.mockito.Mockito.doAnswer(i -> { order.add("extension"); return null; }).when(second).perform();
+        MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+            List.of(first, second), new RenameProgress(), () -> order.add("flags"),
+            () -> { order.add("drain"); return null; });
+        assertEquals(List.of("drain", "flags", "base", "drain", "extension"), order);
+        assertNull(outcome.barrierError);
+        assertEquals(List.of("base", "extension"), outcome.performed);
+        assertTrue(outcome.errors.isEmpty());
+    }
+
+    @Test
+    public void testBarrierExceptionIsFailureBeforeMutationRatherThanFalseSuccess()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+            List.of(first), new RenameProgress(), () -> fail("must not flip flags"),
+            () -> { throw new IllegalStateException("platform unavailable"); });
+        verifyZeroInteractions(first);
+        assertTrue(outcome.barrierError.contains("platform unavailable"));
+        assertEquals(0, outcome.attempted);
+    }
+
+    @Test
+    public void testFailedOpaqueSdkThenBarrierFailureReportsUnknownMutation()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("base");
+        org.mockito.Mockito.doThrow(new IllegalStateException("opaque failure")).when(first).perform();
+        java.util.concurrent.atomic.AtomicInteger waits = new java.util.concurrent.atomic.AtomicInteger();
+        MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+            List.of(first, second), new RenameProgress(), () -> { },
+            () -> waits.incrementAndGet() == 1 ? null : "still busy");
+        verifyZeroInteractions(second);
+        assertEquals(1, outcome.errors.size());
+        JsonObject result = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", outcome)).getAsJsonObject();
+        assertTrue(result.get("mutationOutcomeUnknown").getAsBoolean());
+        assertFalse(result.has("mutationCommitted"));
+        assertEquals(0, result.get("performedCount").getAsInt());
+    }
+
+
+    @Test
+    public void testNormallyReturningInterruptedBarrierCannotStartMutation()
+    {
+        try
+        {
+            IRefactoring first = mock(IRefactoring.class);
+            MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+                List.of(first), new RenameProgress(), () -> fail("must not flip flags"), () -> {
+                    Thread.currentThread().interrupt();
+                    return null;
+                });
+            verifyZeroInteractions(first);
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(0, outcome.attempted);
+            assertNotNull(outcome.barrierError);
+        }
+        finally
+        {
+            Thread.interrupted();
+        }
+    }
+    @Test
+    public void testWrappedEventDrainCancellationBeforeMutationIsNotLoggedAsError() throws Exception
+    {
+        org.eclipse.core.runtime.ILog log = org.eclipse.core.runtime.Platform.getLog(
+            org.osgi.framework.FrameworkUtil.getBundle(MetadataRenameService.class));
+        List<org.eclipse.core.runtime.IStatus> statuses = new java.util.ArrayList<>();
+        org.eclipse.core.runtime.ILogListener listener = (status, plugin) -> statuses.add(status);
+        log.addLogListener(listener);
+        try
+        {
+            RuntimeException cancellation = sdkEventException("The calling thread has been unexpectedly interrupted");
+            IRefactoring first = mock(IRefactoring.class);
+            MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+                List.of(first), new RenameProgress(), () -> fail("must not flip flags"), () -> {
+                    Thread.currentThread().interrupt();
+                    throw cancellation;
+                });
+            verifyZeroInteractions(first);
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(0, outcome.attempted);
+            assertTrue(outcome.barrierError.contains("interrupted"));
+            assertTrue(statuses.stream().anyMatch(s -> s.getSeverity() == org.eclipse.core.runtime.IStatus.INFO));
+            assertFalse(statuses.stream().anyMatch(s -> s.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR));
+        }
+        finally
+        {
+            Thread.interrupted();
+            log.removeLogListener(listener);
+        }
+    }
+
+    @Test
+    public void testLaterWrappedEventDrainCancellationKeepsPartialCommitAndInterrupt() throws Exception
+    {
+        RuntimeException cancellation = sdkEventException("The calling thread has been unexpectedly interrupted");
+        try
+        {
+            IRefactoring first = mock(IRefactoring.class);
+            IRefactoring second = mock(IRefactoring.class);
+            when(first.getTitle()).thenReturn("base");
+            java.util.concurrent.atomic.AtomicInteger waits = new java.util.concurrent.atomic.AtomicInteger();
+            MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+                List.of(first, second), new RenameProgress(), () -> { }, () -> {
+                    if (waits.incrementAndGet() > 1)
+                    {
+                        Thread.currentThread().interrupt();
+                        throw cancellation;
+                    }
+                    return null;
+                });
+            verifyZeroInteractions(second);
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertTrue(outcome.barrierError.contains("interrupted"));
+            JsonObject result = JsonParser.parseString(MetadataRenameService.renderBarrierFailure(
+                "Catalog.Catalog", outcome)).getAsJsonObject();
+            assertTrue(result.get("mutationCommitted").getAsBoolean());
+            assertEquals(1, result.get("performedCount").getAsInt());
+        }
+        finally
+        {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    public void testKnownInterruptedCauseRequiresRetainedFlagForInfoOnlyRefusal()
+    {
+        RuntimeException wrapped = new IllegalStateException("wrapper", new InterruptedException("cancelled"));
+        assertRuntimeBarrierRefusalSeverity(wrapped, false, org.eclipse.core.runtime.IStatus.ERROR);
+        assertRuntimeBarrierRefusalSeverity(wrapped, true, org.eclipse.core.runtime.IStatus.INFO);
+    }
+
+    @Test
+    public void testCoincidentUnrelatedFailureAndInterruptIsStillLoggedAsError()
+    {
+        assertRuntimeBarrierRefusalSeverity(new NullPointerException("real failure"), true,
+            org.eclipse.core.runtime.IStatus.ERROR);
+    }
+
+    @Test
+    public void testSdkEventTimeoutEvenWithInterruptIsStillLoggedAsError() throws Exception
+    {
+        assertRuntimeBarrierRefusalSeverity(sdkEventException("Waiting has been interrupted by timeout"), true,
+            org.eclipse.core.runtime.IStatus.ERROR);
+    }
+
+    private static RuntimeException sdkEventException(String message) throws Exception
+    {
+        // Actual target-SDK fixture; no internal package import or production reflection.
+        org.osgi.framework.Bundle core = org.eclipse.core.runtime.Platform.getBundle("com._1c.g5.v8.dt.core");
+        assertNotNull(core);
+        return (RuntimeException)core.loadClass(
+            "com._1c.g5.v8.dt.internal.core.platform.bm.integration.event.BmEventManagerException")
+            .getConstructor(String.class).newInstance(message);
+    }
+
+    private static void assertRuntimeBarrierRefusalSeverity(RuntimeException failure, boolean interrupt,
+        int expectedSeverity)
+    {
+        org.eclipse.core.runtime.ILog log = org.eclipse.core.runtime.Platform.getLog(
+            org.osgi.framework.FrameworkUtil.getBundle(MetadataRenameService.class));
+        List<org.eclipse.core.runtime.IStatus> statuses = new java.util.ArrayList<>();
+        org.eclipse.core.runtime.ILogListener listener = (status, plugin) -> statuses.add(status);
+        log.addLogListener(listener);
+        try
+        {
+            IRefactoring first = mock(IRefactoring.class);
+            MetadataRenameService.ApplyOutcome outcome = applyPreparedRefactoringsWithNoSdkErrors(
+                List.of(first), new RenameProgress(), () -> fail("must not flip flags"), () -> {
+                    if (interrupt) Thread.currentThread().interrupt();
+                    throw failure;
+                });
+            verifyZeroInteractions(first);
+            assertEquals(interrupt, Thread.currentThread().isInterrupted());
+            assertEquals(0, outcome.attempted);
+            assertNotNull(outcome.barrierError);
+            assertFalse(JsonParser.parseString(MetadataRenameService.renderBarrierFailure(
+                "Catalog.Catalog", outcome)).getAsJsonObject().has("mutationCommitted"));
+            if (expectedSeverity == org.eclipse.core.runtime.IStatus.INFO)
+            {
+                assertTrue(outcome.barrierError.contains("interrupted"));
+                assertTrue(statuses.stream().anyMatch(x -> x.getSeverity() == org.eclipse.core.runtime.IStatus.INFO));
+                assertFalse(statuses.stream().anyMatch(x -> x.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR));
+            }
+            else
+            {
+                assertFalse(outcome.barrierError.contains("was interrupted"));
+                assertTrue(statuses.stream().anyMatch(x -> x.getSeverity() == org.eclipse.core.runtime.IStatus.ERROR
+                    && x.getException() == failure));
+            }
+        }
+        finally
+        {
+            Thread.interrupted();
+            log.removeLogListener(listener);
+        }
+    }
+
+    private static MetadataRenameService.ApplyOutcome applyPreparedRefactoringsWithNoSdkErrors(
+        java.util.Collection<IRefactoring> refactorings, RenameProgress progress, Runnable flags,
+        MetadataRenameService.RenameBarrier barrier)
+    {
+        return MetadataRenameService.applyPreparedRefactorings(refactorings, progress, flags, barrier,
+            () -> new TestSdkScope(null, null));
+    }
+
+    @Test
+    public void testSilentSdkResourceFailureCannotReportFirstPerformAsConfirmed()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("base");
+        TestSdkScope scope = new TestSdkScope("SDK resource synchronization failed", null);
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first, second), new RenameProgress(), () -> { }, () -> null, () -> scope);
+        verify(first).perform();
+        verifyZeroInteractions(second);
+        assertEquals(1, scope.closes);
+        assertTrue(result.performed.isEmpty());
+        JsonObject json = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", result)).getAsJsonObject();
+        assertTrue(json.get("mutationOutcomeUnknown").getAsBoolean());
+        assertFalse(json.has("mutationCommitted"));
+        assertFalse(json.get("success").getAsBoolean());
+    }
+
+    @Test
+    public void testLaterSilentSdkFailureStopsThirdPerformAndRetainsOnlyPriorCommit()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        IRefactoring third = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("base");
+        when(second.getTitle()).thenReturn("extension");
+        TestSdkScope firstScope = new TestSdkScope(null, null);
+        TestSdkScope secondScope = new TestSdkScope("SDK resource synchronization failed", null);
+        java.util.concurrent.atomic.AtomicInteger opens = new java.util.concurrent.atomic.AtomicInteger();
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first, second, third), new RenameProgress(), () -> { }, () -> null,
+            () -> opens.incrementAndGet() == 1 ? firstScope : secondScope);
+        verify(first).perform();
+        verify(second).perform();
+        verifyZeroInteractions(third);
+        assertEquals(2, opens.get());
+        assertEquals(1, firstScope.closes);
+        assertEquals(1, secondScope.closes);
+        assertEquals(List.of("base"), result.performed);
+        JsonObject json = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", result)).getAsJsonObject();
+        assertTrue(json.get("mutationCommitted").getAsBoolean());
+        assertEquals(1, json.get("performedCount").getAsInt());
+        assertFalse(json.get("success").getAsBoolean());
+    }
+
+    @Test
+    public void testMissingSdkObserverRefusesBeforeFlagsOrFirstPerform()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        RenameProgress progress = new RenameProgress();
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first), progress, () -> fail("must not flip flags"), () -> null, () -> null);
+        verifyZeroInteractions(first);
+        assertEquals(0, result.attempted);
+        assertNotNull(result.barrierError);
+        assertEquals(RenameProgress.Phase.WAITING_FOR_DERIVED_DATA, progress.getPhase());
+    }
+
+    @Test
+    public void testSdkObserverRegistrationExceptionRefusesBeforeMutation()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first), new RenameProgress(), () -> fail("must not flip flags"), () -> null,
+            () -> { throw new IllegalStateException("registration failed"); });
+        verifyZeroInteractions(first);
+        assertEquals(0, result.attempted);
+        assertNotNull(result.barrierError);
+    }
+
+    @Test
+    public void testSdkObserverCloseFailureMakesReturnedPerformUnconfirmed()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("base");
+        TestSdkScope scope = new TestSdkScope(null, new IllegalStateException("removal failed"));
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first, second), new RenameProgress(), () -> { }, () -> null, () -> scope);
+        verify(first).perform();
+        verifyZeroInteractions(second);
+        assertEquals(1, scope.closes);
+        assertTrue(result.performed.isEmpty());
+        JsonObject json = JsonParser.parseString(MetadataRenameService.renderBarrierFailure("Catalog.Catalog", result)).getAsJsonObject();
+        assertTrue(json.get("mutationOutcomeUnknown").getAsBoolean());
+    }
+
+    @Test
+    public void testThrownSdkFailureStillClosesObserverAndRetainsExistingContinuation()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        IRefactoring second = mock(IRefactoring.class);
+        when(first.getTitle()).thenReturn("base");
+        when(second.getTitle()).thenReturn("extension");
+        org.mockito.Mockito.doThrow(new IllegalStateException("original SDK failure")).when(first).perform();
+        List<TestSdkScope> scopes = new java.util.ArrayList<>();
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first, second), new RenameProgress(), () -> { }, () -> null, () -> {
+                TestSdkScope scope = new TestSdkScope(null, null);
+                scopes.add(scope);
+                return scope;
+            });
+        verify(second).perform();
+        assertNull(result.barrierError);
+        assertEquals(List.of("extension"), result.performed);
+        assertEquals(1, result.errors.size());
+        assertTrue(result.errors.get(0).contains("original SDK failure"));
+        assertEquals(2, scopes.size());
+        assertEquals(1, scopes.get(0).closes);
+        assertEquals(1, scopes.get(1).closes);
+    }
+
+    @Test
+    public void testObserverRegistrationInterruptionClosesWithoutFlagsOrSdkDispatch()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        TestSdkScope scope = new TestSdkScope(null, null);
+        RenameProgress progress = new RenameProgress();
+        java.util.concurrent.atomic.AtomicInteger flags = new java.util.concurrent.atomic.AtomicInteger();
+        try
+        {
+            MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+                List.of(first), progress, flags::incrementAndGet, () -> null, () -> {
+                    Thread.currentThread().interrupt();
+                    return scope;
+                });
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(0, flags.get());
+            assertEquals(0, result.attempted);
+            assertEquals(1, scope.closes);
+            verifyZeroInteractions(first);
+            assertTrue(result.performed.isEmpty());
+            assertTrue(result.barrierError.contains("was interrupted"));
+            assertEquals(RenameProgress.Phase.WAITING_FOR_DERIVED_DATA, progress.getPhase());
+            JsonObject json = JsonParser.parseString(
+                MetadataRenameService.renderBarrierFailure("Catalog.Catalog", result)).getAsJsonObject();
+            assertFalse(json.get("success").getAsBoolean());
+            assertFalse(json.has("mutationCommitted"));
+            assertFalse(json.has("mutationOutcomeUnknown"));
+        }
+        finally
+        {
+            Thread.interrupted();
+        }
+    }
+
+    private static final class TestSdkScope implements MetadataRenameService.SdkFailureScope
+    {
+        private final String failure;
+        private final RuntimeException closeFailure;
+        int closes;
+
+        TestSdkScope(String failure, RuntimeException closeFailure)
+        {
+            this.failure = failure;
+            this.closeFailure = closeFailure;
+        }
+
+        @Override
+        public String failure()
+        {
+            return failure;
+        }
+
+        @Override
+        public void close()
+        {
+            closes++;
+            if (closeFailure != null) throw closeFailure;
+        }
+    }
+
+    @Test
+    public void testNormallyReturnedSdkPerformIsCountedEvenWithNullTitle()
+    {
+        IRefactoring first = mock(IRefactoring.class);
+        MetadataRenameService.ApplyOutcome result = MetadataRenameService.applyPreparedRefactorings(
+            List.of(first), new RenameProgress(), () -> { }, () -> null,
+            () -> new TestSdkScope(null, null));
+        verify(first).perform();
+        assertNull(result.barrierError);
+        assertEquals(1, result.performed.size());
+        assertNull(result.performed.get(0));
+    }
+
 }

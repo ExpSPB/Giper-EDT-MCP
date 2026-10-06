@@ -1,6 +1,6 @@
 # update_database
 
-Apply the current EDT configuration to an infobase. DESTRUCTIVE - restructures data and can evict live sessions. Two-phase: call once WITHOUT confirm to preview, then again with confirm=true to apply. Parameters and examples: get_tool_guide('update_database').
+Apply the current EDT configuration to an infobase. Before applying, call infobase_sessions(action='list'); any non-agent session blocks the update, so clear it with action='terminate' and confirm=true. DESTRUCTIVE: call once WITHOUT confirm to preview, then again with confirm=true to apply. Full parameters and examples: call get_tool_guide('update_database').
 
 ## Parameters
 | Parameter | Required | Type | Description |
@@ -13,6 +13,8 @@ Apply the current EDT configuration to an infobase. DESTRUCTIVE - restructures d
 | externalInfobaseChanges | — | string | How to answer EDT's blocking 'Infobase configuration changes' modal when the infobase was changed outside EDT (Designer, ibcmd, a CLI pipeline) since the last EDT interaction: 'override' (default) keeps the project configuration and overwrites the infobase, 'import' pulls the external changes into the PROJECT sources, 'cancel' aborts the update with an error. Omitted, the modal is still answered (with 'override'), so an unattended call never blocks on it. |
 | standaloneServerPortConflict | — | string | Answer to EDT's standalone-server port-conflict prompt: cancel (default) = fail and name the busy ports; reassign = let EDT move the server to free ports (rewrites its configuration). |
 | terminateRunningClients | — | boolean | Before applying, terminate any 1C client THIS EDT launched on the target infobase to free the exclusive lock (default true). false keeps a running client — the update then fails if that client holds the infobase exclusively. |
+| checkInfobaseSessions | — | boolean | Before applying, refuse when infobase_sessions finds a non-agent standalone-server session (default true). false skips this safety pre-flight. |
+| ignoreBranchBinding | — | boolean | true skips the refusal of a target whose infobase is not bound to the project's current Git branch (default false). |
 
 ## Guide
 Applies the EDT configuration to an application's database (infobase) — the equivalent of "Update database configuration" in Designer. Supports a full reload or an incremental (changes-only) update.
@@ -59,6 +61,30 @@ If you pass `launchConfigurationName` **and** an explicit `applicationId`, the c
 - **confirm** (boolean, default false) — false previews the resolved update without touching the infobase; true applies it.
 - `externalInfobaseChanges` — how to answer EDT's blocking "Infobase configuration changes" modal when the infobase was changed OUTSIDE EDT (Designer, `ibcmd`, a CLI pipeline) since the last EDT interaction: `override` (default) keeps the project configuration and overwrites the infobase, `import` pulls the external changes into the PROJECT sources, `cancel` aborts the update with an error. See ## Infobase changed outside EDT.
 - **terminateRunningClients** (boolean, default true) — before applying, terminate any 1C client THIS EDT launched on the target infobase to free the exclusive lock and stop it running stale modules. Set false to leave a running client in place (the update then fails if that client holds the infobase exclusively). Only affects the apply phase (confirm=true); the preview reports `willTerminateRunningClients` but terminates nothing.
+- **checkInfobaseSessions** (boolean, default true) — after the EDT-launched-client sweep and before entering the update API, list standalone-server sessions and refuse while any non-agent session remains. Set false only when you intentionally accept that risk. The preview reports `willCheckInfobaseSessions`.
+- **ignoreBranchBinding** (boolean, default false) — skips the branch-binding check below. Set true only when you intend to update an infobase that the current branch does not bind.
+
+## Branch binding
+
+When the project's current Git branch has infobases bound to it (`list_git_branches` → Application Bindings), the target's infobase must be one of them, or the call is refused, preview included. It matches by infobase UUID, or, for a standalone server serving a bound file infobase, by the same existing database directory (file-system identity). A branch switch removes the other branches' infobase applications from `get_applications`. A standalone-server application (`ServerApplication.*`) stays listed whichever branch is checked out, so without this check it would receive this branch's configuration. If the current branch has no binding, nothing is checked. The check runs again once the lock is held, before any running client is terminated, and right before every update attempt, including the retry after a stale standalone server is stopped, because the branch can be switched while the consent dialog, the lock, the session check or that stop is waiting. A switch made while a stale standalone server is settling or being stopped can still let that stop act on the old target; the update itself is still refused. The check does not lock out a checkout: a branch switch made from EDT or the git command line in the short window between the check and the moment EDT starts the update (normally milliseconds, longer only while a directory comparison waits on the file system, and whatever EDT itself does before it reads the project) is not caught. Do not switch branches while an update is running.
+
+## Check standalone-server sessions first
+
+Before applying an update, call:
+
+```text
+infobase_sessions(action='list', projectName='MyProject', applicationId='ServerApplication.MyServer')
+```
+
+With the default `checkInfobaseSessions=true`, `update_database(confirm=true)` performs the same check after its existing EDT-launched-client sweep. A readable list containing any non-agent session blocks the update and reports the session details. Clear those sessions with:
+
+```text
+infobase_sessions(action='terminate', projectName='MyProject', applicationId='ServerApplication.MyServer', all=true, confirm=true)
+```
+
+Then retry `update_database`. A session whose raw `app-id` is `Designer` may be EDT's update agent or a human Configurator; the tool cannot distinguish them. It is not treated as a blocker because EDT's agent is present during normal updates, and `all=true` always skips it. If an update fails after seeing Designer sessions, the error names their IDs as likely exclusive-lock holders; terminate one only by its exact full UUID when that risk is intentional.
+
+Reachability matters. `reachable=true` with `sessions=[]` proves the list is empty; `reachable=false` names why it could not be read and is **not** proof that no sessions exist. The update still proceeds on an unreachable pre-flight because EDT may remain able to update through a different path. If that update later fails, its error includes the earlier `unreachableReason`. Set `checkInfobaseSessions=false` only to opt out of this safety pre-flight entirely.
 
 ## Exclusive-lock handling (automatic)
 
@@ -156,21 +182,36 @@ Where the refusal shows up differs: `debug_launch` is fire-and-forget, so it rep
 `debug_status` under `recentLaunchFailures`; `run_yaxunit_tests` reports through its own named job -
 in the initial response, or from `get_job_status(jobId)`.
 
-## Standalone server stuck in STARTED (recovered automatically)
+## Standalone server: "can only start server that is stopped" (handled for you)
 
-EDT starts a standalone server only from the STOPPED state, and it returns the server to STOPPED
-only once it has confirmed that the `ibsrv` process is gone - a confirmation it waits a few seconds
-for. When the process takes longer to disappear, or the wait is interrupted by a cancelled
-operation, EDT keeps the server marked STARTED while the launch that owned it is already dead, and
-refuses every further start with *"Can only start server that is stopped but current server state
-is 2"*. Nothing clears that state by itself: from then on EVERY launch or update of that
-application fails with the same message.
+EDT starts a standalone server only from the STOPPED state, and its own "already running, nothing
+to do" shortcut applies only when the server is STARTED **and** still holds a live launch. Two
+situations therefore reach the platform's refusal *"Can only start server that is stopped but
+current server state is 2"*:
 
-That refusal is now detected and repaired: the server is stopped through EDT's own application
-lifecycle and the operation is retried ONCE. Only the STARTED case is touched - a server that is
-STARTING or STOPPING belongs to an operation still in flight, and is reported ("retry once it
-settles") instead of being stopped underneath it. If the retry fails too, the error says so and
-names the likely reason: an `ibsrv` left over from the previous run still holding the ports.
+- **the stuck server** - EDT returns a server to STOPPED only once it has confirmed the `ibsrv`
+  process is gone, and it waits only a few seconds for that. When the process takes longer, or the
+  wait is interrupted, the server stays marked STARTED with a launch that is already dead, and
+  nothing clears it: from then on EVERY launch or update of that application fails the same way;
+- **the race** - a second operation asks to start the server while a first start is still
+  STARTING; by the time the platform runs the start, the state is already STARTED.
+
+Both are handled before the operation runs: the server state is read first, and
+
+- STARTED with a live launch -> nothing is done (EDT will no-op, exactly as its own check does);
+- STARTED with no live launch -> the server is stopped through EDT's own application lifecycle,
+  then the operation proceeds;
+- STARTING/STOPPING -> the operation waits (bounded, 30s) for the state to settle instead of
+  failing; a server somebody else is starting is never stopped underneath them.
+
+A refusal that still arrives (the state can go stale between the check and the start) is repaired
+the same way and the operation is retried ONCE. If the retry fails too, the error says so and names
+the likely reason: an `ibsrv` left over from the previous run still holding the ports. Whenever
+this operation successfully stopped the server and then failed, it attempts one restore and appends
+the outcome to the error. It never restores a server this operation did not stop.
+
+EDT's own background jobs - notably its external-object dump - can still lose this race on their
+own, which is logged in the workbench log without failing the MCP call.
 
 ---
 *Generated from the live MCP server (`get_tool_guide`) by `docs/generate_tool_docs.py`. Do not edit this file. Edit the tool's description/schema in its Java source and its guide body in `mcp/bundles/fm.giper.edt.mcp.server/guides/<tool>.md`.*

@@ -28,6 +28,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.core.resources.IProject;
 import org.junit.Test;
@@ -35,6 +38,7 @@ import org.junit.Test;
 import com._1c.g5.v8.dt.platform.services.model.FileConnectionString;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
+import fm.giper.edt.mcp.server.utils.InfobaseAccessSupport.StoreResult;
 import com.e1c.g5.dt.applications.ApplicationException;
 import com.e1c.g5.dt.applications.IApplication;
 import com.e1c.g5.dt.applications.IApplicationManager;
@@ -221,6 +225,10 @@ public class CreateInfobaseToolTest
             schema.contains("\"applicationKind\"")); //$NON-NLS-1$
         assertTrue("outputSchema must declare webUrl", schema.contains("\"webUrl\"")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("outputSchema must declare port", schema.contains("\"port\"")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("outputSchema must declare credential verification", //$NON-NLS-1$
+            schema.contains("\"verification\"")); //$NON-NLS-1$
+        assertTrue("outputSchema must declare the verification reason", //$NON-NLS-1$
+            schema.contains("\"verificationReason\"")); //$NON-NLS-1$
     }
 
     @Test
@@ -1059,6 +1067,93 @@ public class CreateInfobaseToolTest
             message.contains("EDT error log")); //$NON-NLS-1$
     }
 
+    /**
+     * #622/M: the read-back's listing is NOT a passive read. {@code getApplications} initialises
+     * every application it reaches, and one with no debug port yet gets a port assigned by a scan
+     * that binds sockets and then flushes the preference store — which is exactly the state a
+     * freshly created application is in. So an ABANDONED poll can still change this project's
+     * applications after {@code create_infobase} has answered, and the message must not let the
+     * caller believe nothing happened.
+     */
+    @Test
+    public void testAnExpiredReadBackSaysTheStateMayStillChange()
+    {
+        String reason = CreateInfobaseTool.readBackDeadlineReason(
+            "the EDT application list for project 'P' did not finish within 30s"); //$NON-NLS-1$
+
+        assertTrue("it must carry the read's own diagnosis", //$NON-NLS-1$
+            reason.contains("did not finish within 30s")); //$NON-NLS-1$
+        assertTrue("it must say the applications may still be changed", //$NON-NLS-1$
+            reason.contains("MAY STILL BE CHANGED")); //$NON-NLS-1$
+        assertTrue("it must name the mutation, not just the possibility of one", //$NON-NLS-1$
+            reason.contains("assigns a debug port")); //$NON-NLS-1$
+        assertTrue("it must name the re-read", reason.contains("get_applications")); //$NON-NLS-1$
+        // The claim this replaced: a deadline reported as one more read that established nothing,
+        // which reads as "and therefore changed nothing".
+        assertFalse("an expired listing must not promise an EDT log entry instead", //$NON-NLS-1$
+            reason.contains("the failure is in the EDT error log")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAReadBackInterruptedMidFlightIsNotBlamedOnAReadFailure() throws Exception
+    {
+        // #622 bounded the read-back, and a bounded wait has an outcome the unbounded call did not:
+        // the WAIT was interrupted. Nothing failed and nothing was logged, so it must produce the
+        // "budget not spent" message, not the one that sends the reader to the EDT error log.
+        IProject project = mock(IProject.class);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        when(mgr.getApplications(project)).thenAnswer(invocation -> {
+            entered.countDown();
+            try
+            {
+                release.await(60, TimeUnit.SECONDS);
+                return Collections.emptyList();
+            }
+            finally
+            {
+                finished.countDown();
+            }
+        });
+        Thread waiter = Thread.currentThread();
+        Thread interrupter = new Thread(() -> {
+            try
+            {
+                entered.await(5, TimeUnit.SECONDS);
+                waiter.interrupt();
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+        }, "read-back-interrupter"); //$NON-NLS-1$
+
+        JsonObject json;
+        try
+        {
+            interrupter.start();
+            json = readBackResult(mgr, project, false, false, null);
+        }
+        finally
+        {
+            Thread.interrupted(); // clear the flag so later tests are unaffected
+            release.countDown();
+            interrupter.join(5_000L);
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        }
+
+        assertTrue("an interrupted read-back establishes no absence", //$NON-NLS-1$
+            json.get("success").getAsBoolean()); //$NON-NLS-1$
+        assertFalse(json.has("boundToProject")); //$NON-NLS-1$
+        String message = json.get("message").getAsString(); //$NON-NLS-1$
+        assertTrue("an interrupted WAIT must name the real reason", //$NON-NLS-1$
+            message.contains("interrupted before its budget was spent")); //$NON-NLS-1$
+        assertFalse("nothing failed, so do not promise an EDT log entry", //$NON-NLS-1$
+            message.contains("EDT error log")); //$NON-NLS-1$
+    }
+
     @Test
     public void testUnreadableApplicationIdentityIsUnverifiedNotAbsence() throws Exception
     {
@@ -1457,6 +1552,219 @@ public class CreateInfobaseToolTest
     }
 
     @Test
+    public void testCredentialReadBackDeadlineStillReportsTheCreatedInfobase() throws Exception
+    {
+        CountDownLatch readBackStarted = new CountDownLatch(1);
+        CountDownLatch releaseReadBack = new CountDownLatch(1);
+        CountDownLatch readBackFinished = new CountDownLatch(1);
+        String password = "deadline-secret-value"; //$NON-NLS-1$
+        InfobaseReference verifiedReference = infobaseRef();
+        CreateInfobaseTool.Credentials credentials =
+            new CreateInfobaseTool.Credentials("Admin", password, null); //$NON-NLS-1$
+
+        try
+        {
+            CreateInfobaseTool.CredentialStoreReport report = CreateInfobaseTool.storeSafely(
+                (publish, writeCommitted, writeAllowed) -> {
+                    // Model the defect precisely: the persistent update returned, then the
+                    // consumer-facing resolveSettings read-back stalled.
+                    writeCommitted.run();
+                    readBackStarted.countDown();
+                    try
+                    {
+                        releaseReadBack.await(30, TimeUnit.SECONDS);
+                        publish.accept(StoreResult.verified(verifiedReference));
+                    }
+                    finally
+                    {
+                        readBackFinished.countDown();
+                    }
+                }, credentials, false, 250L);
+
+            assertTrue("the bounded operation must reach the read-back before timing out", //$NON-NLS-1$
+                readBackStarted.await(5, TimeUnit.SECONDS));
+            assertNull("a deadline with no published result has no verification conclusion", //$NON-NLS-1$
+                report.storeResult);
+            assertTrue(report.note.contains("infobase WAS created")); //$NON-NLS-1$
+            assertTrue(report.note.contains("credential state is UNDETERMINED")); //$NON-NLS-1$
+            assertTrue(report.note.contains("set_infobase_credentials")); //$NON-NLS-1$
+            assertFalse("the timeout must not claim that credentials were stored", //$NON-NLS-1$
+                report.note.contains("Stored connection credentials")); //$NON-NLS-1$
+            assertFalse("the password must never appear in the timeout note", //$NON-NLS-1$
+                report.note.contains(password));
+
+            IProject project = mock(IProject.class);
+            IApplicationManager manager = mock(IApplicationManager.class);
+            // matchingInfobaseApp stubs its own mock; nesting it inside thenReturn(...) makes
+            // Mockito report this stubbing as unfinished. Build it first, as the other tests do.
+            List<IApplication> created =
+                Collections.singletonList(matchingInfobaseApp("created-app")); //$NON-NLS-1$
+            when(manager.getApplications(project)).thenReturn(created);
+            String raw = CreateInfobaseTool.buildSuccessResult(readBackContext(manager, project),
+                infobaseRef(), false, false, report);
+            JsonObject json = JsonParser.parseString(raw).getAsJsonObject();
+
+            assertTrue("credential uncertainty must never fail the committed creation", //$NON-NLS-1$
+                json.get("success").getAsBoolean()); //$NON-NLS-1$
+            assertEquals("created", json.get("action").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+            assertTrue(json.get("message").getAsString().contains("credential state is UNDETERMINED")); //$NON-NLS-1$ //$NON-NLS-2$
+            assertFalse("no read-back means no fabricated verification field", //$NON-NLS-1$
+                json.has("verification")); //$NON-NLS-1$
+            assertFalse("a successful creation must not acquire an error shape", json.has("error")); //$NON-NLS-1$ //$NON-NLS-2$
+            assertFalse("the password must never appear anywhere in the create result", //$NON-NLS-1$
+                raw.contains(password));
+        }
+        finally
+        {
+            releaseReadBack.countDown();
+            assertTrue("the timed-out credential Job must not leak into later tests", //$NON-NLS-1$
+                readBackFinished.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void testCredentialStoreDeadlinePrefersAPublishedResult() throws Exception
+    {
+        CountDownLatch published = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        InfobaseReference verifiedReference = infobaseRef();
+        CreateInfobaseTool.Credentials credentials =
+            new CreateInfobaseTool.Credentials("Admin", "deadline-secret", null); //$NON-NLS-1$ //$NON-NLS-2$
+
+        try
+        {
+            CreateInfobaseTool.CredentialStoreReport report = CreateInfobaseTool.storeSafely(
+                (publish, writeCommitted, writeAllowed) -> {
+                    writeCommitted.run();
+                    publish.accept(StoreResult.verified(verifiedReference));
+                    published.countDown();
+                    try
+                    {
+                        release.await(30, TimeUnit.SECONDS);
+                    }
+                    finally
+                    {
+                        finished.countDown();
+                    }
+                }, credentials, true, 100L);
+
+            assertTrue("the worker must publish before its bounded wait expires", //$NON-NLS-1$
+                published.await(5, TimeUnit.SECONDS));
+            assertNotNull("the deadline must retain the worker's definitive result", //$NON-NLS-1$
+                report.storeResult);
+            assertEquals(StoreResult.Verification.VERIFIED,
+                report.storeResult.verification());
+            assertTrue(report.note.contains("Stored connection credentials")); //$NON-NLS-1$
+            assertFalse(report.note.contains("credential state is UNDETERMINED")); //$NON-NLS-1$
+        }
+        finally
+        {
+            release.countDown();
+            assertTrue("the timed-out credential Job must not leak into later tests", //$NON-NLS-1$
+                finished.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void testCredentialStoreDeadlinePreventsALateSettingsWrite() throws Exception
+    {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        AtomicInteger writes = new AtomicInteger();
+        String password = "late-write-secret"; //$NON-NLS-1$
+        CreateInfobaseTool.Credentials credentials =
+            new CreateInfobaseTool.Credentials("Admin", password, null); //$NON-NLS-1$
+
+        try
+        {
+            CreateInfobaseTool.CredentialStoreReport report = CreateInfobaseTool.storeSafely(
+                (publish, writeCommitted, writeAllowed) -> {
+                    started.countDown();
+                    try
+                    {
+                        release.await(30, TimeUnit.SECONDS);
+                    }
+                    catch (InterruptedException e)
+                    {
+                        Thread.currentThread().interrupt();
+                    }
+                    try
+                    {
+                        if (writeAllowed.getAsBoolean())
+                        {
+                            writes.incrementAndGet();
+                            writeCommitted.run();
+                            publish.accept(StoreResult.verified(infobaseRef()));
+                        }
+                    }
+                    finally
+                    {
+                        finished.countDown();
+                    }
+                }, credentials, true, 100L);
+
+            assertTrue("the credential worker must have started before the timeout", //$NON-NLS-1$
+                started.await(5, TimeUnit.SECONDS));
+            assertTrue(report.note.contains("credential state is UNDETERMINED")); //$NON-NLS-1$
+            assertFalse("timeout reporting must not expose the password", //$NON-NLS-1$
+                report.note.contains(password));
+            assertFalse("a timeout must not claim that the late write succeeded", //$NON-NLS-1$
+                report.note.contains("Stored connection credentials")); //$NON-NLS-1$
+
+            release.countDown();
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+            assertEquals("a worker released after its caller gave up must skip the write", //$NON-NLS-1$
+                0, writes.get());
+        }
+        finally
+        {
+            release.countDown();
+            finished.await(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void verifiedCredentialStoreIsReportedAsVerifiedAndStored()
+    {
+        JsonObject json = credentialVerificationResult(StoreResult.verified(infobaseRef()));
+
+        assertEquals("verified", json.get("verification").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse(json.has("verificationReason")); //$NON-NLS-1$
+        assertTrue(json.get("message").getAsString() //$NON-NLS-1$
+            .contains("Stored connection credentials")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void mismatchedCredentialStoreKeepsItsWarningAndReportsTheReason()
+    {
+        String reason = "Requested values did not match the read-back."; //$NON-NLS-1$
+        JsonObject json = credentialVerificationResult(
+            StoreResult.mismatched(reason, false, infobaseRef()));
+
+        assertEquals("mismatched", json.get("verification").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(reason, json.get("verificationReason").getAsString()); //$NON-NLS-1$
+        assertTrue("mismatched behaviour stays the existing non-fatal warning", //$NON-NLS-1$
+            json.get("message").getAsString().contains("credentials were NOT stored")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void notVerifiableCredentialStoreIsAcceptedWithoutClaimingAConfirmedStore()
+    {
+        String reason = "OS access with empty credentials matches EDT's fallback."; //$NON-NLS-1$
+        JsonObject json = credentialVerificationResult(
+            StoreResult.notVerifiable(reason, infobaseRef()));
+
+        assertEquals("not_verifiable", json.get("verification").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(reason, json.get("verificationReason").getAsString()); //$NON-NLS-1$
+        String message = json.get("message").getAsString(); //$NON-NLS-1$
+        assertTrue(message.contains("EDT accepted")); //$NON-NLS-1$
+        assertTrue(message.contains("could not verify a stored entry")); //$NON-NLS-1$
+        assertFalse(message.contains("Stored connection credentials")); //$NON-NLS-1$
+    }
+
+    @Test
     public void testComparisonItselfThrowingIsUnverified() throws Exception
     {
         // The echo renders fine and the COMPARISON is what throws - the path the previous test could
@@ -1565,6 +1873,27 @@ public class CreateInfobaseToolTest
     {
         String raw = CreateInfobaseTool.buildSuccessResult(readBackContext(mgr, project),
             infobaseRef(), setDefault, register, credNote);
+        return JsonParser.parseString(raw).getAsJsonObject();
+    }
+
+    /** Builds a bound file-infobase create result carrying a chosen credential verification state. */
+    private static JsonObject credentialVerificationResult(StoreResult storeResult)
+    {
+        IProject project = mock(IProject.class);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        // matchingInfobaseApp stubs its own mock, so building it inside thenReturn(...) makes
+        // Mockito report this stubbing as unfinished. Build it first, as the other tests do.
+        List<IApplication> found =
+            Collections.singletonList(matchingInfobaseApp("app-credentials")); //$NON-NLS-1$
+        when(mgr.getApplications(project)).thenReturn(found);
+        CreateInfobaseTool.Credentials credentials =
+            new CreateInfobaseTool.Credentials("Admin", "secret-value", null); //$NON-NLS-1$ //$NON-NLS-2$
+        CreateInfobaseTool.CredentialStoreReport report =
+            CreateInfobaseTool.credentialStoreReport(storeResult, credentials, true);
+
+        String raw = CreateInfobaseTool.buildSuccessResult(readBackContext(mgr, project),
+            infobaseRef(), false, true, report);
+        assertFalse("create_infobase must never return the password", raw.contains("secret-value")); //$NON-NLS-1$ //$NON-NLS-2$
         return JsonParser.parseString(raw).getAsJsonObject();
     }
 

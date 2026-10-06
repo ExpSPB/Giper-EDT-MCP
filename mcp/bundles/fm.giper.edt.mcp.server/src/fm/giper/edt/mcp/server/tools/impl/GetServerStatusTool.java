@@ -36,6 +36,8 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.transport.McpEndpoint;
+import fm.giper.edt.mcp.server.transport.HttpTransport;
+import fm.giper.edt.mcp.server.utils.CheckDescriptionLoader;
 import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe;
 import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe.NativeRenderMode;
 
@@ -52,7 +54,8 @@ import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe.NativeRenderMode;
  * <p>
  * SECURITY: the auth token value is never emitted — only the {@code authEnabled}
  * boolean derived from whether {@link PreferenceConstants#PREF_AUTH_TOKEN} is
- * non-empty. The {@code checksFolder} path is likewise reduced to a boolean
+ * non-blank under the authorizer's normalization. The {@code checksFolder} path is likewise
+ * reduced to a boolean
  * ({@code checksFolderConfigured}), never the path itself. Profile endpoints
  * are built from the listen port and {@link McpEndpoint} prefixes, never from
  * an untrusted Host header.
@@ -225,13 +228,13 @@ public class GetServerStatusTool implements IMcpTool
                 {
                     plainTextMode = store.getBoolean(PreferenceConstants.PREF_PLAIN_TEXT_MODE);
 
-                    // Only whether a checks folder is configured, never the path.
-                    String checksFolder = store.getString(PreferenceConstants.PREF_CHECKS_FOLDER);
-                    checksFolderConfigured = checksFolder != null && !checksFolder.trim().isEmpty();
+                    // Only whether an override folder is configured, never the path. Shipped
+                    // descriptions need no setup; use the loader's definition of the override.
+                    checksFolderConfigured = CheckDescriptionLoader.hasOverrideFolder();
 
                     // Only whether auth is on, never the token value.
                     String authToken = store.getString(PreferenceConstants.PREF_AUTH_TOKEN);
-                    authEnabled = authToken != null && !authToken.isEmpty();
+                    authEnabled = !HttpTransport.normalizeToken(authToken).isEmpty();
                 }
             }
             result.put("plainTextMode", plainTextMode); //$NON-NLS-1$
