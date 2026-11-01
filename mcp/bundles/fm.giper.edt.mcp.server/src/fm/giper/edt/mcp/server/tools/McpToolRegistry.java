@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
@@ -8,10 +8,11 @@
 package fm.giper.edt.mcp.server.tools;
 
 import java.util.Collection;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import fm.giper.edt.mcp.server.Activator;
 
@@ -38,7 +39,8 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      * as unknown, so a bulk update publishes a finished map instead: every reader sees either
      * the whole previous catalogue or the whole new one.
      */
-    private volatile Map<String, IMcpTool> tools = new ConcurrentHashMap<>();
+    private final AtomicReference<Map<String, IMcpTool>> tools =
+        new AtomicReference<>(new ConcurrentHashMap<>());
     private final AtomicLong catalogRevision = new AtomicLong(0);
 
     private McpToolRegistry()
@@ -67,7 +69,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
         {
             return;
         }
-        tools.put(tool.getName(), tool);
+        tools.get().put(tool.getName(), tool);
         catalogRevision.incrementAndGet();
         Activator.logInfo("Registered MCP tool: " + tool.getName()); //$NON-NLS-1$
     }
@@ -99,7 +101,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
             }
         }
         // The single point where readers switch over, and they switch over completely.
-        tools = published;
+        tools.set(published);
         catalogRevision.incrementAndGet();
     }
 
@@ -111,13 +113,13 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      */
     public IMcpTool getTool(String name)
     {
-        IMcpTool tool = tools.get(name);
+        IMcpTool tool = tools.get().get(name);
         if (tool != null)
         {
             return tool;
         }
         String currentName = LEGACY_TOOL_NAMES.get(name);
-        return currentName == null ? null : tools.get(currentName);
+        return currentName == null ? null : tools.get().get(currentName);
     }
 
     /**
@@ -143,18 +145,19 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
     {
         if (name != null)
         {
-            tools.remove(name);
+            tools.get().remove(name);
         }
     }
 
     /**
-     * Returns all registered tools (regardless of enablement state).
+     * Returns an immutable snapshot of all registered tools, sorted by name.
      *
      * @return collection of all tools
      */
     public Collection<IMcpTool> getAllTools()
     {
-        return Collections.unmodifiableCollection(tools.values());
+        return tools.get().values().stream()
+            .sorted(Comparator.comparing(IMcpTool::getName)).toList();
     }
 
     public long getCatalogRevision()
@@ -169,7 +172,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      */
     public int getToolCount()
     {
-        return tools.size();
+        return tools.get().size();
     }
     
     /**
@@ -180,7 +183,7 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
      */
     public void clear()
     {
-        tools = new ConcurrentHashMap<>();
+        tools.set(new ConcurrentHashMap<>());
         catalogRevision.incrementAndGet();
     }
 }

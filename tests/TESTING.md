@@ -93,6 +93,77 @@ True/False` at the end; a dirty fixture fails the run even if every functional t
 tools are covered by `test_create_metadata.py`, `test_modify_metadata.py`,
 `test_delete_metadata.py`, and `test_get_metadata_details.py` (basic / full / `assignable`).
 
+### Plugin transport session wire checks
+
+`tools/test_transport_session.py` uses raw HTTP to retain the actual status codes.
+Run it against the owned plugin port, for example:
+
+```bash
+python tests/e2e/run_all.py --port 9876 --filter _transport_session
+```
+
+The test bodies read protocol state and create/delete only their own sessions;
+normal runner fixture setup and cleanup still apply. The reserved explicit path
+`/mcp/profiles/default` needs no additional named-profile fixture. Use a freshly
+started stand without hot Apply of the default profile: that intentional policy
+change revokes legacy sessionless access. `/mcp` otherwise remains compatible
+with sessionless calls, while an explicit path requires the session header (400).
+Unknown, deleted or cross-path session ids receive 404; cross-path DELETE must
+leave the original session usable. The plugin's repeated/unknown DELETE is 404,
+while the proxy has a separate idempotent-DELETE contract. Do not point this
+plugin-specific module at the proxy. Origin refusal is checked before session
+admission and must grant no CORS access.
+
+### Launch-preset wire checks
+
+Launch EDT separately with `EDT_MCP_TOOL_PRESET=analysis-only` and `code-review`.
+Pass the same value to the test process and disable progressive disclosure on the
+EDT process (`EDT_MCP_PROGRESSIVE_DISCLOSURE=false`). Resolution is lazy and occurs
+once per process, including bridge-first/manual startup. Predefined IDs are
+`all-tools`, `analysis-only`, `code-review`, `development`, case-insensitive and
+trimmed. Null/blank and `custom` use saved selection; explicit `custom` logs INFO
+once. Unknown values are ignored with one WARNING listing predefined IDs.
+
+In Giper the launch preset only restricts each saved profile: effective tools are
+the intersection of its allowlist and the preset, plus mandatory
+`get_server_status`. `all-tools` grants no additional rights. Explicit profile
+endpoints exclude `enable_toolset`. Launch resolution does not persist a preset
+or rewrite saved allowlists. Existing named-profile allowlists are preserved on
+upgrade. The Tools tab edits saved data and shows the launch restriction as a
+read-only note. Edits can change the intersection but cannot lift a launch
+restriction. Its preset choice is per-profile provenance: manual checkbox edits
+retain it; Custom changes provenance without changing the allowlist. A no-op
+Apply keeps existing profile bytes/revisions unchanged.
+
+Seed a disposable profile before launch, then set
+`EDT_MCP_PRESET_PROFILE_ALLOWLIST` to that exact saved comma-separated allowlist.
+This is independent stand-setup evidence; do not derive it from the filtered
+tools/list response. With clean fixtures, run from `tests/e2e`, for example after
+seeding `preset-check` with the following names:
+
+```bash
+export EDT_MCP_PRESET_PROFILE_ID=preset-check
+export EDT_MCP_PRESET_PROFILE_ALLOWLIST=get_server_status,get_tool_guide,list_projects,read_module_source,write_module_source,clean_project,list_git_branches
+EDT_MCP_TOOL_PRESET=analysis-only python -m tools.test_preset_launch
+# Restart the owned EDT stand with code-review, then:
+EDT_MCP_TOOL_PRESET=code-review python -m tools.test_preset_launch
+```
+
+`EDT_MCP_PRESET_PROFILE_ID` selects `/mcp/profiles/<id>` in the standalone entry
+point before its handshake; omit it to test `/mcp`. Use `MCP_HOST`, `MCP_PORT`,
+and `MCP_PROJECT` for the owned stand. The module checks the saved-profile upper
+bound, expected permitted read tools, write-hint keep-list and excluded writers.
+It never invokes a writer and verifies fixture cleanliness before/after. Missing
+preset or saved-allowlist evidence reports a clear skip; other presets skip this
+read-only policy check. These tests do not prove arbitrary named profiles have
+all upstream keep-list tools enabled.
+
+Run this module directly: the normal runner uses `clean_project` during model
+setup/cleanup, and read-only presets disable that tool. Do not invoke the normal
+full schedule against a preset-restricted stand. Each different launch preset
+requires a new EDT process. Unit tests cover stored/runtime separation, named
+profiles, bridge/resources/status consistency and provenance persistence.
+
 ## Test Configuration
 
 The `TestConfiguration/` directory contains a minimal 1C:Enterprise configuration for testing:

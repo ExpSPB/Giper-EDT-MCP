@@ -52,14 +52,14 @@ In every one of the three, nothing is written until EVERY decision has passed: o
 
 EDT reads merge settings from two containers, and WHICH ones it reads depends on its version:
 
-| Container | EDT 2026.1 | EDT 2026.2 | Addressed to |
-| --- | --- | --- | --- |
-| `.zip` | read | read | the exact STRING `<main>_<other>_<ancestor>` over the three project names |
-| `.xml` | read | **refused** (`Can read merge settings from a zip file`) | nobody - any comparison reads it |
+| Container | EDT 2025.2.5 | EDT 2026.1 | EDT 2026.2 | Addressed to |
+| --- | --- | --- | --- | --- |
+| `.zip` | read | read | read | the exact STRING `<main>_<other>_<ancestor>` over the three project names |
+| `.xml` | read | read | **refused** (`Can read merge settings from a zip file`) | nobody - any comparison reads it |
 
 - **A `.zip` needs a live comparison.** EDT restores the entry whose name, minus its extension, equals `<mainProject>_<otherProject>_<ancestorProject>` of the comparison being launched, and IGNORES an archive that holds no such entry: it applies nothing and reports nothing. Those names come from the comparison's own descriptors, so a `.zip` target with no comparison to name it is REFUSED here rather than filled in with a guess. Start the comparison with `compare_configurations` first; naming it with `comparisonId` gets the rules checked as well.
 - **The address is a STRING - not one comparison run, and not a set.** EDT restores the entry whose name equals `<mainProject>_<otherProject>_<ancestorProject>` for the comparison being launched. A later comparison over the same three projects - other revisions, another day - finds the same entry and applies these decisions again; that is the risk to watch: stale decisions re-applied, not decisions silently dropped. Two properties of that string matter before you rely on it. The three names are POSITIONAL, so swapping main and other spells a different entry. And `_` is a legal character in a project name, so the mapping is **not one-to-one**: main `A_B` with other `C` spells the same entry as main `A` with other `B_C`. Only one direction can be relied on - a comparison whose own three names spell a DIFFERENT string finds nothing here - and nothing promises that no other comparison can reach the file. The file's own NAME is yours to choose; only the entry name and the lower-case `.zip` matter.
-- **An `.xml` needs nothing** and is read by any comparison - but only on EDT 2026.1. Every `.xml` this tool writes says so in its report.
+- **An `.xml` needs no comparison address** and is read by any comparison on EDT 2025.2.5 and EDT 2026.1. EDT 2026.2 requires the addressed `.zip` container instead.
 - **On EDT 2026.2 the useful path is TWO runs**, because the only container that version reads is the one that needs a live comparison:
   1. `compare_configurations` - start a comparison and keep its `comparisonId`;
   2. wait until that comparison has FINISHED - `get_job_status` on the job it returned, and `get_comparison_node` says whether the tree can be read. This step is not optional if you pass `comparisonId`: naming a comparison whose tree is still building is REFUSED. Dropping `comparisonId` skips the wait at the price of a `NOT VALIDATED` report; the zip is addressed either way;

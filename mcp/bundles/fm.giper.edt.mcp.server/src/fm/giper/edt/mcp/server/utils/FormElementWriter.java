@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.emf.common.util.EList;
@@ -45,27 +47,47 @@ import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.model.IModelObjectFactory;
 import com._1c.g5.v8.dt.core.naming.ITopObjectFqnGenerator;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
+import com._1c.g5.v8.dt.form.model.AbstractDataPath;
+import com._1c.g5.v8.dt.form.model.DataPath;
+import com._1c.g5.v8.dt.form.model.Form;
+import com._1c.g5.v8.dt.form.model.FormAttributeColumn;
+import com._1c.g5.v8.dt.form.model.FormFactory;
+import com._1c.g5.v8.dt.form.model.PropertyInfo;
+import com._1c.g5.v8.dt.form.service.FormIdentifierService;
+import com._1c.g5.v8.dt.form.service.attribute.FormAttributeManagementService;
+import com._1c.g5.v8.dt.form.service.datasourceinfo.IDataSourceInfoAssociationService;
+import com._1c.g5.v8.dt.form.util.PropertyInfoUtil;
 import com._1c.g5.v8.dt.mcore.McoreFactory;
 import com._1c.g5.v8.dt.mcore.McorePackage;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.mcore.TypeItem;
 import com._1c.g5.v8.dt.mcore.util.McoreUtil;
+import com._1c.g5.v8.dt.metadata.dbview.DbViewFieldTableDef;
+import com._1c.g5.v8.dt.metadata.mdclass.AccountingRegister;
+import com._1c.g5.v8.dt.metadata.mdclass.AccumulationRegister;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
+import com._1c.g5.v8.dt.metadata.mdclass.BasicTabularSection;
+import com._1c.g5.v8.dt.metadata.mdclass.CalculationRegister;
+import com._1c.g5.v8.dt.metadata.mdclass.ChartOfCalculationTypes;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.DataProcessorAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.ScriptVariant;
 import com._1c.g5.v8.dt.platform.IEObjectProvider;
 import com._1c.g5.v8.dt.platform.version.Version;
+import com._1c.g5.wiring.ServiceAccess;
 import fm.giper.edt.mcp.server.Activator;
-import fm.giper.edt.mcp.server.tools.base.WriteScope;
+import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
+import fm.giper.edt.mcp.server.tools.base.WriteScope;
 
 /**
  * Shared writer for the editable FORM CONTENT model ({@code com._1c.g5.v8.dt.form.model.Form}, a
  * separate top object reached from a {@code BasicForm} mdo via {@code getForm()}).
  *
- * <p>The whole form package is touched REFLECTIVELY (by feature / classifier name) so this bundle
- * needs no compile-time dependency on the form model. Form-MEMBER editing (adding a form attribute,
+ * <p>Form elements are constructed reflectively (by feature / classifier name); nested platform
+ * paths are validated through EDT's typed data-tree service. Form-MEMBER editing (adding a form attribute,
  * command or visual item, binding event handlers, moving items) resolves everything on the editable
  * form instance's own EPackage; form-OBJECT creation ({@link #createForm}) resolves the form
  * EPackage from the global EMF package registry by its nsURI ({@code http://g5.1c.ru/v8/dt/form} -
@@ -81,12 +103,45 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
  */
 public final class FormElementWriter
 {
+    /** Same service-access pattern as UseAlwaysSupport; replaceable only by headless tests. */
+    static Supplier<IDataSourceInfoAssociationService> dataSourcesSource =
+        () -> ServiceAccess.get(IDataSourceInfoAssociationService.class);
+
+    static Supplier<FormAttributeManagementService> attributeManagementSource = () -> {
+        Activator activator = Activator.getDefault();
+        return activator == null ? null : activator.getFormAttributeManagementService();
+    };
+
+    @FunctionalInterface
+    interface TableResolver
+    {
+        AdditionalColumnTable resolve(EObject formModel, String ownerName, List<String> tableSegments);
+    }
+
+    static TableResolver additionalColumnTables = FormElementWriter::resolveAdditionalColumnTable;
+
+    /** Canonical path and both-language child names from EDT, or an actionable refusal. */
+    static final class AdditionalColumnTable
+    {
+        final List<String> segments;
+        final List<String> childNames;
+        final String error;
+
+        AdditionalColumnTable(List<String> segments, List<String> childNames, String error)
+        {
+            this.segments = segments;
+            this.childNames = childNames;
+            this.error = error;
+        }
+    }
+
     // Form-model feature names (reflective).
     private static final String FEATURE_ITEMS = "items"; //$NON-NLS-1$
     private static final String FEATURE_ATTRIBUTES = "attributes"; //$NON-NLS-1$
     /** The COLUMNS of a form attribute whose value type is an in-memory collection (issue #295). */
     private static final String FEATURE_COLUMNS = "columns"; //$NON-NLS-1$
     private static final String FEATURE_ADDITIONAL_COLUMNS = "additionalColumns"; //$NON-NLS-1$
+    private static final String FEATURE_TABLE_PATH = "tablePath"; //$NON-NLS-1$
     private static final String FEATURE_FORM_COMMANDS = "formCommands"; //$NON-NLS-1$
     /** The inferred commands of a {@code FormStandardCommandSource}; transient, but readable. */
     private static final String FEATURE_STANDARD_COMMANDS = "commands"; //$NON-NLS-1$
@@ -266,10 +321,16 @@ public final class FormElementWriter
          * dozen call sites, and a column is not that (issue #295).
          */
         public final String ownerAttributeName;
+        /**
+         * The table segments of an additional-column address - every segment between {@code Column} and
+         * the column name, as the caller spelled them ({@code [Goods]} for {@code ...Column.Goods.Extra},
+         * {@code [Sub, Deep]} for {@code ...Column.Sub.Deep.Extra}); {@code null} for every other shape.
+         */
+        public final List<String> tablePathSegments;
 
         /**
          * How many trailing FQN segments {@link #parse} consumed for this member - 2 for a form-level
-         * member or handler, 4 for an item-level handler AND for an attribute column. Carried rather
+         * member or handler, 4 for an item-level handler or direct column, 5 or more for an additional column. Carried rather
          * than re-derived: a caller that needs the OWNING FORM cuts this many segments off the
          * address, and re-deriving it from a boolean got the column shape wrong (it is not
          * item-level, yet its tail is 4), which scoped a marker filter to the ATTRIBUTE instead of
@@ -287,12 +348,20 @@ public final class FormElementWriter
         FormMemberRef(String formPath, String kindToken, String name, String itemKindToken,
             String itemName, String ownerAttributeName, int tailSegments)
         {
+            this(formPath, kindToken, name, itemKindToken, itemName, ownerAttributeName, null, tailSegments);
+        }
+
+        FormMemberRef(String formPath, String kindToken, String name, String itemKindToken,
+            String itemName, String ownerAttributeName, List<String> tablePathSegments, int tailSegments)
+        {
             this.formPath = formPath;
             this.kindToken = kindToken;
             this.name = name;
             this.itemKindToken = itemKindToken;
             this.itemName = itemName;
             this.ownerAttributeName = ownerAttributeName;
+            this.tablePathSegments = tablePathSegments == null ? null
+                : Collections.unmodifiableList(new ArrayList<>(tablePathSegments));
             this.tailSegments = tailSegments;
         }
 
@@ -306,6 +375,29 @@ public final class FormElementWriter
         public boolean isAttributeColumn()
         {
             return ownerAttributeName != null;
+        }
+
+        /** Whether this column belongs to an additionalColumns entry rather than owner.columns. */
+        public boolean isAdditionalColumn()
+        {
+            return tablePathSegments != null;
+        }
+
+        /**
+         * The stored {@code tablePath} this additional-column address names: the owning attribute, then
+         * every table segment ({@code Object.Goods}, {@code Rows.Sub.Deep}); {@code null} for every other
+         * shape.
+         */
+        public List<String> additionalTablePath()
+        {
+            if (tablePathSegments == null)
+            {
+                return null;
+            }
+            List<String> path = new ArrayList<>();
+            path.add(ownerAttributeName);
+            path.addAll(tablePathSegments);
+            return path;
         }
     }
 
@@ -325,6 +417,9 @@ public final class FormElementWriter
      *       form ITEM) and its {@code CommonForm.FormName.ItemKind.ItemName.Handler.Event} variant</li>
      *   <li>{@code Type.Object.Form.FormName.Attribute.AttrName.Column.ColumnName} (a COLUMN of a
      *       collection-typed form attribute) and its {@code CommonForm.} variant - issue #295</li>
+     *   <li>{@code ...Form.F.Attribute.Object.Column.Table.Name}: an additional column, every segment
+     *       between {@code Column} and the name being its table path ({@code ...Column.Sub.Deep.Name}
+     *       for a nested one), also supported on CommonForm</li>
      * </ul>
      * The form-element kind tokens are NOT confused with the mdclass member tokens because a mdclass
      * member FQN never carries a form token at position 2 nor starts with {@code CommonForm} followed
@@ -363,6 +458,14 @@ public final class FormElementWriter
         {
             // Item-level handler: ItemKind.ItemName.Handler.Event.
             return new FormMemberRef(formPath, p[rem + 2], p[rem + 3], p[rem], p[rem + 1], tail);
+        }
+        if (tail >= 5 && isColumnToken(p[rem + 2]) && kindForToken(p[rem]) == Kind.ATTRIBUTE)
+        {
+            // Additional column: Attribute.AttrName.Column.<Table>...<Table>.ColumnName. Every segment
+            // between Column and the name is the table path, so a nested entry (Rows.Sub.Deep) is
+            // addressable too; the tail length alone tells it from a collection column (tail 4).
+            return new FormMemberRef(formPath, p[rem + 2], p[p.length - 1], null, null,
+                p[rem + 1], Arrays.asList(p).subList(rem + 3, p.length - 1), tail);
         }
         if (tail == 4 && isColumnToken(p[rem + 2]) && kindForToken(p[rem]) == Kind.ATTRIBUTE)
         {
@@ -1170,16 +1273,34 @@ public final class FormElementWriter
      */
     public static boolean writeEditableForm(FormEditContext ctx, String taskName, FormWork work)
     {
-        String contentFormFqn = BmTransactions.<String>write(ctx.bmModel, taskName, (tx, pm) ->
+        return writeEditableForm(ctx, taskName, work, false);
+    }
+
+    /**
+     * {@link #writeEditableForm(FormEditContext, String, FormWork)}, optionally committed through the
+     * model's global editing context ({@link BmTransactions#writeInGlobalContext}) so EDT's own save
+     * also deletes the files of the top objects the work detached.
+     *
+     * @param ctx the resolved context (see {@link #resolveForEdit})
+     * @param taskName a short BM task name for diagnostics
+     * @param work the mutation to run on the content form
+     * @param globalContext {@code true} to commit through the global editing context
+     * @return whether the export persisted the change to disk
+     */
+    public static boolean writeEditableForm(FormEditContext ctx, String taskName, FormWork work,
+        boolean globalContext)
+    {
+        BmTransactions.BmOperation<String> operation = (tx, pm) ->
         {
             EObject formModel = editableFormInTx(ctx, tx);
             work.run(formModel, tx);
-            normalizeFormAttributeIds(formModel);
-            normalizeFormItemIds(formModel);
-            normalizeFormCommandIds(formModel);
+            normalizeFormIds(formModel);
             // The content Form is a separate top object serialized to Form.form - export ITS fqn.
             return (formModel instanceof IBmObject) ? ((IBmObject)formModel).bmGetFqn() : null;
-        });
+        };
+        String contentFormFqn = globalContext
+            ? BmTransactions.writeInGlobalContext(ctx.bmModel, taskName, operation)
+            : BmTransactions.write(ctx.bmModel, taskName, operation);
         // The write is committed at this point whether or not an export can be submitted below, and
         // the export IS skipped when the content form has no FQN to name. Stating the project here
         // is what keeps that branch a write with a known scope instead of a call that says nothing
@@ -1283,13 +1404,29 @@ public final class FormElementWriter
         String bindTarget, String titleLanguage, String title, boolean russianAutoNames,
         String[] createdKind)
     {
+        return createMember(formModel, kind, name, parentName, bindTarget, titleLanguage, title,
+            russianAutoNames, createdKind, null, null);
+    }
+
+    /**
+     * Creates a member with a separate table token for an additional column; bindTarget stays a
+     * binding. A created additional column reports the canonical table path of the entry it landed in
+     * through {@code createdTablePath[0]} (when the array is non-null), read from that entry itself.
+     */
+    public static String createMember(EObject formModel, Kind kind, String name, String parentName, // NOSONAR the out-parameters mirror createdKind
+        String bindTarget, String titleLanguage, String title, boolean russianAutoNames,
+        String[] createdKind, String tablePathToken, String[] createdTablePath)
+    {
         switch (kind)
         {
             case ATTRIBUTE:
                 return createAttribute(formModel, name, titleLanguage, title, createdKind);
             case COLUMN:
-                // The bind/parent slot carries the OWNING form attribute's name (issue #295).
-                return createColumn(formModel, name, parentName, titleLanguage, title, createdKind);
+                // The owner comes from the address; the table token never aliases a binding.
+                return tablePathToken == null
+                    ? createColumn(formModel, name, parentName, titleLanguage, title, createdKind)
+                    : createAdditionalColumn(formModel, name, parentName, tablePathToken,
+                        titleLanguage, title, createdKind, createdTablePath);
             case COMMAND:
                 return createCommand(formModel, name, titleLanguage, title, createdKind);
             case PARAMETER:
@@ -1642,9 +1779,7 @@ public final class FormElementWriter
             // attribute is actually present (it gates createField's dotted-path acceptance). Issue #208.
             seedObjectFields(content, russianAutoNames, objectFields);
         }
-        normalizeFormAttributeIds(content);
-        normalizeFormItemIds(content);
-        normalizeFormCommandIds(content);
+        normalizeFormIds(content);
         return content;
     }
 
@@ -2409,7 +2544,13 @@ public final class FormElementWriter
         {
             return "Form attribute column already exists: " + ownerAttributeName + '.' + name; //$NON-NLS-1$
         }
-        EObject column = createFromFeatureType(owner, FEATURE_COLUMNS);
+        return addAttributeColumn(formModel, owner, name, titleLanguage, title, createdKind);
+    }
+
+    private static String addAttributeColumn(EObject formModel, EObject container, String name,
+        String titleLanguage, String title, String[] createdKind)
+    {
+        EObject column = createFromFeatureType(container, FEATURE_COLUMNS);
         if (column == null)
         {
             throw modelLacks("Cannot create an attribute column for this form model."); //$NON-NLS-1$
@@ -2419,9 +2560,285 @@ public final class FormElementWriter
         setDefaultValueType(column);
         applyFormAttributeDefaults(column);
         applyTitle(column, titleLanguage, title);
-        addToList(owner, FEATURE_COLUMNS, column);
+        addToList(container, FEATURE_COLUMNS, column);
         recordKind(column, createdKind);
         return null;
+    }
+
+    private static String createAdditionalColumn(EObject formModel, String name, String ownerName, // NOSONAR mirrors createMember
+        String tableToken, String titleLanguage, String title, String[] createdKind, String[] createdTablePath)
+    {
+        EObject owner = findFormAttribute(formModel, ownerName);
+        if (owner == null)
+        {
+            return "Form attribute not found: " + ownerName + ". Create it first, then add its columns."; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (hasCollectionValueType(owner))
+        {
+            return "Form attribute '" + ownerName + "' is an in-memory collection (" //$NON-NLS-1$ //$NON-NLS-2$
+                + String.join(", ", valueTypeNames(owner)) + "); its columns are addressed as '...Attribute." //$NON-NLS-1$ //$NON-NLS-2$
+                + ownerName + ".Column.<Name>'."; //$NON-NLS-1$
+        }
+        if (isDynamicListAttribute(owner))
+        {
+            return "Form attribute '" + ownerName + "' is a dynamic list; its columns come from the query."; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        AdditionalColumnTable table = additionalColumnTables.resolve(formModel, stringFeature(owner, FEATURE_NAME),
+            List.of(tableToken));
+        if (table.error != null)
+        {
+            return table.error;
+        }
+        EObject entry = additionalColumnEntry(owner, table.segments);
+        if (findByName(referenceList(entry, FEATURE_COLUMNS), name) != null || containsName(table.childNames, name))
+        {
+            return additionalColumnClash(name, table.segments);
+        }
+        if (entry == null)
+        {
+            entry = createFromFeatureType(owner, FEATURE_ADDITIONAL_COLUMNS);
+            if (entry == null)
+            {
+                throw modelLacks("Cannot create additional columns for this form model."); //$NON-NLS-1$
+            }
+            // A NEW entry takes EDT's canonical spelling. A reused entry, even a case variant, keeps its
+            // stored path: its bound items' dataPaths are keyed on it, EDT compares PathKey exactly, and a
+            // rewrite here would detach them without rewriting their paths (issue #737 review).
+            entry.eSet(entry.eClass().getEStructuralFeature(FEATURE_TABLE_PATH), newDataPath(formModel, table.segments));
+            addToList(owner, FEATURE_ADDITIONAL_COLUMNS, entry);
+        }
+        String error = addAttributeColumn(formModel, entry, name, titleLanguage, title, createdKind);
+        if (error == null && createdTablePath != null)
+        {
+            createdTablePath[0] = tablePathOfEntry(entry);
+        }
+        return error;
+    }
+
+    private static boolean containsName(List<String> names, String name)
+    {
+        return names.stream().anyMatch(candidate -> candidate != null && candidate.equalsIgnoreCase(name));
+    }
+
+    private static String additionalColumnClash(String name, List<String> path)
+    {
+        return "Form attribute column already exists or conflicts with a table property: '" + name //$NON-NLS-1$
+            + "' under '" + String.join(".", path) + "'. Pick a different name."; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    }
+
+    /**
+     * Canonical stored table path of an already-resolved additional column, copied out of the model;
+     * {@code null} when the column is null or does not sit in an additional-column entry.
+     */
+    public static String tablePathOfAdditionalColumn(EObject column)
+    {
+        return column == null || column.eContainer() == null ? null : tablePathOfEntry(column.eContainer());
+    }
+
+    private static String tablePathOfEntry(EObject entry)
+    {
+        EObject tablePath = singleReference(entry, FEATURE_TABLE_PATH);
+        return tablePath == null ? null : String.join(".", segmentsOf(tablePath)); //$NON-NLS-1$
+    }
+
+    /** The same EDT table-child name check used by creation and form rename. */
+    public static String additionalColumnNameError(EObject formModel, FormMemberRef ref, String newName)
+    {
+        if (!ref.isAdditionalColumn() || ref.name.equalsIgnoreCase(newName))
+        {
+            return null;
+        }
+        EObject owner = findFormAttribute(formModel, ref.ownerAttributeName);
+        if (owner == null)
+        {
+            return "Form attribute not found: " + ref.ownerAttributeName; //$NON-NLS-1$
+        }
+        AdditionalColumnTable table = additionalColumnTables.resolve(formModel, stringFeature(owner, FEATURE_NAME),
+            ref.tablePathSegments);
+        return table.error != null ? table.error
+            : containsName(table.childNames, newName) ? additionalColumnClash(newName, table.segments) : null;
+    }
+
+    /** A deliberate "EDT's derived data is still being built" signal: refused as retryable, never logged. */
+    private static final class ModelNotReady extends RuntimeException
+    {
+        private static final long serialVersionUID = 1L;
+
+        ModelNotReady()
+        {
+            super(null, null, false, false);
+        }
+    }
+
+    private static AdditionalColumnTable resolveAdditionalColumnTable(EObject formModel, String ownerName,
+        List<String> tableSegments)
+    {
+        String path = ownerName + '.' + String.join(".", tableSegments); //$NON-NLS-1$
+        try
+        {
+            if (!(formModel instanceof Form))
+            {
+                throw new IllegalStateException("the form model is not EDT's Form: " //$NON-NLS-1$
+                    + (formModel == null ? null : formModel.eClass().getName()));
+            }
+            EObject ownerAttribute = findFormAttribute(formModel, ownerName);
+            if (ownerAttribute == null)
+            {
+                return refusal("Form attribute not found: " + ownerName); //$NON-NLS-1$
+            }
+            if (valueTypeNames(ownerAttribute).isEmpty())
+            {
+                // An attribute with no declared type has no data tree below it, and never will: the
+                // tree is derived from the type. Telling the caller to retry would loop forever.
+                return refusal("Form attribute '" + ownerName + "' has no value type, so it shows no " //$NON-NLS-1$ //$NON-NLS-2$
+                    + "tabular section yet. Give the attribute an object type first (modify_metadata " //$NON-NLS-1$
+                    + "property 'type'), then add the column."); //$NON-NLS-1$
+            }
+            IDataSourceInfoAssociationService sources = dataSourcesSource.get();
+            if (sources == null)
+            {
+                return serviceUnavailable(path, "data source"); //$NON-NLS-1$
+            }
+            PropertyInfo owner = sources.findPropertyInfo((Form)formModel,
+                (AbstractDataPath)newDataPath(formModel, List.of(ownerName)));
+            // Only a MISSING tree is a readiness delay. A built tree may be empty - an object type with
+            // no attributes and no tabular sections has nothing below it - and no retry changes that.
+            if (owner == null || owner.getPropertyInfos() == null)
+            {
+                throw new ModelNotReady();
+            }
+            // Each table segment is resolved below the one before it, so a nested entry (Rows.Sub.Deep)
+            // is reached as well as a tabular section right under the attribute.
+            List<String> canonical = new ArrayList<>();
+            canonical.add(ownerName);
+            PropertyInfo parent = owner;
+            PropertyInfo info = null;
+            for (int i = 0; i < tableSegments.size(); i++)
+            {
+                String token = tableSegments.get(i);
+                List<String> lookup = new ArrayList<>(canonical);
+                lookup.add(token);
+                info = sources.findPropertyInfo((Form)formModel, (AbstractDataPath)newDataPath(formModel, lookup));
+                if (info == null)
+                {
+                    // EDT path keys may be case-sensitive, so a case variant is found here. An alias (the
+                    // Russian name) is found too, but only so that the refusal below can name the table.
+                    info = childNamed(parent, token);
+                }
+                if (info == null)
+                {
+                    List<String> tables = new ArrayList<>();
+                    for (PropertyInfo child : parent.getPropertyInfos())
+                    {
+                        if (PropertyInfoUtil.isTable(child))
+                        {
+                            tables.add(child.getName());
+                        }
+                    }
+                    return refusal("No such table '" + token + (i == 0 //$NON-NLS-1$
+                        ? "' on form attribute '" + ownerName : "' under '" + String.join(".", canonical)) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        + "'; available tables: " //$NON-NLS-1$
+                        + (tables.isEmpty() ? "(none)" : String.join(", ", tables)) + '.'); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                if (info.getName() == null)
+                {
+                    throw new ModelNotReady();
+                }
+                if (!info.getName().equalsIgnoreCase(token))
+                {
+                    // One grammar everywhere: every other tool resolves a table segment by its programmatic
+                    // name (ignoring case), so an alias accepted here would create a column no later address
+                    // could reach.
+                    List<String> corrected = new ArrayList<>(canonical.subList(1, canonical.size()));
+                    corrected.add(info.getName());
+                    corrected.addAll(tableSegments.subList(i + 1, tableSegments.size()));
+                    return refusal("Address the table of form attribute '" + ownerName + "' by its name '" //$NON-NLS-1$ //$NON-NLS-2$
+                        + info.getName() + "', not '" + token + "': '...Attribute." + ownerName + ".Column." //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                        + String.join(".", corrected) + ".<Name>'."); //$NON-NLS-1$ //$NON-NLS-2$
+                }
+                canonical.add(info.getName());
+                if (i < tableSegments.size() - 1)
+                {
+                    if (info.getPropertyInfos() == null)
+                    {
+                        throw new ModelNotReady();
+                    }
+                    parent = info;
+                }
+            }
+            FormAttributeManagementService management = attributeManagementSource.get();
+            if (management == null)
+            {
+                return serviceUnavailable(path, "form-attribute management"); //$NON-NLS-1$
+            }
+            if (info == null || !management.isSupportingColumn(info) || !additionalColumnSource(info))
+            {
+                return refusal("Table path '" + path //$NON-NLS-1$
+                    + "' does not support additional columns in EDT. Choose a supported object tabular section."); //$NON-NLS-1$
+            }
+            if (info.getPropertyInfos() == null)
+            {
+                throw new ModelNotReady();
+            }
+            List<String> names = new ArrayList<>();
+            for (PropertyInfo child : info.getPropertyInfos())
+            {
+                names.add(child.getName());
+                names.add(child.getNameRu());
+            }
+            return new AdditionalColumnTable(canonical, names, null);
+        }
+        catch (ModelNotReady notReady)
+        {
+            return refusal("Cannot resolve additional-column table '" //$NON-NLS-1$
+                + path + "': EDT's form model is not ready; retry when the model is ready."); //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            // Not a readiness delay: a platform API change or a defect. Logged, and not worded as a retry.
+            Activator.logError("Failed to resolve the additional-column table " + path, e); //$NON-NLS-1$
+            return refusal("Cannot resolve additional-column table '" + path + "': EDT failed (" //$NON-NLS-1$ //$NON-NLS-2$
+                + e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage()) //$NON-NLS-1$ //$NON-NLS-2$
+                + "). This is not a model-not-ready delay, so retrying will not help; see the EDT log."); //$NON-NLS-1$
+        }
+    }
+
+    private static AdditionalColumnTable refusal(String error)
+    {
+        return new AdditionalColumnTable(List.of(), List.of(), error);
+    }
+
+    /** The child of {@code parent} named {@code token} in any case, by its English or Russian name. */
+    private static PropertyInfo childNamed(PropertyInfo parent, String token)
+    {
+        for (PropertyInfo child : parent.getPropertyInfos())
+        {
+            if (containsName(Arrays.asList(child.getName(), child.getNameRu()), token))
+            {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private static AdditionalColumnTable serviceUnavailable(String path, String service)
+    {
+        return refusal("Cannot resolve additional-column table '" + path + "': EDT's " + service //$NON-NLS-1$ //$NON-NLS-2$
+            + " service is unavailable in this EDT, so retrying will not help; see the EDT log."); //$NON-NLS-1$
+    }
+
+    /** Mirrors addAttributeColumn's additional-container arm, after EDT's complete support predicate. */
+    private static boolean additionalColumnSource(PropertyInfo info)
+    {
+        Object source = info.getSource();
+        if (source == null || source instanceof FormAttributeColumn || source instanceof BasicTabularSection
+            || source instanceof DataProcessorAttribute || source instanceof AccumulationRegister
+            || source instanceof AccountingRegister || source instanceof CalculationRegister)
+        {
+            return true;
+        }
+        return source instanceof DbViewFieldTableDef
+            && ((DbViewFieldTableDef)source).getMdObject() instanceof ChartOfCalculationTypes;
     }
 
     /**
@@ -2436,6 +2853,8 @@ public final class FormElementWriter
         COLLECTION_ATTRIBUTE,
         /** A dynamic-list attribute: EDT auto-fills the query fields, the model knows no columns. */
         DYNAMIC_LIST_ATTRIBUTE,
+        /** A platform collection resolved by EDT, with explicitly authored field columns. */
+        PLATFORM_COLLECTION,
         /** A form attribute that is neither - it has no rows, so no table can bind to it. */
         SCALAR_ATTRIBUTE,
         /** A bare name that is no form attribute at all. */
@@ -2451,8 +2870,8 @@ public final class FormElementWriter
 
     /**
      * Classifies a table's {@code dataPath} by the NATURE of what it names - not by a chain of
-     * refusals. A dotted path addresses metadata (a tabular section); a bare name addresses a form
-     * attribute, and then the attribute's own shape decides.
+     * refusals. A dotted path addresses metadata or a platform row source; a bare name addresses
+     * a form attribute, and then the attribute's own shape decides.
      *
      * @param formModel the tx-bound form model
      * @param dataPath the table's data path
@@ -2463,19 +2882,9 @@ public final class FormElementWriter
         int dot = dataPath.indexOf('.');
         if (dot > 0)
         {
-            // A dotted path is the tabular-section shape: the head is an OBJECT-typed form attribute
-            // and the tail names a section of that object type, which lives outside this model. The
-            // head does NOT have to be the main attribute - a form can carry a second object-typed
-            // attribute and bind a table to its sections, so keying this on isMainAttribute() would
-            // refuse a legitimate 'BackupOrder.Goods'.
-            //
-            // What IS decidable here is the opposite: an attribute whose own value already holds rows
-            // (a collection, a dynamic list) has no nested row source at all - its sub-names are
-            // columns and query fields - so a dotted path through it addresses something a table
-            // cannot bind to. A head of UNKNOWN type is left alone deliberately: telling an
-            // unidentified type from "DocumentObject.SalesOrder" needs the metadata this writer does
-            // not see, and guessing would refuse working forms. Recorded as a gap rather than closed
-            // by a heuristic.
+            // A collection/list head's sub-names are columns, not row sources. Other non-main
+            // heads are decided by EDT's data tree in planDataPath: a metadata tabular section
+            // keeps its original binding, while a platform collection has no generated columns.
             EObject head = findByName(referenceList(formModel, FEATURE_ATTRIBUTES),
                 dataPath.substring(0, dot));
             if (head != null && (hasCollectionValueType(head) || isDynamicListAttribute(head)
@@ -2483,7 +2892,8 @@ public final class FormElementWriter
             {
                 return TableBinding.NESTED_IN_ATTRIBUTE;
             }
-            return TableBinding.TABULAR_SECTION;
+            return head != null && !isMainAttribute(head) ? TableBinding.PLATFORM_COLLECTION
+                : TableBinding.TABULAR_SECTION;
         }
         EObject attribute = findByName(referenceList(formModel, FEATURE_ATTRIBUTES), dataPath);
         if (attribute == null)
@@ -3896,21 +4306,18 @@ public final class FormElementWriter
         {
             return indexOfSibling(destNames, position.substring(POS_AFTER.length()).trim(), movedName) + 1;
         }
-        try
-        {
-            int idx = Integer.parseInt(position.trim());
-            if (idx < 0)
-            {
-                throw Refusals.argument("Invalid position index '" + position //$NON-NLS-1$
-                    + "': must be zero or positive."); //$NON-NLS-1$
-            }
-            return idx;
-        }
-        catch (NumberFormatException e)
+        Integer idx = JsonUtils.parseIntegralInt(position);
+        if (idx == null)
         {
             throw Refusals.argument("Invalid position '" + position //$NON-NLS-1$
                 + "'. Expected an integer index, 'first', 'last', 'before:<name>' or 'after:<name>'."); //$NON-NLS-1$
         }
+        if (idx.intValue() < 0)
+        {
+            throw Refusals.argument("Invalid position index '" + JsonUtils.canonicalIntegerText(position) //$NON-NLS-1$
+                + "': must be zero or positive."); //$NON-NLS-1$
+        }
+        return idx.intValue();
     }
 
     /** The 0-based index of {@code sibling} in {@code destNames} (case-insensitive), or throws. */
@@ -4061,16 +4468,177 @@ public final class FormElementWriter
         return sb.toString();
     }
 
-    /** A FormField bound to a form attribute via its dataPath (a generic InputField the user can refine). */
-    private static String createField(EObject formModel, String name, String parentName, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
-        String attrName, String titleLanguage, String title, boolean russianAutoNames,
-        String[] createdKind)
+    /** A validated path, containing no live data-tree object or cross-transaction model reference. */
+    public static final class DataPathPlan
     {
-        if (attrName == null || attrName.isEmpty())
+        private final String path;
+        private final TableBinding tableBinding;
+        private final String error;
+
+        private DataPathPlan(String path, TableBinding tableBinding, String error)
         {
-            return "A form field needs a 'dataPath' property naming the form attribute it shows " //$NON-NLS-1$
-                + "(e.g. {name:'dataPath', value:'Price'})."; //$NON-NLS-1$
+            this.path = path;
+            this.tableBinding = tableBinding;
+            this.error = error;
         }
+
+        /** @return an actionable refusal, or null when the path can be applied */
+        public String error()
+        {
+            return error;
+        }
+    }
+
+    /** The one binding predicate for create and modify; legacy collection/list/object rules stay here. */
+    private static DataPathPlan planDataPath(EObject formModel, Kind kind, String path)
+    {
+        if (path == null || path.isBlank())
+        {
+            return new DataPathPlan(path, null, kind == Kind.TABLE
+                ? "A table needs a 'dataPath' property naming its row source (e.g. 'Object.Goods')." //$NON-NLS-1$
+                : "A form field needs a 'dataPath' property naming the form attribute it shows " //$NON-NLS-1$
+                    + "(e.g. {name:'dataPath', value:'Price'})."); //$NON-NLS-1$
+        }
+        List<String> segments = Arrays.asList(path.split("\\.", -1)); //$NON-NLS-1$
+        if (segments.stream().anyMatch(String::isBlank))
+        {
+            return new DataPathPlan(path, null, "dataPath '" + path //$NON-NLS-1$
+                + "' has an empty segment. Supply a dot-separated path from a form attribute."); //$NON-NLS-1$
+        }
+        TableBinding binding = kind == Kind.TABLE ? tableBindingOf(formModel, path) : null;
+        String error = kind == Kind.TABLE ? tableBindingError(binding, path) : fieldDataPathError(formModel, path);
+        if (error != null)
+        {
+            return new DataPathPlan(path, binding, error);
+        }
+        EObject head = findByName(referenceList(formModel, FEATURE_ATTRIBUTES), segments.get(0));
+        boolean platformPath = segments.size() > 1 && head != null && !hasCollectionValueType(head)
+            && !isDynamicListAttribute(head) && !isMainAttribute(head);
+        if (!platformPath)
+        {
+            return new DataPathPlan(path, binding, null);
+        }
+        if (!(formModel instanceof Form))
+        {
+            return new DataPathPlan(path, binding, "Cannot resolve dataPath '" + path //$NON-NLS-1$
+                + "': EDT's form model is not ready. A nested path outside a dynamic list, collection " //$NON-NLS-1$
+                + "or main object attribute needs EDT's data tree; retry when the model is ready."); //$NON-NLS-1$
+        }
+        return platformDataPath((Form)formModel, kind, path, segments);
+    }
+
+    private static DataPathPlan platformDataPath(Form form, Kind kind, String path, List<String> segments)
+    {
+        try
+        {
+            IDataSourceInfoAssociationService dataSources = dataSourcesSource.get();
+            if (dataSources == null)
+            {
+                throw new IllegalStateException("service unavailable"); //$NON-NLS-1$
+            }
+            DataPath query = FormFactory.eINSTANCE.createDataPath();
+            query.getSegments().addAll(segments);
+            PropertyInfo info = dataSources.findPropertyInfo(form, query);
+            if (info == null)
+            {
+                DataPath prefix = FormFactory.eINSTANCE.createDataPath();
+                for (String segment : segments)
+                {
+                    prefix.getSegments().add(segment);
+                    if (dataSources.findPropertyInfo(form, prefix) == null)
+                    {
+                        return new DataPathPlan(path, null, "dataPath '" + path //$NON-NLS-1$
+                            + "' does not resolve in EDT's data tree; first unresolved segment '" //$NON-NLS-1$
+                            + segment + "'. Choose a path offered by EDT for this form attribute."); //$NON-NLS-1$
+                    }
+                }
+                throw new IllegalStateException("the data tree changed while resolving the path"); //$NON-NLS-1$
+            }
+            if (kind == Kind.TABLE && !PropertyInfoUtil.isTable(info))
+            {
+                return new DataPathPlan(path, null, "dataPath '" + path //$NON-NLS-1$
+                    + "' resolves in EDT, but is not a table row source. Bind the table to a collection " //$NON-NLS-1$
+                    + "and add its properties as Fields under that table."); //$NON-NLS-1$
+            }
+            AbstractDataPath english = info.getDataPath(ScriptVariant.ENGLISH);
+            if (english == null || english.getSegments().size() != segments.size())
+            {
+                throw new IllegalStateException("EDT did not provide the path's English segments"); //$NON-NLS-1$
+            }
+            List<String> canonical = new ArrayList<>(english.getSegments());
+            // PropertyInfo builds names without runtime row indices; keep each requested suffix.
+            for (int i = 0; i < segments.size(); i++)
+            {
+                int bracket = segments.get(i).indexOf('[');
+                if (bracket >= 0)
+                {
+                    canonical.set(i, canonical.get(i) + segments.get(i).substring(bracket));
+                }
+            }
+            TableBinding binding = kind == Kind.TABLE
+                ? (info.getSource() instanceof BasicTabularSection ? TableBinding.TABULAR_SECTION
+                    : TableBinding.PLATFORM_COLLECTION) : null;
+            return new DataPathPlan(String.join(".", canonical), binding, null); //$NON-NLS-1$
+        }
+        catch (RuntimeException e)
+        {
+            throw modelLacks("Cannot resolve dataPath '" + path //$NON-NLS-1$
+                + "': EDT's IDataSourceInfoAssociationService or form data tree is not ready. " //$NON-NLS-1$
+                + "Retry when the form model and service are ready. " + e.getMessage()); //$NON-NLS-1$
+        }
+    }
+
+    /** Validate a Field/Table rebind inside the same transaction that will apply it. */
+    public static DataPathPlan planDataPathChange(EObject formModel, EObject item, String path)
+    {
+        Kind kind = addressableKind(item);
+        if (kind != Kind.FIELD && kind != Kind.TABLE)
+        {
+            return new DataPathPlan(path, null, "'dataPath' is assignable only on a Field/Table FQN. " //$NON-NLS-1$
+                + "Use get_metadata_details to find the field or table to rebind."); //$NON-NLS-1$
+        }
+        DataPathPlan plan = planDataPath(formModel, kind, path);
+        if (plan.error != null || kind != Kind.TABLE
+            || sameDataPath(singleReference(item, "dataPath"), Arrays.asList(plan.path.split("\\.")))) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            return plan;
+        }
+        if (!referenceList(item, FEATURE_ITEMS).isEmpty())
+        {
+            return new DataPathPlan(path, null, "Table '" + FormStructureReader.nameOf(item) //$NON-NLS-1$
+                + "' has existing columns/items. Remove them with delete_metadata first, then set " //$NON-NLS-1$
+                + "its dataPath; each old column would otherwise keep its previous binding."); //$NON-NLS-1$
+        }
+        if (singleReference(item, FEATURE_EXT_INFO) != null)
+        {
+            return new DataPathPlan(path, null, "Table '" + FormStructureReader.nameOf(item) //$NON-NLS-1$
+                + "' has binding-specific extInfo. Delete it with delete_metadata and recreate it " //$NON-NLS-1$
+                + "with create_metadata using the new dataPath so its binding configuration is rebuilt."); //$NON-NLS-1$
+        }
+        return plan;
+    }
+
+    /** Apply a plan in the write transaction; preserve dynamic-list UseAlways registration. */
+    public static void applyDataPathChange(EObject formModel, EObject item, DataPathPlan plan)
+    {
+        if (plan.error != null)
+        {
+            throw new IllegalArgumentException(plan.error);
+        }
+        List<String> previous = new ArrayList<>(segmentsOf(singleReference(item, "dataPath"))); //$NON-NLS-1$
+        buildDataPath(formModel, item, plan.path);
+        // Same pruning as removeFormMember: the old path's UseAlways registration goes once no
+        // authored item is bound to it any more.
+        removeUnusedDynamicListUseAlwaysPath(formModel, previous);
+        if (addressableKind(item) == Kind.TABLE)
+        {
+            syncTableExtInfo(formModel, item);
+        }
+    }
+
+    /** Form-local field rules, shared by the binding planner and therefore by create and modify. */
+    private static String fieldDataPathError(EObject formModel, String attrName)
+    {
         // The field binds to a form attribute by name. A DOTTED path binds to a SUB-attribute of the
         // head form attribute, and WHICH head it is decides what the tail may name:
         //   - a COLLECTION attribute (ValueTable / ValueTree, e.g. "Rows.Price"): the tail must name // NOSONAR explanatory prose, not commented-out code
@@ -4130,16 +4698,21 @@ public final class FormElementWriter
                         + ".Column." + columnName + "', then bind the field to it."; //$NON-NLS-1$ //$NON-NLS-2$
                 }
             }
-            else if (!isDynamicListAttribute(boundAttribute) && !isMainAttribute(boundAttribute))
-            {
-                return "'" + attrName + "' is a nested data path, but '" + headAttr + "' is neither a " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                    + "dynamic list, nor a collection attribute, nor the form's main object attribute. " //$NON-NLS-1$
-                    + "A field binds to a form attribute by name (e.g. 'Price'); a dotted path is for a " //$NON-NLS-1$
-                    + "dynamic-list column (e.g. 'List.Number', where the list has a custom query), for " //$NON-NLS-1$
-                    + "a ValueTable / ValueTree attribute's column (e.g. 'Rows.Price'), or for an " //$NON-NLS-1$
-                    + "object sub-attribute (e.g. 'Object.Number')."; //$NON-NLS-1$
-            }
         }
+        return null;
+    }
+
+    /** A FormField bound to a form attribute via its dataPath (a generic InputField the user can refine). */
+    private static String createField(EObject formModel, String name, String parentName, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
+        String attrName, String titleLanguage, String title, boolean russianAutoNames,
+        String[] createdKind)
+    {
+        DataPathPlan pathPlan = planDataPath(formModel, Kind.FIELD, attrName);
+        if (pathPlan.error != null)
+        {
+            return pathPlan.error;
+        }
+        attrName = pathPlan.path;
         if (findItem(formModel, name) != null)
         {
             return ERR_ITEM_EXISTS + name;
@@ -4209,19 +4782,13 @@ public final class FormElementWriter
         List<String> columnAttributeNames, String titleLanguage, String title, boolean russianAutoNames,
         String[] createdKind)
     {
-        if (dataPath == null || dataPath.isEmpty())
+        DataPathPlan pathPlan = planDataPath(formModel, Kind.TABLE, dataPath);
+        if (pathPlan.error != null)
         {
-            return "A table needs a 'dataPath' property naming the tabular section it shows " //$NON-NLS-1$
-                + "(e.g. {name:'dataPath', value:'Object.Goods'})."; //$NON-NLS-1$
+            return pathPlan.error;
         }
-        // Classify the binding FIRST and refuse an unbuildable one before anything is created, so a
-        // refused table leaves nothing behind (issue #295 review).
-        TableBinding binding = tableBindingOf(formModel, dataPath);
-        String bindingErr = tableBindingError(binding, dataPath);
-        if (bindingErr != null)
-        {
-            return bindingErr;
-        }
+        dataPath = pathPlan.path;
+        TableBinding binding = pathPlan.tableBinding;
         if (findItem(formModel, name) != null)
         {
             return ERR_ITEM_EXISTS + name;
@@ -4287,6 +4854,9 @@ public final class FormElementWriter
                     }
                 }
                 break;
+            case PLATFORM_COLLECTION:
+                // EDT owns these columns; the caller adds each desired one as a Field under the table.
+                break;
             case DYNAMIC_LIST_ATTRIBUTE:
                 // A dynamic list's columns are its QUERY fields, which EDT auto-fills - the form model
                 // knows none of them, and a list has no LineNumber field either. So the table is
@@ -4322,28 +4892,35 @@ public final class FormElementWriter
      * flagged {@code form-data-path}. The on-disk serializer re-joins the segments with dots, so this
      * stays byte-identical to a designer-built path.
      */
-    @SuppressWarnings("unchecked")
     private static void buildDataPath(EObject formModel, EObject item, String pathString)
     {
         EStructuralFeature dpFeat = item.eClass().getEStructuralFeature("dataPath"); //$NON-NLS-1$
-        EObject dataPath = createFromClassifier(formModel, "DataPath"); //$NON-NLS-1$
-        if (dpFeat instanceof EReference && dataPath != null)
+        if (dpFeat instanceof EReference)
         {
-            EStructuralFeature segFeat = dataPath.eClass().getEStructuralFeature("segments"); //$NON-NLS-1$
-            if (segFeat != null && dataPath.eGet(segFeat) instanceof EList<?>)
+            EObject dataPath = newDataPath(formModel, Arrays.asList(pathString.split("\\."))); //$NON-NLS-1$
+            if (dataPath != null)
             {
-                EList<String> segments = (EList<String>)dataPath.eGet(segFeat);
-                for (String part : pathString.split("\\.")) //$NON-NLS-1$
-                {
-                    if (!part.isEmpty())
-                    {
-                        segments.add(part);
-                    }
-                }
+                item.eSet(dpFeat, dataPath);
+                registerDynamicListUseAlwaysPath(formModel, dataPath);
             }
-            item.eSet(dpFeat, dataPath);
-            registerDynamicListUseAlwaysPath(formModel, dataPath);
         }
+    }
+
+    /** Shared segment builder for item bindings and additional-column table paths. */
+    @SuppressWarnings("unchecked")
+    static EObject newDataPath(EObject formModel, List<String> segments)
+    {
+        EObject dataPath = createFromClassifier(formModel, "DataPath"); //$NON-NLS-1$
+        if (dataPath != null)
+        {
+            EStructuralFeature feature = dataPath.eClass().getEStructuralFeature("segments"); //$NON-NLS-1$
+            if (feature != null && dataPath.eGet(feature) instanceof EList<?>)
+            {
+                EList<String> target = (EList<String>)dataPath.eGet(feature);
+                segments.stream().filter(segment -> !segment.isEmpty()).forEach(target::add);
+            }
+        }
+        return dataPath;
     }
 
     /**
@@ -4407,7 +4984,7 @@ public final class FormElementWriter
         return result;
     }
 
-    /** Platform-equivalent DataPath equality: same number of segments, case-insensitive per segment. */
+    /** Address equality is case-insensitive; persisted EDT PathKey values still need canonical spelling. */
     private static boolean sameDataPath(EObject dataPath, List<String> expectedSegments)
     {
         List<String> actualSegments = segmentsOf(dataPath);
@@ -4525,23 +5102,88 @@ public final class FormElementWriter
     /** Whether any remaining authored form item references the path. */
     private static boolean formReferencesDataPath(EObject formModel, List<String> path)
     {
+        return itemBoundTo(formModel, path) != null;
+    }
+
+    /**
+     * The first authored form item bound to {@code path} in any language of its binding (see
+     * {@link #bindsAnySpelling}).
+     *
+     * @param formModel the form content model
+     * @param path the data path segments
+     * @return the item, or {@code null} when no item is bound to the path
+     */
+    public static EObject itemBoundTo(EObject formModel, List<String> path)
+    {
+        List<List<String>> spellings = Collections.singletonList(path);
+        return itemBoundTo(formModel, dataPath -> bindsAnySpelling(dataPath, spellings));
+    }
+
+    /**
+     * Whether an ITEM's binding names one of {@code spellings}: a legacy multi-language path in every
+     * language it stores, not only the active one; segments compare case-insensitively. A stored
+     * use-always registration is read by its active language instead, as EDT reads it.
+     *
+     * @param dataPath the item's data path object, may be {@code null}
+     * @param spellings the path's spellings
+     * @return whether the binding names the path
+     */
+    @SuppressWarnings("unchecked")
+    public static boolean bindsAnySpelling(EObject dataPath, List<List<String>> spellings)
+    {
+        if (dataPath == null)
+        {
+            return false;
+        }
+        EStructuralFeature languages = dataPath.eClass().getEStructuralFeature("paths"); //$NON-NLS-1$
+        if (languages instanceof EReference && languages.isMany() && dataPath.eGet(languages) instanceof List<?>)
+        {
+            for (Object language : (List<Object>)dataPath.eGet(languages))
+            {
+                if (language instanceof EObject && bindsAnySpelling((EObject)language, spellings))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        for (List<String> spelling : spellings)
+        {
+            if (sameDataPath(dataPath, spelling))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The first authored form item whose {@code dataPath} satisfies {@code boundTo}.
+     *
+     * @param formModel the form content model
+     * @param boundTo tests an item's data path object (never {@code null})
+     * @return the item, or {@code null} when no item's path qualifies
+     */
+    public static EObject itemBoundTo(EObject formModel, Predicate<EObject> boundTo)
+    {
         EClassifier formItem = formModel.eClass().getEPackage().getEClassifier(ECLASS_FORM_ITEM);
         if (!(formItem instanceof EClass))
         {
-            return false;
+            return null;
         }
         Deque<EObject> pending = new ArrayDeque<>();
         pushFormItems(formModel, (EClass)formItem, pending);
         while (!pending.isEmpty())
         {
             EObject item = pending.pop();
-            if (sameDataPath(singleReference(item, "dataPath"), path)) //$NON-NLS-1$
+            EObject dataPath = singleReference(item, "dataPath"); //$NON-NLS-1$
+            if (dataPath != null && boundTo.test(dataPath))
             {
-                return true;
+                return item;
             }
             pushFormItems(item, (EClass)formItem, pending);
         }
-        return false;
+        return null;
     }
 
     /**
@@ -5516,6 +6158,18 @@ public final class FormElementWriter
     }
 
     /**
+     * {@link #createHandler(EObject, String, String, Version, String, String, String[], String)} for a
+     * caller that does not know the handler's FQN: a refused duplicate then names "this same handler
+     * FQN" as the address of the route that changes the existing binding.
+     */
+    public static String createHandler(EObject container, String eventName, String procName, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
+        Version version, String langCode, String callType, String[] createdKind)
+    {
+        return createHandler(container, eventName, procName, version, langCode, callType, createdKind,
+            null);
+    }
+
+    /**
      * Binds an event {@code Handler} to {@code container} (the form itself or a form item): resolves
      * the requested {@code eventName} against the element's AVAILABLE events; on no match returns an
      * error LISTING the available events localized to {@code langCode} (the user-required advisory).
@@ -5530,15 +6184,21 @@ public final class FormElementWriter
      * method-only call type and is rejected for a form event. A blank {@code callType} reproduces the
      * base-handler behavior exactly (one handler per event).
      *
+     * <p>A refused DUPLICATE (a command's existing action, an event already bound) names what is bound
+     * and the route that changes it on {@code handlerFqn} - the address the caller sent - so the caller
+     * does not have to discover the binding before it can change it (issue #628).</p>
+     *
      * <p>This writes only the {@code .form} model; the BSL handler procedure itself (like the base
      * path) is left to {@code write_module_source}.
      *
      * @param version the platform version (to resolve the element's platform Type and its events)
      * @param callType {@code null}/blank for a base handler; otherwise Before | After | Instead
+     * @param handlerFqn the handler FQN the caller addressed, or {@code null} when unknown (a duplicate
+     *     then names "this same handler FQN")
      * @return {@code null} on success, or a human-readable error message
      */
     public static String createHandler(EObject container, String eventName, String procName, // NOSONAR reflective/form or transport god-method; further extraction deferred (reflective code)
-        Version version, String langCode, String callType, String[] createdKind)
+        Version version, String langCode, String callType, String[] createdKind, String handlerFqn)
     {
         final boolean extension = callType != null && !callType.trim().isEmpty();
         if (ECLASS_FORM_COMMAND.equals(container.eClass().getName()))
@@ -5548,7 +6208,7 @@ public final class FormElementWriter
                 return "Call-type interception is not supported for a form command action; " //$NON-NLS-1$
                     + "callType applies to a form ITEM event."; //$NON-NLS-1$
             }
-            return createCommandAction(container, eventName, procName, createdKind);
+            return createCommandAction(container, eventName, procName, createdKind, handlerFqn);
         }
         // A form ROOT always holds handlers, so there the missing list is the model's shape.
         if ("Form".equals(container.eClass().getName()) && !holdsHandlerList(container)) //$NON-NLS-1$
@@ -5625,7 +6285,19 @@ public final class FormElementWriter
         EStructuralFeature ownerHandlersFeat =
             matched.owner.eClass().getEStructuralFeature(KEY_HANDLERS);
         return bindEventHandler(matched.owner, ownerHandlersFeat, matched.event, eventName, procName,
-            callType, createdKind);
+            callType, createdKind, handlerFqn);
+    }
+
+    /**
+     * {@link #bindEventHandler(EObject, EStructuralFeature, EObject, String, String, String, String[], String)}
+     * without the handler's FQN: a refused duplicate then names "this same handler FQN" as the
+     * address of its route. Package-visible for the headless unit test.
+     */
+    static String bindEventHandler(EObject container, EStructuralFeature handlersFeat, EObject matched, // NOSONAR signature is inherent / public-or-test-contract; a parameter-object would not improve clarity
+        String eventName, String procName, String callType, String[] createdKind)
+    {
+        return bindEventHandler(container, handlersFeat, matched, eventName, procName, callType,
+            createdKind, null);
     }
 
     /**
@@ -5639,10 +6311,12 @@ public final class FormElementWriter
      * {@code com._1c.g5.v8.dt.form.model} import. Package-visible for the headless unit test (the
      * model-dependent event resolution above is exercised by the e2e suite / live verification).
      *
+     * @param handlerFqn the handler FQN the caller addressed, or {@code null}: a refused base
+     *     duplicate names it as the address of the route that changes the binding (issue #628)
      * @return {@code null} on success, or a human-readable error message
      */
     static String bindEventHandler(EObject container, EStructuralFeature handlersFeat, EObject matched, // NOSONAR reflective/form or transport god-method; further extraction deferred (reflective code)
-        String eventName, String procName, String callType, String[] createdKind)
+        String eventName, String procName, String callType, String[] createdKind, String handlerFqn)
     {
         final boolean extension = callType != null && !callType.trim().isEmpty();
         EClass baseEhType = ((EReference)handlersFeat).getEReferenceType();
@@ -5691,7 +6365,7 @@ public final class FormElementWriter
                 {
                     continue;
                 }
-                return "An event handler for '" + eventName + "' already exists on this element."; //$NON-NLS-1$ //$NON-NLS-2$
+                return eventHandlerExistsRefusal(container, existing, eventName, handlerFqn);
             }
             if (existingIsExtension && callTypeLiteral.getName().equals(callTypeNameOf(existing)))
             {
@@ -5718,6 +6392,64 @@ public final class FormElementWriter
         addToList(container, KEY_HANDLERS, handler);
         recordKind(handler, createdKind);
         return null;
+    }
+
+    /**
+     * The refusal for a second plain binding of an element / form event (issue #628): it names the
+     * procedure the event is already bound to and the route that changes it on {@code handlerFqn} -
+     * modify_metadata with a {@code procedure} property rebinds it, delete_metadata removes it.
+     *
+     * <p>Both routes resolve a handler FQN to the FIRST binding of its event around the element
+     * ({@link #findFormHandler}), interception handlers included. The route is therefore named only
+     * when that first binding IS this handler; when an extension's interception of the same event
+     * comes first, the route would change the wrong binding, so only the procedure is named.</p>
+     *
+     * @param container the handler-list owner the binding was attempted on (the element or its
+     *     ext-info)
+     * @param existing the base handler already bound to the event
+     * @param eventName the event leaf the caller addressed
+     * @param handlerFqn the handler FQN the caller sent, or {@code null}
+     * @return the refusal text
+     */
+    private static String eventHandlerExistsRefusal(EObject container, EObject existing, String eventName,
+        String handlerFqn)
+    {
+        String bound = "An event handler for '" + eventName + "' already exists on this element: it is " //$NON-NLS-1$ //$NON-NLS-2$
+            + "bound to " + boundProcedurePhrase(stringFeature(existing, FEATURE_NAME)); //$NON-NLS-1$
+        if (findFormHandler(handlerAddressOwner(container), eventName) != existing)
+        {
+            return bound + "."; //$NON-NLS-1$
+        }
+        return bound + ". create_metadata binds only an event the element does not handle yet - to " //$NON-NLS-1$
+            + "bind the event to another procedure, call modify_metadata on " //$NON-NLS-1$
+            + handlerRouteAddress(handlerFqn) + " with a 'procedure' property; to remove the binding, " //$NON-NLS-1$
+            + "call delete_metadata on it."; //$NON-NLS-1$
+    }
+
+    /**
+     * The element a handler FQN names when the binding list is {@code container}: the container
+     * itself, or - for a list held inside an ext-info (issues #592, #651) - the element that ext-info
+     * belongs to, which is what {@link #resolveHandlerContainer} hands the rebind and delete paths.
+     */
+    private static EObject handlerAddressOwner(EObject container)
+    {
+        EObject parent = container.eContainer();
+        return parent != null && singleReference(parent, FEATURE_EXT_INFO) == container ? parent
+            : container;
+    }
+
+    /** The route's address in a duplicate refusal: the FQN the caller sent, or a pointer back to it. */
+    private static String handlerRouteAddress(String handlerFqn)
+    {
+        return handlerFqn == null || handlerFqn.isBlank() ? "this same handler FQN" //$NON-NLS-1$
+            : "'" + handlerFqn + "'"; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** What a binding is bound to: "procedure 'P'", or the plain fact that it names no procedure. */
+    private static String boundProcedurePhrase(String procedure)
+    {
+        return procedure == null || procedure.isEmpty() ? "a handler with no procedure name" //$NON-NLS-1$
+            : "procedure '" + procedure + "'"; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     /**
@@ -5781,10 +6513,11 @@ public final class FormElementWriter
      * {@code Action} (or its Russian equivalent). Builds the same
      * {@code FormCommandHandlerContainer}/{@code CommandHandler} pair the platform's
      * {@code ModelUtils.setCommandHandler} builds; the BSL procedure name defaults to the COMMAND name
-     * (the EDT UI's suggestion), not the event name.
+     * (the EDT UI's suggestion), not the event name. A command has ONE action: a second bind is
+     * refused by {@link #commandActionExistsRefusal}, which names what is bound and how to change it.
      */
     private static String createCommandAction(EObject command, String eventName, String procName,
-        String[] createdKind)
+        String[] createdKind, String handlerFqn)
     {
         if (!isActionToken(eventName))
         {
@@ -5798,8 +6531,7 @@ public final class FormElementWriter
         }
         if (command.eGet(actionFeat) != null)
         {
-            return "An event handler for '" + COMMAND_ACTION_EVENT //$NON-NLS-1$
-                + "' already exists on this command."; //$NON-NLS-1$
+            return commandActionExistsRefusal(command, handlerFqn);
         }
         EObject container = createFromClassifier(command, ECLASS_FORM_COMMAND_HANDLER_CONTAINER);
         EObject handler = createFromClassifier(command, ECLASS_COMMAND_HANDLER);
@@ -5818,8 +6550,99 @@ public final class FormElementWriter
         return null;
     }
 
-    /** Whether the handler FQN leaf addresses a command's Action (English or Russian). */
-    private static boolean isActionToken(String eventName)
+    /**
+     * The refusal for a second create of a form command's action (issue #628). The reporter met an
+     * action it did not know was there and could see neither what it was bound to nor how to change
+     * it, so the text names the command, what its action is bound to - read by
+     * {@link FormStructureReader#actionHandlerOf}, the very text the Commands table's "Action handler"
+     * column shows - and the route that changes it. The route follows the action's SHAPE, because
+     * only one shape can be rebound:
+     * <ul>
+     * <li>a single {@code handler} ({@code FormCommandHandlerContainer}) is rebound by modify_metadata
+     * on the same handler FQN with a {@code procedure} property ({@link #rebindHandler} renames it),
+     * or removed by delete_metadata;</li>
+     * <li>a {@code handlers} list ({@code FormExtensionCommandHandlerContainer} - an extension's
+     * interception) cannot be rebound, which {@link #rebindHandler} says too, so only the removal of
+     * the whole action is named;</li>
+     * <li>an action holding neither - a {@code FormCommandHandlerContainer} whose optional
+     * {@code handler} is unset - has no procedure to rebind. delete_metadata removes an action of ANY
+     * shape on this address ({@link #findFormHandler} hands it the action itself), after which the
+     * same create binds a fresh one, so that pair is the route named.</li>
+     * </ul>
+     * Package-visible for the headless unit test.
+     *
+     * @param command the form command whose action already exists
+     * @param handlerFqn the handler FQN the caller sent, or {@code null} - the route then points at
+     *     "this same handler FQN"
+     * @return the refusal text
+     */
+    static String commandActionExistsRefusal(EObject command, String handlerFqn)
+    {
+        String commandName = stringFeature(command, FEATURE_NAME);
+        String exists = "The action of form command '" + (commandName == null ? "" : commandName) //$NON-NLS-1$ //$NON-NLS-2$
+            + "' already exists"; //$NON-NLS-1$
+        EObject action = singleReference(command, FEATURE_ACTION);
+        if (action == null)
+        {
+            return exists + "."; //$NON-NLS-1$
+        }
+        String bound = FormStructureReader.actionHandlerOf(command);
+        if (singleReference(action, FEATURE_HANDLER) != null)
+        {
+            return exists + ": it is bound to " + boundProcedurePhrase(bound) //$NON-NLS-1$
+                + ". create_metadata binds only an action the command does not have yet - to bind the " //$NON-NLS-1$
+                + "command to another procedure, call modify_metadata on " + handlerRouteAddress(handlerFqn) //$NON-NLS-1$
+                + " with a 'procedure' property; to remove the binding, call delete_metadata on it."; //$NON-NLS-1$
+        }
+        if (holdsHandlerList(action))
+        {
+            return exists + ": it holds " + (bound.isEmpty() //$NON-NLS-1$
+                ? "an empty extension interception handler list" //$NON-NLS-1$
+                : "the extension interception handlers '" + bound + "'") //$NON-NLS-1$ //$NON-NLS-2$
+                + ". modify_metadata cannot rebind interception handlers; to remove the whole action, " //$NON-NLS-1$
+                + "call delete_metadata on " + handlerRouteAddress(handlerFqn) + "."; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return exists + " but holds no single handler, so there is no procedure to rebind on it: " //$NON-NLS-1$
+            + "remove it with delete_metadata on " + handlerRouteAddress(handlerFqn) //$NON-NLS-1$
+            + ", then repeat this create_metadata call."; //$NON-NLS-1$
+    }
+
+    /**
+     * Why an EXISTING command action that carries no single handler cannot be rebound (issue #628).
+     * Its create is refused while the action exists, so the "bind it first with create_metadata"
+     * advice a missing action gets would loop here. delete_metadata on the same handler FQN removes
+     * an action of ANY shape ({@link #findFormHandler} hands it the action itself), so that is the
+     * route named: for an extension's interception list the removal of the whole action; for an
+     * action that holds no handler at all the removal followed by a fresh create_metadata bind.
+     *
+     * @param command the form command
+     * @param action its existing action, which holds no single {@code handler}
+     * @return the refusal text
+     */
+    private static String commandActionNotRebindable(EObject command, EObject action)
+    {
+        if (holdsHandlerList(action))
+        {
+            String bound = FormStructureReader.actionHandlerOf(command);
+            return "This command's action holds extension interception handlers" //$NON-NLS-1$
+                + (bound.isEmpty() ? "" : " ('" + bound + "')") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                + "; modify_metadata cannot rebind them - remove the action with delete_metadata on " //$NON-NLS-1$
+                + "this FQN."; //$NON-NLS-1$
+        }
+        return "This command's action exists but holds no single handler, so modify_metadata has no " //$NON-NLS-1$
+            + "procedure to rebind on it - remove the action with delete_metadata on this FQN, then " //$NON-NLS-1$
+            + "bind it with create_metadata on this FQN."; //$NON-NLS-1$
+    }
+
+    /**
+     * Whether the handler FQN leaf addresses a command's Action (English or Russian). Public because
+     * modify_metadata refuses the same spellings as PROPERTY names on a form command and routes them
+     * to this handler member instead (issue #628): one definition of the action's spellings.
+     *
+     * @param eventName the leaf (or property name) to test, may be {@code null}
+     * @return {@code true} for {@code Action} (any case) or its Russian spelling
+     */
+    public static boolean isActionToken(String eventName)
     {
         return COMMAND_ACTION_EVENT.equalsIgnoreCase(eventName)
             || (eventName != null && RU_ACTION.equalsIgnoreCase(eventName.trim()));
@@ -6620,7 +7443,9 @@ public final class FormElementWriter
 
     /**
      * Reserves, in {@code seen}, the ids of every candidate this pass may not rewrite, BEFORE the
-     * renumbering loop runs.
+     * renumbering loop runs. Non-zero item ids follow EDT's
+     * {@code FormIdentifierService.hasValidId(FormItem)} rule. Reserving negative ids is inert for
+     * attributes and commands, whose passes still keep and allocate only positive ids.
      * <p>
      * Without it the outcome would depend on containment order: an own object visited before the
      * adopted object holding the same id would claim that id and keep it, leaving the collision the
@@ -6635,7 +7460,7 @@ public final class FormElementWriter
         for (EObject candidate : candidates)
         {
             int id = intFeature(candidate, FEATURE_ID);
-            if (id > 0 && !isFormObjectRenumberable(candidate))
+            if (id != 0 && !isFormObjectRenumberable(candidate))
             {
                 seen.add(Integer.valueOf(id));
             }
@@ -6696,6 +7521,26 @@ public final class FormElementWriter
             }
         }
         return max + 1;
+    }
+
+    /**
+     * Runs the three id repairs, then drops EDT's cached id counters (BM properties) on the form and
+     * its live base/extension peer, which share the attribute and command id space, so the designer's
+     * next allocation rescans them (issue #723). Package-visible for the unit test.
+     */
+    static void normalizeFormIds(EObject formModel)
+    {
+        normalizeFormAttributeIds(formModel);
+        normalizeFormItemIds(formModel);
+        normalizeFormCommandIds(formModel);
+        for (EObject form : new EObject[] { formModel, liveReference(formModel, FEATURE_EXTENSION_FORM),
+            liveReference(formModel, FEATURE_BASE_FORM) })
+        {
+            if (form instanceof IBmObject)
+            {
+                FormIdentifierService.INSTANCE.clearCaches((IBmObject)form);
+            }
+        }
     }
 
     /**
@@ -6868,7 +7713,9 @@ public final class FormElementWriter
      * Repairs the form-wide {@code FormItem.id} invariant before validation/export sees the model.
      * The form root's predefined {@code autoCommandBar} has the platform sentinel {@code -1}; every
      * other PERSISTED form item, including designer auto-children such as {@code contextMenu} and
-     * {@code extendedTooltip}, gets a positive id unique in the same form-wide space. Items that
+     * {@code extendedTooltip}, keeps any unique non-zero id, matching EDT's
+     * {@code FormIdentifierService.hasValidId(FormItem)} rule used by {@code InvalidItemIdCheck}.
+     * Zero and duplicate ids receive a new positive id in that same form-wide space. Items that
      * exist only behind a computed containment are left exactly as the layouter made them - they are
      * counted when the ceiling is computed, but never rewritten.
      *
@@ -6955,9 +7802,10 @@ public final class FormElementWriter
     }
 
     /**
-     * Assigns {@code item} a positive id unique within {@code seen} - skipping the form root's
-     * {@code autoCommandBar} (which keeps the platform sentinel {@code -1}) and keeping an already-unique
-     * positive id - then advances and returns the running {@code max}. Early-returns keep the per-item
+     * Keeps a unique non-zero id, as EDT's {@code FormIdentifierService.hasValidId(FormItem)} does,
+     * or assigns {@code item} a new positive id unique within {@code seen}. Skips the form root's
+     * {@code autoCommandBar}, which keeps the platform sentinel {@code -1}, then advances and returns
+     * the running {@code max}. Early-returns keep the per-item
      * logic free of loop {@code continue}s.
      */
     private static int assignItemId(EObject item, EObject rootAutoCommandBar, Set<Integer> seen, int max)
@@ -6967,7 +7815,7 @@ public final class FormElementWriter
             return max;
         }
         int id = intFeature(item, FEATURE_ID);
-        if (id > 0 && seen.add(Integer.valueOf(id)))
+        if (id != 0 && seen.add(Integer.valueOf(id)))
         {
             return max;
         }
@@ -7089,6 +7937,64 @@ public final class FormElementWriter
         return findByName(referenceList(attribute, FEATURE_COLUMNS), name);
     }
 
+    private static EObject additionalColumnEntry(EObject owner, List<String> segments)
+    {
+        for (EObject entry : referenceList(owner, FEATURE_ADDITIONAL_COLUMNS))
+        {
+            if (sameDataPath(singleReference(entry, FEATURE_TABLE_PATH), segments))
+            {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    /** Finds a name in the addressed direct/additional column namespace. */
+    public static EObject findColumn(EObject formModel, FormMemberRef ref, String name)
+    {
+        return findByName(columnSiblingsOf(formModel, ref), name);
+    }
+
+    /** The addressed column namespace, empty when the owner or additional-column entry is absent. */
+    public static EList<EObject> columnSiblingsOf(EObject formModel, FormMemberRef ref)
+    {
+        EObject owner = findFormAttribute(formModel, ref.ownerAttributeName);
+        EObject container = ref.isAdditionalColumn()
+            ? additionalColumnEntry(owner, ref.additionalTablePath()) : owner;
+        return referenceList(container, FEATURE_COLUMNS);
+    }
+
+    /** Advice for an additional-column miss, read while the form is tx-bound. */
+    public static String additionalColumnAdvice(EObject formModel, FormMemberRef ref)
+    {
+        EObject owner = findFormAttribute(formModel, ref.ownerAttributeName);
+        if (owner == null)
+        {
+            return ": form attribute '" + ref.ownerAttributeName + "' does not exist"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (hasCollectionValueType(owner))
+        {
+            return ": attribute '" + stringFeature(owner, FEATURE_NAME) + "' is an in-memory collection (" //$NON-NLS-1$ //$NON-NLS-2$
+                + String.join(", ", valueTypeNames(owner)) + "); its columns are addressed as '...Attribute." //$NON-NLS-1$ //$NON-NLS-2$
+                + stringFeature(owner, FEATURE_NAME) + ".Column.<Name>'"; //$NON-NLS-1$
+        }
+        List<String> paths = new ArrayList<>();
+        for (EObject entry : referenceList(owner, FEATURE_ADDITIONAL_COLUMNS))
+        {
+            paths.add(Objects.toString(tablePathOfEntry(entry), "")); //$NON-NLS-1$
+        }
+        return ": attribute '" + stringFeature(owner, FEATURE_NAME) + "' has no additional column '" + ref.name //$NON-NLS-1$ //$NON-NLS-2$
+            + "' under '" + stringFeature(owner, FEATURE_NAME) + '.' + String.join(".", ref.tablePathSegments) //$NON-NLS-1$ //$NON-NLS-2$
+            + "'; its additional-column paths are: " + (paths.isEmpty() ? "(none)" : String.join(", ", paths)); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    }
+
+    /** Ref-aware advice keeps an additional-column miss within its own namespace. */
+    public static String kindMismatchAdvice(EObject formModel, FormMemberRef ref, String normFqn)
+    {
+        return ref.isAdditionalColumn() ? additionalColumnAdvice(formModel, ref)
+            : kindMismatchAdvice(formModel, ref.kindToken, ref.name, normFqn);
+    }
+
     /**
      * Resolves a form member EObject from a parsed member ref on the tx-bound form model: ATTRIBUTE
      * &rarr; the attributes list, COMMAND &rarr; the formCommands list, anything else (Field / Button /
@@ -7110,8 +8016,7 @@ public final class FormElementWriter
         Kind kind = kindForToken(ref.kindToken);
         if (ref.isAttributeColumn())
         {
-            EObject owner = findFormAttribute(formModel, ref.ownerAttributeName);
-            return owner == null ? null : findByName(referenceList(owner, FEATURE_COLUMNS), ref.name);
+            return findByName(columnSiblingsOf(formModel, ref), ref.name);
         }
         if (kind == Kind.COLUMN)
         {
@@ -7841,8 +8746,10 @@ public final class FormElementWriter
      * {@code name}; for a form command ({@code ...Command.X.Handler.Action}) the single Action's
      * contained {@code CommandHandler} is renamed. Does NOT bind a new event (that is
      * {@code create_metadata} via {@link #createHandler}); a missing handler is reported so the caller
-     * can steer the user to create it. Reflective, so no compile-time form-model dependency. Call on
-     * the tx-bound form model.
+     * can steer the user to create it - except a command action that EXISTS without a single handler
+     * (an extension's interception list, or an action holding no handler at all), which create_metadata
+     * would refuse, so its refusal names the removal first (issue #628). Reflective, so no
+     * compile-time form-model dependency. Call on the tx-bound form model.
      *
      * @param container the form root, the owning form item or the form command (already resolved on
      *     the tx-bound model, see {@link #resolveHandlerContainer})
@@ -7871,8 +8778,12 @@ public final class FormElementWriter
             EObject handler = action != null ? singleReference(action, FEATURE_HANDLER) : null;
             if (handler == null)
             {
-                return "No event handler for '" + eventName + "' exists on this element to rebind. " //$NON-NLS-1$ //$NON-NLS-2$
-                    + "Use create_metadata on the handler FQN to bind it first."; //$NON-NLS-1$
+                // Only a MISSING action is bound "first" by create_metadata; an existing one that
+                // holds no single handler would be refused there as existing - a loop (issue #628).
+                return action == null
+                    ? "No event handler for '" + eventName + "' exists on this element to rebind. " //$NON-NLS-1$ //$NON-NLS-2$
+                        + "Use create_metadata on the handler FQN to bind it first." //$NON-NLS-1$
+                    : commandActionNotRebindable(container, action);
             }
             setStringFeature(handler, FEATURE_NAME, procName);
             return null;
@@ -8306,6 +9217,10 @@ public final class FormElementWriter
     @SuppressWarnings("unchecked")
     private static EList<EObject> referenceList(EObject owner, String featureName)
     {
+        if (owner == null)
+        {
+            return org.eclipse.emf.common.util.ECollections.emptyEList();
+        }
         EStructuralFeature feature = owner.eClass().getEStructuralFeature(featureName);
         if (feature != null)
         {

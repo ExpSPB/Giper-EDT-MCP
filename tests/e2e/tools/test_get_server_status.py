@@ -18,8 +18,11 @@ Stable, code-anchored expectations (from the real impl, verified against source)
     and server.isRunning() must be true; a broken tool that hardcodes the
     headless `false` branch would fail here)
   - totalTools / enabledTools are positive ints (registry is populated)
-  - formRenderFlags carries BOTH named JVM-flag keys (the diagnostic for a blank
-    form screenshot) — these key names are the load-bearing contract.
+  - formRenderFlags carries BOTH named JVM-flag keys, each with the render mode
+    sampled at plugin activation (the diagnostic for a blank form screenshot).
+    EDT binds the modes and its offscreen handler once at class initialization.
+    atStartup records the mode at MCP activation; optional requested is the raw
+    current system property. Changing the launch configuration requires an EDT restart.
 
 NEGATIVE MATRIX — why it is minimal (documented, not fudged):
   The tool has NO parameters: no required param to omit, no enum to violate, no

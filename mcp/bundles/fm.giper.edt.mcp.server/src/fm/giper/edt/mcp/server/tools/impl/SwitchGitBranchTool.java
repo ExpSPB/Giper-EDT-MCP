@@ -32,6 +32,7 @@ import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.utils.git.BranchBindingLock;
 import fm.giper.edt.mcp.server.utils.git.GitCheckoutSupport;
 import fm.giper.edt.mcp.server.utils.git.GitRepositoryResolver;
 
@@ -229,6 +230,11 @@ public class SwitchGitBranchTool implements IMcpTool
         String targetShort = refName.substring(REFS_HEADS.length());
         GitCheckoutSupport.CheckoutOutcome outcome = GitCheckoutSupport.checkout(project, repo, refName);
 
+        if (outcome.busy())
+        {
+            return ToolResult.error("Did not switch to branch '" + targetShort + "': " //$NON-NLS-1$ //$NON-NLS-2$
+                + BranchBindingLock.busyReason() + ". Nothing was changed; retry.").toJson(); //$NON-NLS-1$
+        }
         if (outcome.timedOut())
         {
             return ToolResult.error("Switching to branch '" + targetShort + "' timed out after " //$NON-NLS-1$ //$NON-NLS-2$

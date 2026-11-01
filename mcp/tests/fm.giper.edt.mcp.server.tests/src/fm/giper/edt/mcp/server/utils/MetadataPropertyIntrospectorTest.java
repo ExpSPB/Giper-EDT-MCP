@@ -31,6 +31,7 @@ import org.eclipse.emf.ecore.EcorePackage;
 import org.eclipse.emf.ecore.InternalEObject;
 import org.junit.Test;
 
+import com._1c.g5.v8.bm.core.BmUriUtil;
 import com._1c.g5.v8.dt.mcore.BinaryQualifiers;
 import com._1c.g5.v8.dt.mcore.CommandGroupCategory;
 import com._1c.g5.v8.dt.mcore.DateFractions;
@@ -40,6 +41,7 @@ import com._1c.g5.v8.dt.mcore.McorePackage;
 import com._1c.g5.v8.dt.mcore.NumberQualifiers;
 import com._1c.g5.v8.dt.mcore.QName;
 import com._1c.g5.v8.dt.mcore.ReferenceValue;
+import com._1c.g5.v8.dt.mcore.SourceType;
 import com._1c.g5.v8.dt.mcore.StandardCommandGroup;
 import com._1c.g5.v8.dt.mcore.StringQualifiers;
 import com._1c.g5.v8.dt.mcore.StringValue;
@@ -47,6 +49,7 @@ import com._1c.g5.v8.dt.mcore.Type;
 import com._1c.g5.v8.dt.mcore.TypeDescription;
 import com._1c.g5.v8.dt.mcore.Value;
 import com._1c.g5.v8.dt.metadata.mdclass.AdjustableBoolean;
+import com._1c.g5.v8.dt.metadata.mdclass.BasicDbObject;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.CommandGroup;
@@ -55,6 +58,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.Document;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
 import com._1c.g5.v8.dt.metadata.mdclass.StandardCommand;
 import com._1c.g5.v8.dt.metadata.mdclass.Subsystem;
 import com._1c.g5.v8.dt.metadata.mdclass.XDTOPackage;
@@ -1057,8 +1061,117 @@ public class MetadataPropertyIntrospectorTest
             MdClassFactory.eINSTANCE.createDataProcessorCommand(), "group"); //$NON-NLS-1$
         assertNotNull("a DataProcessorCommand's group must be assignable", group); //$NON-NLS-1$
         assertTrue("group must be a single REFERENCE", group.valueKind == ValueKind.REFERENCE); //$NON-NLS-1$
-        assertTrue("group must report its CommandGroup target type", //$NON-NLS-1$
-            group.allowedValues.contains("CommandGroup")); //$NON-NLS-1$
+        // Both forms modify_metadata takes, not the bare mcore interface name (issue #733).
+        assertEquals(Collections.singletonList(MetadataPropertyIntrospector.COMMAND_GROUP_ALLOWED),
+            group.allowedValues);
+        String allowed = group.allowedValues.get(0);
+        // Inline code, so a Markdown renderer does not swallow <Name> as an HTML tag.
+        assertTrue(allowed, allowed.contains("`CommandGroup.<Name>`")); //$NON-NLS-1$
+        assertTrue("the standard-group form is named too: " + allowed, //$NON-NLS-1$
+            allowed.contains("ActionsPanelTools")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAnOrdinaryReferenceStillReportsItsTargetType()
+    {
+        // The command-group cell is scoped to that one target type.
+        PropertyInfo coa = MetadataPropertyIntrospector.find(
+            MdClassFactory.eINSTANCE.createAccountingRegister(), "chartOfAccounts"); //$NON-NLS-1$
+        assertEquals(Collections.singletonList("ChartOfAccounts"), coa.allowedValues); //$NON-NLS-1$
+    }
+
+    // ---- commandGroupLabel (issue #733) -----------------------------------------------------
+
+    @Test
+    public void testCommandGroupLabelOfAConfigurationGroupIsItsFqn()
+    {
+        CommandGroup sales = MdClassFactory.eINSTANCE.createCommandGroup();
+        sales.setName("Sales"); //$NON-NLS-1$
+        assertEquals("CommandGroup.Sales", MetadataPropertyIntrospector.commandGroupLabel(sales)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testCommandGroupLabelOfAStandardGroupIsItsName()
+    {
+        StandardCommandGroup group = McoreFactory.eINSTANCE.createStandardCommandGroup();
+        group.setName("ActionsPanelTools"); //$NON-NLS-1$
+        group.setCategory(CommandGroupCategory.ACTIONS_PANEL);
+        assertEquals("ActionsPanelTools", MetadataPropertyIntrospector.commandGroupLabel(group)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testCommandGroupLabelOfANamelessStandardGroupIsItsCategory()
+    {
+        StandardCommandGroup group = McoreFactory.eINSTANCE.createStandardCommandGroup();
+        group.setCategory(CommandGroupCategory.NAVIGATION_PANEL);
+        assertEquals(CommandGroupCategory.NAVIGATION_PANEL.getName(),
+            MetadataPropertyIntrospector.commandGroupLabel(group));
+    }
+
+    /**
+     * The platform's unresolved proxy for a standard group, URI shaped as StdCommandGroupLoader
+     * builds it ({@code appendFragment("/" + name)}); none of its attributes is loaded.
+     */
+    private static StandardCommandGroup standardGroupProxy(URI uri)
+    {
+        StandardCommandGroup proxy = McoreFactory.eINSTANCE.createStandardCommandGroup();
+        ((InternalEObject)proxy).eSetProxyURI(uri);
+        return proxy;
+    }
+
+    @Test
+    public void testCommandGroupLabelOfAnUnresolvedStandardGroupIsTheNameInItsUri()
+    {
+        StandardCommandGroup proxy = standardGroupProxy(
+            URI.createURI("v8:/CommandGroup/Std/v8.3.15").appendFragment("/ActionsPanelTools")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertNull("precondition: a proxy carries no loaded name", proxy.getName()); //$NON-NLS-1$
+
+        assertEquals("ActionsPanelTools", MetadataPropertyIntrospector.commandGroupLabel(proxy)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAnUnresolvedStandardGroupIsReadBackByNameNotByItsDefaultCategory()
+    {
+        DataProcessorCommand command = MdClassFactory.eINSTANCE.createDataProcessorCommand();
+        command.setGroup(standardGroupProxy(
+            URI.createURI("v8:/CommandGroup/Std/v8.3.15").appendFragment("/ActionsPanelTools"))); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals("ActionsPanelTools", //$NON-NLS-1$
+            MetadataPropertyIntrospector.find(command, "group").currentValue); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAnUnresolvedStandardGroupWithoutANameIsItsUriNotACategory()
+    {
+        URI uri = URI.createURI("v8:/CommandGroup/Std/v8.3.15"); //$NON-NLS-1$
+        String label = MetadataPropertyIntrospector.commandGroupLabel(standardGroupProxy(uri));
+
+        assertEquals("a proxy that names no group says what it points at", uri.toString(), label); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAFragmentOutsideTheStandardGroupCatalogueIsNotAGroupName()
+    {
+        // Only the platform's own catalogue keys a group by name; any other fragment - a BM object
+        // path, another catalogue's key - is printed as the URI, never offered as a bare group name.
+        URI[] foreign = {
+            URI.createURI("bm://TestConfiguration/CommandGroup.Sales").appendFragment("/ActionsPanelTools"), //$NON-NLS-1$ //$NON-NLS-2$
+            URI.createURI("v8:/Pictures/Std/v8.3.15").appendFragment("/ActionsPanelTools"), //$NON-NLS-1$ //$NON-NLS-2$
+            URI.createURI("v8:/CommandGroup/Std/v8.3.15").appendFragment("//@groups.3"), //$NON-NLS-1$ //$NON-NLS-2$
+        };
+        for (URI uri : foreign)
+        {
+            String label = MetadataPropertyIntrospector.commandGroupLabel(standardGroupProxy(uri));
+            assertEquals("not a standard group name: " + uri, uri.toString(), label); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void testCommandGroupLabelOfNothingIsNull()
+    {
+        assertNull(MetadataPropertyIntrospector.commandGroupLabel(null));
+        assertNull("an object the platform names nothing has no label", //$NON-NLS-1$
+            MetadataPropertyIntrospector.commandGroupLabel(McoreFactory.eINSTANCE.createStringValue()));
     }
 
     @Test
@@ -1326,6 +1439,122 @@ public class MetadataPropertyIntrospectorTest
         assertNotNull("a subtype of AdjustableBoolean must still be assignable", flag); //$NON-NLS-1$
         assertTrue("...as the ADJUSTABLE_BOOLEAN kind", //$NON-NLS-1$
             flag.valueKind == ValueKind.ADJUSTABLE_BOOLEAN);
+    }
+
+    @Test
+    public void testAdjustableBooleanCurrentValueShowsTheRoleValuesInTheWriteShape()
+    {
+        // Issue #719: once a role has a value of its own, Current is the {common, roles} object
+        // modify_metadata takes, so a reader sees the per-role values next to common.
+        com._1c.g5.v8.dt.metadata.mdclass.Role manager = MdClassFactory.eINSTANCE.createRole();
+        manager.setName("Manager"); //$NON-NLS-1$
+        StandardCommand command = MdClassFactory.eINSTANCE.createStandardCommand();
+        AdjustableBoolean flag = MdClassFactory.eINSTANCE.createAdjustableBoolean();
+        flag.setCommon(true);
+        com._1c.g5.v8.dt.metadata.mdclass.ForRoleType forRole = MdClassFactory.eINSTANCE.createForRoleType();
+        forRole.setRole(manager);
+        forRole.setValue(false);
+        flag.getFor().add(forRole);
+        command.setVisible(flag);
+
+        assertEquals("{\"common\":true,\"roles\":{\"Role.Manager\":false}}", //$NON-NLS-1$
+            MetadataPropertyIntrospector.find(command, "visible").currentValue); //$NON-NLS-1$
+    }
+
+    // ---- a form attribute's "Use always" checkboxes (issue #661) ---------------------------------
+
+    @Test
+    public void testTheUseAlwaysListIsPublishedAsUseAlways()
+    {
+        com._1c.g5.v8.dt.form.model.FormAttribute attribute =
+            com._1c.g5.v8.dt.form.model.FormFactory.eINSTANCE.createFormAttribute();
+        attribute.setName("Object"); //$NON-NLS-1$
+
+        PropertyInfo useAlways = MetadataPropertyIntrospector.findFeature(attribute, "useAlways"); //$NON-NLS-1$
+        assertNotNull("the use-always list must be assignable as useAlways", useAlways); //$NON-NLS-1$
+        assertEquals(ValueKind.USE_ALWAYS, useAlways.valueKind);
+        assertEquals("useAlways", useAlways.name); //$NON-NLS-1$
+        assertNull("the model feature name is not the wire name", //$NON-NLS-1$
+            MetadataPropertyIntrospector.findFeature(attribute, "notDefaultUseAlwaysAttributes")); //$NON-NLS-1$
+        List<String> names = MetadataPropertyIntrospector.assignableNames(attribute);
+        assertTrue(names.toString(), names.contains("useAlways")); //$NON-NLS-1$
+        assertFalse(names.toString(), names.contains("notDefaultUseAlwaysAttributes")); //$NON-NLS-1$
+        assertFalse("the sibling saved-data list stays out", names.contains("settingsSavedData")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testAdjustableBooleanRoleOrderIsNotADifference()
+    {
+        // The reader sees the stored order; a comparison must not call a reordering a change.
+        com._1c.g5.v8.dt.metadata.mdclass.Role manager = MdClassFactory.eINSTANCE.createRole();
+        manager.setName("Manager"); //$NON-NLS-1$
+        com._1c.g5.v8.dt.metadata.mdclass.Role clerk = MdClassFactory.eINSTANCE.createRole();
+        clerk.setName("Clerk"); //$NON-NLS-1$
+        StandardCommand first = commandVisibleFor(manager, clerk);
+        StandardCommand second = commandVisibleFor(clerk, manager);
+
+        PropertyInfo a = MetadataPropertyIntrospector.find(first, "visible"); //$NON-NLS-1$
+        PropertyInfo b = MetadataPropertyIntrospector.find(second, "visible"); //$NON-NLS-1$
+        assertEquals("{\"common\":true,\"roles\":{\"Role.Manager\":true,\"Role.Clerk\":false}}", a.currentValue); //$NON-NLS-1$
+        assertEquals("{\"common\":true,\"roles\":{\"Role.Clerk\":false,\"Role.Manager\":true}}", b.currentValue); //$NON-NLS-1$
+        assertEquals(a.valueIdentity, b.valueIdentity);
+        assertEquals("{\"common\":true,\"roles\":{\"Role.Clerk\":false,\"Role.Manager\":true}}", a.valueIdentity); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testARoleValueThatCannotBeIdentifiedIsAFailedReadNotAnEqualValue()
+    {
+        StandardCommand command = MdClassFactory.eINSTANCE.createStandardCommand();
+        AdjustableBoolean flag = MdClassFactory.eINSTANCE.createAdjustableBoolean();
+        flag.getFor().add(MdClassFactory.eINSTANCE.createForRoleType());
+        command.setVisible(flag);
+
+        assertTrue(MetadataPropertyIntrospector.find(command, "visible").readFailed); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUseAlwaysCurrentValueIsWhatThePlatformReports()
+    {
+        UseAlwaysPlatformFake platform = new UseAlwaysPlatformFake();
+        platform.field("Object.Code", null, //$NON-NLS-1$
+            com._1c.g5.v8.dt.form.service.attribute.IUseAlwaysAttributeService.UseAlways.Checked);
+        platform.install();
+        try
+        {
+            com._1c.g5.v8.dt.form.model.FormAttribute attribute =
+                com._1c.g5.v8.dt.form.model.FormFactory.eINSTANCE.createFormAttribute();
+            attribute.setName("Object"); //$NON-NLS-1$
+            com._1c.g5.v8.dt.form.model.FormFactory.eINSTANCE.createForm().getAttributes().add(attribute);
+            assertNull("nothing listed - every path at its default", //$NON-NLS-1$
+                MetadataPropertyIntrospector.find(attribute, "useAlways").currentValue); //$NON-NLS-1$
+
+            attribute.getNotDefaultUseAlwaysAttributes().add(UseAlwaysPlatformFake.dataPath("Object.Code")); //$NON-NLS-1$
+            attribute.getNotDefaultUseAlwaysAttributes().add(UseAlwaysPlatformFake.dataPath("Object.Gone")); //$NON-NLS-1$
+
+            PropertyInfo useAlways = MetadataPropertyIntrospector.find(attribute, "useAlways"); //$NON-NLS-1$
+            assertEquals("{\"Object.Code\":false,\"Object.Gone\":\"unresolved\"}", useAlways.currentValue); //$NON-NLS-1$
+            assertEquals("[[\"Object.Code\",false],[\"Object.Gone\",\"unresolved\"]]", useAlways.valueIdentity); //$NON-NLS-1$
+        }
+        finally
+        {
+            UseAlwaysPlatformFake.uninstall();
+        }
+    }
+
+    private static StandardCommand commandVisibleFor(com._1c.g5.v8.dt.metadata.mdclass.Role... roles)
+    {
+        StandardCommand command = MdClassFactory.eINSTANCE.createStandardCommand();
+        AdjustableBoolean flag = MdClassFactory.eINSTANCE.createAdjustableBoolean();
+        flag.setCommon(true);
+        for (com._1c.g5.v8.dt.metadata.mdclass.Role role : roles)
+        {
+            com._1c.g5.v8.dt.metadata.mdclass.ForRoleType forRole = MdClassFactory.eINSTANCE.createForRoleType();
+            forRole.setRole(role);
+            forRole.setValue("Manager".equals(role.getName())); //$NON-NLS-1$
+            flag.getFor().add(forRole);
+        }
+        command.setVisible(flag);
+        return command;
     }
 
     /**
@@ -1720,5 +1949,162 @@ public class MetadataPropertyIntrospectorTest
             attribute.setUpperBound(-1);
         }
         owner.getEStructuralFeatures().add(attribute);
+    }
+
+    // ============ FIELD_LIST: inputByString / dataLockFields (issue #740) ============
+
+    /** A standard field the way EDT's MdFieldInferrer builds it, in {@code owner}'s derived fields. */
+    private static com._1c.g5.v8.dt.mcore.Field inferredField(BasicDbObject owner, String name,
+        String nameRu, SourceType... sources)
+    {
+        com._1c.g5.v8.dt.mcore.Field field = McoreFactory.eINSTANCE.createField();
+        field.setName(name);
+        field.setNameRu(nameRu);
+        field.setFieldIdPrefix("StandardAttribute"); //$NON-NLS-1$
+        field.getSourceTypes().addAll(java.util.Arrays.asList(sources));
+        owner.getFields().add(field);
+        return field;
+    }
+
+    /** The proxy EDT's own reader builds for a stored field address (MdSymbolicNameServiceDelegate). */
+    private static com._1c.g5.v8.dt.mcore.Field storedFieldProxy(String topFqn, String fieldId)
+    {
+        com._1c.g5.v8.dt.mcore.Field proxy = McoreFactory.eINSTANCE.createField();
+        ((InternalEObject)proxy).eSetProxyURI(BmUriUtil.createContainedBmObjectUri("engine-1", topFqn, //$NON-NLS-1$
+            "/fields:" + BmUriUtil.encodeCollectionItemId(fieldId))); //$NON-NLS-1$
+        return proxy;
+    }
+
+    private static Catalog goodsCatalog()
+    {
+        Catalog goods = newCatalog();
+        goods.setName("Goods"); //$NON-NLS-1$
+        return goods;
+    }
+
+    /** The eight concrete BasicDbObject kinds of MdClass.xcore all inherit the two lists. */
+    @Test
+    public void testInputByStringIsAFieldListOnEveryBasicDbObjectKind()
+    {
+        MdClassFactory f = MdClassFactory.eINSTANCE;
+        MdObject[] kinds = {f.createCatalog(), f.createDocument(), f.createChartOfCharacteristicTypes(),
+            f.createChartOfAccounts(), f.createChartOfCalculationTypes(), f.createExchangePlan(),
+            f.createBusinessProcess(), f.createTask()};
+        for (MdObject kind : kinds)
+        {
+            PropertyInfo info = MetadataPropertyIntrospector.find(kind, "inputByString"); //$NON-NLS-1$
+            assertNotNull(kind.eClass().getName() + " must offer inputByString", info); //$NON-NLS-1$
+            assertEquals(kind.eClass().getName(), ValueKind.FIELD_LIST, info.valueKind);
+            assertSame(MdClassPackage.Literals.BASIC_DB_OBJECT__INPUT_BY_STRING, info.feature);
+        }
+    }
+
+    @Test
+    public void testDataLockFieldsIsAFieldListToo()
+    {
+        Document order = MdClassFactory.eINSTANCE.createDocument();
+        PropertyInfo info = MetadataPropertyIntrospector.find(order, "dataLockFields"); //$NON-NLS-1$
+        assertNotNull(info);
+        assertEquals(ValueKind.FIELD_LIST, info.valueKind);
+        assertTrue(MetadataPropertyIntrospector.assignableNames(order).contains("inputByString")); //$NON-NLS-1$
+        assertTrue(MetadataPropertyIntrospector.assignableNames(order).contains("dataLockFields")); //$NON-NLS-1$
+    }
+
+    /**
+     * An external data source table declares the same three mcore.Field lists, and none of them is
+     * classified: they are outside the measured eligibility table (a guard, green by design on
+     * master - it is the test that fails when that table stops being consulted).
+     */
+    @Test
+    public void testAnExternalTableKeepsItsFieldListsExcluded()
+    {
+        EObject table = MdClassFactory.eINSTANCE.createTable();
+        for (String name : new String[] {"inputByString", "keyFields", "dataLockFields"}) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        {
+            assertNull(name, MetadataPropertyIntrospector.find(table, name));
+        }
+    }
+
+    /** A resolved field and a stored proxy render alike, as the addresses the .mdo holds, in order. */
+    @Test
+    public void testCurrentRendersTheStoredAddressesInOrder()
+    {
+        Catalog goods = goodsCatalog();
+        com._1c.g5.v8.dt.mcore.Field description = inferredField(goods, "Description", "\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435", //$NON-NLS-1$ //$NON-NLS-2$
+            SourceType.INPUT_BY_STRING);
+        goods.getInputByString().add(description);
+        goods.getInputByString().add(storedFieldProxy("Catalog.Goods", "StandardAttribute:Code")); //$NON-NLS-1$ //$NON-NLS-2$
+
+        PropertyInfo info = MetadataPropertyIntrospector.find(goods, "inputByString"); //$NON-NLS-1$
+        assertEquals("[\"Catalog.Goods.StandardAttribute.Description\",\"Catalog.Goods.StandardAttribute.Code\"]", //$NON-NLS-1$
+            info.currentValue);
+        assertEquals(info.currentValue, info.valueIdentity);
+        assertFalse(info.readFailed);
+    }
+
+    @Test
+    public void testAnEntryWithNoAddressIsAFailedRead()
+    {
+        Catalog goods = goodsCatalog();
+        com._1c.g5.v8.dt.mcore.Field dangling = McoreFactory.eINSTANCE.createField();
+        ((InternalEObject)dangling).eSetProxyURI(URI.createURI("unresolved:/x")); //$NON-NLS-1$
+        goods.getInputByString().add(dangling);
+
+        PropertyInfo info = MetadataPropertyIntrospector.find(goods, "inputByString"); //$NON-NLS-1$
+        assertTrue("an entry nothing names is a failed read, never an absent value", info.readFailed); //$NON-NLS-1$
+        assertNull(info.currentValue);
+    }
+
+    /** C4: the wire clears with [], so an empty list reads back as [] - a value, not an absence. */
+    @Test
+    public void testAnEmptyFieldListIsAnEmptyArray()
+    {
+        PropertyInfo info = MetadataPropertyIntrospector.find(goodsCatalog(), "dataLockFields"); //$NON-NLS-1$
+        assertEquals("[]", info.currentValue); //$NON-NLS-1$
+        assertEquals("[]", info.valueIdentity); //$NON-NLS-1$
+        assertFalse(info.readFailed);
+    }
+
+    /** Allowed is what EDT offers for THAT list: the source type is read per feature from the model. */
+    @Test
+    public void testAllowedListsTheFieldsEdtOffersForEachList()
+    {
+        Catalog goods = goodsCatalog();
+        inferredField(goods, "Ref", "\u0421\u0441\u044B\u043B\u043A\u0430", SourceType.STANDARD_FIELDS); //$NON-NLS-1$ //$NON-NLS-2$
+        inferredField(goods, "DeletionMark", "\u041F\u043E\u043C\u0435\u0442\u043A\u0430\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u044F", SourceType.STANDARD_FIELDS, //$NON-NLS-1$ //$NON-NLS-2$
+            SourceType.FIELDS_FOR_LOCKING);
+        inferredField(goods, "Description", "\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435", SourceType.STANDARD_FIELDS, //$NON-NLS-1$ //$NON-NLS-2$
+            SourceType.INPUT_BY_STRING, SourceType.FIELDS_FOR_LOCKING);
+
+        assertEquals(Collections.singletonList("Catalog.Goods.StandardAttribute.Description"), //$NON-NLS-1$
+            MetadataPropertyIntrospector.find(goods, "inputByString").allowedValues); //$NON-NLS-1$
+        assertEquals(java.util.Arrays.asList("Catalog.Goods.StandardAttribute.DeletionMark", //$NON-NLS-1$
+            "Catalog.Goods.StandardAttribute.Description"), //$NON-NLS-1$
+            MetadataPropertyIntrospector.find(goods, "dataLockFields").allowedValues); //$NON-NLS-1$
+    }
+
+    /** C2: an adopted object keeps its Current row (comparisons see it) and offers nothing to write. */
+    @Test
+    public void testAnAdoptedObjectKeepsItsCurrentButOffersNothing()
+    {
+        Catalog goods = goodsCatalog();
+        goods.setObjectBelonging(ObjectBelonging.ADOPTED);
+        goods.getInputByString().add(inferredField(goods, "Code", "\u041A\u043E\u0434", SourceType.INPUT_BY_STRING)); //$NON-NLS-1$ //$NON-NLS-2$
+
+        PropertyInfo info = MetadataPropertyIntrospector.find(goods, "inputByString"); //$NON-NLS-1$
+        assertEquals("[\"Catalog.Goods.StandardAttribute.Code\"]", info.currentValue); //$NON-NLS-1$
+        assertTrue(info.allowedValues.isEmpty());
+    }
+
+    /** The lightweight lookup classifies only; the preparation re-derives the offered fields itself. */
+    @Test
+    public void testFindFeatureClassifiesAFieldListWithoutReadingTheOfferedFields()
+    {
+        Catalog goods = goodsCatalog();
+        inferredField(goods, "Description", "\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435", SourceType.INPUT_BY_STRING); //$NON-NLS-1$ //$NON-NLS-2$
+
+        PropertyInfo info = MetadataPropertyIntrospector.findFeature(goods, "inputByString"); //$NON-NLS-1$
+        assertEquals(ValueKind.FIELD_LIST, info.valueKind);
+        assertTrue(info.allowedValues.isEmpty());
     }
 }

@@ -12,10 +12,23 @@ How to **run each MCP tool live against a working EDT** and confirm it actually 
 - `references/<family>/SETUP.md` — shared family preconditions (what the family's tools can't be tested without).
 
 ## Test bench (harness)
-- **Non-elevated EDT copy** + workspace `D:\WS\EDT`; MCP listens on `:8765`. Deploy edits with `pwsh D:\Soft\edt-redeploy.ps1` (build → kill EDT → swap bundle → `-clean` relaunch → wait for `:8765`). The script sometimes returns **exit 1** yet prints `MCP server UP on 8765` — that is success; **check the port / `get_edt_version`, don't trust the exit code**.
-- **Test base** — the `TestConfiguration` project (in repo `TestConfiguration/src`, open in the workspace). Run destructive/mutating cases only on it; revert after: `git checkout HEAD -- TestConfiguration && git clean -fd -- TestConfiguration`.
-- **Workflow invariant**: edit → `bash source/compile.sh` → redeploy → live MCP call → `git diff` → revert. After a `-clean` redeploy EDT loses unsaved in-memory changes — mutate through MCP (`write_module_source` etc.) so model and disk stay in sync.
-- **Flaky tool output**: the channel sometimes drops text (you see a bare `Error` / `Done` instead of JSON). **Re-verify state independently**: `debug_status`, `git status`, `Get-Process`, and especially the EDT log `D:\WS\EDT\.metadata\.log` (it records the full request/response). Don't trust the echo.
+
+Read the current port checkpoint and [porting guide](../../../docs/porting-guide.md)
+first. Verify the actual source, installed bundle hash, EDT build, workspace and
+owned process command line before reusing a result or operating a stand.
+
+- Use a non-elevated, owned EDT copy with private workspace, user area, temporary
+  directory, fixture checkout and MCP port. Historical machine paths and ports
+  in references are examples, not permission to control an operator's EDT.
+- Run mutating tests only on disposable fixtures covered by the task's scope.
+  Preserve failing source trees, full logs, model evidence and diagnostics before
+  any reset or restart. A timeout with an unknown write outcome freezes cleanup.
+- Build, deploy the verified binary into the stopped owned copy, launch, confirm
+  version/hash and project readiness, then run tests. Require both model and disk
+  restoration; a clean Git tree alone is insufficient.
+- Treat every process exit and test result explicitly. A listening port alone
+  does not establish successful deployment. Recheck independent state and the
+  complete current/rotated EDT logs when a response is ambiguous.
 
 ## How to add a tool reference
 1. Run the tool **live** with real arguments on `TestConfiguration`.
@@ -25,11 +38,11 @@ How to **run each MCP tool live against a working EDT** and confirm it actually 
 
 ## Index — debug (`references/debug/`)
 - [SETUP](references/debug/SETUP.md) — bring up a debuggable scenario (executable code + trigger + stop).
-- Configs/launch: `list_configurations`, `debug_launch`, `debug_status`, `terminate_launch`.
+- Configs/launch: `list_configurations`, `launch` (`debug_launch` compatibility alias), `debug_status`, `terminate_launch`.
 - Breakpoints: `set_breakpoint`, `list_breakpoints`, `remove_breakpoint`.
 - Break and inspect: `wait_for_break`, `get_variables`, `evaluate_expression`, `step`, `resume`.
 
-> Full debug flow: set_breakpoint → debug_launch(update) → wait_for_break(hit) → get_variables → step over → get_variables → evaluate_expression → resume → remove_breakpoint. Details per tool in its reference.
+> Full debug flow: set_breakpoint → launch(update) → wait_for_break(hit) → get_variables → step over → get_variables → evaluate_expression → resume → remove_breakpoint. Details per tool in its reference.
 
 ## Index — navigation / read (`references/navigation/`)
 
@@ -57,10 +70,10 @@ Read-only reading of the configuration model (objects, details, properties, subs
 
 Families with write/destructive/special setup. For mutating/destructive tools the docs describe the **test procedure from source** (mutate-then-revert / preview-then-confirm), without live destruction.
 - **profiling** (`references/profiling/`): [start_profiling](references/profiling/start_profiling.md) (a TOGGLE; applicationId = the debug-session id, not the infobase GUID), [get_profiling_results](references/profiling/get_profiling_results.md) (read-only; returns only the most recent measurement session).
-- **forms** (`references/forms/`): [get_form_screenshot](references/forms/get_form_screenshot.md), [get_form_layout_snapshot](references/forms/get_form_layout_snapshot.md) — need the JVM flag `-DnativeFormBufferedLayoutRender=true`; blank ≠ a bug; native vs buffered render.
+- **forms** (`references/forms/`): [get_form_screenshot](references/forms/get_form_screenshot.md), [get_form_layout_snapshot](references/forms/get_form_layout_snapshot.md) — inspect startup render flags and each reference's preconditions; buffered layout requires its startup flag, while screenshot mode follows the actual native/Java mode. The plugin does not force process-wide rendering properties at runtime.
 - **xml** (`references/xml/`): [export_configuration_to_xml](references/xml/export_configuration_to_xml.md), [import_configuration_from_xml](references/xml/import_configuration_from_xml.md) (MUTATES → revert).
 - **translation** (`references/translation/`): [get_translation_project_info](references/translation/get_translation_project_info.md) (read-only), [generate_translation_strings](references/translation/generate_translation_strings.md), [translate_configuration](references/translation/translate_configuration.md) (MUTATES + external providers).
 - **launch** (`references/launch/`): [update_database](references/launch/update_database.md) (DESTRUCTIVE, exclusive infobase access), [run_yaxunit_tests](references/launch/run_yaxunit_tests.md), [debug_yaxunit_tests](references/launch/debug_yaxunit_tests.md).
 - **metadata-write** (`references/metadata-write/`): [create_metadata](references/metadata-write/create_metadata.md) (FQN-addressed), [modify_metadata](references/metadata-write/modify_metadata.md) (set properties=[{name,value,language?}] by FQN), [write_module_source](references/metadata-write/write_module_source.md) (mutate→verify→revert), [rename_metadata_object](references/metadata-write/rename_metadata_object.md), [delete_metadata](references/metadata-write/delete_metadata.md) (FQN-addressed; CASCADE; preview→confirm→revert; explicit-request-only), [adopt_metadata_object](references/metadata-write/adopt_metadata_object.md) (adopt a base object/member into an extension; MUTATES→revert).
 
-> **Coverage:** debug + navigation, metadata-read, query, problems, misc, profiling, forms, xml, translation, launch, metadata-write = every MCP tool (62 today) has a per-tool e2e reference. Write/destructive tools document the procedure from source (mutate-then-revert / preview-then-confirm), not live destruction.
+> **Coverage:** debug + navigation, metadata-read, query, problems, misc, profiling, forms, xml, translation, launch, metadata-write = manual references for the listed families. Use the registered-tool coverage ratchets for the current complete catalogue. Write/destructive tools document the procedure from source (mutate-then-revert / preview-then-confirm), not live destruction.

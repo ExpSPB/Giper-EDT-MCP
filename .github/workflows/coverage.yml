@@ -30,7 +30,7 @@ jobs:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
@@ -40,6 +40,14 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
+      # The analyzed commit may predate the local actions, so they come from this workflow's revision.
+      - name: Checkout (the workflow's local actions)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          sparse-checkout: .github/actions
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -47,9 +55,13 @@ jobs:
           java-version: 17
           cache: maven
 
+      # Maven is pinned, not the runner image's: see the action for why 3.10 breaks Tycho.
+      - name: Set up Maven
+        uses: ./.workflow-actions/.github/actions/setup-maven
+
       - name: EDT channel guard
         id: edt-channel
-        uses: ./.github/actions/edt-channel-guard
+        uses: ./.workflow-actions/.github/actions/edt-channel-guard
 
       - name: Cache Tycho P2 repositories
         uses: actions/cache@v5

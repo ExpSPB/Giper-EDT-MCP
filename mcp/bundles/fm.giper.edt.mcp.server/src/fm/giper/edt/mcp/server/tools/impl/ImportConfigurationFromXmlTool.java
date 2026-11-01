@@ -13,9 +13,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -25,6 +25,7 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 
 import com._1c.g5.v8.dt.core.lifecycle.IDtProjectResourceLifecycleBootstrap;
@@ -44,6 +45,7 @@ import fm.giper.edt.mcp.server.utils.CliReflectionErrors;
 import fm.giper.edt.mcp.server.utils.FrontMatter;
 import fm.giper.edt.mcp.server.utils.McpJobs;
 import fm.giper.edt.mcp.server.utils.PlatformFailures;
+import fm.giper.edt.mcp.server.utils.ProjectImportValidation;
 import fm.giper.edt.mcp.server.utils.WorkspacePaths;
 
 /**
@@ -109,6 +111,9 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
     /** Input param: path of the source directory of XML files. */
     private static final String KEY_IMPORT_PATH = "importPath"; //$NON-NLS-1$
 
+    private static final String KEY_PLATFORM_VERSION = "platformVersion"; //$NON-NLS-1$
+    private static final String KEY_BASE_PROJECT_NAME = "baseProjectName"; //$NON-NLS-1$
+
     /**
      * How long the post-import project start is waited for before the tool answers
      * {@code state: importing} (5 minutes).
@@ -138,8 +143,8 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
         + "that - but do not wait on it."; //$NON-NLS-1$
 
     /**
-     * Project names whose import is running right now, mapped to the millisecond instant the
-     * import was claimed.
+     * Imports running right now, keyed by the exact requested name. Folder-aware lookups,
+     * insertion and exact-key release all use this map's monitor.
      *
      * <p>The "project already exists" guard runs BEFORE the CLI API creates the project, so two
      * calls for one name both pass it and then race inside EDT: the second one's
@@ -147,7 +152,10 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
      * deletes the project both of them were building. Observed in the field (issue #647) when a
      * client retried an import that was still running. A name claimed here is refused up front.
      */
-    private static final ConcurrentMap<String, Long> IMPORTS_IN_FLIGHT = new ConcurrentHashMap<>();
+    private static final Map<String, ImportClaim> IMPORTS_IN_FLIGHT = new HashMap<>();
+
+    /** This tool's advice after an existing-project refusal, exact name or case variant. */
+    private static final String IMPORT_REQUIRES_NEW_NAME = "Import requires a new project name."; //$NON-NLS-1$
 
     /** The production import: the reflective CLI API call this tool has always made. */
     private static final IImportRunner PLATFORM_IMPORT_RUNNER = new CliImportRunner();
@@ -161,7 +169,10 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
     @Override
     public String getDescription()
     {
-        return "Create an EDT project from exported 1C configuration XML files. Parameters and examples: " //$NON-NLS-1$
+        return "Create an EDT project from exported 1C configuration XML files. Use runtimeVersion " //$NON-NLS-1$
+            + "or its alias platformVersion for the new project's runtime; conflicting values are refused. " //$NON-NLS-1$
+            + "For extensions pass baseProjectName; without an explicit version the base runtime is inherited. " //$NON-NLS-1$
+            + "EDT infers the nature and XML format from the source files. Parameters and examples: " //$NON-NLS-1$
             + "get_tool_guide('import_configuration_from_xml')."; //$NON-NLS-1$
     }
 
@@ -178,7 +189,9 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
             .stringProperty("xmlVersion", //$NON-NLS-1$
                 "Deprecated override: omit or leave empty; EDT reads the XML format from the files.") //$NON-NLS-1$
             .stringProperty("runtimeVersion", //$NON-NLS-1$
-                "Project platform version, e.g. '8.3.27'; omit or leave empty to infer it from XML.") //$NON-NLS-1$
+                "Project platform version, e.g. '8.3.27'; omit to infer it from the linked base or XML.") //$NON-NLS-1$
+            .stringProperty(KEY_PLATFORM_VERSION,
+                "Alias of runtimeVersion; pass only one or equivalent versions. Accepted with baseProjectName.") //$NON-NLS-1$
             .stringProperty("baseProjectName", //$NON-NLS-1$
                 "Open configuration project to link an extension or external objects to; omit for a standalone configuration.") //$NON-NLS-1$
             .build();
@@ -219,10 +232,11 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
 
         String importPathStr = JsonUtils.extractStringArgument(params, KEY_IMPORT_PATH);
         String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
-        String projectNature = JsonUtils.extractStringArgument(params, "projectNature"); //$NON-NLS-1$
+        String projectNature = blankToNull(JsonUtils.extractStringArgument(params, "projectNature")); //$NON-NLS-1$
         String xmlVersion = JsonUtils.extractStringArgument(params, "xmlVersion"); //$NON-NLS-1$
         String runtimeVersion = blankToNull(JsonUtils.extractStringArgument(params, "runtimeVersion")); //$NON-NLS-1$
-        String baseProjectName = blankToNull(JsonUtils.extractStringArgument(params, "baseProjectName")); //$NON-NLS-1$
+        String platformVersion = blankToNull(JsonUtils.extractStringArgument(params, KEY_PLATFORM_VERSION));
+        String baseProjectName = ProjectImportValidation.trimToNull(JsonUtils.extractStringArgument(params, "baseProjectName")); //$NON-NLS-1$
 
         // The CLI's last two arguments are runtime version and base project, not overrides
         // of the nature/XML format. Refuse the old options before the CLI can create a project.
@@ -241,26 +255,36 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
                 + "version. No project was created.").toJson(); //$NON-NLS-1$
         }
 
-        // The CLI silently falls back to XML inference for malformed/empty versions. An
-        // explicit nonblank override must be honored or refused before any workspace work.
-        if (runtimeVersion != null)
+        // EDT silently infers a version for malformed/zero input. Refuse it before any
+        // workspace access, while preserving all SDK-accepted nonzero forms and their spelling.
+        for (String key : List.of("runtimeVersion", KEY_PLATFORM_VERSION)) //$NON-NLS-1$
         {
-            boolean valid;
+            String value = "runtimeVersion".equals(key) ? runtimeVersion : platformVersion; //$NON-NLS-1$
+            if (value == null)
+            {
+                continue;
+            }
             try
             {
-                valid = !Version.EMPTY_VERSION.equals(Version.parseVersion(runtimeVersion));
+                if (Version.EMPTY_VERSION.equals(Version.parseVersion(value)))
+                {
+                    throw new IllegalArgumentException("zero version"); //$NON-NLS-1$
+                }
             }
             catch (IllegalArgumentException e)
             {
-                valid = false;
-            }
-            if (!valid)
-            {
-                return ToolResult.error("Invalid runtimeVersion '" + runtimeVersion //$NON-NLS-1$
-                    + "': use a nonzero platform version such as '8.3.27', or omit runtimeVersion " //$NON-NLS-1$
-                    + "to infer it from XML. No project was created.").toJson(); //$NON-NLS-1$
+                return ToolResult.error("Invalid " + key + " '" + value //$NON-NLS-1$ //$NON-NLS-2$
+                    + "': use a nonzero platform version such as '8.3.27', or omit " + key //$NON-NLS-1$
+                    + " to infer it from XML. No project was created.").toJson(); //$NON-NLS-1$
             }
         }
+        if (runtimeVersion != null && platformVersion != null
+            && !Version.parseVersion(runtimeVersion).equals(Version.parseVersion(platformVersion)))
+        {
+            return ToolResult.error("runtimeVersion '" + runtimeVersion + "' conflicts with platformVersion '" //$NON-NLS-1$ //$NON-NLS-2$
+                + platformVersion + "'. Pass one version or equivalent aliases. No project was created.").toJson(); //$NON-NLS-1$
+        }
+        String explicitRuntimeVersion = runtimeVersion != null ? runtimeVersion : platformVersion;
 
         IWorkspace workspace = ResourcesPlugin.getWorkspace();
         boolean importApiEntered = false;
@@ -292,9 +316,48 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
                     "importPath is not a directory: " + importPath).toJson(); //$NON-NLS-1$
             }
 
-            // Claimed BEFORE the existence guard below, because that guard is exactly what a
-            // concurrent import slips past: it answers about a project the other call has not
-            // created yet.
+            if (baseProjectName == null)
+            {
+                String versionError = ProjectImportValidation.validateRuntimeVersion(explicitRuntimeVersion);
+                if (versionError != null)
+                {
+                    return ToolResult.error(versionError).toJson();
+                }
+            }
+
+            // Preserve the existing-project refusal before dump/base validation. Repeat this
+            // preflight check under the claim, because a project can be created during validation.
+            IProject existing = WorkspacePaths.existingProjectVariant(projectName);
+            String existingProjectError = "Project already exists in workspace: " + projectName //$NON-NLS-1$
+                + ". " + IMPORT_REQUIRES_NEW_NAME; //$NON-NLS-1$
+            if (existing != null)
+            {
+                return ToolResult.error(existingProjectMessage(projectName, existing, existingProjectError,
+                    IMPORT_REQUIRES_NEW_NAME)).toJson();
+            }
+
+            AtomicReference<IProject> baseProject = new AtomicReference<>();
+            String dumpError = ProjectImportValidation.validateXmlDump(importPath, projectNature,
+                baseProjectName, baseProject);
+            if (dumpError != null)
+            {
+                return ToolResult.error(dumpError).toJson();
+            }
+
+            // Existing runtimeVersion + baseProjectName calls remain valid. Inherit only
+            // when the caller supplied no explicit runtime through either alias.
+            runtimeVersion = explicitRuntimeVersion != null ? explicitRuntimeVersion
+                : baseProject.get() == null ? null : ProjectImportValidation.runtimeVersionOf(baseProject.get());
+
+            if (baseProject.get() != null && runtimeVersion == null)
+            {
+                return ToolResult.error("Base project '" + baseProjectName //$NON-NLS-1$
+                    + "' is not ready: its runtime version cannot be read yet. " //$NON-NLS-1$
+                    + "Retry when list_projects shows it ready.").toJson(); //$NON-NLS-1$
+            }
+
+            // Claim only after all dump, base and runtime refusals have passed.
+            // The claim must still cover the existence check and the actual CLI import.
             String concurrent = claimImport(projectName);
             if (concurrent != null)
             {
@@ -302,18 +365,13 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
             }
             claimed = true;
 
-            // The tool's contract is "import into a NEW project", so reject early
-            // if a workspace project with this name already exists. Without this
-            // check the underlying EDT API still throws (with a less direct
-            // message) and we'd surface it via the catch block - but a clean
-            // up-front error is friendlier and matches the validation pattern
-            // used elsewhere (DeleteMetadataTool, CleanProjectTool, etc.).
-            IProject existing = workspace.getRoot().getProject(projectName);
-            if (existing != null && existing.exists())
+            // Recheck while holding the claim: another import may have created the project
+            // after the preflight check but finished and released its claim before ours.
+            existing = WorkspacePaths.existingProjectVariant(projectName);
+            if (existing != null)
             {
-                return ToolResult.error(
-                    "Project already exists in workspace: " + projectName //$NON-NLS-1$
-                  + ". Import requires a new project name.").toJson(); //$NON-NLS-1$
+                return ToolResult.error(existingProjectMessage(projectName, existing, existingProjectError,
+                    IMPORT_REQUIRES_NEW_NAME)).toJson();
             }
 
             Object api = runner.importApi();
@@ -380,54 +438,152 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
      */
     private static String claimImport(String projectName)
     {
-        Long startedAt = tryClaimImport(projectName);
-        return startedAt == null ? null
-            : ToolResult.error(importInProgressMessage(projectName, startedAt.longValue())).toJson();
+        ImportClaim claim = tryClaimImport(projectName);
+        return claim == null ? null
+            : ToolResult.error(importInProgressMessage(projectName, claim)).toJson();
+    }
+
+    /** The original spelling and start time of one import that owns a workspace folder. */
+    static final class ImportClaim
+    {
+        final String projectName;
+        final long startedAt;
+
+        ImportClaim(String projectName, long startedAt)
+        {
+            this.projectName = projectName;
+            this.startedAt = startedAt;
+        }
     }
 
     /**
-     * Claims {@code projectName} in the registry shared by every tool that creates a project by
-     * import, so two imports of one name cannot race inside EDT whichever tools make them.
+     * Claims the default folder in the registry shared by both import tools.
      *
      * @param projectName the project the caller wants to create
-     * @return {@code null} when the claim was taken, otherwise the instant the running import of
-     *     that name was claimed; release a taken claim with {@link #releaseImport(String)}
+     * @return {@code null} when the claim was taken, otherwise the running import;
+     *     release a taken claim with {@link #releaseImport(String)}
      */
-    static Long tryClaimImport(String projectName)
+    static ImportClaim tryClaimImport(String projectName)
     {
-        // Eclipse project names are case-sensitive on the resource layer, so the claim compares
-        // the name exactly - folding case here would refuse two imports that really are distinct.
-        return IMPORTS_IN_FLIGHT.putIfAbsent(projectName, Long.valueOf(System.currentTimeMillis()));
+        return tryClaimImport(projectName, WorkspacePaths.projectFoldersAreCaseSensitive());
+    }
+
+    /** Deterministic case-rule seam; scanning and insertion must be one atomic operation. */
+    static ImportClaim tryClaimImport(String projectName, boolean caseSensitive)
+    {
+        synchronized (IMPORTS_IN_FLIGHT)
+        {
+            // Eclipse names distinguish case, but the CLI's <root>/<name> folders may not.
+            // Compare them with Eclipse's own rule while retaining the claimant's exact key.
+            ImportClaim running = findImport(projectName, caseSensitive);
+            if (running == null)
+            {
+                IMPORTS_IN_FLIGHT.put(projectName, new ImportClaim(projectName, System.currentTimeMillis()));
+            }
+            return running;
+        }
+    }
+
+    /** Called only while holding the registry monitor. */
+    private static ImportClaim findImport(String projectName, boolean caseSensitive)
+    {
+        for (ImportClaim claim : IMPORTS_IN_FLIGHT.values())
+        {
+            if (WorkspacePaths.sameProjectFolder(projectName, claim.projectName, caseSensitive))
+            {
+                return claim;
+            }
+        }
+        return null;
     }
 
     /**
      * @param projectName a project name
-     * @return the instant a running import of that name was claimed, or {@code null} when none runs
+     * @return the running import with this folder identity, or {@code null} when none runs
      */
-    static Long importClaimedAt(String projectName)
+    static ImportClaim importClaimedAt(String projectName)
     {
-        return IMPORTS_IN_FLIGHT.get(projectName);
+        synchronized (IMPORTS_IN_FLIGHT)
+        {
+            return findImport(projectName, WorkspacePaths.projectFoldersAreCaseSensitive());
+        }
     }
 
-    /** @param projectName a name claimed by {@link #tryClaimImport(String)} */
+    /** @param projectName the exact name claimed by {@link #tryClaimImport(String)} */
     static void releaseImport(String projectName)
     {
-        IMPORTS_IN_FLIGHT.remove(projectName);
+        synchronized (IMPORTS_IN_FLIGHT)
+        {
+            IMPORTS_IN_FLIGHT.remove(projectName);
+        }
     }
 
     /**
-     * @param projectName the project whose import is running
-     * @param startedAt when that import was claimed
-     * @return the refusal for a second import of the same name
+     * @param projectName the requested project name
+     * @param claim the import already running into that folder
+     * @return the refusal for a second import into the same folder
      */
-    static String importInProgressMessage(String projectName, long startedAt)
+    static String importInProgressMessage(String projectName, ImportClaim claim)
     {
-        long seconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
-        return "An import into project `" + projectName //$NON-NLS-1$
+        long seconds = Math.max(0L, (System.currentTimeMillis() - claim.startedAt) / 1000L);
+        String running = "An import into project `" + claim.projectName //$NON-NLS-1$
             + "` is already in progress (started " + seconds //$NON-NLS-1$
-            + (seconds == 1 ? " second ago). " : " seconds ago). ") //$NON-NLS-1$ //$NON-NLS-2$
+            + (seconds == 1 ? " second ago)" : " seconds ago)"); //$NON-NLS-1$ //$NON-NLS-2$
+        if (projectName.equals(claim.projectName))
+        {
+            return running + ". Wait for it to finish, then poll `list_projects`; do not retry the import - a " //$NON-NLS-1$
+                + "second import of the same name races the first and can destroy both."; //$NON-NLS-1$
+        }
+        // Both CLI imports really target <workspace root>/<name>, so the shared folder is a fact here.
+        return running + ", and `" + projectName + "` differs from it only by letter case: on this " //$NON-NLS-1$ //$NON-NLS-2$
+            + "case-insensitive file system both would use the workspace folder " //$NON-NLS-1$
+            + WorkspacePaths.defaultProjectFolder(claim.projectName) + ". " //$NON-NLS-1$
             + "Wait for it to finish, then poll `list_projects`; do not retry the import - a " //$NON-NLS-1$
-            + "second import of the same name races the first and can destroy both."; //$NON-NLS-1$
+            + "second import into that folder races the first and can destroy both."; //$NON-NLS-1$
+    }
+
+    /**
+     * Both tools keep their existing exact-name refusal and share the case-variant explanation.
+     *
+     * <p>An existing project need not live in its default folder: one imported from a git clone
+     * lives in the clone. Eclipse refuses the case variant anyway, because its CASE_VARIANT_EXISTS
+     * check compares the resource tree, not locations. So the explanation states that rule, and
+     * names the shared workspace folder only when the existing project really is there.
+     *
+     * @param projectName the requested project name
+     * @param existing the existing project with the same name or a case variant of it
+     * @param exactMessage the site's refusal when the names are equal
+     * @param variantTail the site's own advice or fact, appended to the case-variant refusal
+     * @return the refusal to return
+     */
+    static String existingProjectMessage(String projectName, IProject existing, String exactMessage,
+        String variantTail)
+    {
+        if (projectName.equals(existing.getName()))
+        {
+            return exactMessage;
+        }
+        return "Project `" + existing.getName() + "` already exists in workspace, and `" + projectName //$NON-NLS-1$ //$NON-NLS-2$
+            + "` differs from it only by letter case: on this case-insensitive file system Eclipse treats " //$NON-NLS-1$
+            + "project names that differ only by letter case as one resource and refuses to create the " //$NON-NLS-1$
+            + "second one. " + existingLocationSentence(existing) + variantTail; //$NON-NLS-1$
+    }
+
+    /** Names the shared default folder only when the existing project is in it; else its real location. */
+    private static String existingLocationSentence(IProject existing)
+    {
+        IPath location = existing.getLocation();
+        if (location == null)
+        {
+            return ""; //$NON-NLS-1$
+        }
+        Path actual = location.toFile().toPath().normalize();
+        Path defaultFolder = WorkspacePaths.defaultProjectFolder(existing.getName());
+        if (defaultFolder != null && actual.equals(defaultFolder.normalize()))
+        {
+            return "Both would use the workspace folder " + actual + ". "; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return "The existing project is located at " + actual + ". "; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     /**
@@ -684,8 +840,37 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
             return abandoned;
         }
         callerStoppedWaiting.set(true);
+        return concludeTheStep(project, projectName, lifecycle, result.getOutcome(),
+            result.getFailure(), phase, refreshDone, stepClaimed);
+    }
 
-        BoundedJob.Outcome runOutcome = result.getOutcome();
+    /**
+     * Decides what the post-import step observed once the bounded wait has ended: a step the
+     * body may not have entered is abandoned if the caller can still claim it, and otherwise the
+     * answer is how far the body got.
+     *
+     * <p>Separate from {@link #startImportedProject} so every wait outcome can be decided
+     * headless. One of them has no deterministic route through the scheduler seam: a
+     * {@code TIMED_OUT} whose cancelled job a worker held in {@code ABOUT_TO_RUN} past
+     * {@link BoundedJob}'s grace, the body never entered. Holding a worker there takes a job
+     * listener that blocks, and the platform answers one by logging a possible deadlock and
+     * delivering job events unserialised for the rest of the JVM - so that case is pinned here,
+     * at the decision, and not end to end.
+     *
+     * @param project the imported project
+     * @param projectName the imported project name, for the log line
+     * @param lifecycle the platform lifecycle to drive
+     * @param runOutcome how the bounded wait ended
+     * @param runFailure what the bounded run reported as its failure, or {@code null}
+     * @param phase how far the step has got, as the job body advanced it
+     * @param refreshDone set once the workspace refresh has returned
+     * @param stepClaimed the ownership token shared with the job body
+     * @return what was observed
+     */
+    static StartOutcome concludeTheStep(IProject project, String projectName,
+        IImportLifecycle lifecycle, BoundedJob.Outcome runOutcome, Throwable runFailure,
+        AtomicReference<StartPhase> phase, AtomicBoolean refreshDone, AtomicBoolean stepClaimed)
+    {
         if (mayNotHaveEnteredTheWork(runOutcome))
         {
             // Every outcome but COMPLETED may have left the body unentered - NOT_RUN from a
@@ -702,7 +887,7 @@ public class ImportConfigurationFromXmlTool implements IMcpTool
         // Only a COMPLETED run hands over the body's own failure. An INTERRUPTED one carries the
         // interruption of THIS wait, not a failure of the step - which is still running and owns
         // the latch - so it must not be rendered as a failed refresh whose latch "was released".
-        Throwable failure = runOutcome == BoundedJob.Outcome.COMPLETED ? result.getFailure() : null;
+        Throwable failure = runOutcome == BoundedJob.Outcome.COMPLETED ? runFailure : null;
         if (failure != null)
         {
             return new StartOutcome(

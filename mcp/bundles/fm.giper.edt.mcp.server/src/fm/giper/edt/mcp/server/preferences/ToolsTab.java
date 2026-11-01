@@ -134,6 +134,15 @@ public class ToolsTab
         composite.setLayout(layout);
 
         createProfileBar(composite);
+        String sessionNote = getSessionPresetNote();
+        if (sessionNote != null)
+        {
+            Label note = new Label(composite, SWT.WRAP);
+            note.setText(sessionNote);
+            GridData noteData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+            noteData.widthHint = 550;
+            note.setLayoutData(noteData);
+        }
 
         SashForm sash = new SashForm(composite, SWT.HORIZONTAL);
         GridData sashGd = new GridData(SWT.FILL, SWT.FILL, true, true);
@@ -730,6 +739,7 @@ public class ToolsTab
                 {
                     model.setGroupEnabled(group.getToolNames(), true);
                 }
+                model.applyPreset(ToolPreset.ALL_TOOLS);
                 refreshCheckStates();
                 selectMatchingPreset();
                 updateCountLabel();
@@ -760,6 +770,7 @@ public class ToolsTab
                 {
                     model.setGroupEnabled(group.getToolNames(), false);
                 }
+                model.applyPreset(ToolPreset.CUSTOM);
                 refreshCheckStates();
                 selectMatchingPreset();
                 updateCountLabel();
@@ -789,12 +800,9 @@ public class ToolsTab
                 if (idx >= 0)
                 {
                     ToolPreset preset = ToolPreset.values()[idx];
-                    if (preset != ToolPreset.CUSTOM && preset.getDisabledTools() != null)
-                    {
-                        model.applyPreset(preset);
-                        refreshCheckStates();
-                        updateCountLabel();
-                    }
+                    model.applyPreset(preset);
+                    refreshCheckStates();
+                    updateCountLabel();
                 }
             }
         });
@@ -1300,6 +1308,15 @@ public class ToolsTab
     public boolean hasChanges()
     {
         return model.isDirty();
+    }
+
+    static String getSessionPresetNote()
+    {
+        ToolPreset preset = ToolSettingsService.getInstance().getSessionPreset();
+        return preset == null ? null
+            : "Launch preset " + preset.getDisplayName() + " is active via EDT_MCP_TOOL_PRESET. " //$NON-NLS-1$ //$NON-NLS-2$
+                + "It restricts each saved profile; editing the profile cannot lift that restriction. " //$NON-NLS-1$
+                + "Restart EDT with a different launch setting to change the restriction."; //$NON-NLS-1$
     }
 
     private static ToolProfileRepository profileRepository()

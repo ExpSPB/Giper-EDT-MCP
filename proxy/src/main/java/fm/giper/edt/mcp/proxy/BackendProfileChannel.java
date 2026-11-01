@@ -109,14 +109,17 @@ public final class BackendProfileChannel
         params.add("capabilities", new JsonObject()); //$NON-NLS-1$
         params.add("clientInfo", clientInfo); //$NON-NLS-1$
 
-        HttpRequest initialize =
-            newPostRequest(buildJsonRpcRequest("initialize", params).body, null, HANDSHAKE_TIMEOUT_SECONDS); //$NON-NLS-1$
+        JsonRpcRequest handshake = buildJsonRpcRequest("initialize", params); //$NON-NLS-1$
+        HttpRequest initialize = newPostRequest(handshake.body, null, HANDSHAKE_TIMEOUT_SECONDS);
         HttpResponse<String> response = client.send(initialize, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200)
         {
             throw new IOException("initialize against backend :" + backend.getPort() + endpoint.canonicalPath() //$NON-NLS-1$
                 + " failed with HTTP " + response.statusCode()); //$NON-NLS-1$
         }
+        // A JSON-RPC refusal is still HTTP 200, with or without a session header. Validate
+        // the SSE-unwrapped body before acknowledging initialization or caching this channel.
+        validateInitializeResponse(response.body(), handshake.id);
         String issued = response.headers().firstValue(HEADER_SESSION_ID).orElse(null);
 
         String initialized = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}"; //$NON-NLS-1$
@@ -126,6 +129,21 @@ public final class BackendProfileChannel
         sessionId = issued;
         handshakeDone = true;
         return sessionId;
+    }
+
+    private void validateInitializeResponse(String body, long expectedId) throws IOException
+    {
+        try
+        {
+            requireJsonRpcResult(body, "initialize", Long.valueOf(expectedId)); //$NON-NLS-1$
+        }
+        catch (IllegalArgumentException e)
+        {
+            JsonObject envelope = Json.parseObject(Backend.stripSseFraming(body));
+            String reason = Json.str(Json.obj(envelope, "error"), "message"); //$NON-NLS-1$ //$NON-NLS-2$
+            throw new IOException("initialize against backend :" + backend.getPort() + endpoint.canonicalPath() //$NON-NLS-1$
+                + " was refused: " + (reason == null || reason.isBlank() ? e.getMessage() : reason), e); //$NON-NLS-1$
+        }
     }
 
     public synchronized void invalidateSession()

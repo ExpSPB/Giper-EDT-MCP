@@ -63,6 +63,11 @@ public class NativeRenderModeProbeTest
             bufferedMode, NativeRenderModeProbe.getStartupBufferedRenderMode());
     }
 
+    /**
+     * The reason the probe exists: it must report the mode EDT is actually in rather than a value
+     * derived from the current system property instead of EDT's startup state (issue #522). Setting the
+     * property must therefore leave the answer alone.
+     */
     @Test
     public void testTheAnswerDoesNotFollowTheSystemProperty()
     {

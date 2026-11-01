@@ -32,10 +32,13 @@ import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
 import com._1c.g5.v8.dt.core.platform.IWorkspaceOrchestrator;
 import com._1c.g5.v8.dt.form.refactoring.IFormRefactoringService;
+import com._1c.g5.v8.dt.form.service.attribute.FormAttributeManagementService;
 import com._1c.g5.v8.dt.lifecycle.IServicesOrchestrator;
 import com._1c.g5.v8.dt.md.refactoring.core.IMdRefactoringService;
 import com._1c.g5.v8.dt.navigator.providers.INavigatorContentProviderStateProvider;
+import com._1c.g5.v8.dt.platform.IRuntimeRegistry;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationContextProvider;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
 import com._1c.g5.v8.dt.rights.IRightInfosService;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
@@ -48,6 +51,7 @@ import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
 import fm.giper.edt.mcp.server.profiles.ProfileNotificationService;
 import fm.giper.edt.mcp.server.profiles.ToolProfileRepository;
 import fm.giper.edt.mcp.server.utils.BackgroundJobs;
+import fm.giper.edt.mcp.server.utils.FormAttributeDeletion;
 import fm.giper.edt.mcp.server.utils.Log;
 import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe;
 import com.e1c.g5.dt.applications.IApplicationManager;
@@ -211,6 +215,12 @@ public class Activator extends AbstractUIPlugin
     public static Activator getDefault()
     {
         return plugin;
+    }
+
+    /** @return supported platform runtimes, or {@code null} when the service is unavailable */
+    public IRuntimeRegistry getRuntimeRegistry()
+    {
+        return services.getRuntimeRegistry();
     }
 
     /**
@@ -402,13 +412,13 @@ public class Activator extends AbstractUIPlugin
         return services.getInfobaseManager();
     }
 
-    /**
-     * Returns the IInfobaseAssociationManager service for binding/unbinding infobases
-     * to configuration projects.
-     * Used by create_infobase and delete_infobase.
-     *
-     * @return infobase association manager or null if not available
-     */
+    /** Returns EDT's current-context provider, or null while platform services are unavailable. */
+    public IInfobaseAssociationContextProvider getInfobaseAssociationContextProvider()
+    {
+        return services.getInfobaseAssociationContextProvider();
+    }
+
+    /** Returns the service for binding and unbinding project infobases, or null if unavailable. */
     public IInfobaseAssociationManager getInfobaseAssociationManager()
     {
         return services.getInfobaseAssociationManager();
@@ -444,6 +454,18 @@ public class Activator extends AbstractUIPlugin
     public IFormRefactoringService getFormRefactoringService()
     {
         return services.getFormRefactoringService();
+    }
+
+    /** Returns EDT's form-attribute management service, including its column-support predicate. */
+    public FormAttributeManagementService getFormAttributeManagementService()
+    {
+        return services.getFormAttributeManagementService();
+    }
+
+    /** Returns the designer's attribute delete and its read-only prediction, or null if unavailable. */
+    public FormAttributeDeletion getFormAttributeDeletion()
+    {
+        return services.getFormAttributeDeletion();
     }
 
     /**

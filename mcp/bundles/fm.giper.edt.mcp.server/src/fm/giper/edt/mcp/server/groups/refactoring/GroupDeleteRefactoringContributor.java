@@ -32,6 +32,11 @@ public class GroupDeleteRefactoringContributor extends AbstractObjectDeleteRefac
     protected boolean hasAssociation(IProject project, String fqn) {
         IGroupService groupService = Activator.getGroupServiceStatic();
 
+        // The optional group service is absent in headless mode and during shutdown.
+        if (groupService == null) {
+            return false;
+        }
+
         // Check if this object is in any group
         Group group = groupService.findGroupForObject(project, fqn);
         return group != null;
@@ -39,7 +44,8 @@ public class GroupDeleteRefactoringContributor extends AbstractObjectDeleteRefac
 
     @Override
     protected boolean performRemove(IProject project, String fqn) {
-        return Activator.getGroupServiceStatic().removeObjectFromGroup(project, fqn);
+        IGroupService groupService = Activator.getGroupServiceStatic();
+        return groupService != null && groupService.removeObjectFromGroup(project, fqn);
     }
 
     @Override
@@ -47,7 +53,7 @@ public class GroupDeleteRefactoringContributor extends AbstractObjectDeleteRefac
         // Resolve the group path while the membership still exists (this runs at
         // descriptor-creation time, before the removal in postProcess()).
         IGroupService groupService = Activator.getGroupServiceStatic();
-        Group group = groupService.findGroupForObject(project, fqn);
+        Group group = groupService != null ? groupService.findGroupForObject(project, fqn) : null;
         String groupPath = group != null ? group.getFullPath() : null;
         return "Removed deleted object from group " + groupPath + ": " + fqn;
     }

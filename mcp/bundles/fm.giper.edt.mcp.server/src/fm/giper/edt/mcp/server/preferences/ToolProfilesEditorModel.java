@@ -183,6 +183,7 @@ public final class ToolProfilesEditorModel
             .description(description)
             .enabled(true)
             .allowedTools(preset.toAllowlist(catalog))
+            .presetId(preset.getId())
             .build();
         ToolProfileValidator.ValidationResult validation = ToolProfileValidator.validate(created);
         if (!validation.isValid())
@@ -214,6 +215,7 @@ public final class ToolProfilesEditorModel
             .description(selected.getDescription())
             .enabled(true)
             .allowedTools(selected.getAllowedTools())
+            .presetId(resolvePresetId(selected))
             .build();
         ToolProfileValidator.ValidationResult validation = ToolProfileValidator.validate(copy);
         if (!validation.isValid())
@@ -279,7 +281,7 @@ public final class ToolProfilesEditorModel
 
     /**
      * Applies a named preset to the selected draft. Unknown tool names already on the
-     * allowlist are kept. {@link ToolPreset#CUSTOM} is ignored.
+     * allowlist are kept. {@link ToolPreset#CUSTOM} changes provenance only.
      */
     public OperationResult applyPreset(ToolPreset preset)
     {
@@ -288,13 +290,17 @@ public final class ToolProfilesEditorModel
         {
             return OperationResult.failed("No profile is selected"); //$NON-NLS-1$
         }
-        if (preset == null || preset == ToolPreset.CUSTOM)
+        if (preset == null)
         {
             return OperationResult.ok();
         }
+        if (preset == ToolPreset.CUSTOM)
+        {
+            return replaceSelected(selected.toBuilder().presetId(preset.getId()).build());
+        }
         Set<String> allowed = new HashSet<>(preset.toAllowlist(catalog));
         allowed.addAll(unknownAllowedTools());
-        return replaceSelected(selected.toBuilder().allowedTools(allowed).build());
+        return replaceSelected(selected.toBuilder().allowedTools(allowed).presetId(preset.getId()).build());
     }
 
     /**
@@ -338,6 +344,7 @@ public final class ToolProfilesEditorModel
         allowed.addAll(unknownAllowedTools());
         return replaceSelected(selected.toBuilder()
             .allowedTools(allowed)
+            .presetId(ToolPreset.CUSTOM.getId())
             .build());
     }
 
@@ -410,6 +417,7 @@ public final class ToolProfilesEditorModel
             .description(imported.getDescription())
             .enabled(imported.isEnabled())
             .allowedTools(imported.getAllowedTools())
+            .presetId(resolvePresetId(imported))
             .build();
         ToolProfileValidator.ValidationResult validation = ToolProfileValidator.validate(next);
         if (!validation.isValid())
@@ -428,7 +436,7 @@ public final class ToolProfilesEditorModel
         {
             return ToolPreset.CUSTOM;
         }
-        return ToolPreset.matchAllowlist(selected.getAllowedTools(), catalog);
+        return ToolPreset.fromId(resolvePresetId(selected));
     }
 
     /**
@@ -497,6 +505,11 @@ public final class ToolProfilesEditorModel
 
     private OperationResult replaceSelected(ToolProfile next)
     {
+        if (next.getPresetId() == null && getSelected() != null && !next.sameContent(getSelected()))
+        {
+            // Capture the old displayed choice before a manual edit changes its shape.
+            next = next.toBuilder().presetId(resolvePresetId(getSelected())).build();
+        }
         ToolProfileValidator.ValidationResult validation = ToolProfileValidator.validate(next);
         if (!validation.isValid())
         {
@@ -531,6 +544,13 @@ public final class ToolProfilesEditorModel
             selectedId = ToolProfile.DEFAULT_ID;
         }
         dirty = false;
+    }
+
+    private static String resolvePresetId(ToolProfile profile)
+    {
+        return profile.getPresetId() == null
+            ? ToolPreset.matchLegacyAllowlist(profile.getAllowedTools()).getId()
+            : profile.getPresetId();
     }
 
     private boolean sameAsOriginals()

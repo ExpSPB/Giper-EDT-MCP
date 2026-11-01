@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Licensed under AGPL-3.0-or-later
@@ -12,6 +12,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.junit.Test;
+
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 
 /**
  * Tests for {@link ToolPreset} enum.
@@ -83,7 +85,7 @@ public class ToolPresetTest
         assertTrue("Should disable get_job_status with its disabled job owners", //$NON-NLS-1$
             disabled.contains("get_job_status")); //$NON-NLS-1$
 
-        // Should NOT disable core, problems, code intelligence, tags
+        // Keep the read tools in core, problems, code intelligence and tags
         assertFalse("Should not disable get_edt_version", disabled.contains("get_edt_version"));
         assertFalse("Should not disable get_project_errors", disabled.contains("get_project_errors"));
         assertFalse("Should not disable get_metadata_objects", disabled.contains("get_metadata_objects"));
@@ -292,8 +294,11 @@ public class ToolPresetTest
     }
 
     /**
-     * Read-only presets disable file-writing merge_rules and delete_project, but keep the read-only
-     * comparison tools enabled.
+     * The two halves of the comparison family part ways here, and that is the decision rather than
+     * an oversight: {@code merge_rules} WRITES files, while starting a comparison and expanding a
+     * node read the model and change no code. Comparison occupies EDT's single comparison slot,
+     * so its write hint is an explicit exception in the read-only policy. Revalidation also stays
+     * enabled; workspace cleaning and disk resynchronization are excluded.
      */
     @Test
     public void testReadOnlyPresetsDisableMergeRulesAndDeleteProjectButKeepComparisonReads()

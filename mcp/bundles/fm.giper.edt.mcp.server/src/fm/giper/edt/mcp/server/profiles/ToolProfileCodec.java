@@ -33,6 +33,7 @@ public final class ToolProfileCodec
     static final String KEY_DESCRIPTION = "description"; //$NON-NLS-1$
     static final String KEY_ENABLED = "enabled"; //$NON-NLS-1$
     static final String KEY_ALLOWED_TOOLS = "allowedTools"; //$NON-NLS-1$
+    static final String KEY_PRESET_ID = "presetId"; //$NON-NLS-1$
     static final String KEY_REVISION = "revision"; //$NON-NLS-1$
 
     private ToolProfileCodec()
@@ -182,6 +183,10 @@ public final class ToolProfileCodec
         object.addProperty(KEY_DISPLAY_NAME, profile.getDisplayName());
         object.addProperty(KEY_DESCRIPTION, profile.getDescription());
         object.addProperty(KEY_ENABLED, profile.isEnabled());
+        if (profile.getPresetId() != null)
+        {
+            object.addProperty(KEY_PRESET_ID, profile.getPresetId());
+        }
         JsonArray tools = new JsonArray();
         for (String tool : profile.getAllowedTools())
         {
@@ -221,6 +226,7 @@ public final class ToolProfileCodec
             .description(description)
             .enabled(enabled)
             .allowedTools(allowed)
+            .presetId(object.has(KEY_PRESET_ID) ? requireString(object, KEY_PRESET_ID) : null)
             .revision(revision)
             .build();
     }

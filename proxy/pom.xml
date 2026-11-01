@@ -37,6 +37,10 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
         <configuration>
+          <!-- Fixtures create HttpServer directly, before Main applies this startup default. -->
+          <systemPropertyVariables>
+            <sun.net.httpserver.drainAmount>0</sun.net.httpserver.drainAmount>
+          </systemPropertyVariables>
           <includes>
             <include>**/*Test.java</include>
             <include>**/*IT.java</include>

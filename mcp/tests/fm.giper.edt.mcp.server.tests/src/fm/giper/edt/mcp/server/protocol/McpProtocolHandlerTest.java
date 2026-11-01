@@ -1747,6 +1747,19 @@ public class McpProtocolHandlerTest
      * recorder failure without altering the returned response.
      */
     @Test
+    public void testTheOneArgumentOverloadTimesItsOwnParse()
+    {
+        DurationCapturingHandler timed = new DurationCapturingHandler();
+
+        timed.processRequest(buildJsonRpcRequest(1, "initialize", null)); //$NON-NLS-1$
+
+        // Lower bound only: load can only make this larger, never smaller.
+        assertTrue("the parse belongs inside the recorded duration, got " + timed.recordedDurationMs //$NON-NLS-1$
+            + "ms for a parse that alone takes " + DurationCapturingHandler.PARSE_MILLIS + "ms", //$NON-NLS-1$ //$NON-NLS-2$
+            timed.recordedDurationMs >= DurationCapturingHandler.PARSE_MILLIS);
+    }
+
+    @Test
     public void testParsedRequestIsNotParsedAgainAndHistoryIncludesTheCallersClock()
     {
         AtomicInteger parses = new AtomicInteger();
@@ -1780,6 +1793,34 @@ public class McpProtocolHandlerTest
         assertNotNull("the tool must have been called", tool.params); //$NON-NLS-1$
         assertTrue(tool.params.containsKey("kept")); //$NON-NLS-1$
         assertFalse(tool.params.containsKey("dropped")); //$NON-NLS-1$
+    }
+
+    private static class DurationCapturingHandler extends McpProtocolHandler
+    {
+        static final long PARSE_MILLIS = 60L;
+
+        long recordedDurationMs = -1L;
+
+        @Override
+        public JsonRpcRequest parse(String requestBody)
+        {
+            try
+            {
+                Thread.sleep(PARSE_MILLIS);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+            return super.parse(requestBody);
+        }
+
+        @Override
+        void recordToHistory(String method, String toolName, String requestJson, String responseJson,
+            long durationMs)
+        {
+            recordedDurationMs = durationMs;
+        }
     }
 
     private static class RecordingSpyHandler extends McpProtocolHandler

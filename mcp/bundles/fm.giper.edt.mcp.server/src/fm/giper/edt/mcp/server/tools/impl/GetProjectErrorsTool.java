@@ -24,12 +24,15 @@ import java.util.Set;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EReference;
 
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.PredefinedItem;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
 import com._1c.g5.v8.dt.validation.marker.Marker;
@@ -58,6 +61,7 @@ import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.PredefinedWriter;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
+import fm.giper.edt.mcp.server.utils.ReferencedTopObjects;
 import fm.giper.edt.mcp.server.utils.SubsystemUtils;
 import fm.giper.edt.mcp.server.utils.XdtoWriter;
 
@@ -1249,11 +1253,10 @@ public class GetProjectErrorsTool implements IMcpTool
      * different spellings, each of which must scope the scan IN ITS OWN project. Merging them would
      * let one project's spelling select the other's markers.</p>
      *
-     * <p>Two boundaries are used, because a form MEMBER does not live in the mdclass model: every
-     * other family is decided inside ONE BM read transaction on this project's model, while a form
-     * member is decided afterwards through {@link FormElementWriter#readEditableForm}, which opens
-     * its own read transaction on the form CONTENT model. Nesting the two would put a read
-     * transaction inside a read transaction, so the member addresses are deferred instead.</p>
+     * <p>The project pass first resolves ordinary addresses in one read. Deferred form-member
+     * probes then use two sequential reads each: one for metadata owner/form resolution and one for
+     * editable content. The deferred reads start only after the initial pass returns, and the
+     * content read starts only after metadata resolution returns. None is nested.</p>
      *
      * @param project the project being inspected
      * @param bmModel its BM model
@@ -1305,10 +1308,10 @@ public class GetProjectErrorsTool implements IMcpTool
             return decided;
         }
 
-        // Addresses whose ONLY attempt failed to read the form content model. They are undecided,
-        // exactly like the addresses of a pass that threw - never "not found".
+        // Addresses whose ONLY attempt failed to resolve the form or read its content model. They
+        // are undecided, exactly like the addresses of a pass that threw - never "not found".
         resolveDeferredMembers(deferred, decided,
-            member -> formMemberScopeSpellings(project, metadataScope, member));
+            member -> formMemberScopeSpellings(bmModel, project, metadataScope, member));
         decided.passCompleted = true;
         return decided;
     }
@@ -1500,6 +1503,9 @@ public class GetProjectErrorsTool implements IMcpTool
      * prevent. Scoping by the owning node instead widens the answer to that node's problems, which
      * is visible in every row's Location and never hides one.</p>
      *
+     * <p>Referenced top objects are marker roots too: their contained members use the file owner
+     * declared by the shared metadata grammar, while a Table/Cube address itself stays exact.</p>
+     *
      * @param normFqn the type-normalized address that resolved
      * @return the owning node's address, or {@code null} when {@code normFqn} is already it
      */
@@ -1515,13 +1521,14 @@ public class GetProjectErrorsTool implements IMcpTool
         {
             return null;
         }
-        String[] parts = normFqn.split("\\."); //$NON-NLS-1$
+        String[] parts = Objects.requireNonNull(normFqn).split("\\."); //$NON-NLS-1$
         if (parts.length <= 2)
         {
             // Type.Name is the object itself, and a one-segment address names nothing narrower.
             return null;
         }
-        return parts[0] + "." + parts[1]; //$NON-NLS-1$
+        String owner = ReferencedTopObjects.fileOwnerFqn(normFqn);
+        return normFqn.equals(owner) ? null : owner;
     }
 
     /**
@@ -1787,28 +1794,19 @@ public class GetProjectErrorsTool implements IMcpTool
         {
             return false;
         }
+        EClass ownerType = (EClass)MdClassPackage.eINSTANCE.getEClassifier(
+            MetadataTypeUtils.toEnglishSingular(parts[0]));
         for (int i = 2; i < parts.length; i += 2)
         {
-            // The NAVIGABLE-child catalogue, not the segment-alias one. The alias catalogue also
-            // holds kinds that exist only INSIDE a form (Field, Group, Button, ...), so asking it
-            // let 'Catalog.Products.Field.Code' - a form kind hung directly off a mdclass object -
-            // pass as a shape some configuration might hold. Nothing can: the mdclass metamodel has
-            // no such containment. Form / Handler are absent here on purpose; they lead out of the
-            // mdclass model and the two form grammars above own them.
-            String feature = MetadataNodeResolver.featureNameForKind(parts[i]);
-            if (feature == null)
+            // Tokens alone do not establish a path: Field and Table also name form items.
+            // Check the actual owner EClass at EVERY step, then follow the reference's element
+            // type. This accepts EDS.Table.Field while rejecting Catalog.TabularSection.Field.
+            EReference child = MetadataNodeResolver.childFeature(ownerType, parts[i]);
+            if (child == null || !child.isMany())
             {
                 return false;
             }
-            // ...and, at the FIRST level, whether THIS owner can hold that child at all: 'Column' is
-            // a real kind but a containment of DocumentJournal, so 'Catalog.Products.Column.Number'
-            // names nothing in any configuration. Only the first level is checked because deeper
-            // owners are not named by a type token (the owner of an Attribute under a TabularSection
-            // is the tabular section, which no segment types), and a gap here is the safe direction.
-            if (i == 2 && !ownerTypeCanContain(parts[0], feature))
-            {
-                return false;
-            }
+            ownerType = child.getEReferenceType();
         }
         return true;
     }
@@ -2059,8 +2057,11 @@ public class GetProjectErrorsTool implements IMcpTool
      * {@code ...Handler.[PriIzmenenii]} must not scope a scan whose locations end in
      * {@code Handler.OnChange}.</p>
      *
-     * <p>Call OUTSIDE a BM transaction: {@link FormElementWriter#readEditableForm} opens its own.</p>
+     * <p>Metadata owner/form resolution runs in a dedicated read transaction. Once it returns,
+     * {@link FormElementWriter#readEditableForm} opens a separate read for the editable content
+     * model; the two reads are sequential, never nested.</p>
      *
+     * @param bmModel the already-resolved BM model for the project
      * @param project the project owning the form
      * @param metadataScope the project's metadata resolution root
      * @param member the deferred member probe (its ref and the spelling being probed)
@@ -2069,20 +2070,35 @@ public class GetProjectErrorsTool implements IMcpTool
      *     model could not be read at all - an infrastructure failure decides nothing and must never
      *     be reported as "this address does not exist"
      */
-    private static List<String> formMemberScopeSpellings(IProject project, MetadataScope metadataScope,
-        DeferredMember member)
+    static List<String> formMemberScopeSpellings(IBmModel bmModel, IProject project,
+        MetadataScope metadataScope, DeferredMember member)
     {
         FormElementWriter.FormMemberRef ref = member.ref;
         FormElementWriter.FormEditContext ctx;
         try
         {
-            MdObject mdForm = FormStructureReader.resolveMdForm(metadataScope, ref.formPath);
-            if (mdForm == null)
+            // Resolve the owner and its form, then capture the stable BM identity, within one read
+            // boundary on the already-resolved project model. The content-form read below is a
+            // separate transaction and re-fetches this identity there.
+            ctx = BmTransactions.read(bmModel, "ResolveErrorFormMetadata", (tx, pm) -> { //$NON-NLS-1$
+                MdObject mdForm = FormStructureReader.resolveMdForm(metadataScope, ref.formPath);
+                if (mdForm == null)
+                {
+                    return null;
+                }
+                FormElementWriter.FormEditContext context = FormElementWriter.editContextFor(project, mdForm);
+                if (context.bmModel != bmModel)
+                {
+                    throw new IllegalStateException(
+                        "The form context resolved a different BM model than the metadata read"); //$NON-NLS-1$
+                }
+                return context;
+            });
+            if (ctx == null)
             {
                 // The form itself is absent from this project's root: a decided "not here".
                 return Collections.emptyList();
             }
-            ctx = FormElementWriter.editContextFor(project, mdForm);
         }
         catch (Exception e)
         {

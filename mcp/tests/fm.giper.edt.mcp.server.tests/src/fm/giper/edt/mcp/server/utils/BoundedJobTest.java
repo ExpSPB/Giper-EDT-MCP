@@ -14,6 +14,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,6 +26,7 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.IJobChangeEvent;
 import org.eclipse.core.runtime.jobs.IJobChangeListener;
+import org.eclipse.core.runtime.jobs.IJobManager;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.junit.Test;
@@ -84,6 +86,144 @@ public class BoundedJobTest
             Outcome.COMPLETED, result.getOutcome());
         assertFalse("a raising work is not a success", result.isSuccess()); //$NON-NLS-1$
         assertEquals("boom", result.getFailure().getMessage()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testInterruptedCallerRestoresFlagAfterCancellationCallbackConsumesIt() throws Exception
+    {
+        assertInterruptedCallerRestoresFlagAfterCancellation(false);
+    }
+
+    @Test
+    public void testInterruptedCallerRestoresFlagWhenCancellationCallbackThrows() throws Exception
+    {
+        assertInterruptedCallerRestoresFlagAfterCancellation(true);
+    }
+
+    private static void assertInterruptedCallerRestoresFlagAfterCancellation(boolean callbackThrows)
+        throws Exception
+    {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        CountDownLatch callerReturned = new CountDownLatch(1);
+        AtomicReference<IProgressMonitor> workMonitor = new AtomicReference<>();
+        AtomicReference<BoundedJob.Result> result = new AtomicReference<>();
+        AtomicReference<Throwable> callerFailure = new AtomicReference<>();
+        AtomicBoolean callbackSawInterrupt = new AtomicBoolean();
+        AtomicBoolean callerStillInterrupted = new AtomicBoolean();
+        IllegalStateException callbackFailure = new IllegalStateException("cancellation callback failed"); //$NON-NLS-1$
+        Thread caller = new Thread(() -> {
+            try
+            {
+                result.set(BoundedJob.runWithCancellation("test: interrupted cleanup", //$NON-NLS-1$
+                    GENEROUS_TIMEOUT_MS, monitor -> {
+                        workMonitor.set(monitor);
+                        entered.countDown();
+                        try
+                        {
+                            release.await(WEDGE_CEILING_MS, TimeUnit.MILLISECONDS);
+                        }
+                        finally
+                        {
+                            finished.countDown();
+                        }
+                    }, () -> {
+                        // BoundedJob calls this before job.cancel(), and a running Job's
+                        // canceling() hook may call it again. Consume each delivery without
+                        // letting a later cleared flag erase the first observed interrupt.
+                        boolean interrupted = Thread.interrupted();
+                        if (interrupted)
+                        {
+                            callbackSawInterrupt.set(true);
+                        }
+                        if (callbackThrows)
+                        {
+                            throw callbackFailure;
+                        }
+                    }));
+            }
+            catch (Throwable t) // NOSONAR relay the separate test thread's failure
+            {
+                callerFailure.set(t);
+            }
+            finally
+            {
+                callerStillInterrupted.set(Thread.currentThread().isInterrupted());
+                callerReturned.countDown();
+            }
+        }, "bounded-job-interrupted-caller"); //$NON-NLS-1$
+
+        try
+        {
+            caller.start();
+            assertTrue("work must enter before the caller is interrupted", //$NON-NLS-1$
+                entered.await(5, TimeUnit.SECONDS));
+            boolean waiting = awaitJobJoinWait(caller, callerReturned, 5_000L);
+            assertTrue("caller never reached the exact SDK job wait: state=" + caller.getState() //$NON-NLS-1$
+                + ", stack=" + Arrays.toString(caller.getStackTrace()), waiting); //$NON-NLS-1$
+
+            caller.interrupt();
+            boolean returnedBeforeRelease = callerReturned.await(5, TimeUnit.SECONDS);
+            assertTrue("caller did not return while the worker was held: state=" + caller.getState() //$NON-NLS-1$
+                + ", stack=" + Arrays.toString(caller.getStackTrace()), returnedBeforeRelease); //$NON-NLS-1$
+            assertTrue("the cancellation callback must receive the restored interrupt flag", //$NON-NLS-1$
+                callbackSawInterrupt.get());
+            assertTrue("the caller must leave with its interrupt flag restored", //$NON-NLS-1$
+                callerStillInterrupted.get());
+            if (callbackThrows)
+            {
+                assertSame("cleanup failures must propagate unchanged", //$NON-NLS-1$
+                    callbackFailure, callerFailure.get());
+                assertNull("no bounded result is returned after cleanup throws", result.get()); //$NON-NLS-1$
+            }
+            else
+            {
+                assertNull("the caller must not throw", callerFailure.get()); //$NON-NLS-1$
+                assertEquals(Outcome.INTERRUPTED, result.get().getOutcome());
+                assertTrue("the interrupted job must still be asked to cancel", //$NON-NLS-1$
+                    workMonitor.get().isCanceled());
+            }
+        }
+        finally
+        {
+            release.countDown();
+            caller.interrupt();
+            caller.join(5_000L);
+            assertFalse("the dedicated caller must not leak", caller.isAlive()); //$NON-NLS-1$
+            if (entered.getCount() == 0L)
+            {
+                assertTrue("the released worker must not leak", //$NON-NLS-1$
+                    finished.await(5, TimeUnit.SECONDS));
+            }
+        }
+    }
+
+    private static boolean awaitJobJoinWait(Thread caller, CountDownLatch callerReturned, long timeoutMs)
+        throws InterruptedException
+    {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (System.nanoTime() < deadline && callerReturned.getCount() != 0L)
+        {
+            if (caller.getState() == Thread.State.TIMED_WAITING)
+            {
+                boolean jobJoin = false;
+                boolean semaphoreAcquire = false;
+                for (StackTraceElement frame : caller.getStackTrace())
+                {
+                    jobJoin |= "org.eclipse.core.internal.jobs.JobManager" //$NON-NLS-1$
+                        .equals(frame.getClassName()) && "join".equals(frame.getMethodName()); //$NON-NLS-1$
+                    semaphoreAcquire |= "org.eclipse.core.internal.jobs.Semaphore" //$NON-NLS-1$
+                        .equals(frame.getClassName()) && "acquire".equals(frame.getMethodName()); //$NON-NLS-1$
+                }
+                if (jobJoin && semaphoreAcquire)
+                {
+                    return true;
+                }
+            }
+            Thread.sleep(10L);
+        }
+        return false;
     }
 
     @Test
@@ -306,6 +446,178 @@ public class BoundedJobTest
 
         assertEquals("a throwing callback must not leave the listener on the job", //$NON-NLS-1$
             1, listener.getDoneCalls());
+    }
+
+    /**
+     * The completion is the job's terminal notification, and EDT sends that also for a job cancelled before it
+     * entered the work (#743 review, round 9): cancelling a WAITING or SLEEPING job moves it to NONE and notifies done
+     * inside the cancel (org.eclipse.core.jobs 3.15.100 and 3.15.700, JobManager.cancel). The cancel here comes from
+     * the scheduler, before the caller joins, so the completion has run by the time the run answers NOT_RUN.
+     */
+    @Test
+    public void testCompletionRunsWhenTheJobIsCancelledBeforeItRuns()
+    {
+        AtomicBoolean ran = new AtomicBoolean(false);
+        AtomicInteger completions = new AtomicInteger();
+        BoundedJob.Result result = BoundedJob.run("test: cancelled before it ran", GENEROUS_TIMEOUT_MS, //$NON-NLS-1$
+            monitor -> ran.set(true), completions::incrementAndGet, job -> {
+                job.schedule(GENEROUS_TIMEOUT_MS); // waiting to run...
+                job.cancel(); // ...and cancelled before it does
+            });
+
+        assertEquals(Outcome.NOT_RUN, result.getOutcome());
+        assertFalse("the work never ran", ran.get()); //$NON-NLS-1$
+        assertEquals("the job's end without running runs the completion, once, before the run answers", //$NON-NLS-1$
+            1, completions.get());
+    }
+
+    /**
+     * The same when ANOTHER thread cancels the waiting job while the caller waits for it: the run answers NOT_RUN, and
+     * the completion runs once - at the latest a moment after the run answered, on the thread EDT delivers done on.
+     */
+    @Test
+    public void testCompletionRunsWhenAnotherThreadCancelsTheWaitingJob() throws Exception
+    {
+        AtomicBoolean ran = new AtomicBoolean(false);
+        AtomicInteger completions = new AtomicInteger();
+        CountDownLatch completed = new CountDownLatch(1);
+        BoundedJob.Result result = BoundedJob.run("test: cancelled by another thread", GENEROUS_TIMEOUT_MS, //$NON-NLS-1$
+            monitor -> ran.set(true), () -> {
+                completions.incrementAndGet();
+                completed.countDown();
+            }, job -> {
+                job.schedule(GENEROUS_TIMEOUT_MS); // waiting to run
+                Thread canceller = new Thread(() -> {
+                    try
+                    {
+                        Thread.sleep(200);
+                    }
+                    catch (InterruptedException e)
+                    {
+                        Thread.currentThread().interrupt();
+                    }
+                    job.cancel();
+                }, "test: canceller"); //$NON-NLS-1$
+                canceller.setDaemon(true);
+                canceller.start();
+            });
+
+        assertEquals(Outcome.NOT_RUN, result.getOutcome());
+        assertTrue("the caller waited for the cancel, not for its deadline (waited " + result.getElapsedMs() + "ms)", //$NON-NLS-1$ //$NON-NLS-2$
+            result.getElapsedMs() < SANE_RETURN_MS);
+        assertTrue("the job's end without running runs the completion", //$NON-NLS-1$
+            completed.await(SANE_RETURN_MS, TimeUnit.MILLISECONDS));
+        assertFalse("the work never ran", ran.get()); //$NON-NLS-1$
+        assertEquals("exactly once", 1, completions.get()); //$NON-NLS-1$
+    }
+
+    /**
+     * A job a SUSPENDED job manager still holds has not ended: join returns at once and the run answers NOT_RUN, but
+     * EDT sends no terminal notification - the job is still WAITING. So the completion waits until the job ends - here
+     * by running, once the manager resumes; a caller that took NOT_RUN for the job's end would be wrong.
+     */
+    @Test
+    public void testCompletionWaitsForAJobASuspendedManagerStillHolds() throws Exception
+    {
+        IJobManager manager = Job.getJobManager();
+        AtomicBoolean ran = new AtomicBoolean(false);
+        CountDownLatch completed = new CountDownLatch(1);
+        manager.suspend();
+        try
+        {
+            BoundedJob.Result result = BoundedJob.run("test: held by a suspended manager", GENEROUS_TIMEOUT_MS, //$NON-NLS-1$
+                monitor -> ran.set(true), completed::countDown);
+            assertEquals("join returns at once for a waiting job of a suspended manager", //$NON-NLS-1$
+                Outcome.NOT_RUN, result.getOutcome());
+            assertFalse("the work has not run", ran.get()); //$NON-NLS-1$
+            assertEquals("and the job has not ended: no completion yet", 1L, completed.getCount()); //$NON-NLS-1$
+        }
+        finally
+        {
+            manager.resume();
+        }
+        assertTrue("once the manager resumes, the job runs and ends, and the completion runs", //$NON-NLS-1$
+            completed.await(SANE_RETURN_MS, TimeUnit.MILLISECONDS));
+        assertTrue("the work ran", ran.get()); //$NON-NLS-1$
+    }
+
+    /**
+     * A job a SUSPENDED job manager still holds also ends when something cancels it before the manager resumes, and
+     * EDT then sends its terminal notification at once, suspended or not: cancelling a WAITING job moves it to NONE
+     * and notifies done inside the cancel (org.eclipse.core.jobs 3.15.100 and 3.15.700, JobManager.cancel). So the
+     * completion comes for a job that never ran - the run answered NOT_RUN, and the job does not run after the resume.
+     */
+    @Test
+    public void testCompletionRunsWhenAJobASuspendedManagerHoldsIsCancelled()
+    {
+        IJobManager manager = Job.getJobManager();
+        AtomicBoolean ran = new AtomicBoolean(false);
+        AtomicInteger completions = new AtomicInteger();
+        AtomicReference<Job> held = new AtomicReference<>();
+        manager.suspend();
+        try
+        {
+            BoundedJob.Result result = BoundedJob.run("test: cancelled while held", //$NON-NLS-1$
+                GENEROUS_TIMEOUT_MS, monitor -> ran.set(true), completions::incrementAndGet, job -> {
+                    held.set(job);
+                    McpJobs.schedule(job);
+                });
+            assertEquals("join returns at once for a waiting job of a suspended manager", //$NON-NLS-1$
+                Outcome.NOT_RUN, result.getOutcome());
+            assertEquals("the job has not ended: no completion yet", 0, completions.get()); //$NON-NLS-1$
+            held.get().cancel(); // something cancels it while the manager is still suspended
+            assertEquals("the cancel ended the job and ran the completion inside it, still suspended", //$NON-NLS-1$
+                1, completions.get());
+        }
+        finally
+        {
+            manager.resume();
+        }
+        assertEquals("the job is off the job manager, so it does not run after the resume", Job.NONE, //$NON-NLS-1$
+            held.get().getState());
+        assertFalse("the work never ran", ran.get()); //$NON-NLS-1$
+        assertEquals("exactly once", 1, completions.get()); //$NON-NLS-1$
+    }
+
+    /**
+     * When OUR deadline keeps a queued job from starting, our cancel ends it, and the completion runs before the run
+     * answers TIMED_OUT_BEFORE_START: the job is held asleep the way the never-started test holds it, and cancelling
+     * a sleeping job notifies done inside the cancel.
+     */
+    @Test
+    public void testCompletionRunsWhenOurDeadlineKeptTheJobFromStarting()
+    {
+        String jobName = "test: never-started work with a completion " + System.nanoTime(); //$NON-NLS-1$
+        AtomicBoolean ran = new AtomicBoolean(false);
+        AtomicBoolean held = new AtomicBoolean(false);
+        AtomicInteger completions = new AtomicInteger();
+        IJobChangeListener sleeper = new JobChangeAdapter()
+        {
+            @Override
+            public void aboutToRun(IJobChangeEvent event)
+            {
+                if (jobName.equals(event.getJob().getName()))
+                {
+                    held.set(event.getJob().sleep());
+                }
+            }
+        };
+        Job.getJobManager().addJobChangeListener(sleeper);
+        BoundedJob.Result result;
+        try
+        {
+            result = BoundedJob.run(jobName, SHORT_TIMEOUT_MS, monitor -> ran.set(true), completions::incrementAndGet);
+        }
+        finally
+        {
+            Job.getJobManager().removeJobChangeListener(sleeper);
+        }
+
+        assertTrue("this test must be the reason the job was held", held.get()); //$NON-NLS-1$
+        assertFalse("the work never ran", ran.get()); //$NON-NLS-1$
+        assertEquals(Outcome.TIMED_OUT_BEFORE_START, result.getOutcome());
+        assertEquals("our cancel ended the job and ran the completion, once, before the run answered", //$NON-NLS-1$
+            1, completions.get());
     }
 
     private static Job quickJob(String name)

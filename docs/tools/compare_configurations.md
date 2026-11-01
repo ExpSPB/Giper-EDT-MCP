@@ -60,8 +60,8 @@ written to the project, and nothing is ever merged.
   name, so different triples can spell the same entry (main `A_B` with other `C` spells
   what main `A` with other `B_C` spells) — the file is addressed, not owned, and nothing
   here promises that only one comparison can restore it. A `.xml` written by
-  `merge_rules` carries no address, so any comparison reads it — but only on
-  **EDT 2026.1**. EDT 2026.2 reads merge settings from a `.zip` alone and fails the
+  `merge_rules` carries no address, so any comparison reads it on
+  **EDT 2025.2.5 and EDT 2026.1**. EDT 2026.2 reads merge settings from a `.zip` alone and fails the
   launch with `Can read merge settings from a zip file`, so on 2026.2 write the rules
   with `merge_rules`, giving it a `.zip` filePath and this comparison's id: the
   container comes from that path, and the id both addresses the entry and gets every
@@ -87,8 +87,9 @@ The report has three parts.
 
 **Scope.** One row per side, with two separate columns: what you REQUESTED and what the
 engine ADDED on its own (a comparison pulls in objects the ones you named depend on).
-The reasons the engine gives for each addition are listed underneath. These are two
-different facts and the report never merges them: an object in the second column is one
+EDT 2025.2.5 exposes the added names without per-name reasons, so reason details
+are unavailable on this target. Requested and added names remain two different
+facts and the report never merges them: an object in the second column is one
 the engine chose, not one you asked for.
 
 **A scope narrows what is COMPARED, not just what is listed.** With a scope, EDT compares

@@ -1,5 +1,10 @@
 # Project memory: causes and precautions from the 1.0.12 port
 
+For the consolidated workflow, current compatibility baseline and reusable
+lessons across attempts, start with the [porting guide](../porting-guide.md).
+This detailed record retains intermediate checkpoints and failed attempts;
+historical pending states below do not supersede the completed port's verdict.
+
 Recorded on 2026-10-05 (Europe/Moscow). The user corrected the target from
 EDT 2025.2.2 to **EDT 2025.2.5**; the tested runtime reports 2025.2.5.2.
 Preserve Java 17, Tycho 4 and Eclipse 2023-12 compatibility, Giper identity,

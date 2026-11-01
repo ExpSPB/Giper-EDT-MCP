@@ -17,12 +17,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.core.resources.IProject;
 import org.junit.Test;
@@ -371,9 +373,8 @@ public class ApplicationSupportBoundedReadTest
     @Test
     public void testAWaitInterruptedMidFlightIsReportedAsInterruptedNotAsATimeout() throws Exception
     {
-        // The other interruption: the flag arrives WHILE the caller is waiting. That is not a
-        // deadline, and a caller that separates "cut short" from "failed" depends on the
-        // difference - so it gets its own outcome and its own sentence.
+        // Interrupt a dedicated caller only after it has reached the actual JobManager wait.
+        // Worker entry alone does not prove that Job.schedule has returned to the caller.
         IApplicationManager manager = mock(IApplicationManager.class);
         IProject project = mock(IProject.class);
         when(project.getName()).thenReturn(PROJECT_NAME);
@@ -392,43 +393,97 @@ public class ApplicationSupportBoundedReadTest
                 finished.countDown();
             }
         });
-        Thread waiter = Thread.currentThread();
-        Thread interrupter = new Thread(() -> {
+
+        AtomicReference<BoundedRead<List<IApplication>>> result = new AtomicReference<>();
+        AtomicReference<Throwable> callerFailure = new AtomicReference<>();
+        AtomicBoolean callerStillInterrupted = new AtomicBoolean();
+        CountDownLatch callerReturned = new CountDownLatch(1);
+        Thread caller = new Thread(() -> {
             try
             {
-                entered.await(5, TimeUnit.SECONDS);
-                waiter.interrupt();
+                result.set(ApplicationSupport.getApplicationsBounded(
+                    manager, project, GENEROUS_DEADLINE_MS));
             }
-            catch (InterruptedException e)
+            catch (Throwable t) // NOSONAR report a failure from the separate test thread
             {
-                Thread.currentThread().interrupt();
+                callerFailure.set(t);
             }
-        }, "bounded-read-interrupter"); //$NON-NLS-1$
+            finally
+            {
+                callerStillInterrupted.set(Thread.currentThread().isInterrupted());
+                callerReturned.countDown();
+            }
+        }, "bounded-read-caller"); //$NON-NLS-1$
 
-        BoundedRead<List<IApplication>> read;
         try
         {
-            interrupter.start();
-            // A deadline far beyond the test: only the interrupt can end this wait, so an
-            // implementation that folded INTERRUPTED into TIMED_OUT cannot pass by timing out.
-            read = ApplicationSupport.getApplicationsBounded(manager, project, GENEROUS_DEADLINE_MS);
+            caller.start();
+            assertTrue("the read must enter its worker before the caller is interrupted", //$NON-NLS-1$
+                entered.await(5, TimeUnit.SECONDS));
+            boolean callerWaiting = awaitJobJoinWait(caller, callerReturned, 5_000L);
+            assertTrue("the caller never reached the SDK JobManager/Semaphore wait: state=" //$NON-NLS-1$
+                + caller.getState() + ", stack=" + Arrays.toString(caller.getStackTrace()), //$NON-NLS-1$
+                callerWaiting);
+
+            caller.interrupt();
+            boolean returnedBeforeRelease = callerReturned.await(5, TimeUnit.SECONDS);
+            assertTrue("the interrupted caller did not return while the worker was held: state=" //$NON-NLS-1$
+                + caller.getState() + ", stack=" + Arrays.toString(caller.getStackTrace()), //$NON-NLS-1$
+                returnedBeforeRelease);
+            assertNull("the caller must not throw", callerFailure.get()); //$NON-NLS-1$
+            assertTrue("BoundedJob must restore the caller's interrupt flag", //$NON-NLS-1$
+                callerStillInterrupted.get());
+
+            BoundedRead<List<IApplication>> read = result.get();
+            assertTrue("the caller must return a bounded read", read != null); //$NON-NLS-1$
+            assertFalse("an interrupted wait did not conclude", read.concluded()); //$NON-NLS-1$
+            assertEquals(BoundedJob.Outcome.INTERRUPTED, read.outcome());
+            assertTrue("the interruption must be distinguishable from a deadline", //$NON-NLS-1$
+                read.interrupted());
+            assertEquals("the wait for the EDT application list for project 'TestConfiguration' was " //$NON-NLS-1$
+                + "interrupted and the lookup may still be running", read.deadlineFailure()); //$NON-NLS-1$
+            assertFalse("an interruption is not a deadline that expired", //$NON-NLS-1$
+                read.deadlineFailure().contains("did not finish within")); //$NON-NLS-1$
         }
         finally
         {
-            Thread.interrupted(); // clear the flag BoundedJob restored
             release.countDown();
-            interrupter.join(5_000L);
-            assertTrue(finished.await(5, TimeUnit.SECONDS));
+            caller.interrupt();
+            caller.join(5_000L);
+            assertFalse("the dedicated caller must not leak into later tests", caller.isAlive()); //$NON-NLS-1$
+            if (entered.getCount() == 0L)
+            {
+                assertTrue("the released read must not leak into later tests", //$NON-NLS-1$
+                    finished.await(5, TimeUnit.SECONDS));
+            }
         }
+    }
 
-        assertFalse("an interrupted wait did not conclude", read.concluded()); //$NON-NLS-1$
-        assertEquals(BoundedJob.Outcome.INTERRUPTED, read.outcome());
-        assertTrue("the interruption must be distinguishable from a deadline", //$NON-NLS-1$
-            read.interrupted());
-        assertEquals("the wait for the EDT application list for project 'TestConfiguration' was " //$NON-NLS-1$
-            + "interrupted and the lookup may still be running", read.deadlineFailure()); //$NON-NLS-1$
-        assertFalse("an interruption is not a deadline that expired", //$NON-NLS-1$
-            read.deadlineFailure().contains("did not finish within")); //$NON-NLS-1$
+    private static boolean awaitJobJoinWait(Thread caller, CountDownLatch callerReturned, long timeoutMs)
+        throws InterruptedException
+    {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (System.nanoTime() < deadline && callerReturned.getCount() != 0L)
+        {
+            if (caller.getState() == Thread.State.TIMED_WAITING)
+            {
+                boolean jobJoin = false;
+                boolean semaphoreAcquire = false;
+                for (StackTraceElement frame : caller.getStackTrace())
+                {
+                    jobJoin |= "org.eclipse.core.internal.jobs.JobManager" //$NON-NLS-1$
+                        .equals(frame.getClassName()) && "join".equals(frame.getMethodName()); //$NON-NLS-1$
+                    semaphoreAcquire |= "org.eclipse.core.internal.jobs.Semaphore" //$NON-NLS-1$
+                        .equals(frame.getClassName()) && "acquire".equals(frame.getMethodName()); //$NON-NLS-1$
+                }
+                if (jobJoin && semaphoreAcquire)
+                {
+                    return true;
+                }
+            }
+            Thread.sleep(10L);
+        }
+        return false;
     }
 
     @Test

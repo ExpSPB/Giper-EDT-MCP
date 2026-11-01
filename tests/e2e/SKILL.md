@@ -57,6 +57,24 @@ tests/e2e/
 The runner owner can set **`E2E_MODEL_EVIDENCE_DIR`** to a new directory per run. The harness persists its initial inventory/detail responses as `model-baseline.json` using exclusive creation, and records already-read baseline/current values when a model comparison fails. It never redefines a baseline after failure or makes additional MCP requests to collect mismatch evidence. A baseline evidence-write failure stops setup; a mismatch collector failure is reported separately while the original model mismatch remains the failure.
 
 On RESET-FAILED, timeout, or an aborted call, the runner freezes and leaves fixture worktree/index evidence untouched. Archive the failed tree, staged/unstaged binary diffs, logs and readback before restoring or restarting the owned stand. A point-in-time clean disk does not certify model restoration after an aborted run.
+
+Owned multi-stand orchestration must also set **`E2E_FAILURE_EVIDENCE_DIR`** to an
+absolute, run-specific owned directory **outside the entire fixture checkout**.
+For an ordinary test assertion/error, the runner captures raw Git status/index,
+staged and unstaged binary patches, changed/untracked fixture bytes and available
+current/rotated EDT logs **before its post-test cleanup**. Set
+`EDT_MCP_EDT_WORKSPACE` to the verified owned workspace; optionally set
+`E2E_RPC_LOG_FILES` to a JSON array of absolute owned RPC log filenames. Missing
+log sources are recorded explicitly. The collector makes no diagnostic MCP call
+and does not replace the model baseline. If capture fails, the runner freezes
+fixtures and aborts subsequent calls rather than destroying the only evidence.
+Without `E2E_FAILURE_EVIDENCE_DIR`, ordinary failures retain the existing cleanup
+behavior; this protection is not enabled for every runner automatically. Setup
+failures and timeouts still require the stand owner's raw-log, thread-dump and
+source/index preservation before recovery. A test's own `finally` cleanup runs
+before the runner sees its exception; this hook cannot reconstruct that earlier
+state and does not claim to do so.
+
 5. **After the whole run** the final `git status TestConfiguration/` MUST be empty. A run that leaves the project dirty is a failed run.
 
 **Metadata writes now persist to disk** (since commit `71a48ba` — fix-card `metadata-writes-not-persisted-to-disk`, see [[project_metadata_write_persistence]]). `create_metadata` / `modify_metadata` now `forceExport` the mutated top object(s) to `.mdo` after the write; `delete_metadata`/`rename_metadata_object` always did (via the refactoring service); `write_module_source` flushes `.bsl` synchronously. Since #406 the write tools that extend `AbstractMetadataWriteTool` also WAIT for that export QUEUE to drain before answering (`rename_metadata_object` and `build_external_objects` do not extend it and still lag). That wait is ordered with the export only when the SAME call submitted it. Since #408 the generic `delete_metadata` path submits too, but only for the CONTAINER of the deleted node (its `Configuration.mdo` / owner `.mdo`); the deleted object's OWN file cannot be resubmitted at all (EDT builds a save task by looking the FQN up in the transaction, and a deleted FQN yields none), so poll for that one. Where the call did submit, a drained queue means nothing of that call is still pending - it does NOT prove the bytes are right (EDT logs a per-file write failure and completes the computation anyway), and the wait is skipped where the export state cannot be observed. So still ASSERT the bytes; you just no longer need to wait for them. **Consequence:** verify a metadata-write BOTH ways — a **MODEL READ-BACK** (semantic: a read tool sees the change in the model) AND the **on-disk structure**. For a call that SUBMITTED its own export (create/modify, and the specialized delete branches) assert the disk directly (`assert_disk_lacks` / `assert_disk_path_gone` / `read_disk`) and do it BEFORE any other MCP round trip. Poll instead for a file whose export the call did NOT submit — for the generic `delete_metadata` path that is the deleted object's own file, while its container's file is asserted immediately (§ the comment in `test_delete_metadata.py`, and #408). `rename_metadata_object` / `build_external_objects` poll for the separate reason that they do not inherit the barrier at all. The orchestrator reverts the on-disk `.mdo` via `reset_fixture` (git) and re-syncs the model via `reset_model()`.
@@ -146,6 +164,12 @@ from harness import (
 # for you (reset_fixture before every test; reset_fixture+reset_model after every
 # write-metadata test). Do NOT call them in a test unless you genuinely need an
 # intermediate reset.
+#
+# A test that WRITES INTO THE EXTENSION fixture (TESTS_PROJECT) restores it itself, in a
+# finally block, with the one shared restore - never a local copy:
+#   restore_extension_fixture(ctx)   # revert, clean_project, settle, revert, settle; every step checked
+# and polls a file of a NON-BASE fixture with the same poll the base uses:
+#   poll_disk_contains_all(rel_path, needles, ctx=..., fixture_rel=TESTS_PROJECT_REL)
 #
 # Gated live-infobase helpers (used ONLY by tools/test_live_roundtrip.py, see §8.1):
 #   requires_live_infobase(reason)   # first line; raises E2ESkip unless EDT_MCP_LIVE_INFOBASE=1
@@ -249,6 +273,56 @@ python tests/e2e/run_all.py --project TestConfiguration --junit-xml tests/e2e/e2
 - **Filter:** `--filter <substr>` runs only tests whose name/tool matches (useful while iterating).
 - **Per-test timeout / hang protection:** each test runs under a wall-clock timeout (`--test-timeout`, default **600s**, env `MCP_TEST_TIMEOUT`; the per-CALL HTTP timeout is `MCP_CALL_TIMEOUT`, default 180s). If a test exceeds it, EDT is almost certainly **hung** (the classic case: `clean_project` → `ProjectRestartJob` wedges and the call never returns). That test is reported **`[TIMEOUT]` = a FAILURE** (`<failure type="timeout">` in JUnit) with a clear message, and **every remaining test is `[SKIP]`ped** — a wedged EDT would make them all hang too, so the run aborts fast instead of stalling for minutes. There is **no auto-relaunch**: restart EDT and re-run (optionally `--filter` from where it stopped). Keep the timeout comfortably above the slowest legit test — a `write-metadata` unit chains the test call + `clean_project` + `wait_for_project_ready` (each ≤ `MCP_CALL_TIMEOUT`), so the default 600 sits well above that ~3× budget. **Gotcha:** do not start a full run right after a `-clean` relaunch — let the project finish indexing first, or an early `clean_project` can legitimately run long.
 - **Clean tree at session end (`final_cleanup`):** a run STARTS and ENDS with `harness.final_cleanup()` so `git status` is empty afterward — "no diff" is the visible "the session passed and left nothing behind" signal. It reverts **BOTH** fixtures (base `tests/TestConfiguration` + extension `tests/tests`) and `clean_project`s both so EDT's in-memory model is re-synced from the clean disk; without that model sync, a stale model (a manual edit made in the EDT editor, or an unflushed metadata write) would **autosave the change back after the run** and silently re-dirty the tree. The final cleanliness gate is `all_fixtures_status()` (covers both fixtures). NB it WILL wipe an uncommitted manual experiment under either fixture — that is intentional (a session must end clean). On a timeout, RESET-FAILED abort or failed final cleanup, it freezes fixture resets and leaves the disk/index state for the owner to archive before any later restore. If an active reset cannot stop within the freeze budget, it explicitly reports preservation as incomplete. Post-abort cleanliness is point-in-time only. **Per-test** `assert_no_diff` stays base-scoped (tests only mutate the base, read the extension) — if you ever add an extension-MUTATING tool, give it its own extension-scoped diff assertion, since the per-test gate won't see extension dirt (only the final gate will).
+
+### Launch-preset tools/list checks
+
+Launch EDT separately with `EDT_MCP_TOOL_PRESET=analysis-only` and `code-review`.
+Pass the same value to the test process and disable progressive disclosure on the
+EDT process (`EDT_MCP_PROGRESSIVE_DISCLOSURE=false`). Resolution is lazy and occurs
+once per process, including bridge-first/manual startup. Predefined IDs are
+`all-tools`, `analysis-only`, `code-review`, `development`, case-insensitive and
+trimmed. Null/blank and `custom` use saved selection; explicit `custom` logs INFO
+once. Unknown values are ignored with one WARNING listing predefined IDs.
+
+In Giper the launch preset only restricts each saved profile: effective tools are
+the intersection of its allowlist and the preset, plus mandatory
+`get_server_status`. `all-tools` grants no additional rights. Explicit profile
+endpoints exclude `enable_toolset`. Launch resolution does not persist a preset
+or rewrite saved allowlists. Existing named-profile allowlists are preserved on
+upgrade. The Tools tab edits saved data and shows the launch restriction as a
+read-only note. Edits can change the intersection but cannot lift a launch
+restriction. Its preset choice is per-profile provenance: manual checkbox edits
+retain it; Custom changes provenance without changing the allowlist. A no-op
+Apply keeps existing profile bytes/revisions unchanged.
+
+Seed a disposable profile before launch, then set
+`EDT_MCP_PRESET_PROFILE_ALLOWLIST` to that exact saved comma-separated allowlist.
+This is independent stand-setup evidence; do not derive it from the filtered
+tools/list response. With clean fixtures, run from `tests/e2e`, for example after
+seeding `preset-check` with the following names:
+
+```bash
+export EDT_MCP_PRESET_PROFILE_ID=preset-check
+export EDT_MCP_PRESET_PROFILE_ALLOWLIST=get_server_status,get_tool_guide,list_projects,read_module_source,write_module_source,clean_project,list_git_branches
+EDT_MCP_TOOL_PRESET=analysis-only python -m tools.test_preset_launch
+# Restart the owned EDT stand with code-review, then:
+EDT_MCP_TOOL_PRESET=code-review python -m tools.test_preset_launch
+```
+
+`EDT_MCP_PRESET_PROFILE_ID` selects `/mcp/profiles/<id>` in the standalone entry
+point before its handshake; omit it to test `/mcp`. Use `MCP_HOST`, `MCP_PORT`,
+and `MCP_PROJECT` for the owned stand. The module checks the saved-profile upper
+bound, expected permitted read tools, write-hint keep-list and excluded writers.
+It never invokes a writer and verifies fixture cleanliness before/after. Missing
+preset or saved-allowlist evidence reports a clear skip; other presets skip this
+read-only policy check. These tests do not prove arbitrary named profiles have
+all upstream keep-list tools enabled.
+
+Run this module directly: the normal runner uses `clean_project` during model
+setup/cleanup, and read-only presets disable that tool. Do not invoke the normal
+full schedule against a preset-restricted stand. Each different launch preset
+requires a new EDT process. Unit tests cover stored/runtime separation, named
+profiles, bridge/resources/status consistency and provenance persistence.
 
 ### 8.1 The gated live-infobase round-trip suite (`tools/test_live_roundtrip.py`)
 

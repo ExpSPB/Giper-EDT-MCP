@@ -29,6 +29,7 @@ import com._1c.g5.v8.dt.metadata.mdclass.StandardAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.StyleItem;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils;
+import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector;
 import fm.giper.edt.mcp.server.utils.StyleValueBuilder;
 
 /**
@@ -735,8 +736,8 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
     }
     
     /**
-     * Format command group to a readable string.
-     * Uses EObjectInspector to extract the category enum from StandardCommandGroup.
+     * Format command group to a readable string: {@code CommandGroup.<Name>} for a configuration
+     * group, the name of a standard group (see {@link MetadataPropertyIntrospector#commandGroupLabel}).
      */
     private String formatCommandGroup(Object groupObj)
     {
@@ -744,14 +745,15 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
         {
             return DASH;
         }
-        
-        // If it's an EObject (StandardCommandGroup), use EObjectInspector
+
         if (groupObj instanceof EObject)
         {
-            // EObjectInspector will properly extract the 'category' enum value
-            return EObjectInspector.getPrimaryValueAsString((EObject) groupObj);
+            String label = MetadataPropertyIntrospector.commandGroupLabel((EObject) groupObj);
+            // A group the platform names nothing (e.g. command-interface derived data) keeps the
+            // generic primary-value rendering.
+            return label != null ? label : EObjectInspector.getPrimaryValueAsString((EObject) groupObj);
         }
-        
+
         return groupObj.toString();
     }
     

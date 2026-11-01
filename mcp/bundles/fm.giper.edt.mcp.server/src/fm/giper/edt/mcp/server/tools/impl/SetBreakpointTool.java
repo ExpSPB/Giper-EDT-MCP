@@ -23,6 +23,7 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.BreakpointUtils;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
+import fm.giper.edt.mcp.server.utils.Refusals;
 
 /**
  * Sets a 1C BSL line breakpoint via the Eclipse breakpoint framework.
@@ -509,7 +510,16 @@ public class SetBreakpointTool implements IMcpTool
             }
         }
 
-        IFile file = BreakpointUtils.resolveModuleFile(projectName, module);
+        IFile file;
+        try
+        {
+            file = BreakpointUtils.resolveModuleFile(projectName, module);
+        }
+        catch (RuntimeException e)
+        {
+            Refusals.log("Failed to resolve breakpoint module", e); //$NON-NLS-1$
+            return ResolvedTarget.failed(ToolResult.error(e.getMessage()).toJson());
+        }
         if (file == null || !file.exists())
         {
             return ResolvedTarget.failed(ToolResult.error("Module file not found: " + module //$NON-NLS-1$

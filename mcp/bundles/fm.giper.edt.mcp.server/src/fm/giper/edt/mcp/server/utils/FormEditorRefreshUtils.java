@@ -8,10 +8,12 @@
 package fm.giper.edt.mcp.server.utils;
 
 import java.lang.reflect.Method;
+import java.util.concurrent.Callable;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IWorkbenchPage;
@@ -110,7 +112,7 @@ public final class FormEditorRefreshUtils
             IEditorPart editorPart = findOpenFormEditor(formFile);
             if (editorPart != null)
             {
-                refreshFormEditorWysiwyg(editorPart);
+                refreshFormEditorWysiwyg(formFile, editorPart);
             }
         }
         catch (Exception e) // NOSONAR best-effort refresh must never propagate
@@ -155,17 +157,51 @@ public final class FormEditorRefreshUtils
      * on the representation and {@code refresh()} on the viewer. Tolerant of a not-yet-built page (skips).
      * UI thread only.
      */
-    private static void refreshFormEditorWysiwyg(IEditorPart editorPart) throws Exception // NOSONAR reflective boundary; caller swallows
+    private static void refreshFormEditorWysiwyg(IFile formFile, IEditorPart editorPart) throws Exception // NOSONAR reflective boundary; caller swallows
     {
-        Object wysiwygViewer = findWysiwygViewer(editorPart);
+        refreshCurrentEditor(editorPart, () -> findOpenFormEditor(formFile),
+            () -> findWysiwygViewer(editorPart));
+    }
+
+    /** Resolves a viewer only while the originally selected editor is still open. */
+    static void refreshCurrentEditor(IEditorPart expectedEditor, Callable<IEditorPart> currentEditor,
+        Callable<Object> currentViewer) throws Exception
+    {
+        if (expectedEditor == null)
+        {
+            return;
+        }
+        // A rebuild dispatches SWT events and can close the captured editor. Recheck
+        // membership before resolving its page: a disposed FormEditor has null pages.
+        refreshCurrentViewer(() -> currentEditor.call() == expectedEditor ? currentViewer.call() : null);
+    }
+
+    /** Rechecks the current viewer after rebuilding, which can dispatch nested editor operations. */
+    static void refreshCurrentViewer(Callable<Object> currentViewer) throws Exception
+    {
+        Object wysiwygViewer = currentViewer.call();
         if (wysiwygViewer == null)
         {
             return;
         }
         Object representation = EditorScreenshotHelper.getRepresentation(wysiwygViewer);
-        if (representation != null)
+        if (representation == null)
         {
-            EditorScreenshotHelper.rebuildRepresentation(representation);
+            return;
+        }
+        EditorScreenshotHelper.rebuildRepresentation(representation);
+
+        // Rebuilding pumps the SWT queue. A nested editor operation may close or replace
+        // this viewer, so never refresh the previously resolved object without rechecking it.
+        if (currentViewer.call() != wysiwygViewer
+            || EditorScreenshotHelper.getRepresentation(wysiwygViewer) != representation)
+        {
+            return;
+        }
+        Control control = (Control)ReflectionUtils.invokeMethod(wysiwygViewer, "getControl"); //$NON-NLS-1$
+        if (control == null || control.isDisposed())
+        {
+            return;
         }
         EditorScreenshotHelper.refreshViewer(wysiwygViewer);
     }

@@ -76,6 +76,12 @@ public final class FakeBackend
 
     private final AtomicInteger sessionGeneration = new AtomicInteger(0);
     private final AtomicInteger initializeCount = new AtomicInteger(0);
+    private final AtomicInteger initializedCount = new AtomicInteger(0);
+    private final AtomicInteger callCount = new AtomicInteger(0);
+    private volatile boolean issuesSessions = true;
+    private volatile boolean refusesInitialize;
+    private volatile boolean rejectsCallsWithBadRequest;
+    private volatile String initializeResponseBody;
     private final Map<String, AtomicInteger> initializeCountByPath = new ConcurrentHashMap<>();
     private volatile String currentSessionId;
     private final Map<String, String> sessionByPath = new ConcurrentHashMap<>();
@@ -274,6 +280,40 @@ public final class FakeBackend
         return initializeCount.get();
     }
 
+    /** Emulates a legacy backend that neither issues nor requires sessions. */
+    public void setIssuesSessions(boolean issuesSessions)
+    {
+        this.issuesSessions = issuesSessions;
+    }
+
+    /** Makes initialize return a JSON-RPC error inside HTTP 200, retaining the usual header. */
+    public void setRefusesInitialize(boolean refusesInitialize)
+    {
+        this.refusesInitialize = refusesInitialize;
+    }
+
+    /** Overrides the initialize payload for malformed-envelope and correlation regressions. */
+    public void setInitializeResponseBody(String body)
+    {
+        initializeResponseBody = body;
+    }
+
+    /** Makes an authenticated ordinary request return HTTP 400. */
+    public void setRejectsCallsWithBadRequest(boolean rejectsCallsWithBadRequest)
+    {
+        this.rejectsCallsWithBadRequest = rejectsCallsWithBadRequest;
+    }
+
+    public int getInitializedCount()
+    {
+        return initializedCount.get();
+    }
+
+    public int getCallCount()
+    {
+        return callCount.get();
+    }
+
     /** Number of initialize calls received on one canonical profile path. */
     public int getInitializeCount(String canonicalPath)
     {
@@ -418,19 +458,44 @@ public final class FakeBackend
             {
                 initializeCount.incrementAndGet();
                 initializeCountByPath.computeIfAbsent(path, ignored -> new AtomicInteger()).incrementAndGet();
-                String issued = issueSessionId(path);
-                exchange.getResponseHeaders().add(HEADER_SESSION_ID, issued);
-                sendFramed(exchange, jsonRpcResponse(id, initializeResult(endpoint)), acceptsSse);
+                if (issuesSessions)
+                {
+                    String issued = issueSessionId(path);
+                    exchange.getResponseHeaders().add(HEADER_SESSION_ID, issued);
+                }
+                String reply = initializeResponseBody;
+                if (reply == null && refusesInitialize)
+                {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("code", -32000);
+                    error.addProperty("message", "Session limit reached");
+                    JsonObject envelope = new JsonObject();
+                    envelope.addProperty("jsonrpc", "2.0");
+                    envelope.add("id", id);
+                    envelope.add("error", error);
+                    reply = Json.compact(envelope);
+                }
+                sendFramed(exchange, reply == null ? jsonRpcResponse(id, initializeResult(endpoint)) : reply,
+                    acceptsSse);
                 return;
             }
 
+            if ("notifications/initialized".equals(method))
+            {
+                initializedCount.incrementAndGet();
+            }
             String presented = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
             String issued = sessionByPath.get(path);
             if (issued == null)
             {
                 issued = currentSessionId;
             }
-            if (issued == null || !issued.equals(presented))
+            if (issuesSessions && (presented == null || presented.isBlank()))
+            {
+                sendPlain(exchange, 400, "text/plain", "missing session");
+                return;
+            }
+            if (issuesSessions && (issued == null || !issued.equals(presented)))
             {
                 sendPlain(exchange, 404, "text/plain", "session not found");
                 return;
@@ -439,6 +504,12 @@ public final class FakeBackend
             if (method.startsWith("notifications/"))
             {
                 exchange.sendResponseHeaders(202, -1);
+                return;
+            }
+            callCount.incrementAndGet();
+            if (rejectsCallsWithBadRequest)
+            {
+                sendPlain(exchange, 400, "text/plain", "bad request");
                 return;
             }
             if ("tools/list".equals(method))

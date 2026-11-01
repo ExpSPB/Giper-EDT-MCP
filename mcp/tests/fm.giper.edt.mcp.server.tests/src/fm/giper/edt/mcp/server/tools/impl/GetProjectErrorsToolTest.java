@@ -14,10 +14,15 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -32,11 +37,14 @@ import java.util.Set;
 import java.util.Locale;
 import java.util.Collection;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.lang.reflect.Field;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.emf.common.util.EList;
+import org.eclipse.emf.common.util.EMap;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EClassifier;
@@ -48,9 +56,11 @@ import org.eclipse.emf.ecore.EcoreFactory;
 import org.eclipse.emf.ecore.EcorePackage;
 import org.junit.Test;
 
+import com._1c.g5.v8.bm.core.IBmObject;
 import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.bm.integration.IBmTask;
+import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogForm;
@@ -65,6 +75,7 @@ import com._1c.g5.v8.dt.validation.marker.MarkerSeverity;
 import com.e1c.g5.v8.dt.check.qfix.IFixRepository;
 import com.e1c.g5.v8.dt.check.settings.CheckUid;
 import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
+import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.impl.GetProjectErrorsTool.ErrorInfo;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
@@ -1210,6 +1221,133 @@ public class GetProjectErrorsToolTest
     }
 
     @Test
+    public void testFormMemberOwnerAndFormResolveInsideSeparateReadBoundary() throws Exception
+    {
+        AtomicInteger activeReads = new AtomicInteger();
+        AtomicInteger maxActiveReads = new AtomicInteger();
+        AtomicInteger readCount = new AtomicInteger();
+        AtomicInteger formListReads = new AtomicInteger();
+        AtomicInteger contentIdReads = new AtomicInteger();
+        IBmModel model = mock(IBmModel.class);
+        Catalog catalog = mock(Catalog.class);
+        CatalogForm form = mock(CatalogForm.class, withSettings().extraInterfaces(IBmObject.class));
+        Configuration config = mock(Configuration.class);
+        org.eclipse.emf.common.util.BasicEList<Catalog> catalogs =
+            new org.eclipse.emf.common.util.BasicEList<>();
+        catalogs.add(catalog);
+        Configuration shape = MdClassFactory.eINSTANCE.createConfiguration();
+        when(config.eClass()).thenReturn(shape.eClass());
+        when(config.eGet(any(EReference.class))).thenReturn(catalogs);
+        when(catalog.getName()).thenReturn("C"); //$NON-NLS-1$
+        @SuppressWarnings("unchecked")
+        EMap<String, String> synonyms = mock(EMap.class);
+        when(catalog.getSynonym()).thenReturn(synonyms);
+        when(synonyms.get("en")).thenReturn("CatalogAlias"); //$NON-NLS-1$
+        when(catalog.getForms()).thenAnswer(invocation -> {
+            formListReads.incrementAndGet();
+            assertEquals("owner form enumeration must stay inside the metadata read", 1,
+                activeReads.get()); //$NON-NLS-1$
+            org.eclipse.emf.common.util.BasicEList<CatalogForm> forms =
+                new org.eclipse.emf.common.util.BasicEList<>();
+            forms.add(form);
+            return forms;
+        });
+        when(form.getName()).thenReturn("ItemForm"); //$NON-NLS-1$
+        when(((IBmObject)form).bmGetId()).thenAnswer(invocation -> {
+            assertEquals("the stable BM identity must be captured in the metadata read", 1,
+                activeReads.get()); //$NON-NLS-1$
+            return 73L;
+        });
+
+        when(model.executeReadonlyTask(any())).thenAnswer(invocation -> {
+            readCount.incrementAndGet();
+            int active = activeReads.incrementAndGet();
+            maxActiveReads.accumulateAndGet(active, Math::max);
+            try
+            {
+                IBmTask<?> task = invocation.getArgument(0);
+                IBmTransaction tx = mock(IBmTransaction.class);
+                when(tx.getObjectById(anyLong())).thenAnswer(txInvocation -> {
+                    contentIdReads.incrementAndGet();
+                    return form;
+                });
+                return task.execute(tx, null);
+            }
+            finally
+            {
+                activeReads.decrementAndGet();
+            }
+        });
+
+        // The old helper checked service availability through the Activator. Supply that service
+        // here so the candidate reaches the separate content read, and restore global state always.
+        Field pluginField = Activator.class.getDeclaredField("plugin"); //$NON-NLS-1$
+        pluginField.setAccessible(true);
+        Object previousPlugin = pluginField.get(null);
+        Activator testActivator = mock(Activator.class);
+        IBmModelManager modelManager = mock(IBmModelManager.class);
+        when(testActivator.getBmModelManager()).thenReturn(modelManager);
+        when(modelManager.getModel(any(IProject.class))).thenReturn(model);
+        pluginField.set(null, testActivator);
+        try
+        {
+            MetadataScope metadataScope = MetadataScope.ofConfiguration(config);
+            String russianCatalog = fromCp(0x0421, 0x043F, 0x0440, 0x0430, 0x0432, 0x043E,
+                0x0447, 0x043D, 0x0438, 0x043A);
+            for (String address : new String[] {
+                "Catalog.C.Form.ItemForm.Field.Code", //$NON-NLS-1$
+                russianCatalog + ".C.Form.ItemForm.Field.Code" //$NON-NLS-1$
+            })
+            {
+                FormElementWriter.FormMemberRef ref = FormElementWriter.parse(address);
+                assertNotNull(ref);
+                List<String> result = GetProjectErrorsTool.formMemberScopeSpellings(model,
+                    project("P"), metadataScope,
+                    new GetProjectErrorsTool.DeferredMember(address, address, ref));
+
+                // The mocked BasicForm has no editable content; preserve the decided-empty result.
+                assertTrue(result.isEmpty());
+            }
+            assertEquals("both language tokens use two sequential deferred reads", 4,
+                readCount.get()); //$NON-NLS-1$
+            assertEquals(2, formListReads.get());
+
+            // A configured synonym does not replace the programmatic object Name in an address.
+            String synonymAddress = russianCatalog + ".CatalogAlias.Form.ItemForm.Field.Code"; //$NON-NLS-1$
+            FormElementWriter.FormMemberRef synonymRef = FormElementWriter.parse(synonymAddress);
+            assertNotNull(synonymRef);
+            assertTrue(GetProjectErrorsTool.formMemberScopeSpellings(model, project("P"),
+                metadataScope,
+                new GetProjectErrorsTool.DeferredMember(synonymAddress, synonymAddress, synonymRef))
+                .isEmpty());
+            assertEquals("an unmatched Name ends after the metadata read", 5, readCount.get()); //$NON-NLS-1$
+            assertEquals("the synonym did not resolve to the owner", 2, formListReads.get()); //$NON-NLS-1$
+            verify(synonyms, never()).get(anyString());
+            assertEquals("only successful context resolution opens the content model", 2,
+                contentIdReads.get()); //$NON-NLS-1$
+
+            // If the existing manager-based factory finds a different model instance, refuse this
+            // candidate as undecided and never re-fetch a form identity from the other model.
+            IBmModel otherModel = mock(IBmModel.class);
+            when(modelManager.getModel(any(IProject.class))).thenReturn(otherModel);
+            String mismatchAddress = russianCatalog + ".C.Form.ItemForm.Field.Code"; //$NON-NLS-1$
+            FormElementWriter.FormMemberRef mismatchRef = FormElementWriter.parse(mismatchAddress);
+            assertNotNull(mismatchRef);
+            assertNull(GetProjectErrorsTool.formMemberScopeSpellings(model, project("P"), metadataScope,
+                new GetProjectErrorsTool.DeferredMember(mismatchAddress, mismatchAddress, mismatchRef)));
+            assertEquals("mismatch performs only the metadata read", 6, readCount.get()); //$NON-NLS-1$
+            assertEquals("mismatch never opens the content model", 2, contentIdReads.get()); //$NON-NLS-1$
+            assertEquals(3, formListReads.get());
+            assertEquals("deferred reads remain sequential", 1, maxActiveReads.get()); //$NON-NLS-1$
+            assertEquals(0, activeReads.get());
+        }
+        finally
+        {
+            pluginField.set(null, previousPlugin);
+        }
+    }
+
+    @Test
     public void testAFormMemberWhoseContentModelCannotBeReadStaysUndecided()
     {
         // The form EXISTS in the configuration, but its CONTENT model cannot be read (here: no BM
@@ -1598,7 +1736,7 @@ public class GetProjectErrorsToolTest
     }
 
     @Test
-    public void testEveryValidFirstStepIsAContainmentAndStaysPossible()
+    public void testEveryValidFirstStepIsACollectionAndStaysPossible()
     {
         // Walks THE grammar the gate resolves against - MetadataNodeResolver's own token -> feature
         // map - not a catalogue that mirrors it. Pinning the mirror was vacuous: a token added to
@@ -1626,11 +1764,13 @@ public class GetProjectErrorsToolTest
                     continue;
                 }
                 String type = classifier.getName();
-                assertTrue("a valid first step must be a CONTAINMENT reference: " //$NON-NLS-1$
+                boolean referencedTop = f == MdClassPackage.Literals.EXTERNAL_DATA_SOURCE__TABLES
+                    || f == MdClassPackage.Literals.EXTERNAL_DATA_SOURCE__CUBES;
+                assertTrue("a valid first step must be containment or a registered EDS top: " //$NON-NLS-1$
                     + type + "." + feature, //$NON-NLS-1$
-                    f instanceof EReference && ((EReference)f).isContainment());
-                assertTrue("the owner question must accept it: " + type + "." + feature, //$NON-NLS-1$ //$NON-NLS-2$
-                    MetadataTypeUtils.typeCanContain(type, feature));
+                    f instanceof EReference && (((EReference)f).isContainment() || referencedTop));
+                assertEquals("the containment-only owner question keeps its contract: " + type + "." + feature, //$NON-NLS-1$ //$NON-NLS-2$
+                    !referencedTop, MetadataTypeUtils.typeCanContain(type, feature));
                 String address = type + ".X." + token + ".Y"; //$NON-NLS-1$ //$NON-NLS-2$
                 assertTrue("a valid first step must stay POSSIBLE: " + address, //$NON-NLS-1$
                     GetProjectErrorsTool.possibleAddressShape(address));
@@ -1656,12 +1796,13 @@ public class GetProjectErrorsToolTest
 
     /**
      * Features whose kinds are legal only DEEPER in an address: {@code methods} hangs off an
-     * HTTPService URLTemplate and {@code parameters} off a WebService Operation, so neither may have
+     * HTTPService URLTemplate, {@code parameters} off a WebService Operation and {@code tableFields}
+     * off an EDS Table, so none may have
      * a first-step owner. Named explicitly so a new kind that resolves to nothing is a failure
      * rather than another silent zero.
      */
     private static final Set<String> DEEPER_ONLY_FEATURES =
-        new HashSet<>(Arrays.asList("methods", "parameters")); //$NON-NLS-1$ //$NON-NLS-2$
+        new HashSet<>(Arrays.asList("methods", "parameters", "tableFields")); //$NON-NLS-1$ //$NON-NLS-2$
 
 
     @Test
