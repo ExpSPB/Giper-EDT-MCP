@@ -1,6 +1,6 @@
 # import_configuration_from_xml
 
-Create an EDT project from exported 1C configuration XML files. Parameters and examples: get_tool_guide('import_configuration_from_xml').
+Create an EDT project from exported 1C configuration XML files. Use runtimeVersion or its alias platformVersion for the new project's runtime; conflicting values are refused. For extensions pass baseProjectName; without an explicit version the base runtime is inherited. EDT infers the nature and XML format from the source files. Parameters and examples: get_tool_guide('import_configuration_from_xml').
 
 ## Parameters
 | Parameter | Required | Type | Description |
@@ -9,7 +9,8 @@ Create an EDT project from exported 1C configuration XML files. Parameters and e
 | projectName | yes | string | Name of the NEW EDT project to create (must not already exist). |
 | projectNature | — | string | Deprecated override: omit or leave empty; EDT infers the project nature from XML. |
 | xmlVersion | — | string | Deprecated override: omit or leave empty; EDT reads the XML format from the files. |
-| runtimeVersion | — | string | Project platform version, e.g. '8.3.27'; omit or leave empty to infer it from XML. |
+| runtimeVersion | — | string | Project platform version, e.g. '8.3.27'; omit to infer it from the linked base or XML. |
+| platformVersion | — | string | Alias of runtimeVersion; pass only one or equivalent versions. Accepted with baseProjectName. |
 | baseProjectName | — | string | Open configuration project to link an extension or external objects to; omit for a standalone configuration. |
 
 ## Guide
@@ -24,9 +25,16 @@ Wraps the EDT "Import → Configuration from XML Files" action. It creates a bra
 
 - **importPath** (required): filesystem path to the DIRECTORY containing the XML files. The path is normalized to an absolute path before use. It must exist and must be a directory (a missing path or a file is rejected up front with a deterministic error). A path outside the EDT workspace root is allowed but FLAGGED (logged as a warning and noted in the response) — import from an external location is trusted-caller-only (see README Security & trust model).
 - **projectName** (required): name of the new EDT project to create. Must NOT already exist in the workspace, otherwise the call is rejected.
-- **runtimeVersion** (optional): the project's 1C:Enterprise platform version, e.g. `8.3.27`. Omit or leave blank to infer it from the XML source. A malformed or all-zero explicit version is refused before import; EDT would otherwise silently fall back to inference.
-- **baseProjectName** (optional): the open configuration project to link an imported extension or external objects to. Omit for a standalone configuration.
-- **projectNature**, **xmlVersion** (deprecated): omit or leave empty to let EDT auto-detect the project nature and XML format from the source files. Nonempty overrides are refused before the import creates any project. These options were previously forwarded to unrelated SDK arguments; use `runtimeVersion` and `baseProjectName` for their actual meanings.
+- **runtimeVersion** (optional): the new project's 1C:Enterprise runtime version in `DT-INF/PROJECT.PMF`, e.g. `8.3.27`. This is a project setting, not the installed conversion platform selected by `import_project_from_file.platformVersion`. EDT-supported short numeric forms remain valid syntax. Malformed or all-zero values are refused before importing instead of silently falling back to inference. Without a base, an available runtime registry also rejects versions it does not support and lists the supported versions.
+- **platformVersion** (optional): compatible alias for `runtimeVersion`. If both are non-blank, their parsed EDT versions must agree; contradictory aliases are refused before importing. Whitespace-only values are treated as omitted. Existing `runtimeVersion` callers retain the original value forwarded to EDT.
+- **baseProjectName** (required for extension dumps, refused for main configurations, optional for external objects): an existing, open main configuration project. Use `list_projects` to find it. Extensions and external-object projects cannot be used as the base. An explicit runtime version remains valid together with a base. When neither version alias is supplied, the imported project inherits the base runtime; without a base it derives the runtime from the dump. If an inherited base runtime cannot be read yet, retry when `list_projects` shows the base `ready`.
+- **projectNature**, **xmlVersion** (deprecated): omit or leave empty to let EDT auto-detect the project nature and XML format from the source. Nonempty values are refused before any import, workspace claim or project creation. These old options were previously forwarded to unrelated SDK arguments; `xmlVersion` is not a supported version alias. Use `runtimeVersion` or `platformVersion` and `baseProjectName` for their actual meanings.
+
+| Dump kind | `baseProjectName` | New project's runtime |
+|---|---|---|
+| Main configuration | Refused | Explicit `runtimeVersion` / `platformVersion`, otherwise derived from the dump |
+| Extension | Required; open main configuration | Explicit version when supplied, otherwise inherited from the base |
+| External objects (no `Configuration.xml`) | Optional; validated when given | Explicit version when supplied; otherwise inherited from a base or derived from the dump |
 
 ## Examples
 
@@ -36,7 +44,13 @@ Minimal (infer nature, XML format and platform version):
 {"importPath": "D:/dumps/MyConfig", "projectName": "MyConfig"}
 ```
 
-Extension linked to an existing base configuration, with an explicit platform version:
+Main configuration with an explicit platform-version alias:
+
+```json
+{"importPath": "D:/dumps/MyConfig", "projectName": "MyConfig", "platformVersion": "8.3.27"}
+```
+
+Extension linked to an open main configuration project, retaining an explicit runtime version:
 
 ```json
 {"importPath": "D:/dumps/MyExtension", "projectName": "MyExtension", "runtimeVersion": "8.3.27", "baseProjectName": "MyConfig"}
@@ -50,12 +64,13 @@ Extension linked to an existing base configuration, with an explicit platform ve
 - **`state: ready` is about the CONTEXT, not about indexing.** It means the project context is started; `list_projects` can still report the project `building` for a short while after that, until EDT has finished computing its derived data. Wait for `ready` there before relying on the model.
 - **The `state: importing` body says which step is still running**, because the recovery differs: the workspace refresh of the imported files is still going (the start request has not been issued yet and will be issued when the refresh finishes); or the start request has been handed to EDT after the refresh finished and EDT is still processing it; or the start request returned and EDT is still starting the project. All three keep running in EDT after the call returns.
 - **An import whose start fails outright is an error, not a success**, and it carries `mutationCommitted` - the project exists, so retry the import only after removing it with `delete_project`.
-- **One import per project name at a time.** A second call for a name whose import is still running is refused up front ("An import into project `<name>` is already in progress"). This matters: the "project already exists" guard cannot see a project the first call has not created yet, so two concurrent imports both pass it and then destroy each other's work inside EDT. Wait for the first one, then poll `list_projects`.
+- **One import per workspace folder at a time.** On a case-insensitive file system (Windows, macOS), names that differ only by letter case are one folder and the second is refused the same way. A second call for a name whose import is still running is refused up front ("An import into project `<name>` is already in progress"). This matters: the "project already exists" guard cannot see a project the first call has not created yet, so two concurrent imports both pass it and then destroy each other's work inside EDT. Wait for the first one, then poll `list_projects`.
 
 ## Gotchas
 
-- **Project must be new.** If a workspace project with `projectName` already exists, the call is rejected early; pick a fresh name.
+- **Project must be new.** If a workspace project with `projectName` already exists (or one whose name differs from it only by letter case on a case-insensitive file system), the call is rejected early; pick a fresh name.
 - **Directory, not a file.** `importPath` must point at the directory of XML files, not at a single `.xml` file.
+- **Unreadable and absent configuration roots differ.** An absent `Configuration.xml` is an external-object dump. If the file exists but cannot be parsed, a requested `baseProjectName` is refused because the kind cannot be checked; pass the root dump directory produced by `export_configuration_to_xml`. Without a base, EDT decides whether it can import the dump. Nonempty `projectNature` is always refused as a deprecated override.
 - **Requires the CLI API plugin.** Needs the EDT plugin `com._1c.g5.v8.dt.cli.api`; if it is not installed the tool returns an error instead of importing.
 - **A big configuration takes minutes to start.** The 300-second wait is not a bound on the import (that has already finished when the wait starts) - it is only how long this one call watches EDT start the project before answering `state: importing`.
 - **Budget the client-side call timeout.** The import itself is unbounded on the platform side (the CLI API offers no cancellation), and the post-import start wait adds up to 300 seconds on top of it. On a large dump one call can therefore run for many minutes; a client with a shorter transport timeout will drop the answer while the import keeps going.

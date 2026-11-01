@@ -20,6 +20,7 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.MetadataNodeResolver;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
+import fm.giper.edt.mcp.server.utils.ReferencedTopObjects;
 import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
@@ -94,6 +95,11 @@ public class ValidateXdtoPackageTool implements IMcpTool
 
         String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
         String fqn = JsonUtils.extractStringArgument(params, "fqn"); //$NON-NLS-1$
+        String memberRefusal = ReferencedTopObjects.memberOperationRefusal(NAME, fqn);
+        if (memberRefusal != null)
+        {
+            return ToolResult.error(memberRefusal).toJson();
+        }
         int limit = JsonUtils.extractIntArgument(params, McpKeys.LIMIT, DEFAULT_LIMIT);
         limit = Pagination.clampLimit(limit, 1000);
 

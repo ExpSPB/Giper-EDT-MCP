@@ -56,6 +56,7 @@ public final class ProxyServer
 
     private static final int WORKER_THREADS = 32;
     static final int MAX_SSE_STREAMS = 64;
+    static final int MAX_REQUEST_DRAINS = 32;
 
     private final ProxyConfig cfg;
     private final BackendRegistry registry;
@@ -64,6 +65,7 @@ public final class ProxyServer
     private HttpServer httpServer;
     private ThreadPoolExecutor executor;
     private ThreadPoolExecutor sseExecutor;
+    private ThreadPoolExecutor requestDrainExecutor;
 
     /**
      * Cleanup run once {@code POST /admin/shutdown} has been accepted and its response flushed;
@@ -142,6 +144,15 @@ public final class ProxyServer
                 return thread;
             });
         handler.setSsePool(sseExecutor);
+        AtomicInteger drainCounter = new AtomicInteger();
+        requestDrainExecutor = new ThreadPoolExecutor(
+            0, MAX_REQUEST_DRAINS, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(),
+            r -> {
+                Thread thread = new Thread(r, "edt-mcp-proxy-drain-" + drainCounter.incrementAndGet()); //$NON-NLS-1$
+                thread.setDaemon(true);
+                return thread;
+            });
+        handler.setRequestDrainPool(requestDrainExecutor);
         httpServer.setExecutor(executor);
         handler.setWorkerPool(executor);
         httpServer.createContext("/health", this::handleHealth); //$NON-NLS-1$
@@ -168,12 +179,18 @@ public final class ProxyServer
         // Detach stream admission before closing connections. HttpServer.stop closes the
         // underlying sockets first, so an exchange close cannot wait behind a blocked write.
         handler.setSsePool(null);
+        handler.setRequestDrainPool(null);
         if (httpServer != null)
         {
             httpServer.stop(0);
             httpServer = null;
         }
         handler.stopSseStreams();
+        if (requestDrainExecutor != null)
+        {
+            requestDrainExecutor.shutdownNow();
+            requestDrainExecutor = null;
+        }
         if (sseExecutor != null)
         {
             sseExecutor.shutdownNow();

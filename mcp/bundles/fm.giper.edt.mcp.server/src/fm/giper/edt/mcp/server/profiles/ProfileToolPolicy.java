@@ -20,6 +20,8 @@ import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.ToolsetState;
 import fm.giper.edt.mcp.server.tools.Toolsets;
+import fm.giper.edt.mcp.server.preferences.ToolPreset;
+import fm.giper.edt.mcp.server.preferences.ToolSettingsService;
 
 /**
  * Single authorization point for published tools, callable tools and guide resources.
@@ -33,10 +35,18 @@ public final class ProfileToolPolicy
 
     private final ProfileResolution resolution;
     private final Map<String, IMcpTool> catalog;
+    private final ToolPreset launchPreset;
 
     public ProfileToolPolicy(ProfileResolution resolution, Collection<IMcpTool> catalog)
     {
+        this(resolution, catalog, ToolSettingsService.getInstance().getSessionPreset());
+    }
+
+    /** Explicit launch decision keeps policy tests independent of process environment. */
+    public ProfileToolPolicy(ProfileResolution resolution, Collection<IMcpTool> catalog, ToolPreset launchPreset)
+    {
         this.resolution = resolution;
+        this.launchPreset = launchPreset;
         TreeMap<String, IMcpTool> tools = new TreeMap<>();
         if (catalog != null)
         {
@@ -62,6 +72,10 @@ public final class ProfileToolPolicy
         if (resolution != null && resolution.getEffectiveProfile() != null)
         {
             names.addAll(resolution.getEffectiveProfile().getAllowedTools());
+        }
+        if (launchPreset != null && launchPreset.getDisabledTools() != null)
+        {
+            names.removeAll(launchPreset.getDisabledTools());
         }
         names.add(STATUS_TOOL);
         if (resolution != null && resolution.isExplicitEndpoint())
@@ -125,6 +139,16 @@ public final class ProfileToolPolicy
             return "Tool '" + toolName + "' is not supported on the explicit profile endpoint '" //$NON-NLS-1$ //$NON-NLS-2$
                 + profileId + "'. Connect to /mcp for progressive disclosure, or enable the tool in " //$NON-NLS-1$
                 + "EDT Preferences \u2192 MCP Server \u2192 Tools."; //$NON-NLS-1$
+        }
+        String canonical = McpToolRegistry.canonicalToolName(toolName);
+        if (resolution != null && resolution.getEffectiveProfile() != null
+            && resolution.getEffectiveProfile().getAllowedTools().contains(canonical)
+            && launchPreset != null && launchPreset.getDisabledTools() != null
+            && launchPreset.getDisabledTools().contains(canonical))
+        {
+            return "Tool '" + toolName + "' is disabled by launch preset '" + launchPreset.getId() //$NON-NLS-1$ //$NON-NLS-2$
+                + "'. Restart EDT with a different EDT_MCP_TOOL_PRESET to use tools allowed by profile '" //$NON-NLS-1$
+                + profileId + "'. Saved profile settings cannot override a launch restriction."; //$NON-NLS-1$
         }
         return "Tool '" + toolName + "' is not allowed by profile '" + profileId + "'. " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             + "Ask the user to add it to that profile: EDT Preferences \u2192 MCP Server \u2192 Tools."; //$NON-NLS-1$

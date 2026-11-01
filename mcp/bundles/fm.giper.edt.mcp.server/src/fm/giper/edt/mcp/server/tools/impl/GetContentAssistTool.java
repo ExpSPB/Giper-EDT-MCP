@@ -46,6 +46,7 @@ import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
 import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.Refusals;
 
 import io.github.furstenheim.CopyDown;
 
@@ -266,7 +267,16 @@ public class GetContentAssistTool implements IMcpTool
         IProject project = ctx.project();
 
         // Build the full path: project/src/filePath
-        IFile file = BslModuleUtils.resolveModuleFile(project, filePath);
+        IFile file;
+        try
+        {
+            file = BslModuleUtils.resolveModuleFile(project, filePath);
+        }
+        catch (RuntimeException e)
+        {
+            Refusals.log("Failed to resolve module", e); //$NON-NLS-1$
+            return ToolResult.error(e.getMessage()).toJson();
+        }
 
         if (!file.exists())
         {

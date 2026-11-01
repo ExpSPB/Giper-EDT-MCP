@@ -31,6 +31,7 @@ import fm.giper.edt.mcp.server.utils.FrontMatter;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
 import fm.giper.edt.mcp.server.utils.InterceptionUtils;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.Refusals;
 
 /**
  * Tool to read a specific procedure/function from a BSL module.
@@ -120,6 +121,12 @@ public class ReadMethodSourceTool implements IMcpTool
             }
             catch (Exception e)
             {
+                String refusal = Refusals.messageOf(e);
+                if (refusal != null)
+                {
+                    resultRef.set(ToolResult.error(refusal).toJson());
+                    return;
+                }
                 Activator.logError("Error reading method via EMF", e); //$NON-NLS-1$
                 resultRef.set(null); // Signal to try fallback
             }
@@ -249,14 +256,14 @@ public class ReadMethodSourceTool implements IMcpTool
         }
         IProject project = ctx.project();
 
-        IFile file = BslModuleUtils.resolveModuleFile(project, modulePath);
-        if (!file.exists())
-        {
-            return ToolResult.error("File not found: src/" + modulePath).toJson(); //$NON-NLS-1$
-        }
-
         try
         {
+            IFile file = BslModuleUtils.resolveModuleFile(project, modulePath);
+            if (!file.exists())
+            {
+                return ToolResult.error("File not found: src/" + modulePath).toJson(); //$NON-NLS-1$
+            }
+
             List<String> allLines = BslModuleUtils.readFileLines(file);
 
             // Locate the method via the shared text-scan fallback.

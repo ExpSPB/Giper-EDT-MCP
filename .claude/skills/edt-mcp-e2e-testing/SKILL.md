@@ -8,13 +8,63 @@ description: How to write/run the AUTOMATED black-box e2e suite (tests/e2e/) tha
 > **The full, authoritative, always-current guide is `tests/e2e/SKILL.md` in the repo. READ IT before writing or running a test** — it has the harness API, the worked examples, and the anti-cheat anti-pattern list. This skill is the entrypoint + the rules in brief; the repo file wins on any disagreement (it lives with the harness).
 
 ## What this is
-A Python (stdlib-only) **black-box** suite: a real MCP client hits the **live** server on `:8765` and asserts the **real** effect. One file per tool: `tests/e2e/tools/test_<tool>.py`. Shared base: `harness.py`. Runner: `run_all.py` (serial, `--junit-xml`, per-test timeout). Every registered tool covered (62 today; the coverage ratchet `test_coverage_ratchet.py` fails the suite if a `tools/list` tool has no test). Different layer from Java/JUnit (which is headless and can't touch a real project).
+A Python (stdlib-only) **black-box** suite: a real MCP client hits the **live** server on `:8765` and asserts the **real** effect. One file per tool: `tests/e2e/tools/test_<tool>.py`. Shared base: `harness.py`. Runner: `run_all.py` (serial, `--junit-xml`, per-test timeout). Every registered tool covered (the coverage ratchet `test_coverage_ratchet.py` fails the suite if a `tools/list` tool has no test). Different layer from Java/JUnit (which is headless and can't touch a real project).
 
 ## Run it
 ```
 python tests/e2e/run_all.py --project TestConfiguration --junit-xml tests/e2e/e2e-results.xml
 ```
 Needs a LIVE server on `:8765` + `TestConfiguration` loaded (the dev EDT copy — see the project memory / edt-redeploy loop). Execution is **serial** (one fixture, one git tree); authoring can be parallel (one agent per tool file). `--filter <substr>` runs a subset.
+
+## Launch-preset wire checks
+
+Launch EDT separately with `EDT_MCP_TOOL_PRESET=analysis-only` and `code-review`.
+Pass the same value to the test process and disable progressive disclosure on the
+EDT process (`EDT_MCP_PROGRESSIVE_DISCLOSURE=false`). Resolution is lazy and occurs
+once per process, including bridge-first/manual startup. Predefined IDs are
+`all-tools`, `analysis-only`, `code-review`, `development`, case-insensitive and
+trimmed. Null/blank and `custom` use saved selection; explicit `custom` logs INFO
+once. Unknown values are ignored with one WARNING listing predefined IDs.
+
+In Giper the launch preset only restricts each saved profile: effective tools are
+the intersection of its allowlist and the preset, plus mandatory
+`get_server_status`. `all-tools` grants no additional rights. Explicit profile
+endpoints exclude `enable_toolset`. Launch resolution does not persist a preset
+or rewrite saved allowlists. Existing named-profile allowlists are preserved on
+upgrade. The Tools tab edits saved data and shows the launch restriction as a
+read-only note. Edits can change the intersection but cannot lift a launch
+restriction. Its preset choice is per-profile provenance: manual checkbox edits
+retain it; Custom changes provenance without changing the allowlist. A no-op
+Apply keeps existing profile bytes/revisions unchanged.
+
+Seed a disposable profile before launch, then set
+`EDT_MCP_PRESET_PROFILE_ALLOWLIST` to that exact saved comma-separated allowlist.
+This is independent stand-setup evidence; do not derive it from the filtered
+tools/list response. With clean fixtures, run from `tests/e2e`, for example after
+seeding `preset-check` with the following names:
+
+```bash
+export EDT_MCP_PRESET_PROFILE_ID=preset-check
+export EDT_MCP_PRESET_PROFILE_ALLOWLIST=get_server_status,get_tool_guide,list_projects,read_module_source,write_module_source,clean_project,list_git_branches
+EDT_MCP_TOOL_PRESET=analysis-only python -m tools.test_preset_launch
+# Restart the owned EDT stand with code-review, then:
+EDT_MCP_TOOL_PRESET=code-review python -m tools.test_preset_launch
+```
+
+`EDT_MCP_PRESET_PROFILE_ID` selects `/mcp/profiles/<id>` in the standalone entry
+point before its handshake; omit it to test `/mcp`. Use `MCP_HOST`, `MCP_PORT`,
+and `MCP_PROJECT` for the owned stand. The module checks the saved-profile upper
+bound, expected permitted read tools, write-hint keep-list and excluded writers.
+It never invokes a writer and verifies fixture cleanliness before/after. Missing
+preset or saved-allowlist evidence reports a clear skip; other presets skip this
+read-only policy check. These tests do not prove arbitrary named profiles have
+all upstream keep-list tools enabled.
+
+Run this module directly: the normal runner uses `clean_project` during model
+setup/cleanup, and read-only presets disable that tool. Do not invoke the normal
+full schedule against a preset-restricted stand. Each different launch preset
+requires a new EDT process. Unit tests cover stored/runtime separation, named
+profiles, bridge/resources/status consistency and provenance persistence.
 
 ## The rules in brief (details in tests/e2e/SKILL.md)
 1. **One file per tool**, `tests/e2e/tools/test_<tool>.py`, importing ONLY from `harness`. Adding a new MCP tool? add its test file — the **coverage ratchet** fails the suite otherwise.

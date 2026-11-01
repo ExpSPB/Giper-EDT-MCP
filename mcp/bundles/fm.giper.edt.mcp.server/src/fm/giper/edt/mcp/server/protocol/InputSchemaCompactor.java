@@ -146,7 +146,7 @@ public final class InputSchemaCompactor
         // user carries a CROSS-FIELD rule as well as the credential fact: for a standalone
         // server the credentials are accepted only with mode='register' and rejected for a
         // newly created one, so a schema-valid create+credentials call fails before creating.
-        keep.put("create_infobase", asSet("infobaseFile", "user")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        keep.put("create_infobase", asSet("infobaseFile", "infobaseServer", "infobaseRef", "user")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
         // The lost-update guard: what the hash is and where it comes from.
         // mode defaults to searchReplace, and THAT mode requires oldSource - so a call carrying
         // only the two declared required parameters looks schema-valid and fails at runtime.
@@ -161,6 +161,9 @@ public final class InputSchemaCompactor
         // action=get + type=schema + a bare root. Without this one clause a schema-valid
         // format=xml call can select a fragment, dynamic-list type, or mutation and be refused.
         keep.put("dcs", asSet("format")); //$NON-NLS-1$ //$NON-NLS-2$
+        // Cross-field requirements are absent from the shape: replace needs both arrays,
+        // even when empty, and a Condition source requires an explicit branch.
+        keep.put("business_process_route_map", asSet("action", "connections")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // MUTATING DEFAULTS. Each of these defaults to true and, left out, performs a WRITE
         // the caller never asked for - the build stamps every object's Comment and flushes
         // the .mdo; the launch tools silently run a configuration->DB update; update_database
@@ -178,7 +181,7 @@ public final class InputSchemaCompactor
         // and the only place that says a force-export overwrites on-disk edits. Both were
         // caught by InputSchemaCompactorRiskTest, not by review.
         keep.put("delete_infobase", //$NON-NLS-1$
-            asSet("deleteRegistration", "deleteDatabaseFiles")); //$NON-NLS-1$ //$NON-NLS-2$
+            asSet("deleteRegistration", "deleteDatabaseFiles", "registrationId")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         keep.put("resync_to_disk", asSet("overwriteDiskEdits")); //$NON-NLS-1$ //$NON-NLS-2$
         keep.put("merge_rules", asSet("filePath")); //$NON-NLS-1$ //$NON-NLS-2$
         // debug=true also changes the return contract (a wait_for_break follow-up).
@@ -319,7 +322,7 @@ public final class InputSchemaCompactor
         // cannot be preempted and MAY STILL COMPLETE afterwards. Without this a caller reads
         // "failed" and retries - or starts editing - while the first rename is still mutating.
         keep.put("rename_metadata_object", //$NON-NLS-1$
-            asSet("expectedHash", "timeout")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            asSet("expectedHash", "timeout", "waitSeconds", "textOccurrences")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // An OPTIONAL parameter whose omission widens the blast radius to the whole
         // workspace: without projectName, clean_project rebuilds EVERY EDT project and
         // discards unsaved in-memory edits in all of them. "Optional" reads as "safe to

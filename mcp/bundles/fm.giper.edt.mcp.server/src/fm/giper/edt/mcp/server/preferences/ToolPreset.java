@@ -17,32 +17,362 @@ import java.util.Set;
  */
 public enum ToolPreset
 {
-    ALL_TOOLS("All Tools", "All tools enabled, including the ones off by default", //$NON-NLS-1$ //$NON-NLS-2$
+    ALL_TOOLS("all-tools", //$NON-NLS-1$
+        "All Tools", "All tools enabled, including the ones off by default", //$NON-NLS-1$ //$NON-NLS-2$
         Collections.emptySet()),
 
-    ANALYSIS_ONLY("Analysis Only", //$NON-NLS-1$
+    ANALYSIS_ONLY("analysis-only", //$NON-NLS-1$
+        "Analysis Only", //$NON-NLS-1$
         "Read-only analysis - no code changes, no debugging", //$NON-NLS-1$
         buildAnalysisOnlyDisabled()),
 
-    CODE_REVIEW("Code Review", //$NON-NLS-1$
+    CODE_REVIEW("code-review", //$NON-NLS-1$
+        "Code Review", //$NON-NLS-1$
         "Analysis + BSL code reading (no writing)", //$NON-NLS-1$
         buildCodeReviewDisabled()),
 
-    DEVELOPMENT("Development", //$NON-NLS-1$
+    DEVELOPMENT("development", //$NON-NLS-1$
+        "Development", //$NON-NLS-1$
         "Full development without debugging", //$NON-NLS-1$
         disabledFor(ToolGroup.DEBUG)),
 
-    CUSTOM("Custom", "Manually configured", null); //$NON-NLS-1$ //$NON-NLS-2$
+    CUSTOM("custom", //$NON-NLS-1$
+        "Custom", "Manually configured", null); //$NON-NLS-1$ //$NON-NLS-2$
 
+    /**
+     * Explicit exceptions to the write hint: comparison takes EDT's single comparison slot but
+     * reads the project; toolset enablement changes session visibility only; revalidation refreshes
+     * derived markers without discarding workspace content. The policy ratchet checks each one.
+     */
+    static final Set<String> READ_ONLY_KEEPS_DESPITE_WRITE_HINT = Set.of(
+        "compare_configurations", //$NON-NLS-1$
+        "enable_toolset", //$NON-NLS-1$
+        "revalidate_objects"); //$NON-NLS-1$
+
+    /** A holder initializes the shared policy before the enum constructors call either builder. */
+    static final class ReadOnlyPolicy
+    {
+        /** Writers in groups that the read-only presets disable only in part. */
+        static final Set<String> READ_ONLY_EXCLUDED_BY_NAME = Set.of(
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "switch_git_branch", //$NON-NLS-1$
+            "create_git_branch", //$NON-NLS-1$
+            "set_branch_infobase", //$NON-NLS-1$
+            "create_project", //$NON-NLS-1$
+            "resync_to_disk", //$NON-NLS-1$
+            "project_checks", //$NON-NLS-1$
+            "clean_project"); //$NON-NLS-1$
+
+        private ReadOnlyPolicy()
+        {
+            // Constants only.
+        }
+    }
+
+    /** Frozen 1.0.12 UI recognition; never use current groups to infer old provenance. */
+    private static final Set<String> LEGACY_CATALOG = Set.of(
+            "adopt_metadata_object", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "ask_workmate", //$NON-NLS-1$
+            "build_external_objects", //$NON-NLS-1$
+            "cancel_job", //$NON-NLS-1$
+            "clean_project", //$NON-NLS-1$
+            "compare_configurations", //$NON-NLS-1$
+            "create_git_branch", //$NON-NLS-1$
+            "create_infobase", //$NON-NLS-1$
+            "create_launch_config", //$NON-NLS-1$
+            "create_metadata", //$NON-NLS-1$
+            "create_project", //$NON-NLS-1$
+            "dcs", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "delete_infobase", //$NON-NLS-1$
+            "delete_launch_config", //$NON-NLS-1$
+            "delete_metadata", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "enable_toolset", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "export_common_picture", //$NON-NLS-1$
+            "export_configuration_to_file", //$NON-NLS-1$
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "find_references", //$NON-NLS-1$
+            "generate_translation_strings", //$NON-NLS-1$
+            "get_applications", //$NON-NLS-1$
+            "get_check_description", //$NON-NLS-1$
+            "get_comparison_node", //$NON-NLS-1$
+            "get_configuration_properties", //$NON-NLS-1$
+            "get_content_assist", //$NON-NLS-1$
+            "get_edt_version", //$NON-NLS-1$
+            "get_event_log", //$NON-NLS-1$
+            "get_form_layout_snapshot", //$NON-NLS-1$
+            "get_form_screenshot", //$NON-NLS-1$
+            "get_job_status", //$NON-NLS-1$
+            "get_markers", //$NON-NLS-1$
+            "get_mcp_history", //$NON-NLS-1$
+            "get_metadata_details", //$NON-NLS-1$
+            "get_metadata_objects", //$NON-NLS-1$
+            "get_method_call_hierarchy", //$NON-NLS-1$
+            "get_module_structure", //$NON-NLS-1$
+            "get_objects_by_tags", //$NON-NLS-1$
+            "get_outgoing_structures", //$NON-NLS-1$
+            "get_platform_documentation", //$NON-NLS-1$
+            "get_problem_summary", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_project_errors", //$NON-NLS-1$
+            "get_server_status", //$NON-NLS-1$
+            "get_subsystem_content", //$NON-NLS-1$
+            "get_symbol_info", //$NON-NLS-1$
+            "get_tags", //$NON-NLS-1$
+            "get_template_screenshot", //$NON-NLS-1$
+            "get_tool_guide", //$NON-NLS-1$
+            "get_translation_project_info", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "go_to_definition", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "infobase_sessions", //$NON-NLS-1$
+            "launch", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "list_common_pictures", //$NON-NLS-1$
+            "list_configurations", //$NON-NLS-1$
+            "list_git_branches", //$NON-NLS-1$
+            "list_modules", //$NON-NLS-1$
+            "list_projects", //$NON-NLS-1$
+            "list_subsystems", //$NON-NLS-1$
+            "list_toolsets", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "modify_metadata", //$NON-NLS-1$
+            "read_method_source", //$NON-NLS-1$
+            "read_module_source", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "rename_metadata_object", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "resync_to_disk", //$NON-NLS-1$
+            "revalidate_objects", //$NON-NLS-1$
+            "run_yaxunit_tests", //$NON-NLS-1$
+            "search_in_code", //$NON-NLS-1$
+            "set_branch_infobase", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_infobase_credentials", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "switch_git_branch", //$NON-NLS-1$
+            "terminate_launch", //$NON-NLS-1$
+            "translate_configuration", //$NON-NLS-1$
+            "update_database", //$NON-NLS-1$
+            "validate_form_model", //$NON-NLS-1$
+            "validate_query", //$NON-NLS-1$
+            "validate_xdto_package", //$NON-NLS-1$
+            "wait_for_break", //$NON-NLS-1$
+            "write_module_source"); //$NON-NLS-1$
+
+    private static final java.util.Map<ToolPreset, Set<String>> LEGACY_DISABLED = java.util.Map.of(
+        ALL_TOOLS, Set.of(),
+        ANALYSIS_ONLY, Set.of(
+            "adopt_metadata_object", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "ask_workmate", //$NON-NLS-1$
+            "build_external_objects", //$NON-NLS-1$
+            "cancel_job", //$NON-NLS-1$
+            "create_infobase", //$NON-NLS-1$
+            "create_launch_config", //$NON-NLS-1$
+            "create_metadata", //$NON-NLS-1$
+            "dcs", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "delete_infobase", //$NON-NLS-1$
+            "delete_launch_config", //$NON-NLS-1$
+            "delete_metadata", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "export_configuration_to_file", //$NON-NLS-1$
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "generate_translation_strings", //$NON-NLS-1$
+            "get_applications", //$NON-NLS-1$
+            "get_form_layout_snapshot", //$NON-NLS-1$
+            "get_form_screenshot", //$NON-NLS-1$
+            "get_job_status", //$NON-NLS-1$
+            "get_method_call_hierarchy", //$NON-NLS-1$
+            "get_module_structure", //$NON-NLS-1$
+            "get_outgoing_structures", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_symbol_info", //$NON-NLS-1$
+            "get_template_screenshot", //$NON-NLS-1$
+            "get_translation_project_info", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "go_to_definition", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "infobase_sessions", //$NON-NLS-1$
+            "launch", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "list_configurations", //$NON-NLS-1$
+            "list_modules", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "modify_metadata", //$NON-NLS-1$
+            "read_method_source", //$NON-NLS-1$
+            "read_module_source", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "rename_metadata_object", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "run_yaxunit_tests", //$NON-NLS-1$
+            "search_in_code", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_infobase_credentials", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "terminate_launch", //$NON-NLS-1$
+            "translate_configuration", //$NON-NLS-1$
+            "update_database", //$NON-NLS-1$
+            "validate_form_model", //$NON-NLS-1$
+            "validate_query", //$NON-NLS-1$
+            "wait_for_break", //$NON-NLS-1$
+            "write_module_source"), //$NON-NLS-1$
+        CODE_REVIEW, Set.of(
+            "adopt_metadata_object", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "ask_workmate", //$NON-NLS-1$
+            "build_external_objects", //$NON-NLS-1$
+            "cancel_job", //$NON-NLS-1$
+            "create_infobase", //$NON-NLS-1$
+            "create_launch_config", //$NON-NLS-1$
+            "create_metadata", //$NON-NLS-1$
+            "dcs", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "delete_infobase", //$NON-NLS-1$
+            "delete_launch_config", //$NON-NLS-1$
+            "delete_metadata", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "export_configuration_to_file", //$NON-NLS-1$
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "generate_translation_strings", //$NON-NLS-1$
+            "get_applications", //$NON-NLS-1$
+            "get_job_status", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_translation_project_info", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "infobase_sessions", //$NON-NLS-1$
+            "launch", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "list_configurations", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "modify_metadata", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "rename_metadata_object", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "run_yaxunit_tests", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_infobase_credentials", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "terminate_launch", //$NON-NLS-1$
+            "translate_configuration", //$NON-NLS-1$
+            "update_database", //$NON-NLS-1$
+            "wait_for_break", //$NON-NLS-1$
+            "write_module_source"), //$NON-NLS-1$
+        DEVELOPMENT, Set.of(
+            "ask_workmate", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "wait_for_break")); //$NON-NLS-1$
+
+    public static ToolPreset matchLegacyAllowlist(Set<String> allowed)
+    {
+        Set<String> disabled = new HashSet<>(LEGACY_CATALOG);
+        if (allowed != null)
+        {
+            disabled.removeAll(allowed);
+        }
+        for (ToolPreset preset : values())
+        {
+            if (disabled.equals(LEGACY_DISABLED.get(preset)))
+            {
+                return preset;
+            }
+        }
+        return CUSTOM;
+    }
+
+    private final String id;
     private final String displayName;
     private final String description;
     private final Set<String> disabledTools;
 
-    ToolPreset(String displayName, String description, Set<String> disabledTools)
+    ToolPreset(String id, String displayName, String description, Set<String> disabledTools)
     {
+        this.id = id;
         this.displayName = displayName;
         this.description = description;
         this.disabledTools = disabledTools;
+    }
+
+    /** Returns the stable preference ID, independent of enum order and display text. */
+    public String getId()
+    {
+        return id;
+    }
+
+    /** Resolves a stored ID; missing or unknown provenance is custom. */
+    public static ToolPreset fromId(String id)
+    {
+        for (ToolPreset preset : values())
+        {
+            if (preset.id.equals(id))
+            {
+                return preset;
+            }
+        }
+        return CUSTOM;
+    }
+
+    /** Whether this preset promises read-only operation, even after owner edits. */
+    public boolean isReadOnly()
+    {
+        return this == ANALYSIS_ONLY || this == CODE_REVIEW;
+    }
+
+    /** Whether this preset promises no debugging, even after owner edits. */
+    public boolean isNoDebug()
+    {
+        return isReadOnly() || this == DEVELOPMENT;
     }
 
     /**
@@ -71,7 +401,7 @@ public enum ToolPreset
 
     /**
      * Allowlist produced by applying this preset to {@code catalog}.
-     * {@link #CUSTOM} is a computed UI state and has no stored allowlist.
+     * {@link #CUSTOM} records manual intent and has no predefined allowlist.
      */
     public Set<String> toAllowlist(Set<String> catalog)
     {
@@ -164,11 +494,14 @@ public enum ToolPreset
     }
 
     /**
-     * Builds the Code Review preset: disable apps (including external-object builds and credential
-     * writes), debug, refactoring (including adoption into an extension), translation,
-     * write_module_source, apply_quick_fix, and the state-mutating workspace export/import tools.
-     * {@code export_common_picture} remains enabled: despite its name, it is a pure model read that
-     * returns the selected PNG as base64 and never writes a file.
+     * Builds Code Review: disable applications, debugging, refactoring, translation and BSL
+     * writing, plus the shared workspace, git and comparison writers. CORE and GIT remain partly
+     * available for reads, so their writers must be excluded by name.
+     * <p>
+     * The preset excludes business_process_route_map in full, including its get action.
+     * Comparison reads, the in-memory toolset switch and non-discarding revalidation stay enabled
+     * under the documented keep-list. {@code export_common_picture} is a pure model read returning
+     * PNG bytes, so it also stays enabled.
      */
     private static Set<String> buildCodeReviewDisabled()
     {
@@ -178,22 +511,17 @@ public enum ToolPreset
         disabled.addAll(ToolGroup.REFACTORING.getToolNames());
         disabled.addAll(ToolGroup.TRANSLATION.getToolNames());
         disabled.add("write_module_source"); //$NON-NLS-1$
-        disabled.add("export_configuration_to_xml"); //$NON-NLS-1$
-        disabled.add("import_configuration_from_xml"); //$NON-NLS-1$
-        disabled.add("import_project_from_file"); //$NON-NLS-1$
-        disabled.add("apply_quick_fix"); //$NON-NLS-1$
-        disabled.add("merge_rules"); //$NON-NLS-1$
-        disabled.add("delete_project"); //$NON-NLS-1$
+        disabled.addAll(ReadOnlyPolicy.READ_ONLY_EXCLUDED_BY_NAME);
         return Collections.unmodifiableSet(disabled);
     }
 
     /**
-     * Builds the Analysis Only preset: disable apps (including external-object builds and credential
-     * writes), debug, the entire BSL Code group (both read and write tools — analysis is metadata-
-     * and error-level only), refactoring (including adoption into an extension), apply_quick_fix,
-     * the state-mutating workspace export/import tools, and the LanguageTool translation tools.
-     * {@code export_common_picture} remains enabled because it only reads model content and returns
-     * base64; it does not export to the filesystem.
+     * Builds Analysis Only: the same read-only exclusions as Code Review, with the entire BSL
+     * Code group disabled as well. Analysis is limited to metadata and problems. CORE and GIT
+     * remain partly available for reads; their workspace and git writers are excluded by name.
+     * <p>
+     * {@code compare_configurations}, {@code get_comparison_node}, {@code revalidate_objects},
+     * {@code enable_toolset} and the model-only {@code export_common_picture} stay enabled.
      */
     private static Set<String> buildAnalysisOnlyDisabled()
     {
@@ -203,12 +531,7 @@ public enum ToolPreset
         disabled.addAll(ToolGroup.BSL_CODE.getToolNames());
         disabled.addAll(ToolGroup.REFACTORING.getToolNames());
         disabled.addAll(ToolGroup.TRANSLATION.getToolNames());
-        disabled.add("export_configuration_to_xml"); //$NON-NLS-1$
-        disabled.add("import_configuration_from_xml"); //$NON-NLS-1$
-        disabled.add("import_project_from_file"); //$NON-NLS-1$
-        disabled.add("apply_quick_fix"); //$NON-NLS-1$
-        disabled.add("merge_rules"); //$NON-NLS-1$
-        disabled.add("delete_project"); //$NON-NLS-1$
+        disabled.addAll(ReadOnlyPolicy.READ_ONLY_EXCLUDED_BY_NAME);
         return Collections.unmodifiableSet(disabled);
     }
 }

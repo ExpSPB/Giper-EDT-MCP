@@ -83,6 +83,52 @@ public class ProfileRoutingIT
     }
 
     @Test
+    public void testStatusOptOutKeepsRewrittenPayloadOnLegacyPath() throws Exception
+    {
+        assertStatusOptOut("/mcp", "default"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testStatusOptOutKeepsRewrittenPayloadOnExplicitProfile() throws Exception
+    {
+        assertStatusOptOut("/mcp/profiles/review", "review"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private void assertStatusOptOut(String path, String expectedProfile) throws Exception
+    {
+        int[] ports = reserveFreePorts(1);
+        backendA = new FakeBackend(ports[0], List.of(PROJECT_A));
+        backendA.putProfile("review", "echo_port"); //$NON-NLS-1$ //$NON-NLS-2$
+        backendA.start();
+        proxy = new ProxyFixture(ports[0], ports[0]);
+        proxy.start();
+        JsonObject experimental = new JsonObject();
+        experimental.addProperty("structuredContent", false); //$NON-NLS-1$
+        JsonObject capabilities = new JsonObject();
+        capabilities.add("experimental", experimental); //$NON-NLS-1$
+        McpTestClient optedOut = new McpTestClient(proxy.port(), path);
+        optedOut.handshake(capabilities);
+
+        JsonObject response = optedOut.callTool("get_server_status", includeProfiles()); //$NON-NLS-1$
+        assertFalse(response.toString(), isToolError(response));
+        JsonObject result = response.getAsJsonObject("result"); //$NON-NLS-1$
+        assertFalse("status must honor this session's capability: " + result, //$NON-NLS-1$
+            result.has("structuredContent")); //$NON-NLS-1$
+        JsonObject payload = Json.parseObject(result.getAsJsonArray("content").get(0) //$NON-NLS-1$
+            .getAsJsonObject().get("text").getAsString()); //$NON-NLS-1$
+        assertNotNull("status payload must survive in content text", payload); //$NON-NLS-1$
+        assertEquals(expectedProfile, payload.getAsJsonObject("activeProfile").get("id").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("http://127.0.0.1:" + proxy.port() + path, //$NON-NLS-1$
+            payload.getAsJsonObject("activeProfile").get("endpoint").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(payload.has("availableProfiles")); //$NON-NLS-1$
+
+        McpTestClient normal = new McpTestClient(proxy.port(), path);
+        normal.handshake();
+        assertEquals(expectedProfile, structuredContent(normal.callTool("get_server_status", includeProfiles())) //$NON-NLS-1$
+            .getAsJsonObject("activeProfile").get("id").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
     public void testDoubleEncodedProfilePathIsHttp400() throws Exception
     {
         int[] ports = reserveFreePorts(1);

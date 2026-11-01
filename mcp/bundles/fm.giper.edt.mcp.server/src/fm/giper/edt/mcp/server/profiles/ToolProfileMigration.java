@@ -68,9 +68,10 @@ public final class ToolProfileMigration
                 "Migration cannot run before the tool catalogue is registered"); //$NON-NLS-1$
         }
         Set<String> allowed = new TreeSet<>(registeredToolNames);
-        allowed.removeAll(settings.getDisabledTools());
+        allowed.removeAll(settings.getStoredDisabledTools());
         ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(0L,
-            Set.of(DefaultToolProfileFactory.createDefault(allowed)));
+            Set.of(DefaultToolProfileFactory.createDefault(allowed).toBuilder()
+                .presetId(settings.getStoredPresetId()).build()));
         return repository.replaceAll(repository.getSnapshot().getDocumentRevision(), snapshot);
     }
 

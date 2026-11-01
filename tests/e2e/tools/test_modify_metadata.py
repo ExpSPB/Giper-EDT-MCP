@@ -20,6 +20,7 @@ HTTPService.ProbeService (the only place a 64-bit property exists), ...
 """
 
 import os
+import re
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -93,6 +94,28 @@ def _assignable_text(fqn):
              {"projectName": PROJECT, "objectFqns": [fqn], "assignable": True})
     assert_ok(r, "get_metadata_details(assignable) for %s" % fqn)
     return r.text
+
+
+def _commands_group_cells(owner_fqn, command):
+    """The `Group` cell of `command`'s row in the owner's `### Commands` table, read in the default
+    and the `full: true` view (issue #733), as {full: cell}."""
+    cells_by_view = {}
+    for full in (False, True):
+        r = call("get_metadata_details",
+                 {"projectName": PROJECT, "objectFqns": [owner_fqn], "full": full})
+        assert_ok(r, "get_metadata_details(full=%s) for %s" % (full, owner_fqn))
+        in_commands = False
+        for line in r.text.splitlines():
+            if line.startswith("### "):
+                in_commands = line.strip() == "### Commands"
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if in_commands and len(cells) >= 3 and cells[0] == command:
+                cells_by_view[full] = cells[2]
+                break
+        assert full in cells_by_view, \
+            "the Commands table (full=%s) must have a %r row: %r" % (full, command, r.text[:1500])
+    return cells_by_view
 
 
 def _first_enum_with_value(fqn):
@@ -431,6 +454,229 @@ def test_malformed_form_field_picture_is_actionable_and_changes_nothing():
                                    "list_common_pictures"],
                          ctx="a malformed picture names all accepted forms and discovery tool")
     assert_no_diff("a rejected picture value must not change the project")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Form item Color / Font (#660) — the EDT designer's grammar, exact on-disk shape
+# ──────────────────────────────────────────────────────────────────────────────
+
+_FIELD_FQN = "Catalog.Catalog.Form.ItemForm.Field.Description"
+_XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+
+
+def _local(element):
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def _description_item():
+    """The Description field's <items> element in the fixture Form.form."""
+    root = ET.fromstring(read_disk(_ITEM_FORM))
+    for item in root:
+        if _local(item) == "items" and item.findtext("name") == "Description":
+            return item
+    _fail("Form.form must still hold the Description field")
+
+
+def _appearance_shape(holder, tag):
+    """(xsi:type, [(child, text), ...]) of the ONE <tag> directly under holder, or None."""
+    found = [child for child in holder if _local(child) == tag]
+    if not found:
+        return None
+    assert len(found) == 1, "exactly one <%s> expected, got %d" % (tag, len(found))
+    element = found[0]
+    return element.get(_XSI_TYPE), [(_local(c), (c.text or "").strip()) for c in element]
+
+
+def _extinfo_of(item):
+    ext = [child for child in item if _local(child) == "extInfo"]
+    assert len(ext) == 1, "the Description field must keep exactly one <extInfo>"
+    return ext[0]
+
+
+def _assert_assignable_current(fqn, prop, kind, expected):
+    row = _assignable_row(fqn, prop)
+    assert row is not None, "%s must be listed by assignable:true" % prop
+    cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+    assert cells[1] == kind, "%s must expose the %s kind: %r" % (prop, kind, row)
+    assert cells[2] == expected, "%s current value must be exactly %r, got: %r" % (prop, expected, row)
+
+
+def _assert_allowed_shapes_in_code(fqn, prop, shape):
+    """The Allowed cell of a COLOR / FONT row names the `shape` form as inline code, and keeps every
+    `<` inside a code span: a Markdown renderer drops a bare <Name> as an HTML tag."""
+    row = _assignable_row(fqn, prop)
+    assert row is not None, "%s must be listed by assignable:true" % prop
+    cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+    allowed = cells[3] if len(cells) >= 4 else ""
+    assert "`%s`" % shape in allowed, "%s's Allowed cell must name %s as inline code: %r" % (prop, shape, row)
+    in_code = False
+    for c in allowed:
+        if c == "`":
+            in_code = not in_code
+        else:
+            assert c != "<" or in_code, "%s's Allowed cell has a '<' outside inline code: %r" % (prop, row)
+    assert not in_code, "%s's Allowed cell leaves a code span open: %r" % (prop, row)
+
+
+def _set_field_props(props, ctx):
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": _FIELD_FQN, "properties": props})
+    assert_ok(r, ctx)
+    applied = r.structured.get("applied") or []
+    for p in props:
+        assert p["name"] in applied, "%s must be reported as applied: %r" % (p["name"], r.structured)
+    return r
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_title_color_takes_a_platform_web_color():
+    _set_field_props([{"name": "titleTextColor", "value": {"color": "Web.AliceBlue"}}],
+                     "set a platform web color as the field's title color")
+    poll_disk_contains(_ITEM_FORM, "<titleTextColor",
+                       ctx="the title color must reach Form.form")
+    assert _appearance_shape(_description_item(), "titleTextColor") == \
+        ("core:ColorRef", [("color", "Web.AliceBlue")]), \
+        "the title color must be stored as the designer stores it: %r" % (
+            _appearance_shape(_description_item(), "titleTextColor"),)
+    _assert_assignable_current(_FIELD_FQN, "titleTextColor", "COLOR", "Web.AliceBlue")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_color_and_font_on_ext_info_take_rgb_and_absolute_font():
+    _set_field_props([
+        {"name": "textColor", "value": {"color": {"red": 255, "green": 128, "blue": 64}}},
+        {"name": "font", "value": {"font": {"faceName": "Arial", "height": 12, "bold": True}}},
+    ], "set an RGB text color and an absolute font on the input field's extInfo")
+    poll_disk_contains(_ITEM_FORM, "<textColor", ctx="the text color must reach Form.form")
+    ext = _extinfo_of(_description_item())
+    assert _appearance_shape(ext, "textColor") == \
+        ("core:ColorDef", [("red", "255"), ("green", "128"), ("blue", "64")]), \
+        "the RGB color must land on the extInfo: %r" % (_appearance_shape(ext, "textColor"),)
+    assert _appearance_shape(ext, "font") == \
+        ("core:FontDef", [("faceName", "Arial"), ("height", "12.0"), ("bold", "true")]), \
+        "the absolute font must land on the extInfo: %r" % (_appearance_shape(ext, "font"),)
+    _assert_assignable_current(_FIELD_FQN, "textColor", "COLOR", "RGB(255, 128, 64)")
+    _assert_assignable_current(_FIELD_FQN, "font", "FONT", "face='Arial', height=12, bold")
+    _assert_allowed_shapes_in_code(_FIELD_FQN, "textColor", "{color:'Style.<Name>'}")
+    _assert_allowed_shapes_in_code(_FIELD_FQN, "font", "{font:{style:'<Name>', <overrides>?}}")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_title_font_references_a_platform_style_font_with_one_override():
+    _set_field_props([{"name": "titleFont",
+                       "value": {"font": {"style": "NormalTextFont", "bold": True}}}],
+                     "set a style-font reference with a bold override")
+    poll_disk_contains(_ITEM_FORM, "<titleFont", ctx="the title font must reach Form.form")
+    # Only the given override is stored; italic/underline/strikeout stay inherited (absent).
+    assert _appearance_shape(_description_item(), "titleFont") == \
+        ("core:FontRef", [("font", "Style.NormalTextFont"), ("bold", "true")]), \
+        "the font reference must be stored as the designer stores it: %r" % (
+            _appearance_shape(_description_item(), "titleFont"),)
+    _assert_assignable_current(_FIELD_FQN, "titleFont", "FONT", "Style.NormalTextFont (bold)")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_title_color_references_a_configuration_style_item():
+    style = "E2EBrandColor"
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": "StyleItem." + style}),
+              "seed a style item")
+    wait_for_project_ready()
+    assert_ok(call("modify_metadata", {
+        "projectName": PROJECT, "fqn": "StyleItem." + style,
+        "properties": [{"name": "value", "value": {"color": {"red": 12, "green": 34, "blue": 56}}}],
+    }), "make the style item a color")
+    wait_for_project_ready()
+
+    _set_field_props([{"name": "titleTextColor", "value": {"color": {"style": style}}}],
+                     "reference the configuration style item from the field's title color")
+    poll_disk_contains(_ITEM_FORM, "Style." + style,
+                       ctx="the style-item reference must reach Form.form")
+    assert _appearance_shape(_description_item(), "titleTextColor") == \
+        ("core:ColorRef", [("color", "Style." + style)]), \
+        "the style-item reference must be stored as Style.<Name>: %r" % (
+            _appearance_shape(_description_item(), "titleTextColor"),)
+    _assert_assignable_current(_FIELD_FQN, "titleTextColor", "COLOR", "Style." + style)
+
+    # Same-session reads see the resolved item; a reload reads the persisted reference instead.
+    wait_for_project_ready()
+    assert_ok(call("clean_project", {"projectName": PROJECT}),
+              "reload the persisted style-item reference from disk")
+    wait_for_project_ready()
+    _assert_assignable_current(_FIELD_FQN, "titleTextColor", "COLOR", "Style." + style)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_title_font_references_a_configuration_style_font_with_an_override():
+    style = "E2EHeaderFont"
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": "StyleItem." + style}),
+              "seed a style item")
+    wait_for_project_ready()
+    assert_ok(call("modify_metadata", {
+        "projectName": PROJECT, "fqn": "StyleItem." + style,
+        "properties": [{"name": "value",
+                        "value": {"font": {"faceName": "Arial", "height": 14, "bold": True}}}],
+    }), "make the style item a font")
+    wait_for_project_ready()
+
+    _set_field_props([{"name": "titleFont", "value": {"font": {"style": style, "italic": True}}}],
+                     "reference the configuration style font with an italic override")
+    poll_disk_contains(_ITEM_FORM, "Style." + style,
+                       ctx="the style-font reference must reach Form.form")
+    expected = ("core:FontRef", [("font", "Style." + style), ("italic", "true")])
+    assert _appearance_shape(_description_item(), "titleFont") == expected, \
+        "the style-font reference must be stored as Style.<Name> plus the one override: %r" % (
+            _appearance_shape(_description_item(), "titleFont"),)
+    _assert_assignable_current(_FIELD_FQN, "titleFont", "FONT", "Style." + style + " (italic)")
+
+    # The reference was bound to the item re-fetched in the write transaction: a reload reads it back.
+    wait_for_project_ready()
+    assert_ok(call("clean_project", {"projectName": PROJECT}),
+              "reload the persisted style-font reference from disk")
+    wait_for_project_ready()
+    assert _appearance_shape(_description_item(), "titleFont") == expected, \
+        "the reloaded Form.form must keep the style-font reference: %r" % (
+            _appearance_shape(_description_item(), "titleFont"),)
+    _assert_assignable_current(_FIELD_FQN, "titleFont", "FONT", "Style." + style + " (italic)")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_auto_color_clears_the_stored_value():
+    _set_field_props([{"name": "titleTextColor", "value": {"color": "Web.AliceBlue"}}],
+                     "seed a title color")
+    poll_disk_contains(_ITEM_FORM, "<titleTextColor", ctx="the seeded title color must reach disk")
+    _set_field_props([{"name": "titleTextColor", "value": {"color": "auto"}}],
+                     "reset the title color to automatic")
+    deadline = time.time() + 10
+    while time.time() < deadline and _appearance_shape(_description_item(), "titleTextColor"):
+        time.sleep(0.5)
+    assert _appearance_shape(_description_item(), "titleTextColor") is None, \
+        "'auto' must remove the stored title color from Form.form"
+    _assert_assignable_current(_FIELD_FQN, "titleTextColor", "COLOR", "")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_unknown_platform_color_is_refused_with_valid_names_and_changes_nothing():
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": _FIELD_FQN,
+        "properties": [{"name": "titleTextColor", "value": {"color": "Web.NoSuchColorE2E"}}],
+    })
+    e = assert_error(r, "an unknown platform web color")
+    assert_error_quality(e, names=["titleTextColor", "NoSuchColorE2E"],
+                         suggests=["Valid names", "Web.AliceBlue"],
+                         ctx="an unknown color names the value and lists the platform's names")
+    assert_no_diff("a refused color must not change the project")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_form_field_unknown_font_member_is_refused_and_changes_nothing():
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": _FIELD_FQN,
+        "properties": [{"name": "titleFont", "value": {"font": {"style": "NormalTextFont",
+                                                                 "weight": 700}}}],
+    })
+    e = assert_error(r, "an unknown font member")
+    assert_error_quality(e, names=["titleFont", "weight"], suggests=["faceName", "{font:"],
+                         ctx="an unknown font member is named with the accepted shapes")
+    assert_no_diff("a refused font must not change the project")
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -1845,6 +2091,83 @@ def test_modify_form_command_title():
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_modify_form_command_action_property_names_the_handler_member():
+    # Issue #628: a form command's action is its handler member, not a property. The names a caller
+    # reaches for - the designer's Action (in either language) and the rebind 'procedure' - are
+    # refused with that member's address and both routes, instead of the bare assignable list whose
+    # 'actionPurpose' read as "the action cannot be set through MCP". This is the only pin of the
+    # check's wiring into the form-member path: the unit tests feed the static seams directly.
+    cmd = "ActPropCmd"
+    cmd_fqn = "Catalog.Catalog.Form.ItemForm.Command." + cmd
+    handler_fqn = cmd_fqn + ".Handler.Action"
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": cmd_fqn}),
+              "seed form command")
+    wait_for_project_ready()
+    # The seeding dirties the tree; the refused calls below must add nothing on top of it.
+    before = tree_snapshot()
+    for prop in ("action", "procedure", "Действие"):
+        r = call("modify_metadata", {
+            "projectName": PROJECT, "fqn": cmd_fqn,
+            "properties": [{"name": prop, "value": "ActPropProc"}]})
+        e = assert_error(r, "'%s' on a form command" % prop)
+        assert_error_quality(e, names=[prop], suggests=[
+            "is its handler member '%s'" % handler_fqn,
+            "bind it with create_metadata on that fqn",
+            "rebind it with modify_metadata on that fqn and a 'procedure' property",
+            "cannot be rebound - remove it with delete_metadata on that fqn"],
+            ctx="'%s' on a command must be routed to the command's handler member" % prop)
+    # Negative control: a real FormCommand property that merely starts like 'action' still reaches
+    # the ordinary property pipeline and is judged as the enum it is.
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": cmd_fqn,
+        "properties": [{"name": "actionPurpose", "value": "NoSuch_zz"}]})
+    e = assert_error(r, "an invalid actionPurpose value")
+    assert_error_quality(e, names=["NoSuch_zz", "actionPurpose"], suggests=["Allowed"],
+                         ctx="actionPurpose is an ordinary enum property, not the action")
+    assert_not_contains(e, "Handler.Action", "actionPurpose must not be routed to the handler member")
+    assert_tree_unchanged(before, "a refused action property must change nothing")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_modify_action_property_on_a_missing_command_keeps_not_found():
+    # Issue #628 precedence: the action-property refusal is decided on the RESOLVED command, so an
+    # address that names no command still answers "not found" - never a route to the handler member
+    # of a command that does not exist.
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command.NoSuchCmd628",
+        "properties": [{"name": "action", "value": "X"}]})
+    e = assert_error(r, "'action' on a missing form command")
+    assert_error_quality(e, names=["NoSuchCmd628"], suggests=["Form member not found"],
+                         ctx="a missing command keeps its own answer")
+    assert_not_contains(e, "Handler.Action", "a missing command must not be given a handler route")
+    assert_no_diff("a refused call on a missing command must change nothing")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_modify_action_property_on_a_non_command_member_keeps_the_assignable_list():
+    # Issue #628 negative control by KIND: only a form COMMAND has an action, so the action-like names
+    # sent to any other member - an existing field and the form's main attribute - are not routed to a
+    # '...Handler.Action' member that cannot exist; the ordinary pipeline refuses them with that
+    # member's own assignable list. This is the only pin of the KIND that reaches the check: the unit
+    # tests feed the kind to the static seam directly.
+    for fqn in ("Catalog.Catalog.Form.ItemForm.Field.Description",
+                "Catalog.Catalog.Form.ItemForm.Attribute.Object"):
+        for prop in ("procedure", "action"):
+            r = call("modify_metadata", {
+                "projectName": PROJECT, "fqn": fqn,
+                "properties": [{"name": prop, "value": "NoRouteProc628"}]})
+            e = assert_error(r, "'%s' on the non-command member %s" % (prop, fqn))
+            assert_error_quality(e, names=[prop],
+                                 suggests=["not assignable", "Assignable properties"],
+                                 ctx="a non-command member keeps the ordinary refusal")
+            assert_not_contains(e, "Handler.Action",
+                                "a non-command member must not be routed to a handler member")
+            assert_not_contains(e, "handler member",
+                                "a non-command member has no action to route")
+    assert_no_diff("refused action-like properties on non-command members must change nothing")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_move_form_button_into_auto_command_bar():
     # Reparent an EXISTING button into the form's command bar via the 'parent' property - the move
     # half of the #138 reporter's manual XML edits (new buttons can be parented at creation; this
@@ -2359,6 +2682,43 @@ def test_rebind_item_level_handler_procedure_roundtrip():
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_rebind_form_command_action_procedure_roundtrip():
+    # Issue #628: the route both refusals name - modify_metadata on '...Command.<C>.Handler.Action'
+    # with a 'procedure' property - really re-points a command's action at another procedure. No other
+    # test rebinds a command action, so this proves the advertised route end to end.
+    cmd = "RbActCmd"
+    handler_fqn = "Catalog.Catalog.Form.ItemForm.Command.%s.Handler.Action" % cmd
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Command." + cmd}),
+        "seed form command")
+    wait_for_project_ready()
+    assert_ok(call("create_metadata", {
+        "projectName": PROJECT, "fqn": handler_fqn,
+        "properties": [{"name": "procedure", "value": "RbActOld"}]}),
+        "bind the command's action to RbActOld")
+    wait_for_project_ready()
+    poll_disk_contains(_ITEM_FORM, "RbActOld", ctx="the first binding must reach disk")
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": handler_fqn,
+        "properties": [{"name": "procedure", "value": "RbActNew"}]})
+    assert_ok(r, "rebind the command's action to RbActNew")
+    assert r.structured.get("action") == "modified", "must report modified: %r" % (r.structured,)
+    assert r.structured.get("applied") == ["procedure"], \
+        "the rebind must report procedure as applied: %r" % (r.structured,)
+    assert r.structured.get("persisted") is True, \
+        "the rebind must force-export the .form to disk: %r" % (r.structured,)
+    form_text = poll_disk_contains(_ITEM_FORM, "RbActNew",
+                                   ctx="the new action procedure must land in the .form on disk")
+    assert_not_contains(form_text, "RbActOld", "the old action procedure must be replaced on disk")
+    details = call("get_metadata_details", {
+        "projectName": PROJECT, "objectFqns": ["Catalog.Catalog.Form.ItemForm"]})
+    assert_ok(details, "read the form structure back")
+    assert_contains(details.text, "RbActNew",
+                    "the Commands table must show the rebound action handler")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
 def test_rebind_handler_other_property_in_same_call_rejected():
     # A handler FQN accepts only the 'procedure' rebind; mixing another property is refused.
     _seed_form_field("RbMixAttr", "RbMixFld")
@@ -2701,6 +3061,10 @@ def test_set_command_group_reference():
         "the group change must force-export the owner .mdo: %r" % (r.structured,)
     poll_diff_contains("<group>CommandGroup.%s</group>" % grp,
                        ctx="the command's group reference must land in the owner .mdo")
+    # The Commands table names the group by its FQN, not by its objectBelonging (Native).
+    for full, cell in _commands_group_cells("DataProcessor." + dp, cmd).items():
+        assert cell == "CommandGroup." + grp, \
+            "the Commands table (full=%s) must show the configuration group, got %r" % (full, cell)
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -2727,6 +3091,11 @@ def test_command_group_is_assignable_and_listed():
     assert group_row is not None, "the assignable table must have a 'group' row: %r" % (text[:600],)
     assert len(group_row) >= 2 and group_row[1] == "REFERENCE", \
         "group's row must report the REFERENCE kind, got %r: %r" % (group_row, text[:600])
+    # Allowed names both forms modify_metadata takes, not the bare interface name (issue #733),
+    # as inline code so a Markdown renderer does not swallow <Name> as an HTML tag.
+    allowed = group_row[3] if len(group_row) >= 4 else ""
+    assert "`CommandGroup.<Name>`" in allowed and "ActionsPanelTools" in allowed, \
+        "group's Allowed cell must name both addressable forms, got %r" % (group_row,)
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -2801,10 +3170,7 @@ def test_set_command_group_to_standard_group_english():
     poll_diff_contains("<group>ActionsPanelTools</group>",
                        ctx="the platform writes a standard group by its bare English name")
 
-    # Read back through the ASSIGNABLE surface - the one MetadataPropertyIntrospector renders, and
-    # the only place a standard group's NAME appears. The `### Commands` table deliberately prints
-    # the group's CATEGORY enum instead (ActionsPanel), and does so for a configuration CommandGroup
-    # too, so it cannot say WHICH standard group was written.
+    # Read back through the ASSIGNABLE surface - the one MetadataPropertyIntrospector renders.
     text = _assignable_text(fqn)
     group_row = None
     for line in text.splitlines():
@@ -2816,6 +3182,11 @@ def test_set_command_group_to_standard_group_english():
     assert len(group_row) >= 3 and group_row[2] == "ActionsPanelTools", \
         "the reader must show the standard group that was just written, got %r: %r" \
         % (group_row, text[:600])
+    # The Commands table names it the same way, not by the ActionsPanel category every group of
+    # that panel shares (issue #733).
+    for full, cell in _commands_group_cells("DataProcessor.E2EMdStdGrpDp", "E2EMdStdGrpCmd").items():
+        assert cell == "ActionsPanelTools", \
+            "the Commands table (full=%s) must show the standard group, got %r" % (full, cell)
 
 
 @e2e_test(tool="modify_metadata", kind="write-metadata")
@@ -3668,3 +4039,497 @@ def test_modify_error_carries_no_marker_fields():
     assert_error_quality(e, names=["E2EMarkersNoSuchAttr"], ctx="missing modify target")
     assert_no_marker_fields(r.structured, "an error reports no markers")
     assert_no_diff("a refused modify must not touch disk")
+
+
+# ---- per-role values of an adjustable flag (#719) and a form attribute's useAlways (#661) ----
+
+_XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+
+
+def _use_always_paths(attr):
+    """The stored notDefaultUseAlwaysAttributes of a form attribute: [(xsi:type, segments)]."""
+    block = _form_attribute_block(read_disk(_ITEM_FORM), attr)
+    if block is None:
+        raise AssertionError("attribute %s is not in %s" % (attr, _ITEM_FORM))
+    return [(entry.get(_XSI_TYPE), (entry.findtext("segments") or "").strip())
+            for entry in block.findall("notDefaultUseAlwaysAttributes")]
+
+
+def _poll_use_always_paths(attr, want, timeout=20, ctx=""):
+    """Poll until the attribute's stored use-always paths equal `want` exactly (order included)."""
+    deadline = time.time() + timeout
+    last = "<never read>"
+    while time.time() < deadline:
+        try:
+            last = _use_always_paths(attr)
+            if last == want:
+                return
+        except (AssertionError, ET.ParseError) as e:
+            last = str(e)
+        time.sleep(0.5)
+    raise AssertionError("expected %s to store use-always paths %r [%s]; it stores %r"
+                         % (attr, want, ctx, last))
+
+
+def _attribute_xml(attr):
+    """The raw <attributes> fragment of `attr` in the item form, for exact-serialization checks."""
+    text = read_disk(_ITEM_FORM)
+    anchor = "<name>%s</name>" % attr
+    start = text.rfind("<attributes>", 0, text.index(anchor))
+    return text[start:text.index("</attributes>", start)]
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_use_always_on_an_object_lists_only_the_unchecked_field():
+    """#661: on an ordinary object the designer default is CHECKED, so EDT lists the paths NOT
+    used always. useAlways takes the checkbox state; the stored list is computed by EDT's rule."""
+    fqn = "Catalog.Catalog.Form.ItemForm.Attribute.Object"
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "useAlways",
+                        "value": {"Object.Code": False, "Object.Description": True}}]})
+    assert_ok(r, "uncheck Use always for Object.Code")
+    assert "useAlways" in (r.structured.get("applied") or []), \
+        "useAlways must be reported applied: %r" % (r.structured,)
+    _poll_use_always_paths("Object", [("form:DataPath", "Object.Code")],
+                           ctx="only the unchecked field is listed; the checked one is the default")
+    fragment = _attribute_xml("Object")
+    assert re.search(r'</edit>\s*<notDefaultUseAlwaysAttributes xsi:type="form:DataPath">\s*'
+                     r'<segments>Object\.Code</segments>\s*</notDefaultUseAlwaysAttributes>\s*<main>',
+                     fragment), "exact serialized form between <edit> and <main>:\n%s" % fragment
+    assert "Object.Description" not in fragment, \
+        "a field set to its default (checked) must not be listed:\n%s" % fragment
+
+    row = _assignable_row(fqn, "useAlways")
+    assert row is not None and '{"Object.Code":false}' in row, \
+        "get_metadata_details must show the effective state of the listed path: %r" % (row,)
+
+    back = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "useAlways", "value": {"Object.Code": True}}]})
+    assert_ok(back, "check Use always for Object.Code again")
+    _poll_use_always_paths("Object", [], ctx="checking it again restores the default: nothing listed")
+    assert "notDefaultUseAlwaysAttributes" not in _attribute_xml("Object")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_use_always_on_a_constants_set_lists_the_checked_constant():
+    """#661: a ConstantsSet defaults to UNCHECKED, so the list flips: a listed constant IS used
+    always. An unknown constant is refused before anything is written."""
+    constant = "E2EUseAlwaysConst"
+    attr = "E2EConstantsSet"
+    r = call("create_metadata", {"projectName": PROJECT, "fqn": "Constant." + constant})
+    assert_ok(r, "seed the constant")
+    _seed_form_attribute(attr)
+    fqn = "Catalog.Catalog.Form.ItemForm.Attribute." + attr
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "type", "value": {"types": [{"kind": "ConstantsSet"}]}}]})
+    assert_ok(r, "make the attribute a constants set")
+    poll_disk_contains(_ITEM_FORM, "<types>ConstantsSet</types>",
+                       ctx="the constants-set type must be on disk before the checkbox is set")
+    wait_for_project_ready()
+
+    path = "%s.%s" % (attr, constant)
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "useAlways", "value": {path: True}}]})
+    assert_ok(r, "check Use always for the constant")
+    _poll_use_always_paths(attr, [("form:DataPath", path)],
+                           ctx="a checked constant of a constants set is the listed one")
+    row = _assignable_row(fqn, "useAlways")
+    assert row is not None and ('{"%s":true}' % path) in row, \
+        "the listed constant reads back as used always: %r" % (row,)
+
+    snap = tree_snapshot()
+    bad = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "useAlways", "value": {attr + ".E2ENoSuchConstant": True}}]})
+    e = assert_error(bad, "an unknown constant must be refused")
+    # EDT's data tree names the missing segment and lists the constants it does have.
+    assert_error_quality(e, names=["E2ENoSuchConstant", attr], suggests=[constant])
+    assert_tree_unchanged(snap, ctx="a refused useAlways must not touch the disk")
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "useAlways", "value": {path: False}}]})
+    assert_ok(r, "uncheck it again")
+    _poll_use_always_paths(attr, [], ctx="an unchecked constant is the constants-set default")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_use_always_refuses_a_path_of_another_attribute():
+    snap = tree_snapshot()
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Attribute.Object",
+        "properties": [{"name": "useAlways", "value": {"List.Code": False}}]})
+    e = assert_error(r, "a path not rooted at the addressed attribute must be refused")
+    assert_error_quality(e, names=["List.Code", "Object"], suggests=["Object.Code"])
+    assert_tree_unchanged(snap, ctx="a refused useAlways must not touch the disk")
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_use_always_refuses_a_field_the_data_tree_does_not_have():
+    """#661: every path is resolved in EDT's form data tree before the write; one it does not have
+    is refused naming the missing segment and the fields there, never written for markers to find."""
+    snap = tree_snapshot()
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": "Catalog.Catalog.Form.ItemForm.Attribute.Object",
+        "properties": [{"name": "useAlways", "value": {"Object.E2ENoSuchField": False}}]})
+    e = assert_error(r, "a field the data tree does not resolve must be refused")
+    assert_error_quality(e, names=["E2ENoSuchField", "'Object'"], suggests=["Fields there", "Code"])
+    assert_tree_unchanged(snap, ctx="a refused useAlways must not touch the disk")
+
+
+def _view_fragment(attr):
+    """The raw <view> element of `attr`, e.g. '<view>...</view>' or '<view/>'."""
+    fragment = _attribute_xml(attr)
+    m = re.search(r"<view/>|<view>.*?</view>", fragment, re.S)
+    if m is None:
+        raise AssertionError("attribute %s carries no <view>:\n%s" % (attr, fragment))
+    return m.group(0)
+
+
+def _poll_view_fragment(attr, pattern, timeout=20, ctx=""):
+    deadline = time.time() + timeout
+    last = "<never read>"
+    while time.time() < deadline:
+        try:
+            last = _view_fragment(attr)
+            if re.fullmatch(pattern, last, re.S):
+                return last
+        except (AssertionError, ValueError) as e:
+            last = str(e)
+        time.sleep(0.5)
+    raise AssertionError("expected %s.<view> to match %r [%s]; it is %r" % (attr, pattern, ctx, last))
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_view_role_values_are_set_and_dropped():
+    """#719: view takes {common?, roles?}; a role is Role.<Name> (any type-token language) or a
+    bare Name, 'default' drops its value, and an unnamed role keeps its own."""
+    role = "E2EViewRoleA"
+    other = "E2EViewRoleB"
+    attr = "MFViewRolesAttr"
+    for name in (role, other):
+        r = call("create_metadata", {"projectName": PROJECT, "fqn": "Role." + name})
+        assert_ok(r, "seed role " + name)
+    _seed_form_attribute(attr)
+    fqn = "Catalog.Catalog.Form.ItemForm.Attribute." + attr
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "view", "value": {
+            "common": False,
+            # Russian type token "Роль", and a bare Name.
+            "roles": {"Роль." + role: True, other: False}}}]})
+    assert_ok(r, "set common and two role values")
+    view = _poll_view_fragment(
+        attr, r"<view>\s*<for>\s*<value>true</value>\s*<role>Role\.%s</role>\s*</for>\s*"
+              r"<for>\s*<role>Role\.%s</role>\s*</for>\s*</view>" % (role, other),
+        ctx="common=false and a false role value are EMF defaults, so they are omitted")
+    assert "<common>" not in view, "common=false must not be serialized: %s" % view
+
+    row = _assignable_row(fqn, "view")
+    want = '{"common":false,"roles":{"Role.%s":true,"Role.%s":false}}' % (role, other)
+    assert row is not None and want in row, \
+        "get_metadata_details must show the role values next to common: %r" % (row,)
+
+    r = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "view", "value": {"common": True,
+                                                   "roles": {"Role." + role: "default"}}}]})
+    assert_ok(r, "drop one role value and turn common on")
+    _poll_view_fragment(
+        attr, r"<view>\s*<common>true</common>\s*<for>\s*<role>Role\.%s</role>\s*</for>\s*</view>"
+              % other, ctx="the dropped role is gone, the unnamed one is kept")
+
+    snap = tree_snapshot()
+    bad = call("modify_metadata", {
+        "projectName": PROJECT, "fqn": fqn,
+        "properties": [{"name": "view", "value": {"roles": {"Role.E2ENoSuchRole": True}}}]})
+    e = assert_error(bad, "an unknown role must be refused")
+    assert_error_quality(e, names=["Role.E2ENoSuchRole"], suggests=["Role"])
+    assert_tree_unchanged(snap, ctx="a refused role value must not touch the disk")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# #700: a retype resets the type-dependent properties exactly as EDT's designer does
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# EDT's designer changes a type through its own type-change task, which also resets the properties
+# that depend on the type. modify_metadata runs the same task. On a Constant / BasicFeature: the choice
+# form is cleared and quick choice becomes Auto; choice parameters and links go - always on a Constant,
+# otherwise unless the new type has a reference; the fill value becomes Undefined; min / max become
+# Undefined unless the new type has Number; a lone UUID also turns off fillFromFillingValue and
+# full-text search; a lone ValueStorage or unlimited String turns indexing off. Before #700 a retype
+# was a bare set: the member kept the designer's String fill value whatever its new type - a state EDT
+# never writes.
+#
+# Each test checks the .mdo BEFORE the message, so a jar without the resets fails on the stale stored
+# value rather than on the new message text alone. Two rules are unit-only
+# (ModifyMetadataToolTypeChangeTest): min / max and a DefinedType's referrer reset. A fill value and
+# min / max cannot be set through modify_metadata, so an attribute seeded here only ever holds
+# Undefined in them and an e2e assertion on them would pass with or without the reset.
+
+_CATALOG_MDO = "src/Catalogs/Catalog/Catalog.mdo"
+
+# The .mdo leaves a property at its model default out, so an absent element reads as that default.
+_RESET_DEFAULTS = {
+    "fullTextSearch": "DontUse",
+    "fillFromFillingValue": "false",
+    "indexing": "DontIndex",
+    "quickChoice": "Auto",
+}
+_RESET_VALUES = ("fillValue", "minValue", "maxValue")
+_UNDEFINED = "core:UndefinedValue"
+_RESET_CLAUSE = "the type change also reset the properties that depend on the type, as EDT's designer does"
+
+
+def _member_props(mdo_text, collection, name):
+    """{property: stored value} of the ONE <collection> member named `name` directly under the .mdo
+    root: a value's xsi:type (None when absent), an enum's or a flag's text (the model default when
+    absent), and the member's own type - "types" (its <types>, in order), "stringLength" and
+    "precision" (None when absent). None when the member is not (yet) there."""
+    root = ET.fromstring(mdo_text)
+    matches = [el for el in root if _local(el) == collection and el.findtext("name") == name]
+    if len(matches) != 1:
+        return None
+    props = dict(_RESET_DEFAULTS)
+    props.update((value, None) for value in _RESET_VALUES)
+    props.update(types=None, stringLength=None, precision=None)
+    for child in matches[0]:
+        tag = _local(child)
+        if tag in _RESET_VALUES:
+            props[tag] = child.get(_XSI_TYPE)
+        elif tag in _RESET_DEFAULTS:
+            props[tag] = (child.text or "").strip()
+        elif tag == "type":
+            props["types"] = tuple((t.text or "").strip() for t in child if _local(t) == "types")
+            props["stringLength"] = child.findtext("stringQualifiers/length")
+            props["precision"] = child.findtext("numberQualifiers/precision")
+    return props
+
+
+def _poll_member_props(path, collection, name, expected, ctx, timeout=15):
+    """Poll `path` until the member's stored properties include every `expected` key/value; return
+    them. One read decides all of them, so the verdict never mixes two exports."""
+    deadline = time.time() + timeout
+    last = "<never read>"
+    while time.time() < deadline:
+        try:
+            props = _member_props(read_disk(path), collection, name)
+            last = props if props is not None else "<no such member>"
+        except (OSError, ET.ParseError) as e:
+            props, last = None, "unreadable: %s" % e
+        if props is not None and all(props.get(k) == v for k, v in expected.items()):
+            return props
+        time.sleep(0.5)
+    _fail("%s: %s member %r expected %r, the .mdo holds %r" % (ctx, collection, name, expected, last))
+
+
+def _poll_attribute_props(attr, expected, ctx):
+    return _poll_member_props(_CATALOG_MDO, "attributes", attr, expected, ctx)
+
+
+def _seed_designer_attribute(attr):
+    """create_metadata a Catalog attribute: since #700 it carries the designer's String(10) defaults,
+    an empty String fill value among them - the state a retype has to reset."""
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": "Catalog.Catalog.Attribute." + attr}),
+              "seed attribute " + attr)
+    wait_for_project_ready()
+    return _poll_attribute_props(attr, {"types": ("String",), "stringLength": "10",
+                                        "fillValue": "core:StringValue", "fullTextSearch": "Use"},
+                                 "precondition: the created attribute carries the designer's defaults")
+
+
+def _modify_attribute(attr, properties, ctx):
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": "Catalog.Catalog.Attribute." + attr,
+                                 "properties": properties})
+    assert_ok(r, ctx)
+    return r
+
+
+def _retype_attribute(attr, type_value, ctx):
+    r = _modify_attribute(attr, [{"name": "type", "value": type_value}], ctx)
+    assert "type" in (r.structured.get("applied") or []), "type must be applied: %r" % (r.structured,)
+    return r
+
+
+def _assert_reset_reported(r, clause=_RESET_CLAUSE):
+    """The message names the reset. Asserted AFTER the .mdo check, so that a jar without the resets
+    fails a test on the stale stored value, not on the new message text alone."""
+    assert clause in (r.structured.get("message") or ""), \
+        "the message must say what the type change reset: %r" % (r.structured,)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_to_number_resets_the_designer_string_fill_value():
+    attr = "E2EResetNumAttr"
+    _seed_designer_attribute(attr)
+    r = _retype_attribute(attr, {"types": [{"kind": "Number", "precision": 10, "scale": 2}]},
+                          "retype to Number(10,2)")
+    _poll_attribute_props(attr, {
+        "types": ("Number",), "precision": "10", "fillValue": _UNDEFINED,
+        "fullTextSearch": "Use", "fillFromFillingValue": "false", "indexing": "DontIndex", "quickChoice": "Auto",
+    }, "a Number attribute must not keep the String fill value (as EDT's designer writes it)")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_to_a_reference_resets_the_fill_value_and_quick_choice():
+    attr = "E2EResetRefAttr"
+    _seed_designer_attribute(attr)
+    _modify_attribute(attr, [{"name": "quickChoice", "value": "DontUse"}], "turn quick choice off first")
+    _poll_attribute_props(attr, {"quickChoice": "DontUse"}, "precondition: quick choice off on disk")
+
+    r = _retype_attribute(attr, {"types": [{"kind": "CatalogRef", "ref": "Catalog"}]},
+                          "retype to CatalogRef.Catalog")
+    _poll_attribute_props(attr, {
+        "types": ("CatalogRef.Catalog",), "fillValue": _UNDEFINED, "fullTextSearch": "Use", "quickChoice": "Auto",
+    }, "a retype resets quick choice to Auto and the fill value to Undefined")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_to_uuid_stops_filling_from_the_filling_value_and_full_text_search():
+    attr = "E2EResetUuidAttr"
+    _seed_designer_attribute(attr)
+    _modify_attribute(attr, [{"name": "fillFromFillingValue", "value": True}], "turn filling on first")
+    _poll_attribute_props(attr, {"fillFromFillingValue": "true", "fullTextSearch": "Use"},
+                          "precondition: filling and full-text search on, on disk")
+
+    r = _retype_attribute(attr, {"types": [{"kind": "UUID"}]}, "retype to UUID")
+    _poll_attribute_props(attr, {
+        "types": ("UUID",), "fillValue": _UNDEFINED, "fillFromFillingValue": "false", "fullTextSearch": "DontUse",
+    }, "a UUID attribute is not filled from the filling value and takes no part in full-text search")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_to_value_storage_stops_indexing():
+    attr = "E2EResetVsAttr"
+    _seed_designer_attribute(attr)
+    _modify_attribute(attr, [{"name": "indexing", "value": "Index"}], "index the attribute first")
+    _poll_attribute_props(attr, {"indexing": "Index"}, "precondition: indexed on disk")
+
+    r = _retype_attribute(attr, {"types": [{"kind": "ValueStorage"}]}, "retype to ValueStorage")
+    _poll_attribute_props(attr, {
+        "types": ("ValueStorage",), "fillValue": _UNDEFINED, "indexing": "DontIndex", "fullTextSearch": "Use",
+    }, "a value storage cannot be indexed")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_to_an_unlimited_string_stops_indexing():
+    attr = "E2EResetLongStrAttr"
+    _seed_designer_attribute(attr)
+    _modify_attribute(attr, [{"name": "indexing", "value": "Index"}], "index the attribute first")
+    _poll_attribute_props(attr, {"indexing": "Index"}, "precondition: indexed on disk")
+
+    # An unlimited String as EDT's designer writes it: string qualifiers of length 0.
+    r = _retype_attribute(attr, {"types": [{"kind": "String", "length": 0}]}, "retype to an unlimited String")
+    _poll_attribute_props(attr, {
+        "types": ("String",), "stringLength": None,
+        "fillValue": _UNDEFINED, "indexing": "DontIndex", "fullTextSearch": "Use",
+    }, "an unlimited string cannot be indexed")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_of_an_edt_made_attribute_resets_its_string_fill_value():
+    # The fixture's Catalog.Catalog.Attribute was made by EDT: String(10) with an empty String fill
+    # value. A retype through MCP left that fill value on the new type before #700 as well.
+    precondition = _member_props(read_disk(_CATALOG_MDO), "attributes", "Attribute")
+    assert precondition is not None and precondition["fillValue"] == "core:StringValue", \
+        "precondition: the fixture attribute carries a String fill value: %r" % (precondition,)
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": "Catalog.Catalog.Attribute.Attribute",
+                                 "properties": [{"name": "type", "value": {
+                                     "types": [{"kind": "Number", "precision": 10, "scale": 2}]}}]})
+    assert_ok(r, "retype the EDT-made fixture attribute to Number(10,2)")
+    _poll_attribute_props("Attribute", {
+        "types": ("Number",), "precision": "10", "fillValue": _UNDEFINED, "fullTextSearch": "Use",
+    }, "an EDT-made attribute retyped to Number must not keep its String fill value")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_writing_the_type_an_attribute_already_has_resets_nothing():
+    # EDT's designer runs its type change only for a real change. The same String(10) again keeps the
+    # designer's fill value and a quick choice set before.
+    attr = "E2EResetSameAttr"
+    _seed_designer_attribute(attr)
+    _modify_attribute(attr, [{"name": "quickChoice", "value": "DontUse"}], "turn quick choice off first")
+    _poll_attribute_props(attr, {"quickChoice": "DontUse"}, "precondition: quick choice off on disk")
+
+    r = _modify_attribute(attr, [{"name": "type", "value": {"types": [{"kind": "String", "length": 10}]}}],
+                          "write the type the attribute already has")
+    props = _member_props(read_disk(_CATALOG_MDO), "attributes", attr)
+    assert props is not None and props["types"] == ("String",) and props["stringLength"] == "10" \
+        and props["fillValue"] == "core:StringValue" and props["quickChoice"] == "DontUse", \
+        "an unchanged type must keep the fill value and quick choice: %r" % (props,)
+    assert _RESET_CLAUSE not in (r.structured.get("message") or ""), \
+        "an unchanged type must not report a reset: %r" % (r.structured,)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_a_property_set_with_the_type_is_not_undone_by_its_reset():
+    # The type goes first whatever the order of the call's properties, so the call's own quick choice
+    # survives the reset a retype makes.
+    attr = "E2EResetOrderAttr"
+    _seed_designer_attribute(attr)
+    r = _modify_attribute(attr, [
+        {"name": "quickChoice", "value": "DontUse"},
+        {"name": "type", "value": {"types": [{"kind": "Number", "precision": 10, "scale": 2}]}},
+    ], "set quick choice and retype in one call")
+    _poll_attribute_props(attr, {"types": ("Number",), "quickChoice": "DontUse", "fillValue": _UNDEFINED},
+                          "the call's own quick choice wins over the reset, the fill value is still reset")
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_of_a_constant_resets_its_quick_choice():
+    name = "E2EResetConst"
+    path = "src/Constants/%s/%s.mdo" % (name, name)
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": "Constant." + name}), "seed Constant")
+    wait_for_project_ready()
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": "Constant." + name,
+                                 "properties": [{"name": "quickChoice", "value": "DontUse"}]})
+    assert_ok(r, "turn the constant's quick choice off first")
+    poll_disk_contains(path, "<quickChoice>DontUse</quickChoice>", ctx="precondition: quick choice off on disk")
+
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": "Constant." + name,
+                                 "properties": [{"name": "type", "value": {
+                                     "types": [{"kind": "Number", "precision": 12, "scale": 3}]}}]})
+    assert_ok(r, "retype the constant")
+    mdo = poll_disk_contains(path, "<precision>12</precision>", ctx="the constant's new type must reach disk")
+    assert "<quickChoice>" not in mdo, \
+        "a retype resets a constant's quick choice to Auto, which the .mdo leaves out:\n%s" % mdo[:1500]
+    _assert_reset_reported(r)
+
+
+@e2e_test(tool="modify_metadata", kind="write-metadata")
+def test_retype_of_a_defined_type_runs_the_referrer_reset():
+    # A DefinedType's retype resets the fill value of every editable object typed with it - here an
+    # attribute that uses it. No fill value can be set through MCP, so the referrer already holds
+    # Undefined and the reset itself is not observable here: it is pinned by the unit tests. This is a
+    # smoke test of the live run over a real referrer (BM references, the write transaction, editing
+    # support) and of its report.
+    defined = "E2EResetDefined"
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": "DefinedType." + defined}),
+              "seed the DefinedType")
+    wait_for_project_ready()
+    attr = "E2EResetDefinedAttr"
+    _seed_designer_attribute(attr)
+    r = _retype_attribute(attr, {"types": [{"kind": "DefinedType", "ref": defined}]}, "type the attribute with it")
+    _poll_attribute_props(attr, {"types": ("DefinedType.%s" % defined,), "fillValue": _UNDEFINED},
+                          "the attribute's own retype reset its fill value")
+    _assert_reset_reported(r)
+
+    r = call("modify_metadata", {"projectName": PROJECT, "fqn": "DefinedType." + defined,
+                                 "properties": [{"name": "type", "value": {
+                                     "types": [{"kind": "Number", "precision": 15, "scale": 2}]}}]})
+    assert_ok(r, "retype the DefinedType its attribute uses")
+    poll_disk_contains("src/DefinedTypes/%s/%s.mdo" % (defined, defined), "<precision>15</precision>",
+                       ctx="the DefinedType's new type must reach disk")
+    _assert_reset_reported(r, "the type change also reset the fill value of every editable object typed with it")

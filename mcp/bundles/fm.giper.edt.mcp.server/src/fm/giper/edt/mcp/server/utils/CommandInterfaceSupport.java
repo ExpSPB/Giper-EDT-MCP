@@ -8,9 +8,9 @@ package fm.giper.edt.mcp.server.utils;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -50,8 +50,6 @@ import com._1c.g5.v8.dt.mcore.CommandGroup;
 import com._1c.g5.v8.dt.mcore.StandardCommandGroup;
 import com._1c.g5.v8.dt.metadata.mdclass.AdjustableBoolean;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
-import com._1c.g5.v8.dt.metadata.mdclass.ForRoleType;
-import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.metadata.mdclass.Role;
@@ -89,7 +87,7 @@ public final class CommandInterfaceSupport
 
     private static final String STANDARD_COMMAND_INFIX = ".StandardCommand."; //$NON-NLS-1$
 
-    private static final String ROLE_PREFIX = "Role."; //$NON-NLS-1$
+    private static final String ROLE_PREFIX = AdjustableBooleanSupport.ROLE_PREFIX;
 
     private static final String COMMAND_GROUP_PREFIX = "CommandGroup."; //$NON-NLS-1$
 
@@ -246,7 +244,7 @@ public final class CommandInterfaceSupport
         CommandContainer container;
         if (address.kind() == CommandInterfaceAddress.Kind.SUBSYSTEM)
         {
-            String[] chain = address.subsystemChain();
+            String[] chain = Objects.requireNonNull(address.subsystemChain());
             Subsystem subsystem = SubsystemUtils.resolveByPath(config, chain, chain.length);
             if (subsystem == null)
             {
@@ -395,20 +393,7 @@ public final class CommandInterfaceSupport
 
     static Visibility visibilityOf(AdjustableBoolean value)
     {
-        Map<String, Boolean> roles = new LinkedHashMap<>();
-        if (value == null)
-        {
-            return new Visibility(false, roles);
-        }
-        for (ForRoleType forRole : value.getFor())
-        {
-            Role role = forRole.getRole();
-            if (role != null && !role.eIsProxy() && role.getName() != null)
-            {
-                roles.put(ROLE_PREFIX + role.getName(), forRole.isValue());
-            }
-        }
-        return new Visibility(value.isCommon(), roles);
+        return new Visibility(value != null && value.isCommon(), AdjustableBooleanSupport.roleValues(value));
     }
 
     /**
@@ -614,30 +599,8 @@ public final class CommandInterfaceSupport
     /** Maps a requested role FQN to {@code Role.<Name>}, or {@code null} when the configuration has none. */
     static String canonicalRole(Configuration config, String ref)
     {
-        if (config == null || ref == null)
-        {
-            return null;
-        }
-        String normalized = MetadataTypeUtils.normalizeFqn(ref.trim());
-        int dot = normalized.indexOf('.');
-        if (dot <= 0 || !"Role".equals(normalized.substring(0, dot))) //$NON-NLS-1$
-        {
-            return null;
-        }
-        Role role = roleByName(config, normalized.substring(dot + 1).trim());
+        Role role = AdjustableBooleanSupport.resolveRole(config, ref, false);
         return role == null ? null : ROLE_PREFIX + role.getName();
-    }
-
-    private static Role roleByName(Configuration config, String name)
-    {
-        for (Role role : config.getRoles())
-        {
-            if (role != null && name.equalsIgnoreCase(role.getName()))
-            {
-                return role;
-            }
-        }
-        return null;
     }
 
     private static String applyInTx(IBmTransaction tx, IProgressMonitor pm, CommandInterfaceAddress address,
@@ -730,7 +693,7 @@ public final class CommandInterfaceSupport
         {
             return config;
         }
-        String[] chain = address.subsystemChain();
+        String[] chain = Objects.requireNonNull(address.subsystemChain());
         return SubsystemUtils.resolveByPath(config, chain, chain.length);
     }
 
@@ -1060,6 +1023,69 @@ public final class CommandInterfaceSupport
         return new Target(created, fqn);
     }
 
+    // ===== a new configuration root's command interfaces ============================================
+
+    /**
+     * The two command interfaces EDT's new-configuration and new-extension wizards attach to a new root, in
+     * the order they attach them ({@code CmiModelUtil.createConfigurationCommandInterface} /
+     * {@code createMainSectionCommandInterface}): {@code CommandInterface.cmi} and
+     * {@code MainSectionCommandInterface.cmi}.
+     */
+    private static final List<EReference> CONFIGURATION_COMMAND_INTERFACES = List.of(
+        MdClassPackage.Literals.CONFIGURATION__COMMAND_INTERFACE,
+        MdClassPackage.Literals.CONFIGURATION__MAIN_SECTION_COMMAND_INTERFACE);
+
+    /** The outcome of {@link #ensureConfigurationCommandInterfaces}. */
+    public static final class Ensured
+    {
+        /** Both command interfaces' FQNs - present before or attached now - for the caller to export. */
+        public final List<String> fqns;
+        /** Why nothing was ensured, or {@code null}. */
+        public final String skipped;
+
+        Ensured(List<String> fqns, String skipped)
+        {
+            this.fqns = Collections.unmodifiableList(fqns);
+            this.skipped = skipped;
+        }
+    }
+
+    /**
+     * Ensures the configuration root of {@code tx}'s model has both command interfaces EDT's wizards create,
+     * attaching each one that is not registered yet under the platform's external-property FQN - the same two
+     * calls EDT's {@code CmiModelUtil} makes. Idempotent. Run it inside a WRITE transaction; the caller
+     * force-exports {@link Ensured#fqns}.
+     *
+     * @param tx the write transaction
+     * @return the outcome; skipped, never thrown, while the root is not in the model yet
+     */
+    public static Ensured ensureConfigurationCommandInterfaces(IBmTransaction tx)
+    {
+        return ensureConfigurationCommandInterfaces(tx, Activator.getDefault().getTopObjectFqnGenerator());
+    }
+
+    /** {@link #ensureConfigurationCommandInterfaces(IBmTransaction)} with the FQN generator given; for tests. */
+    static Ensured ensureConfigurationCommandInterfaces(IBmTransaction tx, ITopObjectFqnGenerator generator)
+    {
+        IBmObject root = tx.getTopObjectByFqn(CONFIGURATION_FQN);
+        if (!(root instanceof Configuration))
+        {
+            return new Ensured(new ArrayList<>(), "the extension's root was not in its model yet"); //$NON-NLS-1$
+        }
+        if (generator == null)
+        {
+            return new Ensured(new ArrayList<>(), "EDT's top-object FQN generator is not available"); //$NON-NLS-1$
+        }
+        List<String> fqns = new ArrayList<>(CONFIGURATION_COMMAND_INTERFACES.size());
+        for (EReference feature : CONFIGURATION_COMMAND_INTERFACES)
+        {
+            String fqn = generator.generateExternalPropertyFqn((Configuration)root, feature);
+            registeredOrAttached(tx, fqn);
+            fqns.add(fqn);
+        }
+        return new Ensured(fqns, null);
+    }
+
     private static String externalPropertyFqn(EObject owner, EReference feature, Object proxy)
     {
         ITopObjectFqnGenerator generator = Activator.getDefault().getTopObjectFqnGenerator();
@@ -1100,35 +1126,7 @@ public final class CommandInterfaceSupport
     static AdjustableBoolean toAdjustableBoolean(Configuration config, Visibility visibility,
         AdjustableBoolean stored)
     {
-        AdjustableBoolean value = MdClassFactory.eINSTANCE.createAdjustableBoolean();
-        value.setCommon(visibility.common());
-        for (Map.Entry<String, Boolean> e : visibility.roles().entrySet())
-        {
-            Role role = roleByName(config, e.getKey().substring(ROLE_PREFIX.length()));
-            if (role == null)
-            {
-                throw new IllegalStateException(e.getKey() + " disappeared before the write"); //$NON-NLS-1$
-            }
-            ForRoleType forRole = MdClassFactory.eINSTANCE.createForRoleType();
-            forRole.setRole(role);
-            forRole.setValue(Boolean.TRUE.equals(e.getValue()));
-            value.getFor().add(forRole);
-        }
-        if (stored != null)
-        {
-            for (ForRoleType original : stored.getFor())
-            {
-                Role role = original.getRole();
-                if (role == null || role.eIsProxy() || role.getName() == null)
-                {
-                    ForRoleType kept = MdClassFactory.eINSTANCE.createForRoleType();
-                    kept.setRole(role);
-                    kept.setValue(original.isValue());
-                    value.getFor().add(kept);
-                }
-            }
-        }
-        return value;
+        return AdjustableBooleanSupport.build(config, visibility.common(), visibility.roles(), stored);
     }
 
     /**

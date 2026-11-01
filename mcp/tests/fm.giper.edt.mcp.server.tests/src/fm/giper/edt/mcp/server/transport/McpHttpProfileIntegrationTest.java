@@ -102,6 +102,8 @@ public class McpHttpProfileIntegrationTest
         String dev = post("/mcp/profiles/zz-it-dev", INIT, null, false).sessionId; //$NON-NLS-1$
         assertNotEquals(review, dev);
         assertEquals(404, post("/mcp/profiles/zz-it-dev", PING, review, false).status); //$NON-NLS-1$
+        assertEquals(404, request("DELETE", "/mcp/profiles/zz-it-dev", null, review, false).status); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(200, post("/mcp/profiles/zz-it-review", PING, review, false).status); //$NON-NLS-1$
         assertEquals(200, post("/mcp/profiles/zz-it-dev", PING, dev, false).status); //$NON-NLS-1$
     }
 
@@ -113,6 +115,8 @@ public class McpHttpProfileIntegrationTest
         assertEquals(200, deleted.status);
         assertEquals(404, post("/mcp/profiles/zz-it-missing-profile", PING, sessionId, false).status); //$NON-NLS-1$
         assertEquals(404, post("/mcp/profiles/zz-it-missing-profile", PING, "no-such-session", false).status); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(404, request("DELETE", "/mcp/profiles/zz-it-missing-profile", null, sessionId, false).status); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(404, request("DELETE", "/mcp/profiles/zz-it-missing-profile", null, "no-such-session", false).status); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
     }
 
     @Test

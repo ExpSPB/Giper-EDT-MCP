@@ -31,16 +31,18 @@ public final class ToolProfile
     private final String description;
     private final boolean enabled;
     private final Set<String> allowedTools;
+    private final String presetId;
     private final long revision;
 
     private ToolProfile(String id, String displayName, String description, boolean enabled,
-        Set<String> allowedTools, long revision)
+        Set<String> allowedTools, String presetId, long revision)
     {
         this.id = id;
         this.displayName = displayName;
         this.description = description;
         this.enabled = enabled;
         this.allowedTools = allowedTools;
+        this.presetId = presetId;
         this.revision = revision;
     }
 
@@ -77,6 +79,12 @@ public final class ToolProfile
         return revision;
     }
 
+    /** Recorded selection, independent of owner edits; null identifies a legacy profile. */
+    public String getPresetId()
+    {
+        return presetId;
+    }
+
     public boolean isDefault()
     {
         return DEFAULT_ID.equals(id);
@@ -95,7 +103,8 @@ public final class ToolProfile
             && Objects.equals(displayName, other.displayName)
             && Objects.equals(description, other.description)
             && enabled == other.enabled
-            && allowedTools.equals(other.allowedTools);
+            && allowedTools.equals(other.allowedTools)
+            && Objects.equals(presetId, other.presetId);
     }
 
     public ToolProfile withRevision(long newRevision)
@@ -104,7 +113,7 @@ public final class ToolProfile
         {
             return this;
         }
-        return new ToolProfile(id, displayName, description, enabled, allowedTools, newRevision);
+        return new ToolProfile(id, displayName, description, enabled, allowedTools, presetId, newRevision);
     }
 
     public Builder toBuilder()
@@ -115,6 +124,7 @@ public final class ToolProfile
             .description(description)
             .enabled(enabled)
             .allowedTools(allowedTools)
+            .presetId(presetId)
             .revision(revision);
     }
 
@@ -141,7 +151,7 @@ public final class ToolProfile
     @Override
     public int hashCode()
     {
-        return Objects.hash(id, displayName, description, enabled, allowedTools, revision);
+        return Objects.hash(id, displayName, description, enabled, allowedTools, presetId, revision);
     }
 
     @Override
@@ -182,6 +192,7 @@ public final class ToolProfile
         private String description = ""; //$NON-NLS-1$
         private boolean enabled = true;
         private Collection<String> allowedTools = Set.of();
+        private String presetId;
         private long revision = 1L;
 
         public Builder id(String id)
@@ -220,10 +231,16 @@ public final class ToolProfile
             return this;
         }
 
+        public Builder presetId(String presetId)
+        {
+            this.presetId = presetId;
+            return this;
+        }
+
         public ToolProfile build()
         {
             return new ToolProfile(id, displayName, description, enabled,
-                canonicalizeTools(allowedTools), revision);
+                canonicalizeTools(allowedTools), presetId, revision);
         }
     }
 }

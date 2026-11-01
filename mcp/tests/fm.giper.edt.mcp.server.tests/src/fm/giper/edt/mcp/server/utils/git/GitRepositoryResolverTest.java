@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.core.runtime.ILog;
@@ -180,18 +181,9 @@ public class GitRepositoryResolverTest
     @Test
     public void testDiscoverFromDirectoryReturnsNullWhenNoGitDirExistsAnywhereUpTheTree() throws Exception
     {
-        File notARepo = Files.createTempDirectory("resolver-no-repo").toFile(); //$NON-NLS-1$
-        try
+        try (Repository discovered = GitRepositoryResolver.discoverFromDirectory(missingLocationWithoutAncestors()))
         {
-            // NOTE: this only proves the "not found starting from here" branch; findGitDir also walks
-            // PAST notARepo toward the filesystem root, so this assertion assumes no ancestor of the
-            // system temp directory is itself a git working tree (true for every CI/dev sandbox).
-            Repository discovered = GitRepositoryResolver.discoverFromDirectory(notARepo);
             assertNull(discovered);
-        }
-        finally
-        {
-            deleteRecursively(notARepo);
         }
     }
 
@@ -289,19 +281,12 @@ public class GitRepositoryResolverTest
         // The other side of the branch above: "there is no .git anywhere up the tree" must stay
         // distinguishable from "there is one and it would not open". Collapse the two and the
         // configuration-repair error would be handed to every non-git project on the machine.
-        File notARepo = Files.createTempDirectory("resolver-none-vs-unreadable").toFile(); //$NON-NLS-1$
-        try
+        Discovery discovery = GitRepositoryResolver.discoverFromLocation(
+            missingLocationWithoutAncestors(), PROJECT_NAME);
+        try (Repository discovered = discovery.repository())
         {
-            // NOTE: same assumption as the discovery case above - no ancestor of the system temp
-            // directory is itself a git working tree.
-            Discovery discovery = GitRepositoryResolver.discoverFromLocation(notARepo, PROJECT_NAME);
-
-            assertNull("nothing to open means no repository", discovery.repository()); //$NON-NLS-1$
+            assertNull("nothing to open means no repository", discovered); //$NON-NLS-1$
             assertFalse("...and no configuration failure either", discovery.configUnreadable()); //$NON-NLS-1$
-        }
-        finally
-        {
-            deleteRecursively(notARepo);
         }
     }
 
@@ -415,6 +400,21 @@ public class GitRepositoryResolverTest
     }
 
     // ==================== test helpers ====================
+
+    /**
+     * An absent search location with no parent in the supplied File path. JGit walks that path's
+     * getParentFile() chain, so a single relative component bounds this negative fixture without
+     * assuming that java.io.tmpdir or the working directory is outside a real Git tree. No file is
+     * created, no JGit behavior is mocked, and the separate real nested-repository test still proves
+     * upward discovery. Keep this path relative: making it absolute would reintroduce host ancestors.
+     */
+    private static File missingLocationWithoutAncestors()
+    {
+        File absent = new File("resolver-no-repo-" + UUID.randomUUID()); //$NON-NLS-1$
+        assertNull("fixture must have no parent for JGit to search", absent.getParentFile()); //$NON-NLS-1$
+        assertFalse("fixture must not name an existing file or repository", absent.exists()); //$NON-NLS-1$
+        return absent;
+    }
 
     /**
      * Runs the same call the failure branch wraps and returns the text of what it threw (message plus

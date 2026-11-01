@@ -462,6 +462,8 @@ class RunAllRefreshCleanupTest(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.events = []
+        self.real_reset_fixture_project = HARNESS._reset_fixture_project
+        self.real_mark_model_synced = HARNESS._mark_model_synced
         self.stack.enter_context(mock.patch.dict(
             os.environ, {"MCP_MODEL_RESET_MODE": "refresh"}))
         self.patch(RUN_ALL, "_ABANDONED", False)
@@ -488,8 +490,8 @@ class RunAllRefreshCleanupTest(unittest.TestCase):
             self.model_operations.append((project, HARNESS._model_reset_label(project)))
             return True
         self.restore = self.patch(HARNESS, "_reset_fixture_project", mock.Mock(side_effect=restore))
-        self.patch(HARNESS, "_baseline_mismatch", mock.Mock(return_value=None))
-        self.patch(HARNESS, "_non_base_mismatch", mock.Mock(return_value=None))
+        self.baseline = self.patch(HARNESS, "_baseline_mismatch", mock.Mock(return_value=None))
+        self.non_base = self.patch(HARNESS, "_non_base_mismatch", mock.Mock(return_value=None))
         self.patch(HARNESS, "_failed_settle_evidence", mock.Mock())
         self.synced = self.patch(HARNESS, "_mark_model_synced", mock.Mock(
             wraps=HARNESS._mark_model_synced))
@@ -510,6 +512,126 @@ class RunAllRefreshCleanupTest(unittest.TestCase):
     def refresh_events(project):
         rel = HARNESS.FIXTURE_REL_BY_PROJECT[project]
         return ["ready", ("quiet", rel), ("revert", rel), ("model", project), "ready"]
+
+    def exercise_real_base_dependency_reset(self, direct_extension_write):
+        """Run reset_model and the real helper against stateful in-memory dependencies only."""
+        self.confirm_write(HARNESS.PROJECT)
+        if direct_extension_write:
+            self.confirm_write(HARNESS.TESTS_PROJECT)
+
+        state = {
+            "base_clean": False,
+            "extension_blocked": False,
+            "extension_model_dirty": False,
+            "extension_file_dirty": direct_extension_write,
+        }
+        self.restore.side_effect = self.real_reset_fixture_project
+
+        def ready(**_kwargs):
+            self.events.append(("ready", state["base_clean"]))
+            return not (state["extension_blocked"] and not state["base_clean"])
+
+        def revert(rel):
+            self.events.append(("revert", rel))
+            if rel == HARNESS.TESTS_PROJECT_REL:
+                state["extension_file_dirty"] = False
+            return []
+
+        def call(tool, args):
+            project = args["projectName"]
+            self.events.append((tool, project))
+            if tool == "resync_to_disk" and project == HARNESS.PROJECT:
+                state["extension_blocked"] = True
+                state["extension_model_dirty"] = True
+            elif tool == "clean_project" and project == HARNESS.PROJECT:
+                # Base CLEAN may restart/reimport the dependency, but direct extension bytes and
+                # mutation evidence still await that extension's own revert and verification.
+                self.assertTrue(state["extension_model_dirty"])
+                if direct_extension_write:
+                    self.assertTrue(state["extension_file_dirty"])
+                    self.assertIn(HARNESS.TESTS_PROJECT,
+                                  HARNESS.evidenced_mutation_fixture_projects())
+                state["base_clean"] = True
+                state["extension_blocked"] = False
+            elif tool == "clean_project" and project == HARNESS.TESTS_PROJECT:
+                self.assertFalse(state["extension_file_dirty"])
+                state["extension_model_dirty"] = False
+            return HARNESS.Result({"result": {
+                "isError": False, "structuredContent": {"success": True},
+            }})
+
+        def verify_base():
+            self.events.append(("verify", HARNESS.PROJECT))
+            if direct_extension_write:
+                self.assertIn(HARNESS.TESTS_PROJECT,
+                              HARNESS.evidenced_mutation_fixture_projects())
+            return None
+
+        def verify_extension(project, _rel):
+            self.events.append(("verify", project))
+            self.assertFalse(state["extension_file_dirty"])
+            self.assertFalse(state["extension_model_dirty"])
+            if direct_extension_write:
+                self.assertIn(project, HARNESS.evidenced_mutation_fixture_projects())
+            return None
+
+        def mark_synced(projects):
+            verification_events = [event for event in self.events
+                                   if isinstance(event, tuple) and event[0] == "verify"]
+            self.assertEqual([
+                ("verify", HARNESS.PROJECT), ("verify", HARNESS.TESTS_PROJECT),
+                ("verify", HARNESS.PROJECT), ("verify", HARNESS.TESTS_PROJECT),
+            ], verification_events)
+            self.events.append(("synced", tuple(projects)))
+            self.assertEqual((HARNESS.PROJECT, HARNESS.TESTS_PROJECT), tuple(projects))
+            self.assertFalse(state["extension_file_dirty"])
+            self.assertFalse(state["extension_model_dirty"])
+            if direct_extension_write:
+                self.assertIn(HARNESS.TESTS_PROJECT,
+                              HARNESS.evidenced_mutation_fixture_projects())
+            self.real_mark_model_synced(projects)
+
+        self.ready.side_effect = ready
+        self.revert.side_effect = revert
+        self.baseline.side_effect = verify_base
+        self.non_base.side_effect = verify_extension
+        self.synced.side_effect = mark_synced
+        self.patch(HARNESS, "call", mock.Mock(side_effect=call))
+        self.patch(HARNESS.time, "sleep", mock.Mock())
+        # The runner also reverts unselected optional disk-only paths; keep those outside this
+        # model-reset integration case while the mandatory scoped reverts remain real callbacks.
+        self.patch(HARNESS, "reset_all_fixtures", mock.Mock(return_value=True))
+
+        self.reset()
+
+        calls = [event for event in self.events
+                 if isinstance(event, tuple) and event[0] in {
+                     "revalidate_objects", "resync_to_disk", "clean_project"}]
+        self.assertEqual([
+            ("revalidate_objects", HARNESS.PROJECT),
+            ("resync_to_disk", HARNESS.PROJECT),
+            ("clean_project", HARNESS.PROJECT),
+            ("clean_project", HARNESS.TESTS_PROJECT),
+        ], calls)
+        base_clean = self.events.index(("clean_project", HARNESS.PROJECT))
+        self.assertLess(base_clean, self.events.index(("ready", True)))
+        extension_revert = self.events.index(("revert", HARNESS.TESTS_PROJECT_REL))
+        extension_clean = self.events.index(("clean_project", HARNESS.TESTS_PROJECT))
+        self.assertLess(base_clean, extension_revert)
+        self.assertLess(extension_revert, extension_clean)
+        self.assertLess(extension_clean, self.events.index(("verify", HARNESS.TESTS_PROJECT)))
+        self.assertEqual(("synced", (HARNESS.PROJECT, HARNESS.TESTS_PROJECT)), self.events[-1])
+        self.assertFalse(state["extension_file_dirty"])
+        self.assertFalse(state["extension_model_dirty"])
+        if direct_extension_write:
+            self.assertIn(HARNESS.TESTS_PROJECT,
+                          HARNESS.evidenced_mutation_fixture_projects())
+
+    def test_real_reset_cleans_base_before_auto_adopted_extension_can_settle(self):
+        self.exercise_real_base_dependency_reset(direct_extension_write=False)
+
+    def test_real_reset_keeps_direct_extension_write_until_its_own_restore_and_verification(self):
+        self.exercise_real_base_dependency_reset(direct_extension_write=True)
 
     def test_refresh_first_revert_waits_for_ready_and_quiet_for_each_written_model(self):
         self.confirm_write(HARNESS.TESTS_PROJECT)
@@ -554,7 +676,8 @@ class RunAllRefreshCleanupTest(unittest.TestCase):
         HARNESS._record_outcome("modify_metadata", args, True, {"success": False})
         self.reset()
         self.assertEqual(self.refresh_events(HARNESS.PROJECT), self.events)
-        self.assertEqual([(HARNESS.PROJECT, "revalidate_objects + resync_to_disk")],
+        self.assertEqual([(HARNESS.PROJECT,
+                           "revalidate_objects + resync_to_disk + clean_project")],
                          self.model_operations)
 
     def test_read_action_and_skip_restore_persistent_cold_evidence_without_false_advisory(self):
@@ -621,7 +744,8 @@ class RunAllRefreshCleanupTest(unittest.TestCase):
                                           mock.call(HARNESS.EXT_OBJECTS_PROJECT)],
                                          self.restore.call_args_list)
                         self.assertEqual([(HARNESS.PROJECT,
-                            "revalidate_objects + resync_to_disk" if mode == "refresh" else "clean_project"),
+                            "revalidate_objects + resync_to_disk + clean_project"
+                            if mode == "refresh" else "clean_project"),
                             (HARNESS.EXT_OBJECTS_PROJECT, "clean_project")], self.model_operations)
                         self.assertNotIn("kind-advisory", output.getvalue())
                         self.assertEqual(set(), HARNESS._COLD_RESET_PROJECTS)

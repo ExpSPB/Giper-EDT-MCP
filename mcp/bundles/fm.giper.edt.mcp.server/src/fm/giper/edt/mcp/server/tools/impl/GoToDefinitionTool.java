@@ -36,6 +36,7 @@ import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.Refusals;
 
 /**
  * Tool to navigate to the definition of a symbol (method, metadata object).
@@ -141,7 +142,7 @@ public class GoToDefinitionTool implements IMcpTool
             }
             catch (Exception e)
             {
-                Activator.logError("Error resolving definition", e); //$NON-NLS-1$
+                Refusals.log("Error resolving definition", e); //$NON-NLS-1$
                 resultRef.set(ToolResult.error(e.getMessage()).toJson());
             }
         });

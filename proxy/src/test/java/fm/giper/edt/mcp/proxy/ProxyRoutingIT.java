@@ -579,6 +579,7 @@ public class ProxyRoutingIT
         private final ProxyConfig config;
         private final BackendRegistry registry;
         private final ProxyServer server;
+        private final McpProxyHandler handler;
 
         /**
          * Builds the proxy bound to an ephemeral port, scanning exactly the given range.
@@ -597,7 +598,8 @@ public class ProxyRoutingIT
                 "--timeout", "15" }, //$NON-NLS-1$ //$NON-NLS-2$
                 Map.of());
             registry = new BackendRegistry(config);
-            server = new ProxyServer(config, registry, new McpProxyHandler(config, registry, new SessionManager()));
+            handler = new McpProxyHandler(config, registry, new SessionManager());
+            server = new ProxyServer(config, registry, handler);
         }
 
         /** Starts the HTTP server and performs ONE synchronous backend scan. */
@@ -627,6 +629,11 @@ public class ProxyRoutingIT
         BackendRegistry registry()
         {
             return registry;
+        }
+
+        McpProxyHandler handler()
+        {
+            return handler;
         }
     }
 

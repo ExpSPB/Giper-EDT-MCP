@@ -17,10 +17,18 @@ has no bounded cancellation. Run one mutation sequence at a time.
 - `importPath`: required XML source directory; an outside-workspace path is
   allowed and flagged in the response.
 - `projectName`: required new project name; an existing project is refused.
-- `runtimeVersion`: optional project platform version, such as `8.3.27`.
-  Omit or leave empty to infer it from XML.
-- `baseProjectName`: optional open base configuration for an imported extension
-  or external objects. Omit for a standalone configuration.
+- `runtimeVersion`: optional project platform version, such as `8.3.27`. SDK
+  short numeric forms and whitespace remain accepted, and the legacy spelling
+  is forwarded unchanged. Without a base, the runtime registry (when available)
+  also checks that the requested version is supported.
+- `platformVersion`: compatible alias. If both aliases are nonblank, their
+  parsed EDT versions must agree. Blank values mean omitted. An explicit
+  version remains valid with a base; if both are omitted, inherit the base
+  runtime when a base is given, otherwise let EDT infer it from XML.
+- `baseProjectName`: required for extensions, refused for main configurations,
+  optional for external objects. It must identify an open main configuration.
+  An unreadable `Configuration.xml` cannot establish the kind when a base is
+  requested; an absent `Configuration.xml` is an external-object dump.
 - `projectNature`, `xmlVersion`: deprecated. Omit or leave empty. A nonempty
   override is refused before workspace/path/API access. It must never be
   forwarded as the runtime version or base project name.
@@ -43,8 +51,9 @@ has no bounded cancellation. Run one mutation sequence at a time.
 
 Automated coverage lives in
 `tests/e2e/tools/test_import_configuration_from_xml.py`. It covers the real
-configuration round trip, explicit extension runtime/base linkage, legacy
-override refusals, missing parameters/paths and project-name collisions.
+configuration round trip, explicit extension runtime/base linkage, compatible
+version aliases and their conflicts, legacy override refusals, missing
+parameters/paths and project-name collisions.
 
 ## Result and recovery
 

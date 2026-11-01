@@ -7,6 +7,7 @@
 
 package fm.giper.edt.mcp.proxy;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -17,7 +18,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -156,6 +161,18 @@ public final class McpProxyHandler implements HttpHandler
      * has no queue to protect.
      */
     private volatile ThreadPoolExecutor workerPool;
+    private volatile ThreadPoolExecutor requestDrainPool;
+
+    void setRequestDrainPool(ThreadPoolExecutor pool)
+    {
+        requestDrainPool = pool;
+    }
+
+    int activeRequestDrains()
+    {
+        ThreadPoolExecutor pool = requestDrainPool;
+        return pool == null ? 0 : pool.getActiveCount();
+    }
 
     private final Object sseLock = new Object();
     private final Set<HttpExchange> sseExchanges = new HashSet<>();
@@ -361,9 +378,7 @@ public final class McpProxyHandler implements HttpHandler
         String rawBody = readBody(exchange);
         if (rawBody == null)
         {
-            drainRequestBody(exchange);
-            sendPlain(exchange, 413, buildJsonRpcError(ERROR_INVALID_REQUEST,
-                "Request body exceeds the " + MAX_BODY_BYTES + "-byte limit", null)); //$NON-NLS-1$ //$NON-NLS-2$
+            sendOversizedRequestResponse(exchange);
             return;
         }
         JsonObject requestJson = Json.parseObject(rawBody);
@@ -826,7 +841,9 @@ public final class McpProxyHandler implements HttpHandler
             if (envelope != null)
             {
                 FanOut.writeId(envelope, requestId);
-                sendMcpResponse(exchange, 200, Json.compact(envelope), null);
+                String reply = Json.compact(envelope);
+                sendMcpResponse(exchange, 200,
+                    allowStructuredContent ? reply : withoutStructuredContent(reply), null);
                 return;
             }
             sendMcpResponse(exchange, 200, raw, null);
@@ -1217,12 +1234,12 @@ public final class McpProxyHandler implements HttpHandler
     /**
      * Reads the request body up to {@link #MAX_BODY_BYTES}, never buffering more than that plus
      * one byte. A declared {@code Content-Length} over the cap is rejected without reading the
-     * stream at all (the container drains it when {@link HttpExchange#close()} runs); absent or
+     * stream at all; absent or
      * understated {@code Content-Length} (e.g. chunked transfer) is caught by the bounded read
      * itself.
      *
      * @return the decoded UTF-8 body, or {@code null} when it exceeds {@link #MAX_BODY_BYTES}
-     *         (the caller must answer {@code 413} and MUST NOT read the exchange further)
+     *         (the caller must flush {@code 413} before any bounded cleanup)
      */
     private static String readBody(HttpExchange exchange) throws IOException
     {
@@ -1242,28 +1259,99 @@ public final class McpProxyHandler implements HttpHandler
             }
         }
         InputStream in = exchange.getRequestBody();
-        byte[] bytes = in.readNBytes(MAX_BODY_BYTES + 1);
-        if (bytes.length > MAX_BODY_BYTES)
+        ByteArrayOutputStream body = new ByteArrayOutputStream(8192);
+        byte[] bytes = new byte[8192];
+        while (body.size() <= MAX_BODY_BYTES)
         {
-            return null;
+            // InputStream.readNBytes(int) may issue a final zero-length read. JDK17's
+            // chunked HTTP stream can then block reading the next chunk header after the
+            // cap was already reached, so never invoke another read once MAX+1 was seen.
+            int read = in.read(bytes, 0, Math.min(bytes.length, MAX_BODY_BYTES - body.size() + 1));
+            if (read < 0)
+            {
+                return body.toString(StandardCharsets.UTF_8);
+            }
+            if (read > MAX_BODY_BYTES - body.size())
+            {
+                return null;
+            }
+            body.write(bytes, 0, read);
         }
-        return new String(bytes, StandardCharsets.UTF_8);
+        return null;
     }
 
-    private static void drainRequestBody(HttpExchange exchange)
+    private void sendOversizedRequestResponse(HttpExchange exchange) throws IOException
     {
+        byte[] reply = buildJsonRpcError(ERROR_INVALID_REQUEST,
+            "Request body exceeds the " + MAX_BODY_BYTES + "-byte limit", null) //$NON-NLS-1$ //$NON-NLS-2$
+            .getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set(HEADER_CONTENT_TYPE, VALUE_APPLICATION_JSON);
+        exchange.getResponseHeaders().set(HEADER_CONNECTION, "close"); //$NON-NLS-1$
+        exchange.sendResponseHeaders(413, reply.length);
+        OutputStream out = exchange.getResponseBody();
+        out.write(reply);
+        out.flush();
+        // Give an uploading Windows client a bounded opportunity to finish before close.
+        // Main disables the JDK's implicit blocking drain. A cancelled SocketChannel read
+        // closes that connection, so neither this HTTP worker nor a drain worker waits for EOF.
+        drainRejectedRequest(exchange);
         try
         {
-            InputStream in = exchange.getRequestBody();
-            byte[] buf = new byte[8192];
-            while (in.read(buf) >= 0)
-            {
-                // discard leftover bytes after the 413 so close() does not RST
-            }
+            out.close();
         }
         catch (IOException ignored)
         {
-            // client already gone
+            // The response was flushed; cancelling a stalled drain already closed its socket.
+        }
+    }
+
+    private void drainRejectedRequest(HttpExchange exchange)
+    {
+        ThreadPoolExecutor pool = requestDrainPool;
+        if (pool == null)
+        {
+            return;
+        }
+        Future<?> drain = null;
+        try
+        {
+            drain = pool.submit(() -> {
+                try
+                {
+                    InputStream in = exchange.getRequestBody();
+                    byte[] buf = new byte[8192];
+                    int remaining = MAX_BODY_BYTES * 2;
+                    while (remaining > 0 && !Thread.currentThread().isInterrupted())
+                    {
+                        int read = in.read(buf, 0, Math.min(remaining, buf.length));
+                        if (read < 0)
+                        {
+                            return;
+                        }
+                        remaining -= read;
+                    }
+                }
+                catch (IOException ignored)
+                {
+                    // Client closed or the deadline interrupted this SocketChannel read.
+                }
+            });
+            drain.get(100, TimeUnit.MILLISECONDS);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
+        catch (RejectedExecutionException | ExecutionException | TimeoutException ignored)
+        {
+            // No queue or fallback threads: overload/deadline ends cleanup after the refusal.
+        }
+        finally
+        {
+            if (drain != null)
+            {
+                drain.cancel(true);
+            }
         }
     }
 

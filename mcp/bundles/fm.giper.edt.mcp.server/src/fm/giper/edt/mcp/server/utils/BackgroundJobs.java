@@ -26,6 +26,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import fm.giper.edt.mcp.server.Activator;
+
 /**
  * Small bounded registry for long-running MCP work whose result is polled by id.
  * <p>
@@ -463,8 +465,8 @@ public final class BackgroundJobs implements AutoCloseable
         private final AtomicReference<HandlerExecutionState> state =
             new AtomicReference<>(HandlerExecutionState.QUEUED);
 
-        private volatile CommittedCancellation outcome;
-        private volatile Throwable failure;
+        private final AtomicReference<CommittedCancellation> outcome = new AtomicReference<>();
+        private final AtomicReference<Throwable> failure = new AtomicReference<>();
 
         HandlerInvocation(JobRecord record, CommittedCancellationHandler handler)
         {
@@ -482,18 +484,18 @@ public final class BackgroundJobs implements AutoCloseable
             }
             try
             {
-                outcome = handler.cancel();
+                outcome.set(handler.cancel());
             }
             catch (Throwable e) // NOSONAR retained for publication on the requesting thread
             {
-                failure = e;
+                failure.set(e);
             }
             finally
             {
                 state.set(HandlerExecutionState.EXITED);
                 try
                 {
-                    if (record.committedCancellationHandlerExited(outcome, failure))
+                    if (record.committedCancellationHandlerExited(outcome.get(), failure.get()))
                     {
                         // The record monitor is deliberately not held here: cancelling queued
                         // work may release its admission slot through the registry callback.
@@ -573,6 +575,7 @@ public final class BackgroundJobs implements AutoCloseable
     private final Object jobsLock = new Object();
     private final Map<String, JobRecord> jobs = new LinkedHashMap<>();
     private final int maxStoredJobs;
+    private final int workerThreads;
     private final ExecutorService workers;
     private final ScheduledExecutorService deadlines;
     private final ExecutorService cancellationHandlers;
@@ -602,6 +605,7 @@ public final class BackgroundJobs implements AutoCloseable
             throw new IllegalArgumentException("BackgroundJobs limits must be positive"); //$NON-NLS-1$
         }
         this.maxStoredJobs = maxStoredJobs;
+        this.workerThreads = workerThreads;
         this.committedCancellationHandlerTimeoutMs = committedCancellationHandlerTimeoutMs;
         workers = Executors.newFixedThreadPool(workerThreads,
             new NamedDaemonThreadFactory("EDT-MCP background-job-worker-")); //$NON-NLS-1$
@@ -611,6 +615,18 @@ public final class BackgroundJobs implements AutoCloseable
         // expires must not occupy the only cancellation thread and wedge every unrelated job.
         cancellationHandlers = Executors.newCachedThreadPool(
             new NamedDaemonThreadFactory("EDT-MCP background-job-cancellation-")); //$NON-NLS-1$
+    }
+
+    /**
+     * The fixed number of worker threads. A caller that must not queue behind other tools' jobs
+     * passes it as {@code maxRunning}: while fewer jobs than workers are admitted, a free worker
+     * picks the new job up at once, so its deadline never runs down in the queue.
+     *
+     * @return the worker thread count this registry was created with
+     */
+    public int getWorkerThreads()
+    {
+        return workerThreads;
     }
 
     /** @return bundle-wide registry, recreated lazily after bundle restart */
@@ -911,18 +927,18 @@ public final class BackgroundJobs implements AutoCloseable
     private static CancellationAttempt publishHandlerInvocation(JobRecord record,
         HandlerInvocation invocation)
     {
-        if (invocation.failure == null)
+        if (invocation.failure.get() == null)
         {
-            return record.publishCommittedCancellation(invocation.outcome, null);
+            return record.publishCommittedCancellation(invocation.outcome.get(), null);
         }
 
-        String detail = committedCancellationFailureDetail(invocation.failure);
+        String detail = committedCancellationFailureDetail(invocation.failure.get());
         CancellationAttempt attempt = record.publishCommittedCancellation(null, detail);
-        if (invocation.failure instanceof Error)
+        if (invocation.failure.get() instanceof Error)
         {
             // Publishing first releases the deferred worker outcome. The Error then remains
             // visible instead of being dressed up as an ordinary handler failure.
-            throw (Error)invocation.failure;
+            throw (Error)invocation.failure.get();
         }
         return attempt;
     }
@@ -1009,6 +1025,12 @@ public final class BackgroundJobs implements AutoCloseable
         }
     }
 
+    /**
+     * Publishes a failure for any Throwable raised by the work, including after commit.
+     * Errors are logged and rethrown after recording the failure; existing terminal and
+     * cancellation decisions remain authoritative.
+     * This rule must migrate to the MCP Tasks store when #338 lands.
+     */
     private static void runWork(JobRecord record, long timeoutMs, JobWork work)
     {
         if (!record.isRunning())
@@ -1052,9 +1074,11 @@ public final class BackgroundJobs implements AutoCloseable
         {
             record.fail(failureMessage(e));
         }
-        catch (LinkageError e)
+        catch (Error e) // NOSONAR fail the record before logging and rethrowing the Error
         {
             record.fail(failureMessage(e));
+            Activator.logError("Background job " + record.id + " failed with an Error", e); //$NON-NLS-1$ //$NON-NLS-2$
+            throw e;
         }
     }
 
@@ -1669,7 +1693,10 @@ public final class BackgroundJobs implements AutoCloseable
             }
             try
             {
-                completed.await(waitMs, TimeUnit.MILLISECONDS);
+                if (!completed.await(waitMs, TimeUnit.MILLISECONDS))
+                {
+                    return; // A timeout still leaves the latest snapshot available to the caller.
+                }
             }
             catch (InterruptedException e)
             {

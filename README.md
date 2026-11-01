@@ -17,6 +17,40 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. AGPL-3.0; full upstream attribution is in [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
+<details open>
+<summary><strong>1.0.13</strong></summary>
+
+Plugin OSGi/Tycho version (`1.0.13-SNAPSHOT`). Port of upstream `master` through
+`7ca3b5ec`, retaining EDT **2025.2.5**, Java 17, Giper identity, named profiles
+and profile exchange.
+
+Adds `business_process_route_map`, `project_checks` and `search_in_dcs`, expanded
+metadata and form operations, background rename previews, guide sections and
+launch presets. Launch presets restrict the saved profile allowlist;
+existing profiles retain their permissions.
+
+The port preserves strict CLEAN completion, guarded rename outcomes, metadata
+factory initialization and Moxel disposal from 1.0.12. The proxy caps open
+connections, rejects failed backend initialization, honors client response
+capabilities and promptly refuses oversized requests while retaining profile isolation.
+
+Verified on EDT **2025.2.5.2** and Java 17: the canonical build passed
+12,305 tests with 23 skips; the fresh full E7 run passed 1,652 cases with 51
+source-reviewed skips and no failures/errors. The focused form/reset regression
+passed nine cases with one opportunistic skip. All 16 original models, complete
+diagnostics and application/default states were restored; all 88 pinned fixture
+files matched on each stand. Native update, live profiles/HTTP, golden100,
+106 documentation files and five conformance endpoints passed their stated gates.
+
+The logs retain classified SDK UI/native ERROR/WARN entries and unresolved
+callback attribution. The watcher exited 1 after one preserved unstable read;
+independent raw-generation and event-counter coverage passed. Coverage gaps,
+ignored `.settings` files and historical failed attempts are recorded in the
+[1.0.13 port record](docs/e2e/port-1.0.13.md). This validation does not establish
+every optional native or external-service execution path.
+
+</details>
+
 <details>
 <summary><strong>1.0.12</strong></summary>
 
@@ -94,6 +128,7 @@ Direct jumps:
 
 > [!TIP]
 > **Contributing?** Read [CLAUDE.md](CLAUDE.md) first. How-to lives under `.claude/skills/`.
+> For upstream ports, read the [accumulated porting lessons and workflow](docs/porting-guide.md).
 > For 1C business projects see the [agent skills pack](agent/README.md) and the [rules pack](rules/README.md).
 
 > [!IMPORTANT]

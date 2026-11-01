@@ -36,10 +36,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.IJobChangeEvent;
-import org.eclipse.core.runtime.jobs.IJobChangeListener;
 import org.eclipse.core.runtime.jobs.Job;
-import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.junit.Test;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
@@ -218,27 +215,45 @@ public class ImportConfigurationFromXmlToolTest
     // ==================== The post-import project start (issue #647) ==============================
 
     @Test
-    public void testRuntimeVersionAndBaseProjectReachTheExactReflectiveSdkArguments() throws IOException
+    public void testRuntimeVersionAndBaseProjectReachTheExactReflectiveSdkArguments() throws Exception
     {
-        Path source = temporaryDirectory();
-        String name = uniqueProjectName();
-        Map<String, String> arguments = params(source, name);
-        arguments.put("runtimeVersion", "8.3.27"); //$NON-NLS-1$ //$NON-NLS-2$
-        arguments.put("baseProjectName", "BaseConfiguration"); //$NON-NLS-1$ //$NON-NLS-2$
-        SemanticApiRunner runner = new SemanticApiRunner();
-        RecordingLifecycle lifecycle = new RecordingLifecycle();
-        lifecycle.startsOnRequest = true;
+        IProject base = ResourcesPlugin.getWorkspace().getRoot().getProject(uniqueProjectName());
+        try
+        {
+            base.create(new NullProgressMonitor());
+            base.open(new NullProgressMonitor());
+            org.eclipse.core.resources.IProjectDescription description = base.getDescription();
+            description.setNatureIds(new String[] {
+                "com._1c.g5.v8.dt.core.V8ConfigurationNature" }); //$NON-NLS-1$
+            base.setDescription(description, org.eclipse.core.resources.IResource.AVOID_NATURE_CONFIG,
+                new NullProgressMonitor());
+            Path source = temporaryDirectory();
+            String name = uniqueProjectName();
+            Map<String, String> arguments = params(source, name);
+            arguments.put("runtimeVersion", "8.3.27"); //$NON-NLS-1$ //$NON-NLS-2$
+            arguments.put("baseProjectName", base.getName()); //$NON-NLS-1$ //$NON-NLS-2$
+            SemanticApiRunner runner = new SemanticApiRunner();
+            RecordingLifecycle lifecycle = new RecordingLifecycle();
+            lifecycle.startsOnRequest = true;
 
-        String result = ImportConfigurationFromXmlTool.executeWith(arguments, runner, lifecycle,
-            AMPLE_START_BUDGET_MS);
+            String result = ImportConfigurationFromXmlTool.executeWith(arguments, runner, lifecycle,
+                AMPLE_START_BUDGET_MS);
 
-        assertTrue("the existing import/start lifecycle must still finish: " + result, //$NON-NLS-1$
-            result.contains("projectReady: true")); //$NON-NLS-1$
-        assertEquals(1, runner.api.calls);
-        assertEquals(source.toAbsolutePath().normalize(), runner.api.source);
-        assertEquals(name, runner.api.projectName);
-        assertEquals("argument three is the platform version", "8.3.27", runner.api.runtimeVersion); //$NON-NLS-1$ //$NON-NLS-2$
-        assertEquals("argument four is the base project", "BaseConfiguration", runner.api.baseProjectName); //$NON-NLS-1$ //$NON-NLS-2$
+            assertTrue("the existing import/start lifecycle must still finish: " + result, //$NON-NLS-1$
+                result.contains("projectReady: true")); //$NON-NLS-1$
+            assertEquals(1, runner.api.calls);
+            assertEquals(source.toAbsolutePath().normalize(), runner.api.source);
+            assertEquals(name, runner.api.projectName);
+            assertEquals("argument three is the platform version", "8.3.27", runner.api.runtimeVersion); //$NON-NLS-1$ //$NON-NLS-2$
+            assertEquals("argument four is the base project", base.getName(), runner.api.baseProjectName); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        finally
+        {
+            if (base.exists())
+            {
+                base.delete(true, true, new NullProgressMonitor());
+            }
+        }
     }
 
     @Test
@@ -349,6 +364,41 @@ public class ImportConfigurationFromXmlToolTest
             assertEquals(1, runner.api.calls);
             assertEquals("preserve the caller's exact legal override", version, runner.api.runtimeVersion); //$NON-NLS-1$
         }
+    }
+
+    @Test
+    public void testEquivalentAliasesPreserveTheLegacySpelling() throws IOException
+    {
+        Map<String, String> arguments = params(temporaryDirectory(), uniqueProjectName());
+        arguments.put("runtimeVersion", " 8.3 "); //$NON-NLS-1$ //$NON-NLS-2$
+        arguments.put("platformVersion", "8.3.0"); //$NON-NLS-1$ //$NON-NLS-2$
+        SemanticApiRunner runner = new SemanticApiRunner();
+        RecordingLifecycle lifecycle = new RecordingLifecycle();
+        lifecycle.startsOnRequest = true;
+        String result = ImportConfigurationFromXmlTool.executeWith(arguments, runner, lifecycle,
+            AMPLE_START_BUDGET_MS);
+        assertTrue(result, result.contains("projectReady: true")); //$NON-NLS-1$
+        assertEquals(" 8.3 ", runner.api.runtimeVersion); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testConflictingAliasesAreRefusedBeforeAnyImportWork()
+    {
+        String name = uniqueProjectName();
+        Map<String, String> arguments = params(Path.of("unused-import-source"), name); //$NON-NLS-1$
+        arguments.put("runtimeVersion", "8.3.27"); //$NON-NLS-1$ //$NON-NLS-2$
+        arguments.put("platformVersion", "8.3.24"); //$NON-NLS-1$ //$NON-NLS-2$
+        SemanticApiRunner runner = new SemanticApiRunner();
+        RecordingLifecycle lifecycle = new RecordingLifecycle();
+        String result = ImportConfigurationFromXmlTool.executeWith(arguments, runner, lifecycle,
+            AMPLE_START_BUDGET_MS);
+        assertTrue(result, result.contains("conflicts")); //$NON-NLS-1$
+        assertFalse(result.contains("does not exist")); //$NON-NLS-1$
+        assertEquals(0, runner.apiRequests);
+        assertEquals(0, runner.api.calls);
+        assertTrue(lifecycle.calls.isEmpty());
+        assertNull(ImportConfigurationFromXmlTool.importClaimedAt(name));
+        assertFalse(result.contains("mutationCommitted")); //$NON-NLS-1$
     }
 
     @Test
@@ -779,62 +829,103 @@ public class ImportConfigurationFromXmlToolTest
     }
 
     @Test
-    public void testATimedOutRunWhoseBodyNeverEnteredStillReleasesTheLatch() throws Exception
+    public void testATimedOutRunWhoseBodyNeverEnteredIsAbandonedAndReleasesTheLatch()
+        throws Exception
     {
-        // TIMED_OUT does not prove the body is running. A worker that holds the cancelled job in
+        // TIMED_OUT does not prove the body is running: a worker that held the cancelled job in
         // ABOUT_TO_RUN past BoundedJob's grace makes the wait report TIMED_OUT although the body
-        // never entered - and will not, cancelled as it is. Nobody would then release the latch,
-        // and the answer would say the refresh is still running. Held here by a listener on THIS
-        // job only, released by the test once the call has answered.
+        // never entered. Nobody would then release the latch, and the answer would say the
+        // refresh is still running. Decided directly: producing that wait through the scheduler
+        // takes a job listener that blocks (see concludeTheStep).
         RecordingLifecycle lifecycle = new RecordingLifecycle();
         lifecycle.startsOnRequest = true;
-        CountDownLatch holding = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        AtomicReference<Job> scheduled = new AtomicReference<>();
-        IJobChangeListener holder = new JobChangeAdapter()
-        {
-            @Override
-            public void aboutToRun(IJobChangeEvent event)
-            {
-                holding.countDown();
-                try
-                {
-                    release.await(SANE_WAIT_MS, TimeUnit.MILLISECONDS);
-                }
-                catch (InterruptedException e)
-                {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        };
-        StartOutcome outcome;
-        try
-        {
-            outcome = ImportConfigurationFromXmlTool.startImportedProject(projectHandle(),
-                "Imported", lifecycle, SHORT_START_BUDGET_MS, job -> { //$NON-NLS-1$
-                    scheduled.set(job);
-                    job.addJobChangeListener(holder);
-                    job.schedule();
-                });
-            // The scenario, asserted rather than assumed: the worker really held the job.
-            assertTrue("the worker must have held the job before its body", //$NON-NLS-1$
-                holding.await(0, TimeUnit.MILLISECONDS));
-        }
-        finally
-        {
-            release.countDown();
-        }
-        assertTrue("the held job must leave the scheduler once released", //$NON-NLS-1$
-            scheduled.get().join(SANE_WAIT_MS, new NullProgressMonitor()));
+        AtomicReference<StartPhase> phase = new AtomicReference<>(StartPhase.REFRESHING);
+        AtomicBoolean refreshDone = new AtomicBoolean();
+        AtomicBoolean stepClaimed = new AtomicBoolean();
+        IProject project = projectHandle();
+        StartOutcome outcome = ImportConfigurationFromXmlTool.concludeTheStep(project,
+            "Imported", lifecycle, BoundedJob.Outcome.TIMED_OUT, null, phase, refreshDone, //$NON-NLS-1$
+            stepClaimed);
 
         assertEquals("a body that never entered is abandoned, not reported as refreshing", //$NON-NLS-1$
             StartPhase.NOT_SCHEDULED, outcome.phase);
-        assertEquals("and the latch is released once, got " + lifecycle.calls, 1, //$NON-NLS-1$
-            Collections.frequency(lifecycle.calls, RecordingLifecycle.PERMIT));
-        assertFalse("nothing may have refreshed, got " + lifecycle.calls, //$NON-NLS-1$
-            lifecycle.calls.contains(RecordingLifecycle.REFRESH));
-        assertFalse("nor requested a start, got " + lifecycle.calls, //$NON-NLS-1$
-            lifecycle.calls.contains(RecordingLifecycle.START));
+        assertNull("and carries no failure", outcome.failure); //$NON-NLS-1$
+        assertEquals("the latch is released once and nothing else is asked of EDT", //$NON-NLS-1$
+            Collections.singletonList(RecordingLifecycle.PERMIT), lifecycle.calls);
+        assertTrue("the caller now owns the step", stepClaimed.get()); //$NON-NLS-1$
+
+        // Whatever the platform does with that job later, a body that does run finds the step
+        // taken and leaves EDT alone: no refresh, no start, no second release.
+        ImportConfigurationFromXmlTool.runTheStep(project, "Imported", lifecycle, //$NON-NLS-1$
+            SHORT_START_BUDGET_MS, new NullProgressMonitor(), phase, refreshDone, stepClaimed,
+            new AtomicBoolean(true));
+        assertEquals("a late body must do nothing, got " + lifecycle.calls, //$NON-NLS-1$
+            Collections.singletonList(RecordingLifecycle.PERMIT), lifecycle.calls);
+        assertEquals("nor advance the phase", StartPhase.REFRESHING, phase.get()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testATimedOutRunWhoseBodyOwnsTheStepIsReportedAsItsPhase()
+    {
+        // The other side of the claim: the body entered first and owns the step, so the wait
+        // merely ran out while it works. The answer is how far it got, and the latch stays with
+        // it - a release here would arm a second, competing start behind its back.
+        RecordingLifecycle lifecycle = new RecordingLifecycle();
+        AtomicReference<StartPhase> phase = new AtomicReference<>(StartPhase.START_REQUESTED);
+        AtomicBoolean ownedByTheBody = new AtomicBoolean(true);
+        IProject project = projectHandle();
+        StartOutcome running = ImportConfigurationFromXmlTool.concludeTheStep(project,
+            "Imported", lifecycle, BoundedJob.Outcome.TIMED_OUT, null, phase, //$NON-NLS-1$
+            new AtomicBoolean(true), ownedByTheBody);
+
+        assertEquals("the answer is the phase the body reached", StartPhase.START_REQUESTED, //$NON-NLS-1$
+            running.phase);
+        assertNull("with no failure", running.failure); //$NON-NLS-1$
+        assertFalse("and no release under the running body, got " + lifecycle.calls, //$NON-NLS-1$
+            lifecycle.calls.contains(RecordingLifecycle.PERMIT));
+
+        // The same wait once EDT has started the project: that is a fact about EDT now.
+        lifecycle.started = true;
+        StartOutcome ready = ImportConfigurationFromXmlTool.concludeTheStep(project,
+            "Imported", lifecycle, BoundedJob.Outcome.TIMED_OUT, null, phase, //$NON-NLS-1$
+            new AtomicBoolean(true), ownedByTheBody);
+        assertEquals("a project EDT has started is reported STARTED", StartPhase.STARTED, //$NON-NLS-1$
+            ready.phase);
+        assertFalse("still with no release, got " + lifecycle.calls, //$NON-NLS-1$
+            lifecycle.calls.contains(RecordingLifecycle.PERMIT));
+    }
+
+    @Test
+    public void testEveryOutcomeButCompletedAbandonsAnUnclaimedStep()
+    {
+        // The wiring of the claim, outcome by outcome: testEveryOutcomeButCompletedTriesTheClaim
+        // pins the predicate alone, this pins that the decision acts on it - TIMED_OUT included.
+        int decided = 0;
+        for (BoundedJob.Outcome runOutcome : BoundedJob.Outcome.values())
+        {
+            if (runOutcome == BoundedJob.Outcome.COMPLETED)
+            {
+                continue;
+            }
+            RecordingLifecycle lifecycle = new RecordingLifecycle();
+            AtomicBoolean stepClaimed = new AtomicBoolean();
+            // INTERRUPTED is the one outcome BoundedJob reports with a failure: the wait's own.
+            Throwable runFailure = runOutcome == BoundedJob.Outcome.INTERRUPTED
+                ? new InterruptedException("wait interrupted") : null; //$NON-NLS-1$
+            StartOutcome outcome = ImportConfigurationFromXmlTool.concludeTheStep(projectHandle(),
+                "Imported", lifecycle, runOutcome, runFailure, //$NON-NLS-1$
+                new AtomicReference<>(StartPhase.REFRESHING), new AtomicBoolean(), stepClaimed);
+
+            assertEquals(runOutcome + ": an unclaimed step is abandoned", //$NON-NLS-1$
+                StartPhase.NOT_SCHEDULED, outcome.phase);
+            assertNull(runOutcome + ": with no failure of its own", outcome.failure); //$NON-NLS-1$
+            assertEquals(runOutcome + ": the latch is released once, got " + lifecycle.calls, //$NON-NLS-1$
+                Collections.singletonList(RecordingLifecycle.PERMIT), lifecycle.calls);
+            assertTrue(runOutcome + ": and the caller now owns the step", stepClaimed.get()); //$NON-NLS-1$
+            decided++;
+        }
+        assertEquals("every outcome but COMPLETED must have been decided", //$NON-NLS-1$
+            BoundedJob.Outcome.values().length - 1, decided);
     }
 
     @Test

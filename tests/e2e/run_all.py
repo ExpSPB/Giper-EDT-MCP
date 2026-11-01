@@ -23,7 +23,11 @@ Python stdlib only.
 
 import argparse
 import importlib
+import hashlib
+import json
 import os
+from pathlib import Path
+import subprocess
 import sys
 import threading
 import time
@@ -220,13 +224,163 @@ def _run_test_unit(harness, t):
                 or harness.evidenced_mutation_fixture_projects()):
             _reset_after_write(harness, t)
         raise
-    except BaseException:
+    except BaseException as error:
         # Any OTHER failure still leaves the write applied, exactly like a passing test does.
         # Skipping the reset there is how ONE real failure became two: the next test read a
         # model that still carried the previous test's rename and reported "object not found".
+        _capture_failure_before_cleanup(harness, t, error)
         _reset_after_write(harness, t)
         raise
     _reset_after_write(harness, t)
+
+
+def _capture_failure_before_cleanup(harness, test, error):
+    """Preserve an ordinary failure before cleanup, when the owner opts in.
+
+    Unknown outcomes already freeze the fixture; their collector must wait for the owner.
+    This hook makes no MCP calls and never changes a source file, index or model baseline.
+    Its destination must be outside the checkout so later scoped restores cannot erase it.
+    """
+    destination = os.environ.get("E2E_FAILURE_EVIDENCE_DIR", "").strip()
+    if not destination or harness.calls_aborted() or harness.fixtures_frozen():
+        return
+    try:
+        packet = _write_failure_evidence(harness, test, error, destination)
+        print("!! pre-cleanup failure evidence: %s" % packet, flush=True)
+    except Exception as collector_error:
+        reason = ("failure evidence capture failed at %s; fixtures were frozen before cleanup. "
+                  "Archive the original checkout/index and logs before recovery. Original %s: %s; "
+                  "collector %s: %s" % (destination, type(error).__name__, error,
+                                         type(collector_error).__name__, collector_error))
+        if not harness.abort_further_calls(reason):
+            reason += "; an earlier reset did not stop within the freeze budget"
+        raise harness.E2EModelResetFailed(reason) from collector_error
+
+
+def _write_failure_evidence(harness, test, error, destination):
+    """Write raw Git evidence, changed fixture bytes and available local logs exclusively."""
+    repo = Path(harness.REPO_ROOT).resolve()
+    root = Path(destination)
+    if not root.is_absolute():
+        raise ValueError("E2E_FAILURE_EVIDENCE_DIR must be an absolute owned directory")
+    root = root.resolve()
+    if root == repo or repo in root.parents:
+        raise ValueError("failure evidence must be outside the fixture checkout: %s" % repo)
+    rels = list(harness.ALL_FIXTURE_RELS)
+    for rel in rels:
+        path = (repo / rel).resolve()
+        if path == repo or repo not in path.parents:
+            raise ValueError("fixture path escapes its checkout: %s" % rel)
+    root.mkdir(parents=True, exist_ok=True)
+    packet = root / ("failure-%d" % time.time_ns())
+    packet.mkdir()  # No reuse, including when a preceding collector stopped partway through.
+    record = {"test": {key: test.get(key) for key in ("tool", "name", "kind")},
+              "recordedAt": time.time(), "repo": str(repo), "endpoint": harness.MCP_URL,
+              "error": {"type": type(error).__name__, "message": str(error),
+                        "traceback": "".join(traceback.format_exception(type(error), error,
+                                                                      error.__traceback__))},
+              "files": [], "unavailable": [], "complete": False}
+
+    def git(*args):
+        result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                                timeout=harness.GIT_STATUS_TIMEOUT)
+        if result.returncode:
+            raise RuntimeError("git %s exited %d: %s" % (
+                " ".join(args), result.returncode, result.stderr.decode("utf-8", "replace")))
+        return result.stdout
+
+    def copy_file(source, relative, stable):
+        source = Path(source)
+        if source.is_symlink():
+            raise ValueError("refusing a symlink in failure evidence: %s" % source)
+        before = source.stat()
+        target = packet / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        # Read only the initial byte extent: a concurrently appended log must not keep us here.
+        with source.open("rb") as src, target.open("xb") as dst:
+            while remaining:
+                block = src.read(min(1024 * 1024, remaining))
+                if not block:
+                    raise OSError("source shrank while capturing: %s" % source)
+                dst.write(block)
+                digest.update(block)
+                remaining -= len(block)
+        after = source.stat()
+        if stable and (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise OSError("fixture changed while capturing: %s" % source)
+        record["files"].append({"source": str(source), "path": relative.as_posix(),
+                                "bytes": before.st_size, "sha256": digest.hexdigest()})
+
+    try:
+        commands = {
+            "head.txt": ("rev-parse", "HEAD"),
+            "status.z": ("status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *rels),
+            "index.z": ("ls-files", "--stage", "-z", "--", *rels),
+            "staged.patch": ("diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "--", *rels),
+            "unstaged.patch": ("diff", "--binary", "--no-ext-diff", "--no-textconv", "--", *rels),
+        }
+        captured = {name: git(*args) for name, args in commands.items()}
+        for name, data in captured.items():
+            (packet / name).write_bytes(data)
+        changed = git("diff", "HEAD", "--name-only", "--no-renames", "-z", "--", *rels)
+        untracked = git("ls-files", "--others", "--exclude-standard", "-z", "--", *rels)
+        # Include staged paths too: a worktree edit may exactly undo an index edit against HEAD.
+        staged = git("diff", "--cached", "--name-only", "--no-renames", "-z", "--", *rels)
+        for raw in sorted(set((changed + untracked + staged).split(b"\0")) - {b""}):
+            rel = Path(raw.decode("utf-8"))
+            source = repo / rel
+            resolved = source.resolve()
+            if rel.is_absolute() or repo not in resolved.parents:
+                raise ValueError("changed path escapes its checkout: %s" % rel)
+            if source.exists():
+                copy_file(source, Path("fixture-files") / rel, stable=True)
+            else:
+                record["files"].append({"source": str(source), "deleted": True})
+        # Reuse discovery without a network request. An explicit workspace override wins.
+        workspace = harness._workspace_dir("")
+        if workspace:
+            metadata = Path(workspace) / ".metadata"
+            logs = sorted(set(metadata.glob(".bak_*.log")) | set(metadata.glob(".log")))
+            if not logs:
+                record["unavailable"].append("EDT workspace has no current or rotated log")
+            for log in logs:
+                copy_file(log, Path("edt-logs") / log.name, stable=False)
+        else:
+            record["unavailable"].append("EDT workspace was not supplied or no longer exists")
+        rpc_logs = json.loads(os.environ.get("E2E_RPC_LOG_FILES", "[]"))
+        if not isinstance(rpc_logs, list) or not all(isinstance(p, str) for p in rpc_logs):
+            raise ValueError("E2E_RPC_LOG_FILES must be a JSON array of absolute owned log files")
+        for index, value in enumerate(rpc_logs):
+            log = Path(value)
+            if not log.is_absolute():
+                raise ValueError("RPC log path must be absolute: %s" % value)
+            if log.is_file():
+                copy_file(log, Path("rpc-logs") / ("%d-%s" % (index, log.name)), stable=False)
+            else:
+                record["unavailable"].append("RPC log absent: %s" % log)
+        for name, args in commands.items():
+            if git(*args) != captured[name]:
+                raise OSError("fixture Git evidence changed during capture: %s" % name)
+        # Git status does not fingerprint untracked bytes (and can stay ' M' for changed
+        # tracked bytes). Recheck every copied fixture at the final barrier as well.
+        for item in record["files"]:
+            if not item.get("path", "").startswith("fixture-files/"):
+                continue
+            source = Path(item["source"])
+            if source.is_symlink() or repo not in source.resolve().parents:
+                raise OSError("fixture identity changed during capture: %s" % source)
+            with source.open("rb") as handle:
+                current = hashlib.file_digest(handle, "sha256").hexdigest()
+            if current != item["sha256"]:
+                raise OSError("fixture bytes changed during capture: %s" % source)
+        record["complete"] = True
+    finally:
+        with (packet / "manifest.json").open("x", encoding="utf-8") as handle:
+            json.dump(record, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+    return packet
 
 
 def _reset_after_write(harness, t):

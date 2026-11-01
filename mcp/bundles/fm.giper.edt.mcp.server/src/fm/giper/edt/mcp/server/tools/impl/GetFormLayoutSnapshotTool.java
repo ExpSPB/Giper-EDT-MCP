@@ -21,6 +21,9 @@ public class GetFormLayoutSnapshotTool implements IMcpTool
 {
     public static final String NAME = "get_form_layout_snapshot"; //$NON-NLS-1$
 
+    /** Input param: form element whose calculated bounds must be in the snapshot. */
+    private static final String KEY_SHOW_ELEMENT = "showElement"; //$NON-NLS-1$
+
     private final FormLayoutSnapshotService service = new FormLayoutSnapshotService();
 
     @Override
@@ -32,10 +35,7 @@ public class GetFormLayoutSnapshotTool implements IMcpTool
     @Override
     public String getDescription()
     {
-        return "Inspect the calculated visual layout of an EDT form. Requires EDT launched with " //$NON-NLS-1$
-            + "-DnativeFormBufferedLayoutRender=true: without the flag the layout comes back BLANK " //$NON-NLS-1$
-            + "rather than failing, so an empty snapshot means the flag is missing, not that the " //$NON-NLS-1$
-            + "form has no elements. Parameters and examples: " //$NON-NLS-1$
+        return "Inspect the calculated visual layout of an EDT form. Parameters and examples: " //$NON-NLS-1$
             + "get_tool_guide('get_form_layout_snapshot')."; //$NON-NLS-1$
     }
 
@@ -48,6 +48,9 @@ public class GetFormLayoutSnapshotTool implements IMcpTool
             .stringProperty("formPath", //$NON-NLS-1$
                 "Form FQN (e.g. 'Catalog.Products.Forms.ItemForm' or 'CommonForm.MyForm'); " + //$NON-NLS-1$
                 "if omitted, uses the active form editor.") //$NON-NLS-1$
+            .stringProperty(KEY_SHOW_ELEMENT,
+                "Name of a form element (e.g. an element on a non-default page) whose calculated bounds " + //$NON-NLS-1$
+                "the snapshot must contain; returned as shownElement, or an error when it has none.") //$NON-NLS-1$
             .booleanProperty("refresh", "Force WYSIWYG refresh before snapshot (default: true)") //$NON-NLS-1$ //$NON-NLS-2$
             .enumProperty("mode", //$NON-NLS-1$
                 "Output mode: 'compact' (default, visible elements only) or 'full' (all nodes/properties)", //$NON-NLS-1$
@@ -68,6 +71,7 @@ public class GetFormLayoutSnapshotTool implements IMcpTool
         String formPath = JsonUtils.extractStringArgument(params, "formPath"); //$NON-NLS-1$
         String refreshParam = JsonUtils.extractStringArgument(params, "refresh"); //$NON-NLS-1$
         String rawMode = JsonUtils.extractStringArgument(params, "mode"); //$NON-NLS-1$
+        String showElement = JsonUtils.extractStringArgument(params, KEY_SHOW_ELEMENT);
         String mode = service.normalizeMode(rawMode);
         boolean refresh = refreshParam == null || "true".equalsIgnoreCase(refreshParam); //$NON-NLS-1$
 
@@ -88,7 +92,8 @@ public class GetFormLayoutSnapshotTool implements IMcpTool
         }
 
         AtomicReference<String> resultRef = new AtomicReference<>();
-        display.syncExec(() -> resultRef.set(service.captureLayoutSnapshot(projectName, formPath, refresh, mode)));
+        display.syncExec(() -> resultRef.set(service.captureLayoutSnapshot(projectName, formPath, refresh, mode,
+            showElement)));
         return resultRef.get();
     }
 }

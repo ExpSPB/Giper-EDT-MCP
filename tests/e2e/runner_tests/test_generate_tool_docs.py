@@ -25,6 +25,8 @@ def fake_rpc(hidden, denied):
     def rpc(_url, method, params=None):
         if method == "tools/list":
             return {"tools": [{"name": "alpha", "description": "Fresh alpha description"}]}
+        if method == "resources/read":
+            raise GENERATOR.RpcError(method, {"code": -32601, "message": "Method not found"})
         if method != "tools/call":
             raise AssertionError("unexpected MCP method: " + method)
         if params["name"] == "list_toolsets":
