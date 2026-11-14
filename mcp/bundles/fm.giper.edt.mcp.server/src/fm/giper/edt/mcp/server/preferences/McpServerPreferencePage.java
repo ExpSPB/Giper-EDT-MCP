@@ -8,6 +8,8 @@ package fm.giper.edt.mcp.server.preferences;
 
 import java.io.IOException;
 
+import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.preference.PreferencePage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
@@ -22,6 +24,7 @@ import org.eclipse.ui.IWorkbenchPreferencePage;
 
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
+import fm.giper.edt.mcp.server.profiles.ReplaceResult;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
 
 /**
@@ -94,6 +97,12 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
 
         // Select the first tab
         tabFolder.setSelection(0);
+        tabFolder.addListener(SWT.Selection, event -> {
+            if (event.item == toolsItem)
+            {
+                toolsTab.updateEndpoint();
+            }
+        });
 
         return container;
     }
@@ -101,36 +110,49 @@ public class McpServerPreferencePage extends PreferencePage implements IWorkbenc
     @Override
     public boolean performOk()
     {
-        boolean toolsChanged = toolsTab.hasChanges();
+        ReplaceResult profiles = toolsTab.saveProfiles();
+        if (profiles.getStatus() == ReplaceResult.Status.CONFLICT)
+        {
+            if (MessageDialog.openQuestion(getShell(), Messages.ToolsTab_ConflictTitle, Messages.ToolsTab_ConflictMessage))
+            {
+                toolsTab.reloadProfiles();
+            }
+            return false;
+        }
+        if (profiles.getStatus() == ReplaceResult.Status.REJECTED)
+        {
+            MessageDialog.openError(getShell(), Messages.ToolsTab_Profile, profiles.getMessage());
+            return false;
+        }
+
+        IPreferenceStore store = getPreferenceStore();
+        int previousPort = store.getInt(PreferenceConstants.PREF_PORT);
+        boolean previousRemote = store.getBoolean(PreferenceConstants.PREF_ALLOW_REMOTE_ACCESS);
+        String previousToken = store.getString(PreferenceConstants.PREF_AUTH_TOKEN);
+        McpServer server = Activator.getDefault().getMcpServer();
+        boolean wasRunning = server != null && server.isRunning();
 
         generalTab.performOk();
         toolsTab.performOk();
         historyTab.performOk();
         privacyTab.performOk();
 
-        // If tool enablement changed and server is running, restart to apply
-        if (toolsChanged)
+        boolean bindingChanged = previousPort != store.getInt(PreferenceConstants.PREF_PORT)
+            || previousRemote != store.getBoolean(PreferenceConstants.PREF_ALLOW_REMOTE_ACCESS);
+        boolean tokenChanged = !previousToken.equals(store.getString(PreferenceConstants.PREF_AUTH_TOKEN));
+        if (wasRunning && server.isRunning() && (bindingChanged || tokenChanged))
         {
-            McpServer server = Activator.getDefault().getMcpServer();
-            if (server != null && server.isRunning())
+            try
             {
-                try
-                {
-                    server.restart(generalTab.getPort());
-                    Activator.logInfo("MCP Server restarted after tool configuration change"); //$NON-NLS-1$
-                }
-                catch (IOException e)
-                {
-                    Activator.logError("Failed to restart MCP Server after tool change", e); //$NON-NLS-1$
-                }
-                // The General tab saved and repainted BEFORE this restart, so everything it says
-                // about the live server is now one bind out of date - including the warning that
-                // the endpoint refuses every request, which this restart may have just cured.
-                // Repaint after the catch as well: a failed restart leaves the server stopped,
-                // which the tab must also show.
-                generalTab.refreshServerState();
+                server.restart(generalTab.getPort());
             }
+            catch (IOException e)
+            {
+                Activator.logError("Failed to restart MCP Server after transport setting change", e); //$NON-NLS-1$
+            }
+            generalTab.refreshServerState();
         }
+        toolsTab.updateEndpoint();
 
         return super.performOk();
     }

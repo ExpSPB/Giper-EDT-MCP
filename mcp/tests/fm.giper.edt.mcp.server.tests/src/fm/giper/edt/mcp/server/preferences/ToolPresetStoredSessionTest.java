@@ -7,35 +7,29 @@
 package fm.giper.edt.mcp.server.preferences;
 
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.Set;
 
-import org.eclipse.jface.viewers.CheckboxTreeViewer;
-import org.eclipse.swt.widgets.Combo;
-import org.eclipse.swt.widgets.Label;
+import org.eclipse.osgi.util.NLS;
 import org.junit.Test;
 
-/** Exercises the tab model constructor, comparison and save path without native SWT controls. */
+/** Verifies that launch presets remain separate from stored workspace selections. */
 public class ToolPresetStoredSessionTest extends ToolPresetSessionTestSupport
 {
     @Test
-    public void testToolsTabLoadAndSavePreservesStoredBytesAndPresetId() throws Exception
+    public void launchPresetRemainsSeparateFromWorkspaceSelection() throws Exception
     {
         launch("analysis-only");
+        Set<String> storedBefore = service.getStoredDisabledTools();
+        String storedPresetBefore = service.getPresetId();
         byte[] before = serializedStore();
-        withTab(tab -> {
-            tab.performOk();
-            assertArrayEquals("unchanged tab save must preserve every stored preference byte", before,
-                serializedStore());
-            assertEquals("custom", store.getString(PreferenceConstants.PREF_TOOL_PRESET_ID));
-            assertEquals(ToolPreset.ANALYSIS_ONLY.getDisabledTools(), service.getDisabledTools());
-        });
+
+        assertEquals("custom", storedPresetBefore);
+        assertEquals(storedBefore, service.getStoredDisabledTools());
+        assertEquals(ToolPreset.ANALYSIS_ONLY.getDisabledTools(), service.getDisabledTools());
+        assertArrayEquals("reading launch and workspace views must preserve stored preference bytes", //$NON-NLS-1$
+            before, serializedStore());
     }
 
     @Test
@@ -53,42 +47,11 @@ public class ToolPresetStoredSessionTest extends ToolPresetSessionTestSupport
     }
 
     @Test
-    public void testToolsTabHasChangesUsesStoredView() throws Exception
+    public void profileLaunchNoteUsesLocalizedPresetMessage() throws Exception
     {
         launch("analysis-only");
-        withTab(tab -> {
-            assertFalse("loading stored settings is not an edit", tab.hasChanges());
-            tab.selectPreset(ToolPreset.ALL_TOOLS);
-            assertTrue("pending checkbox changes must be detected", tab.hasChanges());
-            tab.performOk();
-            assertFalse("a saved edit must compare equal to the stored selection", tab.hasChanges());
-            assertEquals(ToolPreset.ANALYSIS_ONLY.getDisabledTools(), service.getDisabledTools());
-        });
-    }
-
-    @Test
-    public void testToolsTabShowsLaunchPresetAsReadOnlyNote() throws Exception
-    {
-        launch("analysis-only");
-        withTab(tab -> {
-            String text = "Launch preset Analysis Only is active via EDT_MCP_TOOL_PRESET; "
-                + "saved changes apply when it is unset, blank or custom.";
-            String actual = null;
-            try
-            {
-                Method note = ToolsTab.class.getDeclaredMethod("getSessionPresetNote");
-                note.setAccessible(true);
-                actual = (String) note.invoke(tab);
-            }
-            catch (NoSuchMethodException e)
-            {
-                // Round one and HEAD have no session note.
-            }
-            assertEquals("the tab must explain why edits do not affect this launch", text, actual);
-            Field selected = ToolsTab.class.getDeclaredField("selectedPreset");
-            selected.setAccessible(true);
-            assertEquals(ToolPreset.CUSTOM, selected.get(tab));
-        });
+        assertEquals(NLS.bind(Messages.ToolsTab_ProfileLaunchPreset,
+            ToolPreset.ANALYSIS_ONLY.getDisplayName()), ToolsTab.getSessionPresetNote());
     }
 
     @Test
@@ -162,41 +125,4 @@ public class ToolPresetStoredSessionTest extends ToolPresetSessionTestSupport
         assertEquals(ToolPreset.ANALYSIS_ONLY.getDisabledTools(), service.getDisabledTools());
     }
 
-    private void withTab(TabCheck check) throws Exception
-    {
-        ToolsTab tab;
-        try
-        {
-            // This is the same model constructor called by the public SWT constructor.
-            tab = ToolsTab.class.getDeclaredConstructor().newInstance();
-        }
-        catch (NoSuchMethodException e)
-        {
-            // Red-on-base compatibility only: reproduce that version's two constructor reads.
-            tab = mock(ToolsTab.class, CALLS_REAL_METHODS);
-            setField(tab, "disabledTools", new HashSet<>(service.getDisabledTools()));
-            setField(tab, "selectedPreset", ToolPreset.fromId(service.getPresetId()));
-            setField(tab, "destructiveAllowedTools", new HashSet<String>());
-            setField(tab, "currentSpinners", new ArrayList<>());
-            setField(tab, "pendingValues", new LinkedHashMap<>());
-            setField(tab, "paramSettings", ToolParameterSettings.getInstance());
-        }
-        setField(tab, "treeViewer", mock(CheckboxTreeViewer.class));
-        setField(tab, "presetCombo", mock(Combo.class));
-        setField(tab, "countLabel", mock(Label.class));
-        check.run(tab);
-    }
-
-    private static void setField(ToolsTab tab, String name, Object value) throws Exception
-    {
-        Field field = ToolsTab.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(tab, value);
-    }
-
-    @FunctionalInterface
-    private interface TabCheck
-    {
-        void run(ToolsTab tab) throws Exception;
-    }
 }

@@ -30,6 +30,8 @@ import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.ipc.EndpointRegistry;
 import fm.giper.edt.mcp.server.ipc.PrivatePaths;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ReplaceResult;
 import fm.giper.edt.mcp.server.transport.IpcListener;
 import fm.giper.edt.mcp.server.transport.StdioPluginSupport;
 import com.google.gson.JsonObject;
@@ -370,7 +372,10 @@ public class GeneralTabTest
     private void applyPage() throws Exception
     {
         McpServerPreferencePage page = new McpServerPreferencePage();
-        Object[][] tabs = {{"generalTab", tab}, {"toolsTab", mock(ToolsTab.class)},
+        ToolsTab toolsTab = mock(ToolsTab.class);
+        when(toolsTab.saveProfiles()).thenReturn(
+            ReplaceResult.noOp(DefaultToolProfileFactory.createSafeSnapshot()));
+        Object[][] tabs = {{"generalTab", tab}, {"toolsTab", toolsTab},
             {"historyTab", mock(HistoryTab.class)}, {"privacyTab", mock(PrivacyTab.class)}};
         for (Object[] entry : tabs)
         {

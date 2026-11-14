@@ -41,6 +41,10 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationCon
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
 import com._1c.g5.v8.dt.rights.IRightInfosService;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
+import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
+import fm.giper.edt.mcp.server.profiles.ToolProfileMigration;
+import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.groups.IGroupService;
 import fm.giper.edt.mcp.server.bridge.EdtMcpBridge;
 import fm.giper.edt.mcp.server.bridge.IEdtMcpBridge;
@@ -69,6 +73,7 @@ public class Activator extends AbstractUIPlugin
 
     /** MCP Server instance */
     private McpServer mcpServer;
+    private PreferenceToolProfileRepository toolProfiles;
 
     private volatile HeadlessLifetime headlessLifetime;
 
@@ -106,6 +111,7 @@ public class Activator extends AbstractUIPlugin
             // arriving mid-restart - through the bridge or through HTTP, both read the same
             // singleton - sees either the whole old catalogue or the whole new one.
             mcpServer.registerTools();
+            initializeToolProfiles();
         }
 
         // In Tycho headless test runtime, avoid eager workspace/UI/platform initialization.
@@ -144,6 +150,23 @@ public class Activator extends AbstractUIPlugin
         publishBridge(getBundle().getBundleContext());
         orchestrator.start(true);
         new McpCoreStartup(System::getenv).start();
+    }
+
+    /** Workspace profiles shared by the preferences page and the HTTP listener. */
+    public synchronized PreferenceToolProfileRepository getToolProfileRepository()
+    {
+        if (toolProfiles == null)
+        {
+            toolProfiles = new PreferenceToolProfileRepository(getPreferenceStore());
+        }
+        return toolProfiles;
+    }
+
+    /** Runs after tool registration. Migration is idempotent and preserves existing profiles. */
+    public void initializeToolProfiles()
+    {
+        var names = McpToolRegistry.getInstance().getAllTools().stream().map(IMcpTool::getName).toList();
+        ToolProfileMigration.migrateIfNeeded(getToolProfileRepository(), names, getPreferenceStore());
     }
 
     public HeadlessLifetime getHeadlessLifetime() { return headlessLifetime; }
@@ -201,6 +224,7 @@ public class Activator extends AbstractUIPlugin
         orchestrator.stop(isHeadless());
 
         logInfo("EDT MCP Server plugin stopped"); //$NON-NLS-1$
+        toolProfiles = null;
         plugin = null; // NOSONAR Eclipse singleton/Activator init pattern; method cannot be static
         super.stop(context);
     }

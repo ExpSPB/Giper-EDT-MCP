@@ -16,18 +16,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
-import org.eclipse.jface.preference.IPreferenceStore;
-
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.SseStreamRegistry;
 import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
-import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
-import fm.giper.edt.mcp.server.profiles.ProfileDocumentState;
 import fm.giper.edt.mcp.server.profiles.ProfileResolution;
 import fm.giper.edt.mcp.server.profiles.ProfileResolver;
 import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
-import fm.giper.edt.mcp.server.profiles.ToolProfileMigration;
 import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.protocol.ClientCapabilities;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
@@ -36,7 +31,6 @@ import fm.giper.edt.mcp.server.protocol.McpSessionRegistry;
 import fm.giper.edt.mcp.server.protocol.McpSessionRegistry.Session;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
-import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
 import com.sun.net.httpserver.HttpExchange;
@@ -152,17 +146,8 @@ public class McpHttpHandler implements HttpHandler
         {
             return DefaultToolProfileFactory::createSafeSnapshot;
         }
-        IPreferenceStore store = activator.getPreferenceStore();
-        PreferenceToolProfileRepository repository = new PreferenceToolProfileRepository(store);
-        return () -> {
-            ToolProfileSnapshot snapshot = repository.refreshSnapshot();
-            if (repository.getDocumentState() == ProfileDocumentState.ABSENT)
-            {
-                var names = McpToolRegistry.getInstance().getAllTools().stream().map(IMcpTool::getName).toList();
-                return ToolProfileMigration.migrateIfNeeded(repository, names, store).getSnapshot();
-            }
-            return snapshot;
-        };
+        var repository = activator.getToolProfileRepository();
+        return repository == null ? DefaultToolProfileFactory::createSafeSnapshot : repository::refreshSnapshot;
     }
 
     private ProfileResolution profileFor(McpEndpoint endpoint)

@@ -1,222 +1,133 @@
 /**
  * MCP Server for EDT
- * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Copyright (C) 2026 DitriX (https://github.com/DitriXNew)
  * Licensed under AGPL-3.0-or-later
  */
 
 package fm.giper.edt.mcp.server.preferences;
 
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 
 import org.eclipse.jface.preference.PreferenceStore;
-import org.eclipse.jface.viewers.CheckboxTreeViewer;
-import org.eclipse.swt.widgets.Combo;
-import org.eclipse.swt.widgets.Label;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import fm.giper.edt.mcp.server.Activator;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
+import fm.giper.edt.mcp.server.profiles.ReplaceResult;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 
-/** Executes the real tab edit/save methods with mocked widgets and an in-memory store. */
+/** Profile preset provenance and local editing behavior without SWT internals. */
 public class ToolsTabProvenanceTest
 {
-    private static final String PRESET_ID = "mcpToolPresetId";
+    private static final String PROFILE_ID = "code-review"; //$NON-NLS-1$
 
-    private PreferenceStore store;
-    private ToolsTab tab;
-    private Combo presetCombo;
-    private Set<String> selection;
-    private Field plugin;
-    private Object previousPlugin;
+    private PreferenceToolProfileRepository repository;
+    private ToolProfilesEditorModel model;
 
     @Before
-    public void setUp() throws Exception
+    public void setUp()
     {
-        store = new PreferenceStore();
-        store.setDefault(PreferenceConstants.PREF_DISABLED_TOOLS,
-            PreferenceConstants.DEFAULT_DISABLED_TOOLS);
-        store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS,
-            ToolSettingsService.serializeDisabledTools(ToolPreset.CODE_REVIEW.getDisabledTools()));
-        store.setValue(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION, 12);
-        store.setValue(PRESET_ID, "code-review");
-        Activator activator = mock(Activator.class);
-        when(activator.getPreferenceStore()).thenReturn(store);
-        plugin = Activator.class.getDeclaredField("plugin");
-        plugin.setAccessible(true);
-        previousPlugin = plugin.get(null);
-        plugin.set(null, activator);
-
-        // Skip widget construction; the edit, defaults and save paths below are real methods.
-        tab = mock(ToolsTab.class, CALLS_REAL_METHODS);
-        selection = new HashSet<>(ToolPreset.CODE_REVIEW.getDisabledTools());
-        setField("disabledTools", selection);
-        // CALLS_REAL_METHODS skips construction: mirror both constructor reads explicitly.
-        setField("selectedPreset", ToolPreset.fromId(ToolSettingsService.getInstance().getPresetId()));
-        setField("destructiveAllowedTools", new HashSet<String>());
-        setField("currentSpinners", new ArrayList<>());
-        setField("pendingValues", new LinkedHashMap<>());
-        setField("treeViewer", mock(CheckboxTreeViewer.class));
-        presetCombo = mock(Combo.class);
-        setField("presetCombo", presetCombo);
-        setField("countLabel", mock(Label.class));
-        setField("paramSettings", ToolParameterSettings.getInstance());
-    }
-
-    @After
-    public void tearDown() throws Exception
-    {
-        plugin.set(null, previousPlugin);
+        PreferenceStore store = new PreferenceStore();
+        repository = new PreferenceToolProfileRepository(store);
+        Set<String> catalog = ToolProfilesEditorModel.catalogFromGroups();
+        ToolProfile review = ToolProfile.builder()
+            .id(PROFILE_ID)
+            .displayName("Code Review") //$NON-NLS-1$
+            .description("Review profile") //$NON-NLS-1$
+            .enabled(true)
+            .allowedTools(ToolPreset.CODE_REVIEW.toAllowlist(catalog))
+            .presetId(ToolPreset.CODE_REVIEW.getId())
+            .build();
+        ToolProfileSnapshot initial = ToolProfileSnapshot.of(0L, List.of(
+            DefaultToolProfileFactory.createSafeDefault(), review));
+        assertTrue(repository.replaceAll(0L, initial).isAccepted());
+        model = ToolProfilesEditorModel.load(repository.getSnapshot(), catalog);
+        assertTrue(model.select(PROFILE_ID).isOk());
     }
 
     @Test
-    public void testCheckboxEditIsLocalUntilSaveAndKeepsIdentity() throws Exception
+    public void toolCheckboxEditStaysLocalUntilApplyAndKeepsProfileIdentity()
     {
-        edit("get_edt_version", false);
-        assertEquals("pending edits must not write preferences", "code-review", store.getString(PRESET_ID));
-        assertFalse(ToolSettingsService.parseDisabledTools(
-            store.getString(PreferenceConstants.PREF_DISABLED_TOOLS)).contains("get_edt_version"));
-        tab.performOk();
-        assertEquals("code-review", store.getString(PRESET_ID));
-        assertTrue(ToolSettingsService.parseDisabledTools(
-            store.getString(PreferenceConstants.PREF_DISABLED_TOOLS)).contains("get_edt_version"));
+        ToolProfile published = repository.getSnapshot().get(PROFILE_ID);
+        String tool = "get_edt_version"; //$NON-NLS-1$
+        boolean originalState = published.getAllowedTools().contains(tool);
+
+        assertTrue(model.setToolEnabled(tool, !originalState).isOk());
+        assertTrue(model.isDirty());
+        assertEquals("checkbox edits stay in the editor draft", published, //$NON-NLS-1$
+            repository.getSnapshot().get(PROFILE_ID));
+        assertEquals(PROFILE_ID, model.getSelected().getId());
+        assertEquals(ToolPreset.CODE_REVIEW.getId(), model.getSelected().getPresetId());
+
+        ReplaceResult result = model.apply(repository);
+
+        assertEquals(ReplaceResult.Status.ACCEPTED, result.getStatus());
+        ToolProfile saved = repository.getSnapshot().get(PROFILE_ID);
+        assertEquals(PROFILE_ID, saved.getId());
+        assertEquals(ToolPreset.CODE_REVIEW.getId(), saved.getPresetId());
+        assertEquals(!originalState, saved.getAllowedTools().contains(tool));
+        assertFalse(model.isDirty());
     }
 
     @Test
-    public void testReturningCheckboxesToAPresetShapeKeepsProvenance() throws Exception
+    public void returningCheckboxToOriginalStateClearsDirtyWithoutChangingPreset()
     {
-        edit("get_edt_version", false);
-        edit("get_edt_version", true);
-        tab.performOk();
-        assertEquals(ToolPreset.CODE_REVIEW.getDisabledTools(), selection);
-        assertEquals("code-review", store.getString(PRESET_ID));
+        ToolProfile original = model.getSelected();
+        String tool = "get_edt_version"; //$NON-NLS-1$
+        boolean originalState = original.getAllowedTools().contains(tool);
+
+        assertTrue(model.setToolEnabled(tool, !originalState).isOk());
+        assertTrue(model.isDirty());
+        assertTrue(model.setToolEnabled(tool, originalState).isOk());
+
+        assertFalse(model.isDirty());
+        assertEquals(original.getAllowedTools(), model.getSelected().getAllowedTools());
+        assertEquals(ToolPreset.CODE_REVIEW.getId(), model.getSelected().getPresetId());
     }
 
     @Test
-    public void testGroupCheckboxEditKeepsIdentityOnSave() throws Exception
+    public void applyingBuiltInOrCustomPresetChangesOnlySelectedDraft()
     {
-        edit(ToolGroup.DEBUG, true);
-        tab.performOk();
-        assertEquals("code-review", store.getString(PRESET_ID));
-        assertFalse(selection.contains("set_breakpoint"));
+        ToolProfile defaultBefore = repository.getSnapshot().get(ToolProfile.DEFAULT_ID);
+
+        assertTrue(model.applyPreset(ToolPreset.DEVELOPMENT).isOk());
+        assertEquals(ToolPreset.DEVELOPMENT.getId(), model.getSelected().getPresetId());
+        assertEquals(ToolPreset.DEVELOPMENT.toAllowlist(ToolProfilesEditorModel.catalogFromGroups()),
+            model.getSelected().getAllowedTools());
+        assertEquals(defaultBefore, repository.getSnapshot().get(ToolProfile.DEFAULT_ID));
+        assertTrue(model.isDirty());
+
+        assertTrue(model.applyPreset(ToolPreset.CUSTOM).isOk());
+        assertEquals(ToolPreset.CUSTOM.getId(), model.getSelected().getPresetId());
+        assertEquals(ToolPreset.DEVELOPMENT.toAllowlist(ToolProfilesEditorModel.catalogFromGroups()),
+            model.getSelected().getAllowedTools());
+        assertEquals(ReplaceResult.Status.ACCEPTED, model.apply(repository).getStatus());
+        assertEquals(ToolPreset.CUSTOM.getId(), repository.getSnapshot().get(PROFILE_ID).getPresetId());
     }
 
     @Test
-    public void testRestoreDefaultsClearsPresetOnSave()
+    public void groupChangesAreLocalAndRestoreRevertsTheSelectedProfile()
     {
-        tab.performDefaults();
-        assertEquals("defaults are pending until save", "code-review", store.getString(PRESET_ID));
-        assertEquals(Set.of("git", "ask_workmate", "get_form_screenshot"), selection);
-        tab.performOk();
-        assertEquals("custom", store.getString(PRESET_ID));
-        assertEquals(Set.of("git", "ask_workmate", "get_form_screenshot"), ToolSettingsService.parseDisabledTools(
-            store.getString(PreferenceConstants.PREF_DISABLED_TOOLS)));
-    }
+        ToolProfile original = model.getSelected();
+        ToolGroup group = Arrays.stream(ToolGroup.values())
+            .filter(candidate -> candidate.getToolNames().stream()
+                .anyMatch(name -> !ToolProfilesEditorModel.MANDATORY_TOOL.equals(name)
+                    && original.getAllowedTools().contains(name)))
+            .findFirst().orElseThrow();
 
-    @Test
-    public void testEnableAllButtonRecordsAllTools() throws Exception
-    {
-        tab.enableAllTools();
-        assertTrue(selection.isEmpty());
-        verify(presetCombo).select(ToolPreset.ALL_TOOLS.ordinal());
-        tab.performOk();
-        assertEquals("all-tools", store.getString(PRESET_ID));
-    }
+        assertTrue(model.setGroupEnabled(group.getToolNames(), false).isOk());
+        assertTrue(model.isDirty());
+        assertEquals(original, repository.getSnapshot().get(PROFILE_ID));
+        assertTrue(model.restoreSelected().isOk());
 
-    @Test
-    public void testDisableAllButtonRecordsCustom() throws Exception
-    {
-        tab.disableAllTools();
-        Set<String> allTools = new HashSet<>();
-        for (ToolGroup group : ToolGroup.values())
-        {
-            allTools.addAll(group.getToolNames());
-        }
-        assertEquals(allTools, selection);
-        tab.performOk();
-        assertEquals("custom", store.getString(PRESET_ID));
-    }
-
-    @Test
-    public void testPresetDropdownRecordsTheChosenPresetOnlyOnSave() throws Exception
-    {
-        tab.selectPreset(ToolPreset.DEVELOPMENT);
-        assertEquals(ToolPreset.DEVELOPMENT.getDisabledTools(), selection);
-        assertEquals("code-review", store.getString(PRESET_ID));
-        tab.performOk();
-        assertEquals("development", store.getString(PRESET_ID));
-    }
-
-    @Test
-    public void testCustomDropdownClearsProvenanceWithoutChangingCheckboxes() throws Exception
-    {
-        tab.selectPreset(ToolPreset.CUSTOM);
-        assertEquals(ToolPreset.CODE_REVIEW.getDisabledTools(), selection);
-        tab.performOk();
-        assertEquals("custom", store.getString(PRESET_ID));
-    }
-
-    @Test
-    public void testUnchangedSaveKeepsConstructorLoadedCodeReview()
-    {
-        tab.performOk();
-        assertEquals("code-review", store.getString(PRESET_ID));
-        assertEquals(ToolPreset.CODE_REVIEW.getDisabledTools(), selection);
-    }
-
-    @Test
-    public void testUnchangedHistoricalSnapshotSaveKeepsConstructorLoadedCodeReview() throws Exception
-    {
-        selection.remove("get_job_status");
-        store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS,
-            ToolSettingsService.serializeDisabledTools(selection));
-        setField("selectedPreset", ToolPreset.fromId(ToolSettingsService.getInstance().getPresetId()));
-        tab.performOk();
-        assertEquals("code-review", store.getString(PRESET_ID));
-        assertFalse(selection.contains("get_job_status"));
-    }
-
-    @Test
-    public void testReenabledCheckboxKeepsCodeReview() throws Exception
-    {
-        edit("apply_quick_fix", true);
-        tab.performOk();
-        assertEquals("code-review", store.getString(PRESET_ID));
-        assertFalse(selection.contains("apply_quick_fix"));
-    }
-
-    @Test
-    public void testCustomWithPresetShapedSetDisplaysRecordedChoice() throws Exception
-    {
-        tab.selectPreset(ToolPreset.CUSTOM);
-        Method refresh = ToolsTab.class.getDeclaredMethod("selectSelectedPreset");
-        refresh.setAccessible(true);
-        refresh.invoke(tab);
-        verify(presetCombo).select(ToolPreset.CUSTOM.ordinal());
-        tab.performOk();
-        assertEquals("custom", store.getString(PRESET_ID));
-        assertEquals(ToolPreset.CODE_REVIEW.getDisabledTools(), selection);
-    }
-
-    private void edit(Object element, boolean checked) throws Exception
-    {
-        Method edit = ToolsTab.class.getDeclaredMethod("applyCheckChange", Object.class, boolean.class);
-        edit.setAccessible(true);
-        edit.invoke(tab, element, checked);
-    }
-
-    private void setField(String name, Object value) throws Exception
-    {
-        Field field = ToolsTab.class.getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(tab, value);
+        assertFalse(model.isDirty());
+        assertEquals(original, model.getSelected());
+        assertEquals(original, repository.getSnapshot().get(PROFILE_ID));
     }
 }

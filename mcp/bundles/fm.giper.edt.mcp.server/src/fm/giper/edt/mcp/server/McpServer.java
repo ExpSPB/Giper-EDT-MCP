@@ -95,8 +95,13 @@ public class McpServer
             stop();
         }
 
-        // Register tools
+        // Register tools before taking a migration snapshot.
         registerTools();
+        Activator activator = Activator.getDefault();
+        if (activator != null)
+        {
+            activator.initializeToolProfiles();
+        }
         
         // Create protocol handler
         McpProtocolHandler protocolHandler = new McpProtocolHandler();

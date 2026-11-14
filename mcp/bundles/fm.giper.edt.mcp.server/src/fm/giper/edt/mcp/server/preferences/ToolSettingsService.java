@@ -18,6 +18,8 @@ import java.util.stream.Collectors;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import fm.giper.edt.mcp.server.Activator;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.SseStreamRegistry;
 
 /**
@@ -864,6 +866,18 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
             return;
         }
         applyDisabledTools(store, disabledTools, preset);
+    }
+
+    /** Keeps the existing /mcp and IPC selection in sync when the editor changes the default. */
+    void mirrorDefaultProfile(ToolProfile profile, Set<String> catalog)
+    {
+        Set<String> disabled = new HashSet<>(catalog);
+        for (String name : profile.getAllowedTools())
+        {
+            disabled.remove(McpToolRegistry.canonicalToolName(name));
+        }
+        disabled.remove("get_server_status"); //$NON-NLS-1$
+        setDisabledTools(disabled, ToolPreset.fromId(profile.getPresetId()));
     }
 
     /**

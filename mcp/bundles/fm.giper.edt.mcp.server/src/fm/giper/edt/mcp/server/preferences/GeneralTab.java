@@ -642,7 +642,7 @@ public class GeneralTab
      *
      * @return the port a client should use
      */
-    private int effectivePort()
+    int effectivePort()
     {
         McpServer server = Activator.getDefault() != null ? Activator.getDefault().getMcpServer() : null;
         if (server != null && server.isRunning())

@@ -73,6 +73,263 @@ public enum ToolPreset
         }
     }
 
+    /** Frozen 1.0.12 UI recognition; never use current groups to infer old provenance. */
+    private static final Set<String> LEGACY_CATALOG = Set.of(
+            "adopt_metadata_object", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "ask_workmate", //$NON-NLS-1$
+            "build_external_objects", //$NON-NLS-1$
+            "cancel_job", //$NON-NLS-1$
+            "clean_project", //$NON-NLS-1$
+            "compare_configurations", //$NON-NLS-1$
+            "create_git_branch", //$NON-NLS-1$
+            "create_infobase", //$NON-NLS-1$
+            "create_launch_config", //$NON-NLS-1$
+            "create_metadata", //$NON-NLS-1$
+            "create_project", //$NON-NLS-1$
+            "dcs", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "delete_infobase", //$NON-NLS-1$
+            "delete_launch_config", //$NON-NLS-1$
+            "delete_metadata", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "enable_toolset", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "export_common_picture", //$NON-NLS-1$
+            "export_configuration_to_file", //$NON-NLS-1$
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "find_references", //$NON-NLS-1$
+            "generate_translation_strings", //$NON-NLS-1$
+            "get_applications", //$NON-NLS-1$
+            "get_check_description", //$NON-NLS-1$
+            "get_comparison_node", //$NON-NLS-1$
+            "get_configuration_properties", //$NON-NLS-1$
+            "get_content_assist", //$NON-NLS-1$
+            "get_edt_version", //$NON-NLS-1$
+            "get_event_log", //$NON-NLS-1$
+            "get_form_layout_snapshot", //$NON-NLS-1$
+            "get_form_screenshot", //$NON-NLS-1$
+            "get_job_status", //$NON-NLS-1$
+            "get_markers", //$NON-NLS-1$
+            "get_mcp_history", //$NON-NLS-1$
+            "get_metadata_details", //$NON-NLS-1$
+            "get_metadata_objects", //$NON-NLS-1$
+            "get_method_call_hierarchy", //$NON-NLS-1$
+            "get_module_structure", //$NON-NLS-1$
+            "get_objects_by_tags", //$NON-NLS-1$
+            "get_outgoing_structures", //$NON-NLS-1$
+            "get_platform_documentation", //$NON-NLS-1$
+            "get_problem_summary", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_project_errors", //$NON-NLS-1$
+            "get_server_status", //$NON-NLS-1$
+            "get_subsystem_content", //$NON-NLS-1$
+            "get_symbol_info", //$NON-NLS-1$
+            "get_tags", //$NON-NLS-1$
+            "get_template_screenshot", //$NON-NLS-1$
+            "get_tool_guide", //$NON-NLS-1$
+            "get_translation_project_info", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "go_to_definition", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "infobase_sessions", //$NON-NLS-1$
+            "launch", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "list_common_pictures", //$NON-NLS-1$
+            "list_configurations", //$NON-NLS-1$
+            "list_git_branches", //$NON-NLS-1$
+            "list_modules", //$NON-NLS-1$
+            "list_projects", //$NON-NLS-1$
+            "list_subsystems", //$NON-NLS-1$
+            "list_toolsets", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "modify_metadata", //$NON-NLS-1$
+            "read_method_source", //$NON-NLS-1$
+            "read_module_source", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "rename_metadata_object", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "resync_to_disk", //$NON-NLS-1$
+            "revalidate_objects", //$NON-NLS-1$
+            "run_yaxunit_tests", //$NON-NLS-1$
+            "search_in_code", //$NON-NLS-1$
+            "set_branch_infobase", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_infobase_credentials", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "switch_git_branch", //$NON-NLS-1$
+            "terminate_launch", //$NON-NLS-1$
+            "translate_configuration", //$NON-NLS-1$
+            "update_database", //$NON-NLS-1$
+            "validate_form_model", //$NON-NLS-1$
+            "validate_query", //$NON-NLS-1$
+            "validate_xdto_package", //$NON-NLS-1$
+            "wait_for_break", //$NON-NLS-1$
+            "write_module_source"); //$NON-NLS-1$
+
+    private static final java.util.Map<ToolPreset, Set<String>> LEGACY_DISABLED = java.util.Map.of(
+        ALL_TOOLS, Set.of(),
+        ANALYSIS_ONLY, Set.of(
+            "adopt_metadata_object", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "ask_workmate", //$NON-NLS-1$
+            "build_external_objects", //$NON-NLS-1$
+            "cancel_job", //$NON-NLS-1$
+            "create_infobase", //$NON-NLS-1$
+            "create_launch_config", //$NON-NLS-1$
+            "create_metadata", //$NON-NLS-1$
+            "dcs", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "delete_infobase", //$NON-NLS-1$
+            "delete_launch_config", //$NON-NLS-1$
+            "delete_metadata", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "export_configuration_to_file", //$NON-NLS-1$
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "generate_translation_strings", //$NON-NLS-1$
+            "get_applications", //$NON-NLS-1$
+            "get_form_layout_snapshot", //$NON-NLS-1$
+            "get_form_screenshot", //$NON-NLS-1$
+            "get_job_status", //$NON-NLS-1$
+            "get_method_call_hierarchy", //$NON-NLS-1$
+            "get_module_structure", //$NON-NLS-1$
+            "get_outgoing_structures", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_symbol_info", //$NON-NLS-1$
+            "get_template_screenshot", //$NON-NLS-1$
+            "get_translation_project_info", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "go_to_definition", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "infobase_sessions", //$NON-NLS-1$
+            "launch", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "list_configurations", //$NON-NLS-1$
+            "list_modules", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "modify_metadata", //$NON-NLS-1$
+            "read_method_source", //$NON-NLS-1$
+            "read_module_source", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "rename_metadata_object", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "run_yaxunit_tests", //$NON-NLS-1$
+            "search_in_code", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_infobase_credentials", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "terminate_launch", //$NON-NLS-1$
+            "translate_configuration", //$NON-NLS-1$
+            "update_database", //$NON-NLS-1$
+            "validate_form_model", //$NON-NLS-1$
+            "validate_query", //$NON-NLS-1$
+            "wait_for_break", //$NON-NLS-1$
+            "write_module_source"), //$NON-NLS-1$
+        CODE_REVIEW, Set.of(
+            "adopt_metadata_object", //$NON-NLS-1$
+            "apply_quick_fix", //$NON-NLS-1$
+            "ask_workmate", //$NON-NLS-1$
+            "build_external_objects", //$NON-NLS-1$
+            "cancel_job", //$NON-NLS-1$
+            "create_infobase", //$NON-NLS-1$
+            "create_launch_config", //$NON-NLS-1$
+            "create_metadata", //$NON-NLS-1$
+            "dcs", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "delete_infobase", //$NON-NLS-1$
+            "delete_launch_config", //$NON-NLS-1$
+            "delete_metadata", //$NON-NLS-1$
+            "delete_project", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "export_configuration_to_file", //$NON-NLS-1$
+            "export_configuration_to_xml", //$NON-NLS-1$
+            "generate_translation_strings", //$NON-NLS-1$
+            "get_applications", //$NON-NLS-1$
+            "get_job_status", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_translation_project_info", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "import_configuration_from_xml", //$NON-NLS-1$
+            "import_project_from_file", //$NON-NLS-1$
+            "infobase_sessions", //$NON-NLS-1$
+            "launch", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "list_configurations", //$NON-NLS-1$
+            "merge_rules", //$NON-NLS-1$
+            "modify_metadata", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "rename_metadata_object", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "run_yaxunit_tests", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_infobase_credentials", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "terminate_launch", //$NON-NLS-1$
+            "translate_configuration", //$NON-NLS-1$
+            "update_database", //$NON-NLS-1$
+            "wait_for_break", //$NON-NLS-1$
+            "write_module_source"), //$NON-NLS-1$
+        DEVELOPMENT, Set.of(
+            "ask_workmate", //$NON-NLS-1$
+            "debug_pause", //$NON-NLS-1$
+            "debug_status", //$NON-NLS-1$
+            "debug_yaxunit_tests", //$NON-NLS-1$
+            "evaluate_expression", //$NON-NLS-1$
+            "get_profiling_results", //$NON-NLS-1$
+            "get_variables", //$NON-NLS-1$
+            "git", //$NON-NLS-1$
+            "list_breakpoints", //$NON-NLS-1$
+            "remove_breakpoint", //$NON-NLS-1$
+            "resume", //$NON-NLS-1$
+            "set_breakpoint", //$NON-NLS-1$
+            "set_error_breakpoint", //$NON-NLS-1$
+            "set_variable", //$NON-NLS-1$
+            "start_profiling", //$NON-NLS-1$
+            "step", //$NON-NLS-1$
+            "stop_profiling", //$NON-NLS-1$
+            "wait_for_break")); //$NON-NLS-1$
+
+    public static ToolPreset matchLegacyAllowlist(Set<String> allowed)
+    {
+        Set<String> disabled = new HashSet<>(LEGACY_CATALOG);
+        if (allowed != null)
+        {
+            disabled.removeAll(allowed);
+        }
+        for (ToolPreset preset : values())
+        {
+            if (disabled.equals(LEGACY_DISABLED.get(preset)))
+            {
+                return preset;
+            }
+        }
+        return CUSTOM;
+    }
+
     private final String id;
     private final String displayName;
     private final String description;
@@ -139,6 +396,18 @@ public enum ToolPreset
     public Set<String> getDisabledTools()
     {
         return disabledTools;
+    }
+
+    /** Builds the preset's allowlist from the registered tool names. */
+    public Set<String> toAllowlist(Set<String> catalog)
+    {
+        if (this == CUSTOM)
+        {
+            return Set.of();
+        }
+        Set<String> allowed = new HashSet<>(catalog);
+        allowed.removeAll(disabledTools);
+        return Set.copyOf(allowed);
     }
 
     /**
