@@ -353,6 +353,22 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         return parseDisabledTools(value);
     }
 
+    /** Stored tool selection and its preset provenance, read after legacy migrations. */
+    public record StoredSelection(Set<String> disabledTools, String presetId) { }
+
+    /**
+     * Reads the migration input from the supplied workspace store. The launch preset is
+     * session-only and must not be written into the profile document.
+     */
+    public synchronized StoredSelection readStoredSelection(IPreferenceStore store)
+    {
+        ensureMigrated(store);
+        String disabled = store.contains(PreferenceConstants.PREF_DISABLED_TOOLS)
+            ? store.getString(PreferenceConstants.PREF_DISABLED_TOOLS)
+            : PreferenceConstants.DEFAULT_DISABLED_TOOLS;
+        return new StoredSelection(Set.copyOf(parseDisabledTools(disabled)), storedPreset(store).getId());
+    }
+
     /**
      * Test seam: runs the migration against a supplied store, so the one mechanism that keeps a
      * default-off tool disabled on upgrade can be verified without an Eclipse runtime.

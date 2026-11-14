@@ -133,6 +133,12 @@ public final class PreferenceConstants
     /** Explicit opt-ins: raw git commands, the external Workmate agent and buffered form screenshots. */
     public static final String DEFAULT_DISABLED_TOOLS = "git,ask_workmate,get_form_screenshot"; //$NON-NLS-1$
 
+    /** Versioned document of named tool profiles. An empty value permits legacy migration. */
+    public static final String PREF_TOOL_PROFILES_JSON = "mcpToolProfiles"; //$NON-NLS-1$
+
+    /** Backup of a malformed profile document. */
+    public static final String PREF_TOOL_PROFILES_BACKUP = "mcpToolProfilesBackup"; //$NON-NLS-1$
+
     // === Progressive tool disclosure (dynamic toolsets) ===
 
     /**

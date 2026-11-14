@@ -114,13 +114,15 @@ public class McpToolRegistry // NOSONAR intentional singleton (Eclipse service /
         {
             return null;
         }
-        IMcpTool tool = tools.get().get(name);
-        if (tool != null)
-        {
-            return tool;
-        }
-        String currentName = LEGACY_TOOL_NAMES.get(name);
-        return currentName == null ? null : tools.get().get(currentName);
+        Map<String, IMcpTool> catalogue = tools.get();
+        IMcpTool tool = catalogue.get(name);
+        return tool != null ? tool : catalogue.get(canonicalToolName(name));
+    }
+
+    /** Resolves a legacy tool name to the current name used in the catalogue. */
+    public static String canonicalToolName(String name)
+    {
+        return name == null ? null : LEGACY_TOOL_NAMES.getOrDefault(name, name);
     }
     
     /**
