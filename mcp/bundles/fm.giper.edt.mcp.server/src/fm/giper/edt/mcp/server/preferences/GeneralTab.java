@@ -380,6 +380,8 @@ public class GeneralTab
             }
         }
         updateCheckCombo.select(intervalIndex);
+        boolean updatesEnabled = UpdateChecker.getInstance().isEnabled();
+        updateCheckCombo.setEnabled(updatesEnabled);
         updateCheckCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
         createLabel(""); //$NON-NLS-1$
 
@@ -394,6 +396,7 @@ public class GeneralTab
 
         Button checkNowButton = new Button(checkNowRow, SWT.PUSH);
         checkNowButton.setText(Messages.GeneralTab_CheckNow);
+        checkNowButton.setEnabled(updatesEnabled);
 
         Link checkResultLink = new Link(checkNowRow, SWT.NONE);
         checkResultLink.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
@@ -445,7 +448,11 @@ public class GeneralTab
     {
         UpdateChecker checker = UpdateChecker.getInstance();
         String latest = checker.getLatestVersion();
-        if (latest.isEmpty())
+        if (!checker.isEnabled())
+        {
+            link.setText(Messages.GeneralTab_UpdateChecksDisabled);
+        }
+        else if (latest.isEmpty())
         {
             link.setText(""); //$NON-NLS-1$
         }
@@ -804,7 +811,7 @@ public class GeneralTab
         }
 
         int intervalIdx = updateCheckCombo.getSelectionIndex();
-        if (intervalIdx >= 0 && intervalIdx < UPDATE_INTERVALS.length)
+        if (updateCheckCombo.isEnabled() && intervalIdx >= 0 && intervalIdx < UPDATE_INTERVALS.length)
         {
             store.setValue(PreferenceConstants.PREF_UPDATE_CHECK_INTERVAL, UPDATE_INTERVALS[intervalIdx][1]);
         }

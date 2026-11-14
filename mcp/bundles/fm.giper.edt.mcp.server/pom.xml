@@ -7,7 +7,7 @@
   <parent>
     <groupId>fm.giper.edt.mcp</groupId>
     <artifactId>bundles</artifactId>
-    <version>1.0.14-SNAPSHOT</version>
+    <version>1.0.15-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
@@ -17,6 +17,7 @@
   <name>EDT MCP Server Plugin</name>
 
   <properties>
+    <giper.releaseBuild>false</giper.releaseBuild>
     <!-- Tycho eclipse-plugin layout: sources live in src/ and Tycho compiles to
          target/classes. The Sonar Maven scanner does NOT infer these for eclipse-plugin
          packaging (without them Sonar indexes ~0 Java files and imports no coverage). -->
@@ -43,6 +44,9 @@
             <goals><goal>run</goal></goals>
             <configuration>
               <target>
+                <!-- Package the build type so it survives installation in EDT. -->
+                <mkdir dir="${project.build.outputDirectory}/fm/giper/edt/mcp/server"/>
+                <echo file="${project.build.outputDirectory}/fm/giper/edt/mcp/server/release-build.txt" message="${giper.releaseBuild}" encoding="UTF-8"/>
                 <mkdir dir="${project.build.directory}/bootstrap-build"/>
                 <javac srcdir="${project.basedir}/bootstrap-build" destdir="${project.build.directory}/bootstrap-build"
                     release="17" encoding="UTF-8" includeantruntime="false">

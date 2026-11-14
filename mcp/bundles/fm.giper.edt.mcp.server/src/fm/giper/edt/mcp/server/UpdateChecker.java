@@ -7,9 +7,12 @@
 package fm.giper.edt.mcp.server;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -20,7 +23,7 @@ import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
 
 /**
- * Checks GitHub Releases for a newer version of the EDT MCP Server plugin.
+ * Checks GitHub Releases for a newer Giper-EDT-MCP release when installed from a release build.
  *
  * <p>The check interval is controlled by the preference
  * {@link PreferenceConstants#PREF_UPDATE_CHECK_INTERVAL}:
@@ -34,12 +37,12 @@ import fm.giper.edt.mcp.server.protocol.McpConstants;
 public final class UpdateChecker // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {
     /** GitHub API URL for the latest release. */
-    private static final String RELEASES_API_URL =
-        "https://api.github.com/repos/DitriXNew/EDT-MCP/releases/latest"; //$NON-NLS-1$
+    static final String RELEASES_API_URL =
+        "https://api.github.com/repos/ExpSPB/Giper-EDT-MCP/releases/latest"; //$NON-NLS-1$
 
     /** GitHub Releases page URL opened in a browser on "Download". */
     public static final String RELEASES_PAGE_URL =
-        "https://github.com/DitriXNew/EDT-MCP/releases/latest"; //$NON-NLS-1$
+        "https://github.com/ExpSPB/Giper-EDT-MCP/releases/latest"; //$NON-NLS-1$
 
     /** Initial delay before the very first check (ms). */
     private static final long INITIAL_DELAY_MS = 10_000L;
@@ -47,7 +50,10 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
     /** HTTP connect/read timeout (ms). */
     private static final int TIMEOUT_MS = 10_000;
 
-    private static final UpdateChecker INSTANCE = new UpdateChecker();
+    private static final UpdateChecker INSTANCE = new UpdateChecker(isReleaseBuild(), UpdateChecker::fetchReleaseInfo);
+
+    private final boolean enabled;
+    private final Callable<String[]> releaseFetcher;
 
     private final AtomicBoolean updateAvailable  = new AtomicBoolean(false);
     private final AtomicReference<String> latestVersion = new AtomicReference<>("");
@@ -56,9 +62,24 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
 
     private ScheduledExecutorService scheduler;
 
-    private UpdateChecker()
+    UpdateChecker(boolean enabled, Callable<String[]> releaseFetcher)
     {
-        // private constructor – use getInstance()
+        this.enabled = enabled;
+        this.releaseFetcher = releaseFetcher;
+    }
+
+    /** The bundled marker is absent for Eclipse launches that bypass Maven packaging. */
+    private static boolean isReleaseBuild()
+    {
+        try (var marker = UpdateChecker.class.getResourceAsStream("release-build.txt")) //$NON-NLS-1$
+        {
+            return marker != null
+                && "true".equals(new String(marker.readAllBytes(), StandardCharsets.UTF_8).trim()); //$NON-NLS-1$
+        }
+        catch (IOException e)
+        {
+            return false;
+        }
     }
 
     /** Returns the singleton instance. */
@@ -67,12 +88,24 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
         return INSTANCE;
     }
 
+    /** Returns whether this build supports checking for new releases. */
+    public boolean isEnabled()
+    {
+        return enabled;
+    }
+
     /**
      * Reads the current preference and schedules the update check accordingly.
      * Safe to call on every EDT startup – cancels any previous scheduler first.
      */
     public void scheduleCheck()
     {
+        if (!enabled)
+        {
+            Activator.logInfo("EDT MCP Server update checks are disabled for this build"); //$NON-NLS-1$
+            return;
+        }
+
         String interval = readIntervalPref();
 
         if (PreferenceConstants.UPDATE_CHECK_NEVER.equals(interval))
@@ -167,10 +200,15 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
 
     private void performCheck()
     {
+        if (!enabled)
+        {
+            return;
+        }
+
         Activator.logInfo("EDT MCP Server update check started (current: " + McpConstants.PLUGIN_VERSION + ")"); //$NON-NLS-1$ //$NON-NLS-2$
         try
         {
-            String[] info = fetchReleaseInfo();
+            String[] info = releaseFetcher.call();
             if (info == null || info[0] == null || info[0].isEmpty())
             {
                 Activator.logInfo("EDT MCP Server update check: no release info returned from GitHub API"); //$NON-NLS-1$
@@ -226,7 +264,7 @@ public final class UpdateChecker // NOSONAR intentional singleton (Eclipse servi
      * Fetches release info from the GitHub Releases API.
      * @return String[3]: [0]=tag_name, [1]=body (release notes), [2]=html_url; or null on error.
      */
-    private String[] fetchReleaseInfo() throws Exception
+    private static String[] fetchReleaseInfo() throws Exception
     {
         URL url = new URL(RELEASES_API_URL); // NOSONAR deprecated EDT API used intentionally (no non-deprecated equivalent here)
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();

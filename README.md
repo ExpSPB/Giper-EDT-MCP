@@ -21,9 +21,9 @@ Giper-EDT-MCP is maintained by ExpSPB and forked from [EDT-MCP](https://github.c
 MCP (Model Context Protocol) server plugin for 1C:EDT, enabling AI assistants (Claude, GitHub Copilot, Cursor, etc.) to interact with EDT workspace.
 
 <details open>
-<summary><strong>1.0.14</strong></summary>
+<summary><strong>1.0.15</strong></summary>
 
-Giper-EDT-MCP for EDT 2026.2.2, based on upstream commit `9273628f`.
+Plugin update checks are enabled in tagged release builds and use the Giper-EDT-MCP GitHub releases.
 </details>
 
 > [!TIP]
@@ -1288,6 +1288,7 @@ source/dist/MCP-EDT.v<VERSION>.zip
 ```
 
 This is a valid p2 update site — install via EDT → *Help → Install New Software → Add → Archive…*.
+The plugin's automatic and manual update checks are disabled in source builds and CI build artifacts. The tagged release workflow enables them in its packaged bundle.
 
 ### Script options
 
