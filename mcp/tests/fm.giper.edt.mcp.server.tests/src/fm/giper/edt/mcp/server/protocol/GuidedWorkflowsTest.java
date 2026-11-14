@@ -14,6 +14,11 @@ import org.junit.Before;
 import org.junit.Test;
 
 import fm.giper.edt.mcp.server.preferences.ToolSettingsService;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.impl.GetProjectErrorsTool;
@@ -68,6 +73,36 @@ public class GuidedWorkflowsTest
         assertEquals(JsonParser.parseString("[{\"name\":\"projectName\",\"description\":"
             + "\"Accessible, open EDT workspace project name (use completion or list_projects).\",\"required\":true}]"),
             prompt.get("arguments"));
+    }
+
+    @Test
+    public void testProfileCannotReadProblemsOrCompleteProjectNamesThroughGuidedWorkflows()
+    {
+        ToolProfile restricted = ToolProfile.builder().id("restricted").displayName("Restricted")
+            .enabled(true).build();
+        ToolProfileSnapshot snapshot = ToolProfileSnapshot.of(0L,
+            List.of(DefaultToolProfileFactory.createSafeDefault(), restricted));
+        ProfileToolPolicy policy = new ProfileToolPolicy(ProfileResolver.resolve("restricted", false, snapshot),
+            registry.getAllTools(), null);
+
+        JsonObject prompts = sendWithProfile("prompts/list", "{}", policy);
+        assertEquals(0, prompts.getAsJsonObject("result").getAsJsonArray("prompts").size());
+        JsonObject read = sendWithProfile("resources/read",
+            "{\"uri\":\"edt://projects/TestConfiguration/problems\"}", policy);
+        assertTrue(read.toString(), read.has("error"));
+        verify(problems, never()).execute(anyMap());
+
+        JsonObject completion = sendWithProfile("completion/complete", "{\"ref\":{\"type\":\"ref/resource\",\"uri\":"
+            + GsonProvider.toJson(GuidedWorkflows.GUIDES_URI) + "},\"argument\":{\"name\":\"projectName\",\"value\":\"Test\"}}",
+            policy);
+        assertEquals(List.of(), values(completion));
+    }
+
+    private JsonObject sendWithProfile(String method, String params, ProfileToolPolicy policy)
+    {
+        String body = "{\"jsonrpc\":\"2.0\",\"id\":339,\"method\":\"" + method + "\",\"params\":" + params + "}";
+        return JsonParser.parseString(handler.processRequest(body, handler.parse(body), System.nanoTime(),
+            ClientCapabilities.ABSENT, policy, null)).getAsJsonObject();
     }
 
     @Test

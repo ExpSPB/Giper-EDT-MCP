@@ -355,6 +355,7 @@ public class InterruptibleToolHistoryTest
                 new InterruptibleToolExecutor(server, protocol), false);
             Headers headers = new Headers();
             headers.add(McpConstants.HEADER_SESSION_ID, http.getSessions().create(ClientCapabilities.ABSENT));
+            when(exchange.getRequestURI()).thenReturn(java.net.URI.create("/mcp"));
             when(exchange.getRequestMethod()).thenReturn("POST");
             when(exchange.getRequestHeaders()).thenReturn(headers);
             when(exchange.getRequestBody()).thenReturn(new ByteArrayInputStream(BODY.getBytes(StandardCharsets.UTF_8)));

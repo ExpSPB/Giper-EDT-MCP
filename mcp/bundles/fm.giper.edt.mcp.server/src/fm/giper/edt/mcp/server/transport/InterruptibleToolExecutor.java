@@ -10,6 +10,7 @@ import fm.giper.edt.mcp.server.ActiveToolCall;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.history.McpCallHistory;
 import fm.giper.edt.mcp.server.history.McpCallHistory.CallCapture;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.protocol.ClientCapabilities;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
@@ -53,7 +54,7 @@ public class InterruptibleToolExecutor
         // The clock starts before the parse: the history reports the whole exchange.
         long startNanos = System.nanoTime();
         // Extract request ID and tool name for ActiveToolCall via the shared parser.
-        return execute(exchange, requestBody, protocolHandler.parse(requestBody), startNanos, null);
+        return execute(exchange, requestBody, protocolHandler.parse(requestBody), startNanos, null, null);
     }
 
     /**
@@ -67,17 +68,26 @@ public class InterruptibleToolExecutor
      *            recorded duration covers the parse the caller already did
      * @param sessionCapabilities the capabilities of the session this call arrived on, or
      *            {@code null} for a caller with no session
+     * @param policy the profile's tool policy, or {@code null} for the legacy endpoint
      * @return the response, or {@code null} if the response was already sent (interrupted)
      * @throws Exception if tool execution failed (propagated to the caller for error mapping)
      */
     public String execute(HttpExchange exchange, String requestBody, JsonRpcRequest request, long startNanos, // NOSONAR propagates checked exceptions across the reflective boundary by design
-        ClientCapabilities sessionCapabilities)
-        throws Exception
-    { return execute(new ToolCallResponder.Http(exchange), requestBody, request, startNanos, sessionCapabilities); }
+        ClientCapabilities sessionCapabilities, ProfileToolPolicy policy) throws Exception
+    {
+        return execute(new ToolCallResponder.Http(exchange), requestBody, request, startNanos,
+            sessionCapabilities, policy);
+    }
 
     /** Shares response selection, history and identity-based slot cleanup across transports. */
     public String execute(ToolCallResponder responder, String requestBody, JsonRpcRequest request, long startNanos,
         ClientCapabilities sessionCapabilities) throws Exception // NOSONAR shares the HTTP exception boundary
+    {
+        return execute(responder, requestBody, request, startNanos, sessionCapabilities, null);
+    }
+
+    private String execute(ToolCallResponder responder, String requestBody, JsonRpcRequest request, long startNanos,
+        ClientCapabilities sessionCapabilities, ProfileToolPolicy policy) throws Exception
     {
         Object requestId = request != null ? McpProtocolHandler.normalizeId(request.getId()) : null;
         String toolName = request != null && request.getToolName() != null ? request.getToolName() : "unknown"; //$NON-NLS-1$
@@ -97,9 +107,10 @@ public class InterruptibleToolExecutor
         Thread executionThread = new Thread(() -> {
             try
             {
-                resultContainer[0] =
-                    protocolHandler.processRequest(requestBody, request, startNanos, sessionCapabilities,
-                        capture::completed);
+                resultContainer[0] = policy == null
+                    ? protocolHandler.processRequest(requestBody, request, startNanos, sessionCapabilities, capture::completed)
+                    : protocolHandler.processRequest(requestBody, request, startNanos, sessionCapabilities,
+                        policy, capture::completed);
             }
             catch (Exception e)
             {

@@ -45,8 +45,12 @@ public final class McpSessionRegistry
      */
     public static final int MAX_SESSIONS = 10_000;
 
-    /** Session id -> the capabilities that session's client declared at initialize. */
-    private final Map<String, ClientCapabilities> sessions = new ConcurrentHashMap<>();
+    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
+
+    /** Immutable routing and client capabilities selected during initialize. */
+    public record Session(String endpointPath, String effectiveProfileId, ClientCapabilities capabilities)
+    {
+    }
 
     /**
      * Opens a session for a client that has just initialized.
@@ -58,12 +62,18 @@ public final class McpSessionRegistry
      */
     public String create(ClientCapabilities capabilities)
     {
+        return create("/mcp", null, capabilities); //$NON-NLS-1$
+    }
+
+    public synchronized String create(String endpointPath, String effectiveProfileId, ClientCapabilities capabilities)
+    {
         if (sessions.size() >= MAX_SESSIONS)
         {
             return null;
         }
         String sessionId = UUID.randomUUID().toString();
-        sessions.put(sessionId, capabilities == null ? ClientCapabilities.ABSENT : capabilities);
+        sessions.put(sessionId, new Session(endpointPath, effectiveProfileId,
+            capabilities == null ? ClientCapabilities.ABSENT : capabilities));
         return sessionId;
     }
 
@@ -77,11 +87,22 @@ public final class McpSessionRegistry
      */
     public ClientCapabilities capabilitiesOf(String sessionId)
     {
-        if (sessionId == null)
-        {
-            return null;
-        }
-        return sessions.get(sessionId);
+        Session session = sessionId == null ? null : sessions.get(sessionId);
+        return session == null ? null : session.capabilities();
+    }
+
+    /** Returns the session only on the endpoint that issued it. */
+    public Session find(String sessionId, String endpointPath)
+    {
+        Session session = sessionId == null ? null : sessions.get(sessionId);
+        return session != null && session.endpointPath().equals(endpointPath) ? session : null;
+    }
+
+    /** A request on one endpoint cannot close a session issued on another. */
+    public boolean close(String sessionId, String endpointPath)
+    {
+        Session session = find(sessionId, endpointPath);
+        return session != null && sessions.remove(sessionId, session);
     }
 
     /**

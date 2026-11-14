@@ -356,6 +356,7 @@ public class IpcInterruptTest extends StdioTestSupport
             McpProtocolHandler protocol = new McpProtocolHandler();
             McpHttpHandler http = new McpHttpHandler(server, protocol, new InterruptibleToolExecutor(server, protocol), false);
             Headers headers = new Headers(); headers.add(McpConstants.HEADER_SESSION_ID, http.getSessions().create(ClientCapabilities.ABSENT));
+            when(exchange.getRequestURI()).thenReturn(java.net.URI.create("/mcp"));
             when(exchange.getRequestMethod()).thenReturn("POST"); when(exchange.getRequestHeaders()).thenReturn(headers);
             when(exchange.getResponseHeaders()).thenReturn(new Headers()); when(exchange.getResponseBody()).thenReturn(output);
             when(exchange.getRequestBody()).thenReturn(new ByteArrayInputStream(request(id, stage).getBytes(StandardCharsets.UTF_8)));

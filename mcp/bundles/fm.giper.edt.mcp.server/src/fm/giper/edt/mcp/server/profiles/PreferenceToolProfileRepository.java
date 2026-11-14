@@ -86,6 +86,16 @@ public final class PreferenceToolProfileRepository implements ToolProfileReposit
         return published.get();
     }
 
+    /** Reads the latest published document, including changes made through another repository. */
+    public ToolProfileSnapshot refreshSnapshot()
+    {
+        synchronized (writeLock)
+        {
+            reloadIfChanged();
+            return published.get();
+        }
+    }
+
     @Override
     public ProfileDocumentState getDocumentState()
     {

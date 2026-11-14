@@ -9,20 +9,35 @@ package fm.giper.edt.mcp.server.transport;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
+
+import org.eclipse.jface.preference.IPreferenceStore;
 
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.SseStreamRegistry;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
+import fm.giper.edt.mcp.server.profiles.ProfileDocumentState;
+import fm.giper.edt.mcp.server.profiles.ProfileResolution;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
+import fm.giper.edt.mcp.server.profiles.ToolProfileMigration;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.protocol.ClientCapabilities;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
 import fm.giper.edt.mcp.server.protocol.McpSessionRegistry;
+import fm.giper.edt.mcp.server.protocol.McpSessionRegistry.Session;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
+import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -42,13 +57,11 @@ import com.sun.net.httpserver.HttpHandler;
  * <p><b>Sessions.</b> {@code initialize} mints one in {@link McpSessionRegistry} and returns its
  * id in {@code Mcp-Session-Id}; every other POST must present that id back (400 without one, 404
  * for one this listener never issued or has closed), and {@code DELETE /mcp} closes it. The
- * session also carries the capabilities ITS client declared, so two clients cannot format each
- * other's responses.
+ * session holds the endpoint, effective profile and capabilities its client declared. Explicit
+ * profile endpoints re-read the permissions of that profile on each request.
  *
- * <p>The SSE GET stream is deliberately outside that rule: it carries no JSON-RPC method, runs no
- * tool and only receives server notifications, and clients such as LM Studio open it BEFORE they
- * initialize - there is no session to present yet. It is admitted by the same Origin check and
- * shared-token auth as everything else.
+ * <p>Legacy SSE GET can start before initialize (e.g. for LM Studio). Explicit GET requires the
+ * session issued on its profile endpoint. All requests retain Origin and shared-token checks.
  */
 public class McpHttpHandler implements HttpHandler
 {
@@ -97,6 +110,7 @@ public class McpHttpHandler implements HttpHandler
     private final McpServer server;
     private final McpProtocolHandler protocolHandler;
     private final InterruptibleToolExecutor interruptibleExecutor;
+    private final Supplier<ToolProfileSnapshot> profileSnapshots;
 
     /**
      * Whether the listener THIS handler serves accepts connections from other hosts. It is a
@@ -117,10 +131,48 @@ public class McpHttpHandler implements HttpHandler
     public McpHttpHandler(McpServer server, McpProtocolHandler protocolHandler,
         InterruptibleToolExecutor interruptibleExecutor, boolean boundRemotely)
     {
+        this(server, protocolHandler, interruptibleExecutor, boundRemotely, profileSnapshots());
+    }
+
+    McpHttpHandler(McpServer server, McpProtocolHandler protocolHandler,
+        InterruptibleToolExecutor interruptibleExecutor, boolean boundRemotely,
+        Supplier<ToolProfileSnapshot> profileSnapshots)
+    {
         this.server = server;
         this.protocolHandler = protocolHandler;
         this.interruptibleExecutor = interruptibleExecutor;
         this.boundRemotely = boundRemotely;
+        this.profileSnapshots = profileSnapshots;
+    }
+
+    private static Supplier<ToolProfileSnapshot> profileSnapshots()
+    {
+        Activator activator = Activator.getDefault();
+        if (activator == null)
+        {
+            return DefaultToolProfileFactory::createSafeSnapshot;
+        }
+        IPreferenceStore store = activator.getPreferenceStore();
+        PreferenceToolProfileRepository repository = new PreferenceToolProfileRepository(store);
+        return () -> {
+            ToolProfileSnapshot snapshot = repository.refreshSnapshot();
+            if (repository.getDocumentState() == ProfileDocumentState.ABSENT)
+            {
+                var names = McpToolRegistry.getInstance().getAllTools().stream().map(IMcpTool::getName).toList();
+                return ToolProfileMigration.migrateIfNeeded(repository, names, store).getSnapshot();
+            }
+            return snapshot;
+        };
+    }
+
+    private ProfileResolution profileFor(McpEndpoint endpoint)
+    {
+        return endpoint.isLegacy() ? null : ProfileResolver.resolve(endpoint.profileId(), false, profileSnapshots.get());
+    }
+
+    private static String effectiveProfileId(ProfileResolution profile)
+    {
+        return profile == null ? null : profile.getEffectiveProfileId();
     }
 
     /**
@@ -136,8 +188,6 @@ public class McpHttpHandler implements HttpHandler
     @Override
     public void handle(HttpExchange exchange) throws IOException // NOSONAR reflective/form or transport god-method; further extraction deferred (reflective code)
     {
-        // SSE GET streams are offloaded to a dedicated pool so they never
-        // occupy threads in the main request pool or block the dispatcher.
         String method = exchange.getRequestMethod();
 
         // Optional shared-token auth — applies to every method except the CORS preflight,
@@ -163,12 +213,7 @@ public class McpHttpHandler implements HttpHandler
             return;
         }
 
-        if ("GET".equals(method)) //$NON-NLS-1$
-        {
-            handleSseInDedicatedPool(exchange);
-            return;
-        }
-
+        boolean streamOffloaded = false;
         try
         {
             // Admission control: shed load before doing heavy work.
@@ -200,24 +245,49 @@ public class McpHttpHandler implements HttpHandler
                 return;
             }
 
-            // Handle CORS preflight request
+            McpEndpoint endpoint = resolveEndpoint(exchange);
+            if (endpoint == null)
+            {
+                return;
+            }
+
             if ("OPTIONS".equals(method)) //$NON-NLS-1$
             {
                 exchange.sendResponseHeaders(204, -1);
                 return;
             }
 
-            if ("POST".equals(method)) //$NON-NLS-1$
+            if ("GET".equals(method)) //$NON-NLS-1$
             {
-                handleMcpRequest(exchange);
+                String sessionId = exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID);
+                Session session = sessions.find(sessionId, endpoint.path());
+                if ((!endpoint.isLegacy() || sessionId != null)
+                    && !requireValidSession(exchange, sessionId, profileMatchesSession(sessionId, session, profileForSession(session, endpoint)), null))
+                {
+                    return;
+                }
+                String accept = exchange.getRequestHeaders().getFirst("Accept"); //$NON-NLS-1$
+                if (accept != null && accept.contains(TEXT_EVENT_STREAM))
+                {
+                    streamOffloaded = offloadSse(exchange, endpoint, sessionId, session);
+                }
+                else
+                {
+                    sendServerInfo(exchange);
+                }
+            }
+            else if ("POST".equals(method)) //$NON-NLS-1$
+            {
+                handleMcpRequest(exchange, endpoint);
             }
             else if ("DELETE".equals(method)) //$NON-NLS-1$
             {
-                // Session termination, and it now terminates something: the named session is
-                // closed and its next request answers 404. Idempotent - an absent or already
-                // closed id is still a 200, so a client that retries its DELETE is not punished.
-                sessions.close(exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID));
-                HttpTransport.sendResponse(exchange, 200, ""); //$NON-NLS-1$
+                String sessionId = exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID);
+                boolean closed = sessions.close(sessionId, endpoint.path());
+                if (endpoint.isLegacy() || requireValidSession(exchange, sessionId, closed, null))
+                {
+                    HttpTransport.sendResponse(exchange, 200, ""); //$NON-NLS-1$
+                }
             }
             else
             {
@@ -245,13 +315,9 @@ public class McpHttpHandler implements HttpHandler
         }
         finally
         {
-            try
+            if (!streamOffloaded)
             {
                 exchange.close();
-            }
-            catch (Exception ignored)
-            {
-                // Already closed
             }
         }
     }
@@ -261,25 +327,14 @@ public class McpHttpHandler implements HttpHandler
      * The exchange lifecycle (including close) is managed entirely by the SSE thread,
      * so the main pool thread is released immediately.
      */
-    private void handleSseInDedicatedPool(HttpExchange exchange)
+    private boolean offloadSse(HttpExchange exchange, McpEndpoint endpoint, String sessionId, Session session)
+        throws IOException
     {
         ExecutorService sse = server.getSseExecutor();
         if (sse == null || sse.isShutdown())
         {
-            try
-            {
-                HttpTransport.sendResponse(exchange, 503,
-                    JsonUtils.buildSimpleError("Server is shutting down")); //$NON-NLS-1$
-            }
-            catch (IOException e)
-            {
-                // ignore
-            }
-            finally
-            {
-                exchange.close();
-            }
-            return;
+            HttpTransport.sendResponse(exchange, 503, JsonUtils.buildSimpleError("Server is shutting down")); //$NON-NLS-1$
+            return false;
         }
 
         try
@@ -287,15 +342,12 @@ public class McpHttpHandler implements HttpHandler
             sse.submit(() -> {
                 try
                 {
-                    // Validate Origin and add CORS headers
-                    if (!HttpTransport.addCorsHeaders(exchange))
+                    if (session != null && !requireValidSession(exchange, sessionId,
+                        isStreamSessionOpen(sessionId, session, endpoint), null))
                     {
-                        HttpTransport.sendResponse(exchange, 403,
-                            JsonUtils.buildJsonRpcError(
-                                McpConstants.ERROR_INVALID_REQUEST, "Invalid Origin", null)); //$NON-NLS-1$
                         return;
                     }
-                    handleSseStream(exchange);
+                    handleSseStream(exchange, endpoint, sessionId, session);
                 }
                 catch (IOException e)
                 {
@@ -307,37 +359,55 @@ public class McpHttpHandler implements HttpHandler
                 }
                 finally
                 {
-                    try
-                    {
-                        exchange.close();
-                    }
-                    catch (Exception ignored)
-                    {
-                        // Already closed
-                    }
+                    exchange.close();
                 }
             });
+            return true;
         }
         catch (RejectedExecutionException e)
         {
-            // SSE pool shutting down
-            try
-            {
-                HttpTransport.sendResponse(exchange, 503,
-                    JsonUtils.buildSimpleError("Server overloaded")); //$NON-NLS-1$
-            }
-            catch (IOException ioe)
-            {
-                // ignore
-            }
-            finally
-            {
-                exchange.close();
-            }
+            HttpTransport.sendResponse(exchange, 503, JsonUtils.buildSimpleError("Server overloaded")); //$NON-NLS-1$
+            return false;
         }
     }
 
-    private void handleMcpRequest(HttpExchange exchange) throws IOException
+    private static McpEndpoint resolveEndpoint(HttpExchange exchange) throws IOException
+    {
+        McpEndpoint endpoint = McpEndpoint.from(exchange.getRequestURI());
+        if (endpoint == null)
+        {
+            HttpTransport.sendResponse(exchange, 400, JsonUtils.buildJsonRpcError(McpConstants.ERROR_INVALID_REQUEST,
+                "Expected /mcp or /mcp/profiles/<id>.", null)); //$NON-NLS-1$
+        }
+        return endpoint;
+    }
+
+    private ProfileResolution profileForSession(Session session, McpEndpoint endpoint)
+    {
+        return session == null ? null : profileFor(endpoint);
+    }
+
+    private boolean profileMatchesSession(String sessionId, Session session, ProfileResolution profile)
+    {
+        if (session == null)
+        {
+            return false;
+        }
+        if (!Objects.equals(session.effectiveProfileId(), effectiveProfileId(profile)))
+        {
+            sessions.close(sessionId, session.endpointPath());
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isStreamSessionOpen(String sessionId, Session session, McpEndpoint endpoint)
+    {
+        return sessions.find(sessionId, endpoint.path()) == session
+            && profileMatchesSession(sessionId, session, profileFor(endpoint));
+    }
+
+    private void handleMcpRequest(HttpExchange exchange, McpEndpoint endpoint) throws IOException
     {
         // The request counter is incremented by McpProtocolHandler, not here: calls also
         // arrive through the in-process bridge, and counting at the transport left the
@@ -386,21 +456,28 @@ public class McpHttpHandler implements HttpHandler
         // not parse never had a method to attach to a session and is answered as the invalid
         // request it is, exactly as before. Everything else must present the id this listener
         // issued, and is answered with the capabilities THAT client declared.
-        ClientCapabilities sessionCapabilities = null;
-        if (!isInitialize && request != null)
+        ClientCapabilities sessionCapabilities = isInitialize ? ClientCapabilities.ABSENT : null;
+        ProfileResolution profile = null;
+        if (isInitialize && McpConstants.JSONRPC_VERSION.equals(request.getJsonrpc()))
         {
-            String presentedSessionId =
-                exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID);
-            // Looked up ONCE: the same lookup answers "is it open?" and "what did it declare?",
-            // so a concurrent DELETE cannot pass the check and then be read as an unknown
-            // (permissive) session below.
-            sessionCapabilities = sessions.capabilitiesOf(presentedSessionId);
-            if (!requireValidSession(exchange, presentedSessionId, sessionCapabilities, request))
+            profile = profileFor(endpoint);
+        }
+        else if (!isInitialize && request != null)
+        {
+            String presentedSessionId = exchange.getRequestHeaders().getFirst(McpConstants.HEADER_SESSION_ID);
+            Session session = sessions.find(presentedSessionId, endpoint.path());
+            profile = profileForSession(session, endpoint);
+            boolean matches = profileMatchesSession(presentedSessionId, session, profile);
+            if (!requireValidSession(exchange, presentedSessionId, matches,
+                McpProtocolHandler.normalizeId(request.getId())))
             {
                 return;
             }
+            sessionCapabilities = session.capabilities();
         }
 
+        ProfileToolPolicy policy = profile == null ? null
+            : new ProfileToolPolicy(profile, McpToolRegistry.getInstance().getAllTools());
         String issuedSessionId = null;
         try
         {
@@ -408,7 +485,7 @@ public class McpHttpHandler implements HttpHandler
             {
                 // Handle tool calls with interruptible execution
                 response =
-                    interruptibleExecutor.execute(exchange, requestBody, request, startNanos, sessionCapabilities);
+                    interruptibleExecutor.execute(exchange, requestBody, request, startNanos, sessionCapabilities, policy);
                 if (response == null)
                 {
                     // Response was already sent (user interrupted)
@@ -417,7 +494,7 @@ public class McpHttpHandler implements HttpHandler
             }
             else
             {
-                response = protocolHandler.processRequest(requestBody, request, startNanos, sessionCapabilities);
+                response = protocolHandler.processRequest(requestBody, request, startNanos, sessionCapabilities, policy, null);
             }
 
             // null response means notification (no response needed)
@@ -446,12 +523,13 @@ public class McpHttpHandler implements HttpHandler
             // wrong in both directions: it tells a client whose initialize failed that it may
             // proceed, and it spends a slot toward MAX_SESSIONS - so a stream of malformed
             // initialize requests could exhaust the registry without ever completing a handshake.
-            issuedSessionId = sessions.create(McpProtocolHandler.parseClientCapabilities(request));
+            issuedSessionId = sessions.create(endpoint.path(), effectiveProfileId(profile),
+                McpProtocolHandler.parseClientCapabilities(request));
             if (issuedSessionId == null)
             {
                 response = JsonUtils.buildJsonRpcError(McpConstants.ERROR_INTERNAL,
                     "Session limit reached (" + McpSessionRegistry.MAX_SESSIONS //$NON-NLS-1$
-                        + "); close idle sessions with DELETE /mcp and retry.", //$NON-NLS-1$
+                        + "); close idle sessions and retry.", //$NON-NLS-1$
                     McpProtocolHandler.normalizeId(request.getId()));
             }
         }
@@ -487,14 +565,13 @@ public class McpHttpHandler implements HttpHandler
      *
      * @param exchange the exchange to answer on refusal
      * @param sessionId the presented {@code Mcp-Session-Id} (may be {@code null})
-     * @param capabilities the lookup's result for that id, {@code null} when it is not open
-     * @param request the parsed request, whose id the error echoes
+     * @param valid whether the session is open and belongs to the requested endpoint and profile
+     * @param requestId the JSON-RPC request id to echo, if applicable
      * @return {@code true} when the session is valid and dispatch should continue
      */
-    private boolean requireValidSession(HttpExchange exchange, String sessionId,
-        ClientCapabilities capabilities, JsonRpcRequest request) throws IOException
+    private static boolean requireValidSession(HttpExchange exchange, String sessionId,
+        boolean valid, Object requestId) throws IOException
     {
-        Object requestId = McpProtocolHandler.normalizeId(request.getId());
         if (sessionId == null || sessionId.isBlank())
         {
             HttpTransport.sendResponse(exchange, 400, JsonUtils.buildJsonRpcError(
@@ -502,7 +579,7 @@ public class McpHttpHandler implements HttpHandler
                     + " header - call initialize first and send back the id it returns.", requestId)); //$NON-NLS-1$
             return false;
         }
-        if (capabilities == null)
+        if (!valid)
         {
             HttpTransport.sendResponse(exchange, 404, JsonUtils.buildJsonRpcError(
                 McpConstants.ERROR_INVALID_REQUEST, "Unknown or expired session '" + sessionId //$NON-NLS-1$
@@ -551,70 +628,67 @@ public class McpHttpHandler implements HttpHandler
      * that require an established SSE stream before sending POST requests.
      * The server keeps the connection alive with periodic heartbeats.
      */
-    private void handleSseStream(HttpExchange exchange) throws IOException
+    private void handleSseStream(HttpExchange exchange, McpEndpoint endpoint, String sessionId, Session session)
+        throws IOException
     {
-        String acceptHeader = exchange.getRequestHeaders().getFirst("Accept"); //$NON-NLS-1$
+        Activator.logInfo("SSE GET request received - opening SSE stream"); //$NON-NLS-1$
 
-        if (acceptHeader != null && acceptHeader.contains(TEXT_EVENT_STREAM))
+        exchange.getResponseHeaders().add(CONTENT_TYPE, TEXT_EVENT_STREAM);
+        exchange.getResponseHeaders().add("Cache-Control", "no-cache"); //$NON-NLS-1$ //$NON-NLS-2$
+        exchange.getResponseHeaders().add(CONNECTION, KEEP_ALIVE);
+        exchange.sendResponseHeaders(200, 0);
+
+        // Register the stream so the server can PUSH notifications to it (e.g.
+        // notifications/tools/list_changed), then keep it alive with heartbeat
+        // comments. Both heartbeat and broadcast writes go through the registered
+        // SseStream, which serializes them so frames never interleave.
+        java.io.OutputStream os = exchange.getResponseBody();
+        SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(os);
+        try
         {
-            Activator.logInfo("SSE GET request received - opening SSE stream"); //$NON-NLS-1$
-
-            exchange.getResponseHeaders().add(CONTENT_TYPE, TEXT_EVENT_STREAM);
-            exchange.getResponseHeaders().add("Cache-Control", "no-cache"); //$NON-NLS-1$ //$NON-NLS-2$
-            exchange.getResponseHeaders().add(CONNECTION, KEEP_ALIVE);
-            exchange.sendResponseHeaders(200, 0);
-
-            // Register the stream so the server can PUSH notifications to it (e.g.
-            // notifications/tools/list_changed), then keep it alive with heartbeat
-            // comments. Both heartbeat and broadcast writes go through the registered
-            // SseStream, which serializes them so frames never interleave.
-            java.io.OutputStream os = exchange.getResponseBody();
-            SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(os);
-            try
+            while (!Thread.currentThread().isInterrupted()
+                && (session == null || isStreamSessionOpen(sessionId, session, endpoint)))
             {
-                while (!Thread.currentThread().isInterrupted()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability
-                {
-                    try
-                    {
-                        stream.write(": keep-alive\n\n"); //$NON-NLS-1$
-                        Thread.sleep(5000);
-                    }
-                    catch (InterruptedException e)
-                    {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                    catch (IOException e)
-                    {
-                        // Client disconnected
-                        break;
-                    }
-                }
-            }
-            finally
-            {
-                SseStreamRegistry.getInstance().unregister(stream);
                 try
                 {
-                    os.close();
+                    stream.write(": keep-alive\n\n"); //$NON-NLS-1$
+                    Thread.sleep(5000);
                 }
-                catch (IOException ignore)
+                catch (InterruptedException e)
                 {
-                    // already closing
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                catch (IOException e)
+                {
+                    // Client disconnected
+                    break;
                 }
             }
-            Activator.logInfo("SSE stream closed"); //$NON-NLS-1$
         }
-        else
+        finally
         {
-            // Return server info for plain GET requests
-            String response = JsonUtils.buildServerInfo(
-                McpConstants.SERVER_NAME,
-                McpConstants.PLUGIN_VERSION,
-                GetEdtVersionTool.getEdtVersion(),
-                McpConstants.PROTOCOL_VERSION);
-            exchange.getResponseHeaders().add(CONTENT_TYPE, "application/json"); //$NON-NLS-1$
-            HttpTransport.sendResponse(exchange, 200, response);
+            SseStreamRegistry.getInstance().unregister(stream);
+            try
+            {
+                os.close();
+            }
+            catch (IOException ignore)
+            {
+                // already closing
+            }
         }
+        Activator.logInfo("SSE stream closed"); //$NON-NLS-1$
+    }
+
+    private static void sendServerInfo(HttpExchange exchange) throws IOException
+    {
+        String response = JsonUtils.buildServerInfo(
+            McpConstants.SERVER_NAME,
+            McpConstants.PLUGIN_VERSION,
+            GetEdtVersionTool.getEdtVersion(),
+            McpConstants.PROTOCOL_VERSION);
+        exchange.getResponseHeaders().add(CONTENT_TYPE, "application/json"); //$NON-NLS-1$
+        HttpTransport.sendResponse(exchange, 200, response);
     }
 }

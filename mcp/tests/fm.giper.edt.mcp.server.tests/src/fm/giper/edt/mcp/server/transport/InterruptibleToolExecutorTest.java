@@ -99,6 +99,7 @@ public class InterruptibleToolExecutorTest
         {
             call.start();
             HttpExchange deletion = mock(HttpExchange.class);
+            when(deletion.getRequestURI()).thenReturn(java.net.URI.create("/mcp"));
             when(deletion.getRequestMethod()).thenReturn("DELETE");
             Headers headers = new Headers();
             headers.add(McpConstants.HEADER_SESSION_ID, call.sessionId);
@@ -203,6 +204,7 @@ public class InterruptibleToolExecutorTest
             sessionId = http.getSessions().create(ClientCapabilities.ABSENT);
             Headers headers = new Headers();
             headers.add(McpConstants.HEADER_SESSION_ID, sessionId);
+            when(exchange.getRequestURI()).thenReturn(java.net.URI.create("/mcp"));
             when(exchange.getRequestMethod()).thenReturn("POST");
             when(exchange.getRequestHeaders()).thenReturn(headers);
             when(exchange.getResponseHeaders()).thenReturn(new Headers());

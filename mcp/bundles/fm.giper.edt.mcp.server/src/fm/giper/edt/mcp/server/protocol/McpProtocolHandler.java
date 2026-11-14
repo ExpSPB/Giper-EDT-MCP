@@ -10,6 +10,7 @@ import fm.giper.edt.mcp.server.HeadlessLifetime;
 import fm.giper.edt.mcp.server.HostKind;
 import fm.giper.edt.mcp.server.tools.HostToolCapabilities;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +21,8 @@ import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.UserSignal;
 import fm.giper.edt.mcp.server.history.McpCallHistory;
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
+import fm.giper.edt.mcp.server.profiles.ProfileResolution;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.InitializeResult;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcResponse;
@@ -27,6 +30,8 @@ import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolCallResult;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolsListResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
+import fm.giper.edt.mcp.server.tools.Toolsets;
+import fm.giper.edt.mcp.server.tools.impl.GetToolGuideTool;
 import fm.giper.edt.mcp.server.utils.DcsXmlCodec;
 import fm.giper.edt.mcp.server.utils.GuideRenderer;
 import fm.giper.edt.mcp.server.utils.InfobaseAuthDialogSuppressor;
@@ -218,6 +223,13 @@ public class McpProtocolHandler
     public String processRequest(String requestBody, JsonRpcRequest request, long startNanos,
         ClientCapabilities sessionCapabilities, java.util.function.Consumer<String> completion)
     {
+        return processRequest(requestBody, request, startNanos, sessionCapabilities, null, completion);
+    }
+
+    /** Applies the profile policy supplied by the HTTP session along the whole dispatch path. */
+    public String processRequest(String requestBody, JsonRpcRequest request, long startNanos,
+        ClientCapabilities sessionCapabilities, ProfileToolPolicy policy, java.util.function.Consumer<String> completion)
+    {
         String response = null;
         try
         {
@@ -227,7 +239,7 @@ public class McpProtocolHandler
                 EdtDialogs.getInstance().ensureInstalled();
             }
             response = dispatch(request,
-                sessionCapabilities != null ? sessionCapabilities : clientCapabilities.get());
+                sessionCapabilities != null ? sessionCapabilities : clientCapabilities.get(), policy);
             if (reportDialogs)
             {
                 response = appendDialogNotice(response, dialogNotice());
@@ -339,7 +351,7 @@ public class McpProtocolHandler
      * @return JSON response with correct id from request ({@code null} for a
      *         notification answered with 202 Accepted)
      */
-    private String dispatch(JsonRpcRequest request, ClientCapabilities capabilities)
+    private String dispatch(JsonRpcRequest request, ClientCapabilities capabilities, ProfileToolPolicy policy)
     {
         // Per JSON-RPC 2.0: when the id cannot be determined (parse error /
         // invalid request) the error response id MUST be null. A real id from
@@ -374,7 +386,7 @@ public class McpProtocolHandler
                 // features) can gate on it. Absent / malformed capabilities resolve
                 // to ClientCapabilities.ABSENT, which keeps every default permissive.
                 clientCapabilities.set(parseClientCapabilities(request));
-                return buildInitializeResponse(requestId, clientVersion);
+                return buildInitializeResponse(requestId, clientVersion, policy);
             }
             
             // Check for initialized notification (no response needed, but return 202)
@@ -386,13 +398,13 @@ public class McpProtocolHandler
             // Check for tools/list method
             if (McpConstants.METHOD_TOOLS_LIST.equals(method))
             {
-                return buildToolsListResponse(requestId, capabilities);
+                return buildToolsListResponse(requestId, capabilities, policy);
             }
             
             // Check for tools/call method
             if (McpConstants.METHOD_TOOLS_CALL.equals(method))
             {
-                return handleToolCall(request, requestId, capabilities);
+                return handleToolCall(request, requestId, capabilities, policy);
             }
 
             if ("resources/templates/list".equals(method) && guidedWorkflows == null) //$NON-NLS-1$
@@ -406,7 +418,7 @@ public class McpProtocolHandler
             {
                 try
                 {
-                    return GsonProvider.toJson(JsonRpcResponse.success(requestId, guidedWorkflows.handle(request)));
+                    return GsonProvider.toJson(JsonRpcResponse.success(requestId, guidedWorkflows.handle(request, policy)));
                 }
                 catch (GuidedWorkflows.RequestError e)
                 {
@@ -417,13 +429,13 @@ public class McpProtocolHandler
             // Check for resources/list method (serves the per-tool guide:// docs)
             if (McpConstants.METHOD_RESOURCES_LIST.equals(method))
             {
-                return buildResourcesListResponse(requestId);
+                return buildResourcesListResponse(requestId, policy);
             }
 
             // Check for resources/read method (returns one guide:// Markdown body)
             if (McpConstants.METHOD_RESOURCES_READ.equals(method))
             {
-                return handleResourcesRead(request, requestId);
+                return handleResourcesRead(request, requestId, policy);
             }
 
             // Ping utility (MCP basic utilities): a connection-health check that takes no
@@ -491,7 +503,8 @@ public class McpProtocolHandler
     /**
      * Handles a tools/call request.
      */
-    private String handleToolCall(JsonRpcRequest request, Object requestId, ClientCapabilities capabilities)
+    private String handleToolCall(JsonRpcRequest request, Object requestId, ClientCapabilities capabilities,
+        ProfileToolPolicy policy)
     {
         String toolName = request != null ? request.getToolName() : null;
         if (toolName == null || toolName.isBlank())
@@ -507,6 +520,11 @@ public class McpProtocolHandler
             return buildErrorResponse(McpConstants.ERROR_METHOD_NOT_FOUND, "Tool not found: " + toolName, requestId); //$NON-NLS-1$
         }
 
+        if (policy != null && !policy.isCallable(toolName))
+        {
+            return GsonProvider.toJson(JsonRpcResponse.success(requestId, ToolCallResult.refusal(policy.deniedMessage(toolName))));
+        }
+
         if (!HostToolCapabilities.availableOnCurrentHost(tool.getName()))
         {
             String payload = ToolResult.error(HostToolCapabilities.refusal(tool.getName())).toJson();
@@ -517,7 +535,7 @@ public class McpProtocolHandler
         // would record an empty answer as the tool's output - and enablement is the one input to
         // the outputSchema promise that can change UNDER a client (a JSON tool listed with its
         // schema, switched off before the next call), which only an error result is exempt from.
-        if (HostKind.current() != HostKind.HEADLESS && !toolRegistry.isToolEnabled(toolName))
+        if (policy == null && HostKind.current() != HostKind.HEADLESS && !toolRegistry.isToolEnabled(toolName))
         {
             String msg = "Tool '" + toolName + "' is disabled by the user. " //$NON-NLS-1$ //$NON-NLS-2$
                 + "If this functionality is needed, ask the user to enable it: " //$NON-NLS-1$
@@ -530,6 +548,16 @@ public class McpProtocolHandler
         // Extract parameters from request arguments
         Map<String, String> params = extractToolParams(request);
         
+        if (policy != null && McpConstants.TOOL_GET_TOOL_GUIDE.equals(tool.getName()))
+        {
+            String guideName = params.get(GetToolGuideTool.KEY_TOOL_NAME);
+            if (guideName != null && !guideName.isBlank() && !policy.isGuideVisible(guideName))
+            {
+                return GsonProvider.toJson(JsonRpcResponse.success(requestId,
+                    ToolCallResult.refusal(policy.deniedMessage(guideName))));
+            }
+        }
+
         // Set current tool name for status bar display
         McpServer server = Activator.getDefault() != null ? Activator.getDefault().getMcpServer() : null;
         if (server != null)
@@ -1153,18 +1181,23 @@ public class McpProtocolHandler
      * supported version ({@link McpConstants#PROTOCOL_VERSION}) so the client can
      * decide whether it can proceed.
      */
-    private String buildInitializeResponse(Object requestId, String clientVersion)
+    private String buildInitializeResponse(Object requestId, String clientVersion, ProfileToolPolicy policy)
     {
         // Echo the client's version only if we actually support it; otherwise
         // negotiate down to our latest supported version.
         String version = McpConstants.isSupportedVersion(clientVersion)
             ? clientVersion : McpConstants.PROTOCOL_VERSION;
-        InitializeResult result = new InitializeResult(
-            version,
-            McpConstants.SERVER_NAME,
-            McpConstants.PLUGIN_VERSION,
-            McpConstants.AUTHOR
-        );
+        ProfileResolution profile = policy == null ? null : policy.getResolution();
+        String serverName = profile == null ? McpConstants.SERVER_NAME
+            : McpConstants.SERVER_NAME + "/" + profile.getEffectiveProfileId(); //$NON-NLS-1$
+        InitializeResult result = new InitializeResult(version, serverName, McpConstants.PLUGIN_VERSION,
+            McpConstants.AUTHOR);
+        if (profile != null && profile.isFallbackApplied())
+        {
+            result.setInstructions("Requested profile '" + profile.getRequestedProfileId() //$NON-NLS-1$
+                + "' is unavailable (" + profile.getFallbackReason() + "). Connected to profile '" //$NON-NLS-1$ //$NON-NLS-2$
+                + profile.getEffectiveProfileId() + "' instead."); //$NON-NLS-1$
+        }
         if (guidedWorkflows != null)
         {
             result.getCapabilities().enableGuidedWorkflows(version);
@@ -1239,10 +1272,16 @@ public class McpProtocolHandler
      *        outputSchema/structuredContent agreement
      * @return the serialized JSON-RPC response
      */
-    private String buildToolsListResponse(Object requestId, ClientCapabilities capabilities)
+    private String buildToolsListResponse(Object requestId, ClientCapabilities capabilities, ProfileToolPolicy policy)
     {
         return GsonProvider.toJson(JsonRpcResponse.success(requestId,
-            toolCatalog(toolRegistry.getVisibleTools(), capabilities)));
+            toolCatalog(publishedTools(toolRegistry, policy), capabilities)));
+    }
+
+    static Collection<IMcpTool> publishedTools(McpToolRegistry registry, ProfileToolPolicy policy)
+    {
+        return policy == null ? registry.getVisibleTools()
+            : policy.publishedTools(Toolsets.isProgressiveDisclosureEnabled());
     }
 
     /** Shared schema rendering for the live dispatcher and the build-time offline catalog. */
@@ -1295,10 +1334,10 @@ public class McpProtocolHandler
      * @param requestId the JSON-RPC request id to echo
      * @return the serialized JSON-RPC response
      */
-    private String buildResourcesListResponse(Object requestId)
+    private String buildResourcesListResponse(Object requestId, ProfileToolPolicy policy)
     {
         JsonArray resources = new JsonArray();
-        for (IMcpTool tool : toolRegistry.getVisibleTools())
+        for (IMcpTool tool : publishedTools(toolRegistry, policy))
         {
             String name = tool.getName();
             JsonObject resource = new JsonObject();
@@ -1326,7 +1365,7 @@ public class McpProtocolHandler
      * @param requestId the JSON-RPC request id to echo
      * @return the serialized JSON-RPC response (result or error)
      */
-    private String handleResourcesRead(JsonRpcRequest request, Object requestId)
+    private String handleResourcesRead(JsonRpcRequest request, Object requestId, ProfileToolPolicy policy)
     {
         String uri = request != null ? request.getStringParam("uri") : null; //$NON-NLS-1$
         if (uri == null || !uri.startsWith(McpConstants.GUIDE_URI_SCHEME))
@@ -1338,7 +1377,7 @@ public class McpProtocolHandler
 
         String toolName = uri.substring(McpConstants.GUIDE_URI_SCHEME.length());
         IMcpTool tool = toolRegistry.getTool(toolName);
-        if (tool == null)
+        if (tool == null || (policy != null && !policy.isGuideVisible(toolName)))
         {
             return buildErrorResponse(McpConstants.ERROR_INVALID_PARAMS,
                 "Unknown guide resource: " + uri //$NON-NLS-1$

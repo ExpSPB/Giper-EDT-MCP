@@ -18,10 +18,12 @@ import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IProject;
 
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.impl.GetProjectErrorsTool;
+import fm.giper.edt.mcp.server.tools.impl.ListProjectsTool;
 import fm.giper.edt.mcp.server.utils.GuideRenderer;
 import fm.giper.edt.mcp.server.utils.OutputSizeGuard;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
@@ -69,26 +71,26 @@ final class GuidedWorkflows
                 && request.getStringParam("uri").startsWith("edt:"));
     }
 
-    JsonObject handle(JsonRpcRequest request)
+    JsonObject handle(JsonRpcRequest request, ProfileToolPolicy policy)
     {
         JsonObject params = request.getParams() == null ? new JsonObject()
             : GsonProvider.get().toJsonTree(request.getParams()).getAsJsonObject();
         return switch (request.getMethod())
         {
-            case "prompts/list" -> listPrompts(params);
-            case "prompts/get" -> getPrompt(params);
-            case "resources/templates/list" -> listTemplates(params);
-            case "resources/read" -> resourceResult(readResource(string(params, "uri", false)));
-            case "completion/complete" -> complete(params);
+            case "prompts/list" -> listPrompts(params, policy);
+            case "prompts/get" -> getPrompt(params, policy);
+            case "resources/templates/list" -> listTemplates(params, policy);
+            case "resources/read" -> resourceResult(readResource(string(params, "uri", false), policy));
+            case "completion/complete" -> complete(params, policy);
             default -> throw invalid("Unsupported workflow method. Use prompts/list or resources/templates/list.");
         };
     }
 
-    private JsonObject listPrompts(JsonObject params)
+    private JsonObject listPrompts(JsonObject params, ProfileToolPolicy policy)
     {
         validateCursor(params);
         JsonArray prompts = new JsonArray();
-        if (problemsEnabled())
+        if (problemsEnabled(policy))
         {
             JsonObject prompt = new JsonObject();
             prompt.addProperty("name", HEALTH_PROMPT);
@@ -105,11 +107,11 @@ final class GuidedWorkflows
         return arrayResult("prompts", prompts);
     }
 
-    private JsonObject listTemplates(JsonObject params)
+    private JsonObject listTemplates(JsonObject params, ProfileToolPolicy policy)
     {
         validateCursor(params);
         JsonArray templates = new JsonArray();
-        if (problemsEnabled())
+        if (problemsEnabled(policy))
         {
             templates.add(template(PROBLEMS_URI, "edt_project_problems",
                 "Current project validation problems, limited to 100 rows. Read again after validation settles."));
@@ -119,9 +121,9 @@ final class GuidedWorkflows
         return arrayResult("resourceTemplates", templates);
     }
 
-    private JsonObject getPrompt(JsonObject params)
+    private JsonObject getPrompt(JsonObject params, ProfileToolPolicy policy)
     {
-        requirePrompt(string(params, "name", false));
+        requirePrompt(string(params, "name", false), policy);
         JsonObject arguments = object(params, "arguments", true);
         if (!arguments.keySet().equals(java.util.Set.of(McpKeys.PROJECT_NAME)))
         {
@@ -145,7 +147,7 @@ final class GuidedWorkflows
         messages.add(message(instruction));
         JsonObject report = new JsonObject();
         report.addProperty("type", "resource");
-        report.add("resource", readResource(uri));
+        report.add("resource", readResource(uri, policy));
         messages.add(message(report));
         JsonObject guide = new JsonObject();
         guide.addProperty("type", "resource");
@@ -157,7 +159,7 @@ final class GuidedWorkflows
         return result;
     }
 
-    private JsonObject readResource(String rawUri)
+    private JsonObject readResource(String rawUri, ProfileToolPolicy policy)
     {
         URI uri;
         try
@@ -185,7 +187,7 @@ final class GuidedWorkflows
         requireProject(project, RESOURCE_NOT_FOUND);
         if (problems)
         {
-            if (!problemsEnabled())
+            if (!problemsEnabled(policy))
             {
                 throw missing("Project problems are unavailable. Enable get_project_errors in EDT MCP Tools preferences.");
             }
@@ -205,7 +207,7 @@ final class GuidedWorkflows
             requireProject(project, RESOURCE_NOT_FOUND);
             return content(rawUri, report);
         }
-        IMcpTool tool = registry.getVisibleTools().stream()
+        IMcpTool tool = McpProtocolHandler.publishedTools(registry, policy).stream()
             .filter(candidate -> candidate.getName().equals(guideName)).findFirst().orElse(null);
         if (tool == null)
         {
@@ -214,7 +216,7 @@ final class GuidedWorkflows
         return content(rawUri, GuideRenderer.render(tool));
     }
 
-    private JsonObject complete(JsonObject params)
+    private JsonObject complete(JsonObject params, ProfileToolPolicy policy)
     {
         admitCompletion();
         JsonObject reference = object(params, "ref", true);
@@ -222,12 +224,12 @@ final class GuidedWorkflows
         String template = null;
         if ("ref/prompt".equals(type))
         {
-            requirePrompt(string(reference, "name", false));
+            requirePrompt(string(reference, "name", false), policy);
         }
         else if ("ref/resource".equals(type))
         {
             template = string(reference, "uri", false);
-            if (!GUIDES_URI.equals(template) && !(PROBLEMS_URI.equals(template) && problemsEnabled()))
+            if (!GUIDES_URI.equals(template) && !(PROBLEMS_URI.equals(template) && problemsEnabled(policy)))
             {
                 throw invalid("Unknown resource template: " + template + ". Use resources/templates/list.");
             }
@@ -257,11 +259,11 @@ final class GuidedWorkflows
                 throw invalid("Completion context argument '" + key + "' must contain at most 255 characters and no control characters.");
             }
         }
-        List<String> accessible = accessibleProjects();
         List<String> candidates;
         if (McpKeys.PROJECT_NAME.equals(name))
         {
-            candidates = accessible;
+            candidates = policy == null || policy.isCallable(ListProjectsTool.NAME)
+                ? accessibleProjects() : List.of();
         }
         else if ("guideName".equals(name) && GUIDES_URI.equals(template))
         {
@@ -270,8 +272,8 @@ final class GuidedWorkflows
             {
                 throw invalid("Invalid completion context projectName. Select a single project name using completion.");
             }
-            candidates = project != null && accessible.contains(project)
-                ? registry.getVisibleTools().stream().map(IMcpTool::getName).toList() : List.of();
+            candidates = project != null && accessibleProjects().contains(project)
+                ? McpProtocolHandler.publishedTools(registry, policy).stream().map(IMcpTool::getName).toList() : List.of();
         }
         else
         {
@@ -326,14 +328,15 @@ final class GuidedWorkflows
         }
     }
 
-    private boolean problemsEnabled()
+    private boolean problemsEnabled(ProfileToolPolicy policy)
     {
-        return registry.isToolEnabled(GetProjectErrorsTool.NAME);
+        return policy == null ? registry.isToolEnabled(GetProjectErrorsTool.NAME)
+            : policy.isCallable(GetProjectErrorsTool.NAME);
     }
 
-    private void requirePrompt(String name)
+    private void requirePrompt(String name, ProfileToolPolicy policy)
     {
-        if (!HEALTH_PROMPT.equals(name) || !problemsEnabled())
+        if (!HEALTH_PROMPT.equals(name) || !problemsEnabled(policy))
         {
             throw invalid("Unknown or unavailable prompt: " + name + ". Use prompts/list; enable get_project_errors for project health.");
         }

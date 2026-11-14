@@ -37,7 +37,7 @@ public class GetToolGuideTool implements IMcpTool
     public static final String NAME = McpConstants.TOOL_GET_TOOL_GUIDE;
 
     /** Input param: exact name of the tool to document, as it appears in tools/list. */
-    private static final String KEY_TOOL_NAME = "toolName"; //$NON-NLS-1$
+    public static final String KEY_TOOL_NAME = "toolName"; //$NON-NLS-1$
     private static final String KEY_MODE = "mode"; //$NON-NLS-1$
     private static final String KEY_SECTION = "section"; //$NON-NLS-1$
     private static final String KEY_QUERY = "query"; //$NON-NLS-1$
