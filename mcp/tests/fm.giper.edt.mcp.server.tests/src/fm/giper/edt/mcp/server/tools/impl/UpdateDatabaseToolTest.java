@@ -1,0 +1,2108 @@
+/**
+ * MCP Server for EDT - Tests
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.server.tools.impl;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.MultiStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.debug.core.ILaunchConfiguration;
+import org.eclipse.debug.core.ILaunchConfigurationType;
+import org.junit.Test;
+
+import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
+import fm.giper.edt.mcp.server.tools.impl.UpdateDatabaseTool.ApplicationFallback; // same package: explicit for the nested seam type
+import fm.giper.edt.mcp.server.utils.ExternalInfobaseChangesPolicy;
+import fm.giper.edt.mcp.server.utils.InfobaseSessionSupport;
+import fm.giper.edt.mcp.server.utils.InfobaseSessionSupport.SessionInfo;
+import fm.giper.edt.mcp.server.utils.LaunchConfigUtils;
+import fm.giper.edt.mcp.server.utils.LaunchUpdateDialogAutoConfirmer;
+import fm.giper.edt.mcp.server.utils.StandaloneServerSupport;
+import com.e1c.g5.dt.applications.ApplicationException;
+import com.e1c.g5.dt.applications.ApplicationUpdateState;
+import com.e1c.g5.dt.applications.ApplicationUpdateType;
+import com.e1c.g5.dt.applications.IApplication;
+import com.e1c.g5.dt.applications.IApplicationManager;
+import com.e1c.g5.dt.applications.IApplicationType;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+/**
+ * Tests for {@link UpdateDatabaseTool}.
+ * <p>
+ * Covers tool metadata, the input schema, and the projectName/applicationId
+ * required-argument validation in the "no launchConfigurationName" branch, which
+ * returns before any live launch-manager access. This is a destructive tool —
+ * the tests only exercise the argument-validation sentinels (which return before
+ * any database update); the actual update is covered by the E2E suite.
+ * <p>
+ * Also covers the #258 {@code InternalInfo} error-hint logic (via the package-private
+ * {@link UpdateDatabaseTool#describeInternalInfoHint} and
+ * {@link UpdateDatabaseTool#buildApplicationErrorResult} seams) and the guide's
+ * documentation of the long-running-update / {@code get_mcp_history} workflow.
+ * <p>
+ * Issue #453 added {@link UpdateDatabaseTool#buildUnexpectedErrorResult}, the message for a
+ * failure that is not an {@code ApplicationException}: it must describe the platform failure
+ * instead of concatenating a {@code null} message, name the next step for a tool that changed an
+ * infobase irreversibly, and keep the port-reassignment note and the {@code terminatedClient}
+ * flag it already carried. Its pins are deliberately one literal per {@code @Test} — JUnit stops
+ * a method at its first failed assertion, so a method holding several would only ever exercise
+ * the first — and they pin the ABSENCE of each optional field on the false side of its condition,
+ * because a presence-only pin passes just as happily against an unconditional write.
+ * <p>
+ * Issue #379 added four package-private seams, all reachable without a live EDT:
+ * {@link UpdateDatabaseTool#resolveLaunchConfigTarget} (the whole named-configuration
+ * decision, against a mocked {@code ILaunchConfiguration}),
+ * {@link UpdateDatabaseTool#effectiveApplicationId} (the config-vs-caller merge rule),
+ * {@link UpdateDatabaseTool#resolveSoleApplicationId} (the narrowed default-application
+ * fallback for a configuration with no application binding — substitute only when the
+ * project has EXACTLY ONE application, refuse otherwise) and
+ * {@link UpdateDatabaseTool#describeLaunchIdentifierHint} (the diagnosis for the synthetic
+ * {@code launch:}/{@code attach:} identifiers {@code list_configurations} publishes under
+ * its own {@code applicationId} key).
+ * <p>
+ * <b>What these seams do NOT pin</b>, deliberately: the two lines of {@code execute} that look
+ * the configuration up by name ({@code DebugPlugin.getDefault().getLaunchManager()}) and then
+ * call the fallback when the merged id came back empty. Both need a live launch manager and an
+ * EDT-contributed launch type, which this bundle's unit runtime does not have — the same reason
+ * the pre-existing tests here stop at argument validation. Everything either side of those two
+ * lines is covered above.
+ */
+public class UpdateDatabaseToolTest
+{
+    private static final SessionInfo DESIGNER_SESSION = new SessionInfo(
+        "11111111-1111-1111-1111-111111111111", 1L, "Designer", //$NON-NLS-1$ //$NON-NLS-2$
+        "agent@example.com", "private-host", //$NON-NLS-1$ //$NON-NLS-2$
+        "2026-01-01T10:00:00", "2026-01-01T10:01:00", true); //$NON-NLS-1$ //$NON-NLS-2$
+
+    @Test
+    public void testName()
+    {
+        assertEquals("update_database", new UpdateDatabaseTool().getName()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testNameConstant()
+    {
+        assertEquals(UpdateDatabaseTool.NAME, new UpdateDatabaseTool().getName());
+    }
+
+    @Test
+    public void testResponseTypeJson()
+    {
+        assertEquals(ResponseType.JSON, new UpdateDatabaseTool().getResponseType());
+    }
+
+    @Test
+    public void testConnectsToInfobaseIsTrue()
+    {
+        // #270: update_database opens a live connection to run the update — it must arm
+        // the auth-dialog suppressor's activity window.
+        assertTrue(new UpdateDatabaseTool().connectsToInfobase());
+    }
+
+    @Test
+    public void failureGainsAccessDialogDiagnosticOnlyWhenCounterMoved()
+    {
+        String failure = "{\"success\":false,\"error\":\"update failed\"}"; //$NON-NLS-1$
+
+        String unchanged = UpdateDatabaseTool.appendAccessSettingsDialogFailure(failure, 4, 4);
+        String observed = UpdateDatabaseTool.appendAccessSettingsDialogFailure(failure, 4, 5);
+
+        assertEquals(failure, unchanged);
+        assertTrue(observed.contains("while this call ran")); //$NON-NLS-1$
+        assertFalse(observed.contains("by this call")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void successNeverGainsAccessDialogDiagnostic()
+    {
+        String success = "{\"success\":true,\"message\":\"updated\"}"; //$NON-NLS-1$
+
+        assertEquals(success, UpdateDatabaseTool.appendAccessSettingsDialogFailure(success, 4, 5));
+    }
+
+    @Test
+    public void testReturnsInfobaseDataIsFalseWithoutSuccessfulPersonalData()
+    {
+        assertFalse(new UpdateDatabaseTool().returnsInfobaseData());
+    }
+
+    @Test
+    public void testDescriptionNotEmpty()
+    {
+        String desc = new UpdateDatabaseTool().getDescription();
+        assertNotNull(desc);
+        assertTrue(desc.length() > 0);
+    }
+
+    @Test
+    public void testSchemaDeclaresParameters()
+    {
+        String schema = new UpdateDatabaseTool().getInputSchema();
+        assertNotNull(schema);
+        assertTrue(schema.contains("\"launchConfigurationName\"")); //$NON-NLS-1$
+        assertTrue(schema.contains("\"projectName\"")); //$NON-NLS-1$
+        assertTrue(schema.contains("\"applicationId\"")); //$NON-NLS-1$
+        assertTrue(schema.contains("\"fullUpdate\"")); //$NON-NLS-1$
+        assertTrue("schema must declare the confirm gate", schema.contains("\"confirm\"")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("schema must declare the terminateRunningClients opt-out", //$NON-NLS-1$
+            schema.contains("\"terminateRunningClients\"")); //$NON-NLS-1$
+        assertTrue("schema must declare the default-on session safety pre-flight", //$NON-NLS-1$
+            schema.contains("\"checkInfobaseSessions\"")); //$NON-NLS-1$
+        // autoRestructure was removed: the EDT update API (IApplicationManager.update /
+        // ExecutionContext) has no per-call restructure-confirmation switch, so the parameter
+        // could never influence the update — advertising it misled unattended clients.
+        assertFalse("autoRestructure must not reappear without being wired into the EDT call", //$NON-NLS-1$
+            schema.contains("\"autoRestructure\"")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSchemaAndGuideDeclareTheBranchBindingOptOut()
+    {
+        // The refusal names ignoreBranchBinding=true, so the knob must be reachable (#459).
+        String schema = new UpdateDatabaseTool().getInputSchema();
+        assertTrue("schema must declare the branch-binding opt-out", //$NON-NLS-1$
+            schema.contains("\"" + UpdateDatabaseTool.KEY_IGNORE_BRANCH_BINDING + "\"")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("ignoreBranchBinding", UpdateDatabaseTool.KEY_IGNORE_BRANCH_BINDING); //$NON-NLS-1$
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertTrue(guide.contains("## Branch binding")); //$NON-NLS-1$
+        assertTrue(guide.contains("ignoreBranchBinding")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testBindingRefusalWithoutTerminationOmitsTerminatedClient()
+    {
+        String json = UpdateDatabaseTool.bindingRefusalResult("Refusing to update: x", false); //$NON-NLS-1$
+        assertTrue(json, json.contains("\"success\":false")); //$NON-NLS-1$
+        assertTrue(json, json.contains("Refusing to update: x")); //$NON-NLS-1$
+        assertFalse("absent unless a client was terminated, like every other path", //$NON-NLS-1$
+            json.contains("terminatedClient")); //$NON-NLS-1$
+        assertFalse("a pre-update refusal is not an unknown mutation outcome", //$NON-NLS-1$
+            json.contains("mutationOutcome")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testBindingRefusalAfterTerminationReportsIt()
+    {
+        String json = UpdateDatabaseTool.bindingRefusalResult("Refusing to update: x", true); //$NON-NLS-1$
+        assertTrue(json, json.contains("\"terminatedClient\":true")); //$NON-NLS-1$
+        assertTrue("a terminated client is a committed side effect", //$NON-NLS-1$
+            json.contains("\"mutationCommitted\":true")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSchemaDeclaresTheStandaloneServerPortConflictPolicy()
+    {
+        // Without it the port-conflict refusal names a knob the caller cannot reach (#434).
+        String schema = new UpdateDatabaseTool().getInputSchema();
+        assertTrue("schema must declare the port-conflict policy", //$NON-NLS-1$
+            schema.contains("\"standaloneServerPortConflict\"")); //$NON-NLS-1$
+        assertTrue("and both of its answers must be documented in the schema", //$NON-NLS-1$
+            schema.contains("reassign") && schema.contains("cancel")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testUnknownPortConflictValueIsRejectedNamingTheValue()
+    {
+        // Parsed BEFORE any workbench access, so this is reachable headlessly - and the refusal
+        // must echo the rejected token, not just say "invalid".
+        java.util.Map<String, String> params = new java.util.HashMap<>();
+        params.put("projectName", "Any"); //$NON-NLS-1$ //$NON-NLS-2$
+        params.put("applicationId", "Any"); //$NON-NLS-1$ //$NON-NLS-2$
+        params.put("standaloneServerPortConflict", "free-ports"); //$NON-NLS-1$ //$NON-NLS-2$
+        String json = new UpdateDatabaseTool().execute(params);
+        assertTrue("the refusal must name the rejected value", json.contains("free-ports")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("and list what IS accepted", json.contains("reassign")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testOutputSchemaDeclaresConfirmPreviewFields()
+    {
+        // The confirm-preview adds action ('preview'/'updated') + confirmationRequired to the
+        // success envelope so a client can distinguish a preview from an applied update.
+        String schema = new UpdateDatabaseTool().getOutputSchema();
+        assertNotNull(schema);
+        assertTrue("outputSchema must declare action", schema.contains("\"action\"")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("outputSchema must declare confirmationRequired", //$NON-NLS-1$
+            schema.contains("\"confirmationRequired\"")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testOutputSchemaDeclaresTerminateFields()
+    {
+        // The free-the-infobase behaviour reports terminatedClient on an applied update and
+        // willTerminateRunningClients on a preview, so a client can see the lock-freeing side effect.
+        String schema = new UpdateDatabaseTool().getOutputSchema();
+        assertNotNull(schema);
+        assertTrue("outputSchema must declare terminatedClient", //$NON-NLS-1$
+            schema.contains("\"terminatedClient\"")); //$NON-NLS-1$
+        assertTrue("outputSchema must declare willTerminateRunningClients", //$NON-NLS-1$
+            schema.contains("\"willTerminateRunningClients\"")); //$NON-NLS-1$
+        assertTrue("outputSchema must declare willCheckInfobaseSessions", //$NON-NLS-1$
+            schema.contains("\"willCheckInfobaseSessions\"")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void outputSchemaDeclaresSessionRefusalAndFailureFieldsWithMatchingShapes()
+    {
+        JsonObject updateProperties = JsonParser.parseString(
+            new UpdateDatabaseTool().getOutputSchema()).getAsJsonObject()
+            .getAsJsonObject("properties"); //$NON-NLS-1$
+        JsonObject sessionProperties = JsonParser.parseString(
+            new InfobaseSessionsTool().getOutputSchema()).getAsJsonObject()
+            .getAsJsonObject("properties"); //$NON-NLS-1$
+        SessionInfo blocker = new SessionInfo(
+            "22222222-2222-2222-2222-222222222222", 42L, "1CV8C", "User", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "desk", "2026-01-01T10:00:00", "2026-01-01T10:01:00", false); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        JsonObject blocking = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "Demo", "ServerApplication.Demo", List.of(blocker), true)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject caused = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException("Infobase is locked", new IllegalStateException("busy")), //$NON-NLS-1$ //$NON-NLS-2$
+            "Demo", "ServerApplication.Demo", false, false)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+
+        for (String emitted : blocking.keySet())
+        {
+            assertTrue("outputSchema omits blocking-session field: " + emitted, //$NON-NLS-1$
+                updateProperties.has(emitted));
+        }
+        for (String emitted : caused.keySet())
+        {
+            assertTrue("outputSchema omits ApplicationException field: " + emitted, //$NON-NLS-1$
+                updateProperties.has(emitted));
+        }
+        assertTrue("the opaque update failure marker must be visible to schema-driven clients", //$NON-NLS-1$
+            updateProperties.has("mutationOutcomeUnknown")); //$NON-NLS-1$
+        assertEquals(sessionProperties.getAsJsonObject("reachable").get("type"), //$NON-NLS-1$ //$NON-NLS-2$
+            updateProperties.getAsJsonObject("reachable").get("type")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(sessionProperties.getAsJsonObject("sessions").get("type"), //$NON-NLS-1$ //$NON-NLS-2$
+            updateProperties.getAsJsonObject("sessions").get("type")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals(sessionProperties.getAsJsonObject("sessions").getAsJsonObject("items"), //$NON-NLS-1$ //$NON-NLS-2$
+            updateProperties.getAsJsonObject("sessions").getAsJsonObject("items")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testDescriptionMentionsConfirmPreview()
+    {
+        // The always-loaded description must advertise the two-phase guard so an agent does not
+        // expect a bare call to mutate the infobase.
+        String desc = new UpdateDatabaseTool().getDescription();
+        assertTrue("description must mention the confirm-preview gate", //$NON-NLS-1$
+            desc.toLowerCase().contains("confirm")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testDescriptionAndGuideRequireSessionInspectionFirst()
+    {
+        String description = new UpdateDatabaseTool().getDescription();
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertTrue(description.contains("infobase_sessions(action='list')")); //$NON-NLS-1$
+        assertTrue(description.contains("action='terminate'")); //$NON-NLS-1$
+        assertTrue(guide.contains("checkInfobaseSessions")); //$NON-NLS-1$
+        assertTrue(guide.contains("reachable=false")); //$NON-NLS-1$
+        assertTrue(guide.contains("all=true, confirm=true")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testBlockingSessionsErrorOmitsPersonalDataAndNamesExactFollowUpCalls()
+    {
+        assertTrue(InfobaseSessionSupport.appliesTo(
+            applicationWithType(StandaloneServerSupport.WST_SERVER_APP_TYPE)));
+        SessionInfo blocker = new SessionInfo(
+            "22222222-2222-2222-2222-222222222222", 42L, "1CV8C", "User", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "desk", "2026-01-01T10:00:00", "2026-01-01T10:01:00", false); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        JsonObject result = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "Demo", "ServerApplication.Demo", List.of(blocker), false)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject expected = JsonParser.parseString("{" //$NON-NLS-1$
+            + "\"success\":false," //$NON-NLS-1$
+            + "\"error\":\"Database update refused because 1 non-agent infobase session(s) " //$NON-NLS-1$
+            + "remain: sessionId=22222222-2222-2222-2222-222222222222, sessionNumber=42, " //$NON-NLS-1$
+            + "applicationKind=1CV8C, startedAt=2026-01-01T10:00:00, " //$NON-NLS-1$
+            + "lastActiveAt=2026-01-01T10:01:00. Run infobase_sessions(action='list', " //$NON-NLS-1$
+            + "projectName='Demo', applicationId='ServerApplication.Demo') to see who holds them. " //$NON-NLS-1$
+            + "Clear them first with infobase_sessions(action='terminate', projectName='Demo', " //$NON-NLS-1$
+            + "applicationId='ServerApplication.Demo', all=true, confirm=true), then retry " //$NON-NLS-1$
+            + "update_database. Designer sessions are not blockers and are always excluded from " //$NON-NLS-1$
+            + "all=true.\",\"project\":\"Demo\"," //$NON-NLS-1$
+            + "\"applicationId\":\"ServerApplication.Demo\",\"reachable\":true," //$NON-NLS-1$
+            + "\"sessions\":[{\"sessionId\":\"22222222-2222-2222-2222-222222222222\"," //$NON-NLS-1$
+            + "\"sessionNumber\":42,\"applicationKind\":\"1CV8C\"," //$NON-NLS-1$
+            + "\"startedAt\":\"2026-01-01T10:00:00\"," //$NON-NLS-1$
+            + "\"lastActiveAt\":\"2026-01-01T10:01:00\"}]}") //$NON-NLS-1$
+            .getAsJsonObject();
+
+        assertEquals(expected, result);
+        JsonObject session = result.getAsJsonArray("sessions").get(0).getAsJsonObject(); //$NON-NLS-1$
+        assertTrue(session.has("sessionId")); //$NON-NLS-1$
+        assertTrue(session.has("sessionNumber")); //$NON-NLS-1$
+        assertTrue(session.has("applicationKind")); //$NON-NLS-1$
+        assertTrue(session.has("startedAt")); //$NON-NLS-1$
+        assertTrue(session.has("lastActiveAt")); //$NON-NLS-1$
+        assertFalse(session.has("userName")); //$NON-NLS-1$
+        assertFalse(session.has("host")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void blockingSessionsErrorKeepsDocumentedApplicationKindsWithOriginalCase()
+    {
+        for (String applicationKind : List.of(
+            "1CV8C", "Designer", "designer")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        {
+            SessionInfo blocker = new SessionInfo(
+                "22222222-2222-2222-2222-222222222222", 42L, applicationKind, //$NON-NLS-1$
+                "User", "desk", "2026-01-01T10:00:00", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                "2026-01-01T10:01:00", false); //$NON-NLS-1$
+            JsonObject result = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+                "Demo", "ServerApplication.Demo", List.of(blocker), false)) //$NON-NLS-1$ //$NON-NLS-2$
+                .getAsJsonObject();
+            JsonObject session = result.getAsJsonArray("sessions").get(0).getAsJsonObject(); //$NON-NLS-1$
+
+            assertEquals(applicationKind,
+                session.get("applicationKind").getAsString()); //$NON-NLS-1$
+            assertTrue(applicationKind, result.get("error").getAsString() //$NON-NLS-1$
+                .contains("applicationKind=" + applicationKind)); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void blockingSessionsErrorOmitsUnknownApplicationKindsButKeepsCountAndRemedy()
+    {
+        for (String applicationKind : List.of("Ivanov", "WKS-01")) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            SessionInfo blocker = new SessionInfo(
+                "22222222-2222-2222-2222-222222222222", 42L, applicationKind, //$NON-NLS-1$
+                "User", "desk", "2026-01-01T10:00:00", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                "2026-01-01T10:01:00", false); //$NON-NLS-1$
+            JsonObject result = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+                "Demo", "ServerApplication.Demo", List.of(blocker), false)) //$NON-NLS-1$ //$NON-NLS-2$
+                .getAsJsonObject();
+            JsonObject session = result.getAsJsonArray("sessions").get(0).getAsJsonObject(); //$NON-NLS-1$
+            String error = result.get("error").getAsString(); //$NON-NLS-1$
+
+            assertFalse(applicationKind, session.has("applicationKind")); //$NON-NLS-1$
+            assertFalse(applicationKind, result.toString().contains(applicationKind));
+            assertTrue(error.contains(
+                "Database update refused because 1 non-agent infobase session(s) remain")); //$NON-NLS-1$
+            assertTrue(error.contains("Clear them first with " //$NON-NLS-1$
+                + "infobase_sessions(action='terminate', projectName='Demo', " //$NON-NLS-1$
+                + "applicationId='ServerApplication.Demo', all=true, confirm=true), then retry " //$NON-NLS-1$
+                + "update_database.")); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void blockingSessionsErrorOmitsFieldsThatFailTheirClosedGrammars()
+    {
+        SessionInfo blocker = new SessionInfo(
+            "Ivanov", 42L, "Ivanov Ivanovich <ivanov@corp>", "User", "desk", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "started yesterday", "active whenever", false); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject result = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "Demo", "ServerApplication.Demo", List.of(blocker), false)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject session = result.getAsJsonArray("sessions").get(0).getAsJsonObject(); //$NON-NLS-1$
+        String error = result.get("error").getAsString(); //$NON-NLS-1$
+
+        assertEquals(1, session.size());
+        assertEquals(42, session.get("sessionNumber").getAsInt()); //$NON-NLS-1$
+        assertFalse(session.has("sessionId")); //$NON-NLS-1$
+        assertFalse(session.has("applicationKind")); //$NON-NLS-1$
+        assertFalse(session.has("startedAt")); //$NON-NLS-1$
+        assertFalse(session.has("lastActiveAt")); //$NON-NLS-1$
+        assertFalse(error.contains("Ivanov")); //$NON-NLS-1$
+        assertFalse(error.contains("started yesterday")); //$NON-NLS-1$
+        assertFalse(error.contains("active whenever")); //$NON-NLS-1$
+        assertTrue(error.contains("sessionNumber=42")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void blockingSessionsErrorKeepsCountAndRemedyWhenEveryFieldIsInvalid()
+    {
+        SessionInfo blocker = new SessionInfo(
+            "Ivanov", -42L, "Ivanov Ivanovich <ivanov@corp>", "User", "desk", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "started yesterday", "active whenever", false); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject result = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "Demo", "ServerApplication.Demo", List.of(blocker), false)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject session = result.getAsJsonArray("sessions").get(0).getAsJsonObject(); //$NON-NLS-1$
+        String error = result.get("error").getAsString(); //$NON-NLS-1$
+
+        assertEquals(0, session.size());
+        assertFalse(error.contains("sessionId=")); //$NON-NLS-1$
+        assertFalse(error.contains("sessionNumber=")); //$NON-NLS-1$
+        assertFalse(error.contains("applicationKind=")); //$NON-NLS-1$
+        assertFalse(error.contains("startedAt=")); //$NON-NLS-1$
+        assertFalse(error.contains("lastActiveAt=")); //$NON-NLS-1$
+        assertTrue(error.contains("1 non-agent infobase session(s) remain.")); //$NON-NLS-1$
+        assertTrue(error.contains("Run infobase_sessions(action='list', projectName='Demo', " //$NON-NLS-1$
+            + "applicationId='ServerApplication.Demo')")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void blockingSessionsErrorValidatesTheOriginalSessionNumberToken()
+    {
+        SessionInfo blocker = new SessionInfo(
+            "22222222-2222-2222-2222-222222222222", 42L, "1CV8C", "User", "desk", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "2026-09-12T01:19:07", "2026-09-12T01:20:07", false, "+42"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        JsonObject result = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "Demo", "ServerApplication.Demo", List.of(blocker), false)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject session = result.getAsJsonArray("sessions").get(0).getAsJsonObject(); //$NON-NLS-1$
+
+        assertFalse(session.has("sessionNumber")); //$NON-NLS-1$
+        assertFalse(result.get("error").getAsString().contains("sessionNumber=")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(session.has("sessionId")); //$NON-NLS-1$
+        assertTrue(session.has("applicationKind")); //$NON-NLS-1$
+        assertTrue(session.has("startedAt")); //$NON-NLS-1$
+        assertTrue(session.has("lastActiveAt")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnreachableSessionReasonQualifiesLaterUpdateFailure()
+    {
+        assertTrue(InfobaseSessionSupport.appliesTo(
+            applicationWithType(StandaloneServerSupport.WST_SERVER_APP_TYPE)));
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException("update failed"), false, false, //$NON-NLS-1$
+            "The standalone server is not running."); //$NON-NLS-1$
+
+        // The advice tail is the one #545 corrected: updateState is a CACHED comparison, not a
+        // completion signal, so it may not be offered as the way to check a failed update.
+        assertEquals("Unexpected error: update failed Pre-update infobase session inspection " //$NON-NLS-1$
+            + "was unreachable: The standalone server is not running. This was not treated as " //$NON-NLS-1$
+            + "proof that no foreign sessions existed. The update may have applied partially, " //$NON-NLS-1$
+            + "so do not retry blindly. EDT returned no authoritative stateAfter for this " //$NON-NLS-1$
+            + "failed call; get_applications updateState is cached and may lag, so inspect " //$NON-NLS-1$
+            + "the EDT Error Log first.", //$NON-NLS-1$
+            JsonParser.parseString(result).getAsJsonObject().get("error").getAsString()); //$NON-NLS-1$
+        assertTrue(result.contains("session inspection was unreachable")); //$NON-NLS-1$
+        assertTrue(result.contains("not treated as proof")); //$NON-NLS-1$
+        assertFalse("the session-reason path must not reintroduce the wording #545 removed", //$NON-NLS-1$
+            result.contains("check the actual state with get_applications (updateState)")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void nonStandaloneApplicationLeavesLaterUpdateFailureUnqualified()
+    {
+        IApplication application = applicationWithType(
+            "com.e1c.g5.dt.applications.type.infobase"); //$NON-NLS-1$
+        boolean checkInfobaseSessions = true;
+
+        assertFalse(checkInfobaseSessions && InfobaseSessionSupport.appliesTo(application));
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException("update failed"), false, false, null); //$NON-NLS-1$
+
+        assertFalse(result.contains("session inspection")); //$NON-NLS-1$
+        assertFalse(result.contains("infobase_sessions")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void exclusiveLockFailureNamesObservedDesignerWithoutPersonalData()
+    {
+        JsonObject result = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException("Infobase requires exclusive access"), "Demo", //$NON-NLS-1$ //$NON-NLS-2$
+            "ServerApplication.Demo", //$NON-NLS-1$
+            false, false, null,
+            List.of(DESIGNER_SESSION))).getAsJsonObject();
+        String error = result.get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains("Database update failed: Infobase requires exclusive access")); //$NON-NLS-1$
+        assertTrue(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertTrue(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+        assertFalse(result.toString().contains("agent@example.com")); //$NON-NLS-1$
+        assertFalse(result.toString().contains("private-host")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void russianInfobaseLockFailureNamesObservedDesignerSession()
+    {
+        String message = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c " //$NON-NLS-1$
+            + "\u043c\u043e\u043d\u043e\u043f\u043e\u043b\u044c\u043d\u043e " //$NON-NLS-1$
+            + "\u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u0442\u044c " //$NON-NLS-1$
+            + "\u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u043e\u043d\u043d\u0443\u044e " //$NON-NLS-1$
+            + "\u0431\u0430\u0437\u0443"; //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(message), "Demo", "ServerApplication.Demo", //$NON-NLS-1$ //$NON-NLS-2$
+            false, false, null, List.of(DESIGNER_SESSION))).getAsJsonObject()
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains(message));
+        assertTrue(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertTrue(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void exclusiveAccessToUnrelatedFilesDoesNotBlameObservedDesignerSession()
+    {
+        for (String message : List.of(
+            "Could not obtain exclusive access to workspace file", //$NON-NLS-1$
+            "Configuration file has an exclusive lock")) //$NON-NLS-1$
+        {
+            String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+                new ApplicationException(message), "Demo", "ServerApplication.Demo", //$NON-NLS-1$ //$NON-NLS-2$
+                false, false, null, List.of(DESIGNER_SESSION))).getAsJsonObject()
+                .get("error").getAsString(); //$NON-NLS-1$
+
+            assertTrue("the original unrelated failure must still be reported: " + error, //$NON-NLS-1$
+                error.contains(message));
+            assertFalse("a lock phrase without infobase context must not blame Designer: " + error, //$NON-NLS-1$
+                error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+            assertFalse("an unrelated file lock must not get the infobase-holder remedy: " + error, //$NON-NLS-1$
+                error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void russianNonInfobaseLockDoesNotBlameObservedDesignerSession()
+    {
+        String message = "\u041e\u0448\u0438\u0431\u043a\u0430 " //$NON-NLS-1$
+            + "\u043c\u043e\u043d\u043e\u043f\u043e\u043b\u044c\u043d\u043e\u0439 " //$NON-NLS-1$
+            + "\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438 " //$NON-NLS-1$
+            + "\u043e\u0431\u043b\u0430\u0441\u0442\u0438 " //$NON-NLS-1$
+            + "\u0434\u0430\u043d\u043d\u044b\u0445"; //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(message), "Demo", "ServerApplication.Demo", //$NON-NLS-1$ //$NON-NLS-2$
+            false, false, null, List.of(DESIGNER_SESSION))).getAsJsonObject()
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains(message));
+        assertFalse(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertFalse(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void russianRegisterWriteLockDoesNotBlameObservedDesignerSession()
+    {
+        String message = "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u044f " //$NON-NLS-1$
+            + "\u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u0430 " //$NON-NLS-1$
+            + "\u043f\u0440\u0438 \u0437\u0430\u043f\u0438\u0441\u0438 \u0432 " //$NON-NLS-1$
+            + "\u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u043e\u043d\u043d\u044b\u0439 " //$NON-NLS-1$
+            + "\u0440\u0435\u0433\u0438\u0441\u0442\u0440"; //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(message), "Demo", "ServerApplication.Demo", //$NON-NLS-1$ //$NON-NLS-2$
+            false, false, null, List.of(DESIGNER_SESSION))).getAsJsonObject()
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains(message));
+        assertFalse(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertFalse(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void russianLockedDataAreaDoesNotBlameObservedDesignerSession()
+    {
+        String message = "\u041e\u0431\u043b\u0430\u0441\u0442\u044c " //$NON-NLS-1$
+            + "\u0434\u0430\u043d\u043d\u044b\u0445 " //$NON-NLS-1$
+            + "\u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u043e\u043d\u043d\u043e\u0439 " //$NON-NLS-1$
+            + "\u0431\u0430\u0437\u044b " //$NON-NLS-1$
+            + "\u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u0430"; //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(message), "Demo", "ServerApplication.Demo", //$NON-NLS-1$ //$NON-NLS-2$
+            false, false, null, List.of(DESIGNER_SESSION))).getAsJsonObject()
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains(message));
+        assertFalse(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertFalse(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void diagnosedAuthenticationFailureDoesNotBlameObservedDesignerSession()
+    {
+        ApplicationException failure = new ApplicationException(
+            "Infobase authentication error", //$NON-NLS-1$
+            new InfobaseSynchronizationException("connection refused")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "Demo", "ServerApplication.Demo", false, false, null, //$NON-NLS-1$ //$NON-NLS-2$
+            List.of(DESIGNER_SESSION))).getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains("set_infobase_credentials")); //$NON-NLS-1$
+        assertFalse(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertFalse(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void diagnosedInternalInfoFailureDoesNotBlameObservedDesignerSession()
+    {
+        ApplicationException failure = new ApplicationException("Failed to load configuration", //$NON-NLS-1$
+            new RuntimeException("InternalInfo node is missing")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "Demo", "ServerApplication.Demo", false, false, null, //$NON-NLS-1$ //$NON-NLS-2$
+            List.of(DESIGNER_SESSION))).getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains("LoadConfigFromFiles")); //$NON-NLS-1$
+        assertFalse(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertFalse(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void unclassifiedUnexpectedFailureDoesNotGuessAtADesignerLockHolder()
+    {
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException("update failed"), false, false, null, //$NON-NLS-1$
+            List.of(DESIGNER_SESSION))).getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains("Unexpected error: update failed")); //$NON-NLS-1$
+        assertFalse(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertFalse(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void explicitUnexpectedLockFailureNamesTheObservedDesignerSession()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0, "Update failed", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID,
+            "Infobase is locked by another session")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new CoreException(status), false, false, null, List.of(DESIGNER_SESSION)))
+            .getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue(error.contains("Infobase is locked by another session")); //$NON-NLS-1$
+        assertTrue(error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        assertTrue(error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+        assertFalse(error.contains("agent@example.com")); //$NON-NLS-1$
+        assertFalse(error.contains("private-host")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void failedUpdateWithoutDesignerPreflightHasNoDesignerNote()
+    {
+        String result = UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException("exclusive lock"), "Demo", "ServerApplication.Demo", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            false, false, null, List.of());
+
+        assertFalse(result.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void portConflictDoesNotBlameObservedDesignerSession() throws Exception
+    {
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch watch =
+            LaunchUpdateDialogAutoConfirmer.beginConflictWatch(null);
+        try
+        {
+            Method recordPortConflict = watch.getClass().getDeclaredMethod(
+                "recordPortConflict", String.class, String.class); //$NON-NLS-1$
+            recordPortConflict.setAccessible(true);
+            recordPortConflict.invoke(watch, "port 8429 is already in use", //$NON-NLS-1$
+                LaunchUpdateDialogAutoConfirmer.PORT_REASON_POLICY);
+            Method formatPortConflict = UpdateDatabaseTool.class.getDeclaredMethod(
+                "portConflictError", watch.getClass(), String.class, String.class, //$NON-NLS-1$
+                boolean.class, String.class, List.class);
+            formatPortConflict.setAccessible(true);
+            String error = JsonParser.parseString((String)formatPortConflict.invoke(null,
+                watch, "ProjectB", "app-b", false, null, List.of(DESIGNER_SESSION))) //$NON-NLS-1$ //$NON-NLS-2$
+                .getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+
+            assertFalse("a diagnosed port conflict must not blame a Designer lock holder: " + error, //$NON-NLS-1$
+                error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+            assertFalse("a diagnosed port conflict must omit the unrelated Designer hint: " + error, //$NON-NLS-1$
+                error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        }
+        finally
+        {
+            watch.close();
+        }
+    }
+
+    @Test
+    public void declinedUpdateDoesNotBlameObservedDesignerSession() throws Exception
+    {
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch watch =
+            LaunchUpdateDialogAutoConfirmer.beginConflictWatch(null);
+        try
+        {
+            Method recordCancel = watch.getClass().getDeclaredMethod("record", String.class); //$NON-NLS-1$
+            recordCancel.setAccessible(true);
+            recordCancel.invoke(watch, LaunchUpdateDialogAutoConfirmer.CANCEL_REASON_POLICY);
+            Method formatCancellation = UpdateDatabaseTool.class.getDeclaredMethod(
+                "declinedUpdateResult", watch.getClass(), //$NON-NLS-1$
+                ExternalInfobaseChangesPolicy.class, String.class, List.class);
+            formatCancellation.setAccessible(true);
+            String error = JsonParser.parseString((String)formatCancellation.invoke(null, watch,
+                ExternalInfobaseChangesPolicy.OVERRIDE, null, List.of(DESIGNER_SESSION)))
+                .getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+
+            assertFalse("a declined external-changes update must not blame a Designer lock holder: " //$NON-NLS-1$
+                + error, error.contains("most likely holders of the exclusive lock")); //$NON-NLS-1$
+            assertFalse("a declined external-changes update must omit the Designer hint: " + error, //$NON-NLS-1$
+                error.contains("Pre-update session inspection saw app-id: Designer")); //$NON-NLS-1$
+        }
+        finally
+        {
+            watch.close();
+        }
+    }
+
+    @Test
+    public void testGuideDocumentsTwoPhaseConfirm()
+    {
+        // The guide documents the preview/confirm workflow (and the confirm parameter).
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertTrue("guide must document the preview phase", //$NON-NLS-1$
+            guide.toLowerCase().contains("preview")); //$NON-NLS-1$
+        assertTrue("guide must document the confirm parameter", guide.contains("confirm")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testDescriptionPointsToGuide()
+    {
+        // The slimmed description must still steer the agent to the on-demand guide.
+        String desc = new UpdateDatabaseTool().getDescription();
+        assertTrue(desc.contains("get_tool_guide('update_database')")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGuideNotEmptyAndHoldsMigratedDetail()
+    {
+        // The exhaustive detail moved out of the description/schema and into the guide:
+        // assert it is non-empty and still carries the migrated concepts.
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertNotNull(guide);
+        assertTrue(guide.length() > 0);
+        // Exclusive-lock guidance migrated from the old description.
+        assertTrue(guide.contains("terminate_launch")); //$NON-NLS-1$
+        assertTrue(guide.contains("exclusive")); //$NON-NLS-1$
+        // The guide must state that a DB restructure is EDT-confirmed and not controllable
+        // per call (the former autoRestructure parameter was a no-op and was removed).
+        assertTrue(guide.contains("restructure")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGuideDocumentsTerminateRunningClients()
+    {
+        // The default-on free-the-infobase behaviour (and its opt-out) must be documented so an
+        // agent knows the tool now terminates a running client itself instead of failing on the lock.
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertNotNull(guide);
+        assertTrue("guide must document the terminateRunningClients parameter", //$NON-NLS-1$
+            guide.contains("terminateRunningClients")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGuideDocumentsServerApplicationRunModeSideEffect()
+    {
+        // Ratchet: updating a standalone-server application through
+        // this tool STARTS the standalone server in RUN mode (EDT-native behaviour of
+        // the server-application update); a subsequent debug launch will then restart
+        // it. The guide must warn about this side effect and point at the launch tools'
+        // deferred (coordinated) update as the preferred path.
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertNotNull(guide);
+        assertTrue("guide must name the ServerApplication. id prefix",
+            guide.contains("ServerApplication.")); //$NON-NLS-1$
+        assertTrue("guide must warn the update starts the standalone server in RUN mode",
+            guide.contains("STARTS the standalone server in RUN mode")); //$NON-NLS-1$
+        assertTrue("guide must say a subsequent debug launch restarts the server",
+            guide.contains("restart that server in DEBUG mode")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGuideDocumentsLongRunningUpdatesAndHistoryRetrieval()
+    {
+        // #258: large-configuration updates run minutes and often outlast an MCP client's own
+        // call timeout; the guide must point the caller at get_mcp_history to retrieve the real
+        // outcome afterwards, and at the CLI workaround for the InternalInfo pipeline limitation.
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertNotNull(guide);
+        assertTrue("guide must document retrieving the outcome via get_mcp_history", //$NON-NLS-1$
+            guide.contains("get_mcp_history")); //$NON-NLS-1$
+        assertTrue("guide must document the CLI workaround for the InternalInfo limitation", //$NON-NLS-1$
+            guide.contains("LoadConfigFromFiles")); //$NON-NLS-1$
+    }
+
+    // ==================== #258 InternalInfo error hint (package-private surface) ====================
+
+    /**
+     * Mirrors the real EDT cause type reported in #258: its simple name matches the legacy
+     * {@code describeAuthHint} "Synchronization" keyword, so a naive detector would (wrongly)
+     * append the credentials hint to this InternalInfo failure.
+     */
+    private static class InfobaseSynchronizationException extends RuntimeException
+    {
+        private static final long serialVersionUID = 1L;
+
+        InfobaseSynchronizationException(String message)
+        {
+            super(message);
+        }
+    }
+
+    /** Mirrors the type-name detection branch of {@code describeInternalInfoHint}. */
+    private static class ConfigurationLoadException extends RuntimeException
+    {
+        private static final long serialVersionUID = 1L;
+
+        ConfigurationLoadException(String message)
+        {
+            super(message);
+        }
+
+        ConfigurationLoadException(String message, Throwable cause)
+        {
+            super(message, cause);
+        }
+    }
+
+    @Test
+    public void cancelledConfigurationLoadDoesNotDiagnoseInvalidXml()
+    {
+        InfobaseSynchronizationException sync = new InfobaseSynchronizationException("Synchronization failed");
+        sync.initCause(new ConfigurationLoadException("Command execution cancelled"));
+        ApplicationException failure = new ApplicationException("Platform interaction failed", sync);
+        JsonObject result = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "Project", "app", false)).getAsJsonObject();
+        String error = result.get("error").getAsString();
+
+        assertFalse(result.get("success").getAsBoolean());
+        assertTrue(error, error.contains("server reported that the configuration load was cancelled"));
+        assertTrue(error, error.contains("initiator is unknown"));
+        assertTrue(error, error.contains("Check the infobase state"));
+        assertTrue(error, error.contains("Do not retry blindly"));
+        assertFalse(error, error.contains("rejected the configuration XML"));
+        assertFalse(error, error.contains("get_project_errors"));
+        assertFalse(error, error.contains("set_infobase_credentials"));
+    }
+
+    @Test
+    public void nestedCancellationMessageIsRecognizedOnlyInsideALoadFailure()
+    {
+        ApplicationException load = new ApplicationException("Update failed",
+            new ConfigurationLoadException(null, new RuntimeException("Command execution cancelled")));
+        assertTrue(UpdateDatabaseTool.describeInternalInfoHint(load)
+            .contains("initiator is unknown"));
+        assertEquals("", UpdateDatabaseTool.describeInternalInfoHint(new ApplicationException(
+            "Command execution cancelled")));
+    }
+
+    @Test
+    public void genericConfigurationLoadDoesNotAssertXmlRejection()
+    {
+        String hint = UpdateDatabaseTool.describeInternalInfoHint(new ApplicationException("Update failed",
+            new ConfigurationLoadException(null)));
+        assertTrue(hint, hint.contains("configuration load failed"));
+        assertFalse(hint, hint.contains("rejected the configuration XML"));
+        assertFalse(hint, hint.contains("cancelled"));
+    }
+
+    @Test
+    public void timeoutGuideTreatsMissingCompletionAsUnknown()
+    {
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertTrue(guide, guide.contains("unknown outcome"));
+        assertTrue(guide, guide.contains("includeBodies=true"));
+        assertTrue(guide, guide.contains("Command execution cancelled"));
+        assertTrue(guide, guide.contains("does not prove that nothing happened"));
+        assertFalse(guide, guide.contains("keeps running in EDT to completion"));
+    }
+
+    @Test
+    public void testInternalInfoHintMatchesMarkerInNestedCause()
+    {
+        // The real Russian EDT message reported in #258.
+        Throwable cause = new RuntimeException(
+            "Отсутствует внутренняя информация (узел InternalInfo) для объекта Configuration"); //$NON-NLS-1$
+        ApplicationException e = new ApplicationException("Failed to load configuration", cause); //$NON-NLS-1$
+
+        String hint = UpdateDatabaseTool.describeInternalInfoHint(e);
+
+        assertFalse("hint must be non-empty for the InternalInfo marker", hint.isEmpty()); //$NON-NLS-1$
+        assertTrue("hint must point at the CLI workaround", //$NON-NLS-1$
+            hint.contains("LoadConfigFromFiles")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testInternalInfoHintEmptyForUnrelatedException()
+    {
+        ApplicationException e = new ApplicationException("Unrelated failure", //$NON-NLS-1$
+            new RuntimeException("some other cause")); //$NON-NLS-1$
+
+        String hint = UpdateDatabaseTool.describeInternalInfoHint(e);
+
+        assertEquals("", hint); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testInternalInfoHintMatchesMarkerThreeLevelsDeep()
+    {
+        Throwable level3 = new RuntimeException("InternalInfo node is missing"); //$NON-NLS-1$
+        Throwable level2 = new RuntimeException("wrapping level 2", level3); //$NON-NLS-1$
+        Throwable level1 = new RuntimeException("wrapping level 1", level2); //$NON-NLS-1$
+        ApplicationException e = new ApplicationException("top-level failure", level1); //$NON-NLS-1$
+
+        String hint = UpdateDatabaseTool.describeInternalInfoHint(e);
+
+        assertFalse("hint must match a marker 3 cause-hops deep", hint.isEmpty()); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testConfigurationLoadFailureWithoutMarkerDoesNotClaimInternalInfo()
+    {
+        // Issue #382: a load can fail for a reason that has nothing to do with InternalInfo (there,
+        // a form attribute written without its view/edit blocks, reported as an XDTO property
+        // mismatch). Answering the type name alone with "the InternalInfo node is missing" asserts a
+        // cause that is not there and points at a workaround that cannot help.
+        ApplicationException e = new ApplicationException("Load failed", //$NON-NLS-1$
+            new ConfigurationLoadException(
+                "XDTO exception. Property and data element mismatch: Property: 'Type'")); //$NON-NLS-1$
+
+        String hint = UpdateDatabaseTool.describeInternalInfoHint(e);
+
+        assertFalse("a configuration load failure must still be explained", hint.isEmpty()); //$NON-NLS-1$
+        assertFalse("must NOT claim the InternalInfo node is missing", //$NON-NLS-1$
+            hint.contains("InternalInfo")); //$NON-NLS-1$
+        assertFalse("must NOT push the CLI workaround for an unrelated failure", //$NON-NLS-1$
+            hint.contains("LoadConfigFromFiles")); //$NON-NLS-1$
+        assertTrue("must surface the platform's own message instead of inventing a cause", //$NON-NLS-1$
+            hint.contains("Property: 'Type'")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testInternalInfoMarkerBeneathGenericLoadExceptionStillWins()
+    {
+        // The marker pass runs BEFORE the type-name fallback, so a generic outer load exception
+        // cannot mask a real InternalInfo failure deeper in the chain.
+        ApplicationException e = new ApplicationException("Load failed", //$NON-NLS-1$
+            new ConfigurationLoadException("generic load failure", //$NON-NLS-1$
+                new RuntimeException("InternalInfo node is missing for object Configuration"))); //$NON-NLS-1$
+
+        String hint = UpdateDatabaseTool.describeInternalInfoHint(e);
+
+        assertTrue("the deeper InternalInfo marker must win over the generic wrapper", //$NON-NLS-1$
+            hint.contains("LoadConfigFromFiles")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testInternalInfoHintTakesPriorityOverAuthHintInErrorResult()
+    {
+        // Reproduces #258 problem (1): the cause is an InfobaseSynchronizationException (which
+        // would trip the legacy "Synchronization" auth-hint keyword) AND its message carries the
+        // InternalInfo marker. The final error JSON must carry the InternalInfo hint and must NOT
+        // carry the misleading credentials hint.
+        ApplicationException e = new ApplicationException("Failed to load configuration", //$NON-NLS-1$
+            new InfobaseSynchronizationException("missing InternalInfo node")); //$NON-NLS-1$
+
+        String result =
+            UpdateDatabaseTool.buildApplicationErrorResult(e, "MyProject", "app1", false); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertTrue("result must carry the InternalInfo hint", //$NON-NLS-1$
+            result.contains("LoadConfigFromFiles")); //$NON-NLS-1$
+        assertFalse("result must NOT carry the misleading credentials hint", //$NON-NLS-1$
+            result.contains("set_infobase_credentials")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAuthHintStillAppliesWhenNoInternalInfoMarker()
+    {
+        // Unchanged today's behaviour: an actual auth/connection/sync failure with no InternalInfo
+        // marker anywhere in the cause chain must still get the credentials hint.
+        ApplicationException e = new ApplicationException("Failed to load configuration", //$NON-NLS-1$
+            new InfobaseSynchronizationException("connection refused")); //$NON-NLS-1$
+
+        String result =
+            UpdateDatabaseTool.buildApplicationErrorResult(e, "MyProject", "app1", false); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertTrue("result must still carry the credentials hint when InternalInfo does not match", //$NON-NLS-1$
+            result.contains("set_infobase_credentials")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void blockingSessionRefusalMentionsItsOwnSweepOnlyWhenOneHappened()
+    {
+        fm.giper.edt.mcp.server.utils.InfobaseSessionSupport.SessionInfo blocker =
+            new fm.giper.edt.mcp.server.utils.InfobaseSessionSupport.SessionInfo(
+                "11111111-1111-1111-1111-111111111111", 6L, //$NON-NLS-1$
+            "1CV8C", "", "", "2026-09-11T22:07:13", "2026-09-11T22:07:19", false); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+        String swept = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "ProjectB", "app-b", List.of(blocker), true)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+        String untouched = JsonParser.parseString(UpdateDatabaseTool.blockingSessionsError(
+            "ProjectB", "app-b", List.of(blocker), false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("a refusal after our own sweep must say the listed session may be that client: " //$NON-NLS-1$
+            + swept, swept.contains("already terminated a client it had launched")); //$NON-NLS-1$
+        assertFalse("with no sweep there is no client of ours to blame, so the note must be absent: " //$NON-NLS-1$
+            + untouched, untouched.contains("already terminated a client it had launched")); //$NON-NLS-1$
+        assertTrue("both forms must still name the clearing call", //$NON-NLS-1$
+            swept.contains("infobase_sessions(action='terminate'") //$NON-NLS-1$
+                && untouched.contains("infobase_sessions(action='terminate'")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testGenericFailureAddsTerminalCauseWithoutChangingSpecificRefusals() throws Exception
+    {
+        ApplicationException generic = new ApplicationException(
+            "Infobase connection runtime session open error", //$NON-NLS-1$
+            new RuntimeException("Infobase authentication error", //$NON-NLS-1$
+                new IllegalStateException("Auth fail"))); //$NON-NLS-1$
+        String genericError = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            generic, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+        // Punctuated, because this is the message the caller reads at its most confused moment. The
+        // platform headline ends without a period and the credentials hint that follows is its own
+        // sentence, so an unterminated clause yields "... open error Caused by: ... Auth fail If the
+        // infobase requires ..." - three sentences run into one.
+        assertTrue("the generic path must compose the selected headline with the terminal cause", //$NON-NLS-1$
+            genericError.contains("Database update failed: Infobase connection runtime session " //$NON-NLS-1$
+                + "open error. Caused by: java.lang.IllegalStateException: Auth fail.")); //$NON-NLS-1$
+        assertFalse("the clause must not run into the headline: " + genericError, //$NON-NLS-1$
+            genericError.contains("open error Caused by")); //$NON-NLS-1$
+
+        // A failure with nothing deeper to say must read EXACTLY as it did before the cause chain
+        // was surfaced - the composition may add a clause, never punctuation of its own.
+        String soleMessage = "Infobase connection runtime session open error"; //$NON-NLS-1$
+        String withoutCause = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(soleMessage), "ProjectB", "app-b", false)) //$NON-NLS-1$ //$NON-NLS-2$
+            .getAsJsonObject().get("error").getAsString(); //$NON-NLS-1$
+        assertTrue("a single-message failure must gain no Caused by clause: " + withoutCause, //$NON-NLS-1$
+            withoutCause.startsWith("Database update failed: " + soleMessage) //$NON-NLS-1$
+                && !withoutCause.contains("Caused by")); //$NON-NLS-1$
+
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch portWatch =
+            LaunchUpdateDialogAutoConfirmer.beginConflictWatch(null);
+        try
+        {
+            Method recordPortConflict = portWatch.getClass().getDeclaredMethod(
+                "recordPortConflict", String.class, String.class); //$NON-NLS-1$
+            recordPortConflict.setAccessible(true);
+            recordPortConflict.invoke(portWatch, "port 8429 is already in use", //$NON-NLS-1$
+                LaunchUpdateDialogAutoConfirmer.PORT_REASON_POLICY);
+            Method formatPortConflict = UpdateDatabaseTool.class.getDeclaredMethod(
+                "portConflictError", portWatch.getClass(), String.class, String.class, //$NON-NLS-1$
+                boolean.class, String.class);
+            formatPortConflict.setAccessible(true);
+            JsonObject portResult = JsonParser.parseString((String)formatPortConflict.invoke(null,
+                portWatch, "ProjectB", "app-b", false, null)).getAsJsonObject(); //$NON-NLS-1$ //$NON-NLS-2$
+            String expectedPortError = "Database update failed: " //$NON-NLS-1$
+                + LaunchUpdateDialogAutoConfirmer.portConflictError(
+                    "port 8429 is already in use", //$NON-NLS-1$
+                    LaunchUpdateDialogAutoConfirmer.PORT_REASON_POLICY)
+                + " The infobase was NOT changed."; //$NON-NLS-1$
+            assertEquals("a readable session check leaves the port-conflict path byte-for-byte unchanged", //$NON-NLS-1$
+                expectedPortError, portResult.get("error").getAsString()); //$NON-NLS-1$
+
+            // An unreadable session lookup QUALIFIES this failure: it appends, never rewrites, and
+            // never reads as proof that no foreign session existed.
+            String qualifiedPortError = JsonParser.parseString((String)formatPortConflict.invoke(
+                null, portWatch, "ProjectB", "app-b", false, //$NON-NLS-1$ //$NON-NLS-2$
+                "the standalone server is not running")).getAsJsonObject() //$NON-NLS-1$
+                .get("error").getAsString(); //$NON-NLS-1$
+            assertTrue("the session note must APPEND to the unchanged sentence: " + qualifiedPortError, //$NON-NLS-1$
+                qualifiedPortError.startsWith(expectedPortError));
+            assertTrue("an unreadable check must not read as proof of no sessions: " + qualifiedPortError, //$NON-NLS-1$
+                qualifiedPortError.contains("not treated as proof that no foreign sessions existed")); //$NON-NLS-1$
+        }
+        finally
+        {
+            portWatch.close();
+        }
+
+        LaunchUpdateDialogAutoConfirmer.ConflictWatch cancelWatch =
+            LaunchUpdateDialogAutoConfirmer.beginConflictWatch(null);
+        try
+        {
+            Method recordCancel = cancelWatch.getClass().getDeclaredMethod("record", String.class); //$NON-NLS-1$
+            recordCancel.setAccessible(true);
+            recordCancel.invoke(cancelWatch, LaunchUpdateDialogAutoConfirmer.CANCEL_REASON_POLICY);
+            Method formatCancellation = UpdateDatabaseTool.class.getDeclaredMethod(
+                "declinedUpdateResult", cancelWatch.getClass(), //$NON-NLS-1$
+                ExternalInfobaseChangesPolicy.class, String.class);
+            formatCancellation.setAccessible(true);
+            JsonObject cancelResult = JsonParser.parseString((String)formatCancellation.invoke(null,
+                cancelWatch, ExternalInfobaseChangesPolicy.OVERRIDE, null)).getAsJsonObject();
+            String expectedCancelError = ExternalInfobaseChangesPolicy.declinedUpdateError(
+                ExternalInfobaseChangesPolicy.OVERRIDE,
+                LaunchUpdateDialogAutoConfirmer.CANCEL_REASON_POLICY);
+            assertEquals("a readable session check leaves the cancellation path byte-for-byte unchanged", //$NON-NLS-1$
+                expectedCancelError, cancelResult.get("error").getAsString()); //$NON-NLS-1$
+
+            String qualifiedCancelError = JsonParser.parseString((String)formatCancellation.invoke(
+                null, cancelWatch, ExternalInfobaseChangesPolicy.OVERRIDE,
+                "ibcmd was not found in the runtime")).getAsJsonObject() //$NON-NLS-1$
+                .get("error").getAsString(); //$NON-NLS-1$
+            assertTrue("the session note must APPEND to the unchanged sentence: " + qualifiedCancelError, //$NON-NLS-1$
+                qualifiedCancelError.startsWith(expectedCancelError));
+            assertTrue("an unreadable check must not read as proof of no sessions: " + qualifiedCancelError, //$NON-NLS-1$
+                qualifiedCancelError.contains("not treated as proof that no foreign sessions existed")); //$NON-NLS-1$
+        }
+        finally
+        {
+            cancelWatch.close();
+        }
+    }
+
+    @Test
+    public void testApplicationFailureIncludesExceptionFreeStatusDetailBelowCauseHop()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0,
+            "Infobase authentication error", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "Auth fail")); //$NON-NLS-1$
+        ApplicationException failure = new ApplicationException(
+            "Infobase connection runtime session open error", new CoreException(status)); //$NON-NLS-1$
+
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the exception-free child below the established cause hop must reach the caller: "
+            + error, error.contains("Infobase connection runtime session open error. " //$NON-NLS-1$
+                + "Caused by: Auth fail.")); //$NON-NLS-1$
+        assertFalse("the copied MultiStatus headline is not the actionable cause: " + error,
+            error.contains("Caused by: Infobase authentication error")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureDoesNotUseInformationalStatusChildAsCause()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0, "", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "")); //$NON-NLS-1$
+        status.add(new Status(IStatus.CANCEL, STATUS_PLUGIN_ID, "")); //$NON-NLS-1$
+        status.add(new Status(IStatus.INFO, STATUS_PLUGIN_ID, "Cleanup completed")); //$NON-NLS-1$
+        ApplicationException failure = new ApplicationException(
+            "Infobase connection runtime session open error", new CoreException(status)); //$NON-NLS-1$
+
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertFalse("an informational sibling is not a cause: " + error, //$NON-NLS-1$
+            error.contains("Cleanup completed")); //$NON-NLS-1$
+        assertFalse("blank failing children establish no cause clause: " + error, //$NON-NLS-1$
+            error.contains("Caused by")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureStillUsesCausalHopsOwnStatusMessage()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0, "Connection refused", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "")); //$NON-NLS-1$
+        status.add(new Status(IStatus.INFO, STATUS_PLUGIN_ID, "Cleanup completed")); //$NON-NLS-1$
+        ApplicationException failure = new ApplicationException(
+            "Infobase connection runtime session open error", new CoreException(status)); //$NON-NLS-1$
+
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the causal hop's own statement remains eligible: " + error, //$NON-NLS-1$
+            error.contains("Caused by: Connection refused.")); //$NON-NLS-1$
+        assertFalse("an informational sibling must not displace the hop's own statement: " + error, //$NON-NLS-1$
+            error.contains("Cleanup completed")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureDoesNotRepeatFormattedHeadlineAsCause()
+    {
+        ApplicationException failure =
+            new ApplicationException(new IllegalStateException("Auth fail")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            failure, "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the selected headline must still be present: " + error, //$NON-NLS-1$
+            error.startsWith("Database update failed: java.lang.IllegalStateException: Auth fail")); //$NON-NLS-1$
+        assertFalse("the formatted headline must not be repeated in a Caused by clause: " + error, //$NON-NLS-1$
+            error.contains("Caused by")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testApplicationFailureDoesNotReverseMultiStatusParentAndChild()
+    {
+        MultiStatus status = new MultiStatus(STATUS_PLUGIN_ID, 0,
+            "Database update failed", null); //$NON-NLS-1$
+        status.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "Auth fail")); //$NON-NLS-1$
+        String error = JsonParser.parseString(UpdateDatabaseTool.buildApplicationErrorResult(
+            new ApplicationException(status), "ProjectB", "app-b", false)).getAsJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+            .get("error").getAsString(); //$NON-NLS-1$
+
+        assertTrue("the child remains the selected headline: " + error, //$NON-NLS-1$
+            error.startsWith("Database update failed: Auth fail")); //$NON-NLS-1$
+        assertFalse("the parent must never be presented as the child's cause: " + error, //$NON-NLS-1$
+            error.contains("Caused by: Database update failed")); //$NON-NLS-1$
+        assertFalse("there is no proven deeper diagnosis, so there must be no cause clause: " //$NON-NLS-1$
+            + error, error.contains("Caused by")); //$NON-NLS-1$
+    }
+
+    // ============ Unexpected (non-ApplicationException) failures, #453 ============
+
+    /** Plugin id used for the synthetic statuses below; no live EDT is involved. */
+    private static final String STATUS_PLUGIN_ID = "fm.giper.edt.mcp.server"; //$NON-NLS-1$
+
+    /**
+     * The port-reassignment note, spelled out in full. Pinning fragments let most of the sentence
+     * be rewritten while two probes still matched; this note states that EDT permanently changed
+     * the address clients must use, so the claim is pinned as the whole sentence it makes. The
+     * em dash goes through {@code \\u2014} so the pin cannot be broken by the source encoding.
+     */
+    private static final String PORT_REASSIGN_NOTE =
+        " NOTE: before this failure EDT had already moved the standalone server to free ports " //$NON-NLS-1$
+            + "and rewritten its configuration (standaloneServerPortConflict=reassign) \u2014 that " //$NON-NLS-1$
+            + "change stands."; //$NON-NLS-1$
+
+    /** The next-step sentence, spelled out in full for the same reason as the note above. */
+    private static final String NEXT_STEP =
+        " The update may have applied partially, so do not retry blindly. EDT returned no " //$NON-NLS-1$
+            + "authoritative stateAfter for this failed call; get_applications updateState is " //$NON-NLS-1$
+            + "cached and may lag, so inspect the EDT Error Log first."; //$NON-NLS-1$
+
+    @Test
+    public void testUnexpectedFailureWithNoMessageIsNotRenderedAsNull()
+    {
+        // #453: the branch concatenated e.getMessage(), so a platform exception that carries no
+        // message of its own reached the agent as the literal "Unexpected error: null" - from a
+        // tool that had just changed an infobase irreversibly.
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException(), false, false);
+
+        assertFalse("a message-less failure must not render as the literal null", //$NON-NLS-1$
+            result.contains("Unexpected error: null")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureWithNoMessageNamesTheFailureType()
+    {
+        // The other half: not rendering "null" is worthless if what replaces it says nothing. When
+        // the failure carries no text anywhere, the type plus "no message" IS the diagnosis.
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException(), false, false);
+
+        assertTrue("the failure type must be named when there is no text anywhere", //$NON-NLS-1$
+            result.contains("Unexpected error: IllegalStateException " //$NON-NLS-1$
+                + "(the platform reported no message)")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureCarriesTheMessageWhenTheExceptionHasOne()
+    {
+        // The ordinary case, which must not be collateral damage of the two above: an exception
+        // that DOES carry text hands that text to the caller unchanged, immediately after the
+        // prefix. (PlatformFailures trims the edges, so a padded message loses only its padding.)
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException("Infobase file is read-only"), false, false); //$NON-NLS-1$
+
+        assertTrue("an exception's own message must reach the caller undistorted", //$NON-NLS-1$
+            result.contains("Unexpected error: Infobase file is read-only")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureReadsTheReasonFromTheStatusTree()
+    {
+        // The realistic platform shape: EDT reports the failure as a MultiStatus whose own message
+        // is empty while the reason sits in a child, and CoreException copies that empty headline
+        // into getMessage(). Concatenating getMessage() emitted "Unexpected error: " and stopped.
+        MultiStatus root = new MultiStatus(STATUS_PLUGIN_ID, 0, "", null); //$NON-NLS-1$
+        root.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID,
+            "Infobase is locked by another session")); //$NON-NLS-1$
+
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new CoreException(root), false, false);
+
+        assertTrue("the child status reason must reach the caller", //$NON-NLS-1$
+            result.contains("Infobase is locked by another session")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureWithANonEmptyHeadlineReportsTheFailingChild()
+    {
+        // A MultiStatus whose headline is NOT empty. PlatformFailures.describe consults the child
+        // statuses BEFORE the throwable's own message whenever the status has children, so here the
+        // caller gets the child's reason instead of the headline the old getMessage() emitted.
+        // This is describe's general behaviour, shared with the catch (ApplicationException) branch
+        // one level up - making both branches behave alike is the point of #453 - so it is pinned
+        // here as a deliberate property, not left to be rediscovered as a surprise.
+        MultiStatus root = new MultiStatus(STATUS_PLUGIN_ID, 0,
+            "Update of application app1 failed", null); //$NON-NLS-1$
+        root.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "Connection refused")); //$NON-NLS-1$
+
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new CoreException(root), false, false);
+
+        assertTrue("the failing child names the reason, so it is what reaches the caller", //$NON-NLS-1$
+            result.contains("Unexpected error: Connection refused")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureWithANonEmptyHeadlineDropsTheHeadline()
+    {
+        // The cost of the property pinned above, stated explicitly: the headline the pre-#453 code
+        // would have shown does NOT survive. Accepted knowingly - the headline is the generic
+        // wrapper text, the child is the reason - and identical to what the ApplicationException
+        // branch has already been doing, which is exactly the consistency #453 is after.
+        MultiStatus root = new MultiStatus(STATUS_PLUGIN_ID, 0,
+            "Update of application app1 failed", null); //$NON-NLS-1$
+        root.add(new Status(IStatus.ERROR, STATUS_PLUGIN_ID, "Connection refused")); //$NON-NLS-1$
+
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new CoreException(root), false, false);
+
+        assertFalse("the MultiStatus headline is deliberately superseded by the child", //$NON-NLS-1$
+            result.contains("Update of application app1 failed")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureNamesTheNextStep()
+    {
+        // update_database is irreversible and can fail after a partial restructuring, so the one
+        // reaction the message must not invite is an immediate blind re-call. Pinned in full: an
+        // error that only diagnoses does not meet this repo's bar of telling the caller what to do.
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException(), false, false);
+
+        assertTrue("the failure must tell the caller what to do next", //$NON-NLS-1$
+            result.contains(NEXT_STEP));
+        assertFalse(result.contains("check the actual state with get_applications (updateState)")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void missingReturnedStateNamesStateAfterInsteadOfLaggyVerification()
+    {
+        IApplication application = mock(IApplication.class);
+        when(application.getName()).thenReturn("Main infobase"); //$NON-NLS-1$
+
+        String result = UpdateDatabaseTool.buildUpdatedResult("Project", "app", application, //$NON-NLS-1$ //$NON-NLS-2$
+            ApplicationUpdateType.INCREMENTAL, ApplicationUpdateState.INCREMENTAL_UPDATE_REQUIRED,
+            null, false, false);
+
+        assertTrue(result.contains("\"stateAfter\":\"UNKNOWN\"")); //$NON-NLS-1$
+        assertTrue(result.contains("stateAfter is UNKNOWN")); //$NON-NLS-1$
+        assertTrue(result.contains("authoritative post-update answer")); //$NON-NLS-1$
+        assertFalse(result.contains("verify with get_applications (updateState)")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureStatesThePortReassignmentVerbatim()
+    {
+        // The re-address outlives this call, so it must survive the change of message source: EDT
+        // has already rewritten the standalone server configuration and that change stands.
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new IllegalStateException(), false, true);
+
+        assertTrue("the port-reassignment note must be kept word for word", //$NON-NLS-1$
+            result.contains(PORT_REASSIGN_NOTE));
+    }
+
+    @Test
+    public void testTheNextStepFollowsThePortNoteInsteadOfSplittingIt()
+    {
+        // Position, not just presence: the note qualifies the failure it is attached to, so the
+        // next-step sentence is appended AFTER it and may neither be inserted into the middle of
+        // it nor push it away from the description. The junction is the cheapest witness of both.
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new IllegalStateException(), false, true);
+
+        assertTrue("the next step must come after the intact port note", //$NON-NLS-1$
+            result.contains("change stands. The update may have applied partially")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureReportsThePortsReassignedFlag()
+    {
+        // The machine-readable half of the same fact, for a client that routes on fields.
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new IllegalStateException(), false, true);
+
+        assertTrue("the machine-readable flag must be kept", //$NON-NLS-1$
+            result.contains("standaloneServerPortsReassigned")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureWithoutReassignmentOmitsThePortNote()
+    {
+        // The other half of the same condition: the note is a claim about what EDT did, so it must
+        // not appear when nothing was re-addressed. Pinning only the true branch would let the note
+        // be emitted unconditionally and still pass.
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException(), false, false);
+
+        assertFalse("no re-address happened, so the note must be absent", //$NON-NLS-1$
+            result.contains("moved the standalone server to free ports")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureWithoutReassignmentOmitsThePortsReassignedKey()
+    {
+        // Same for the field: a flag written as false is not the same wire shape as an absent one,
+        // and clients that test for the key's presence would read it as a re-address that never
+        // happened.
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException(), false, false);
+
+        assertFalse("no re-address happened, so the flag must be absent", //$NON-NLS-1$
+            result.contains("standaloneServerPortsReassigned")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureReportsTheTerminatedClient()
+    {
+        // A client was killed to let the update through; that side effect is reported whatever the
+        // update then did, including when it failed for an unrelated reason.
+        String result =
+            UpdateDatabaseTool.buildUnexpectedErrorResult(new IllegalStateException(), true, false);
+
+        assertTrue("the terminatedClient flag must be kept", //$NON-NLS-1$
+            result.contains("terminatedClient")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testUnexpectedFailureWithoutTerminationOmitsTheTerminatedClientKey()
+    {
+        // The missing half of the pair: nothing was terminated, so the field must be absent rather
+        // than present-and-false. Without this pin an unconditional write passes every other test.
+        String result = UpdateDatabaseTool.buildUnexpectedErrorResult(
+            new IllegalStateException(), false, false);
+
+        assertFalse("no client was terminated, so the flag must be absent", //$NON-NLS-1$
+            result.contains("terminatedClient")); //$NON-NLS-1$
+    }
+
+    // ==================== Argument validation (no live launch manager needed) ====================
+
+    @Test
+    public void testMissingProjectName()
+    {
+        // No launchConfigurationName -> project+application mode -> projectName required.
+        Map<String, String> params = new HashMap<>();
+        String result = new UpdateDatabaseTool().execute(params);
+        assertTrue(result.contains("projectName is required")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testMissingApplicationId()
+    {
+        Map<String, String> params = new HashMap<>();
+        params.put("projectName", "MyProject"); //$NON-NLS-1$ //$NON-NLS-2$
+        String result = new UpdateDatabaseTool().execute(params);
+        assertTrue(result.contains("applicationId is required")); //$NON-NLS-1$
+    }
+
+    // ============ #379: fallback for a launch config with no application binding ============
+    //
+    // The direct projectName+applicationId mode is NOT affected: applicationId stays
+    // mandatory there (testMissingApplicationId above pins that), so this fallback is
+    // reachable only through launchConfigurationName.
+
+    private static final String PROJECT = "MyProject"; //$NON-NLS-1$
+    private static final String CONFIG = "MyProject / ThinClient"; //$NON-NLS-1$
+
+    private static IApplication app(String id, String name)
+    {
+        IApplication application = mock(IApplication.class);
+        when(application.getId()).thenReturn(id);
+        when(application.getName()).thenReturn(name);
+        return application;
+    }
+
+    private static IApplication applicationWithType(String typeId)
+    {
+        IApplicationType type = mock(IApplicationType.class);
+        when(type.getId()).thenReturn(typeId);
+        IApplication application = mock(IApplication.class);
+        when(application.getType()).thenReturn(type);
+        return application;
+    }
+
+    /**
+     * A mocked runtime-client launch configuration carrying the two attributes; {@code appId}
+     * {@code null} means the read THROWS (the "unreadable", not "unbound", case).
+     */
+    private static ILaunchConfiguration runtimeClientConfig(String project, String appId)
+        throws CoreException
+    {
+        ILaunchConfigurationType type = mock(ILaunchConfigurationType.class);
+        when(type.getIdentifier()).thenReturn(LaunchConfigUtils.LAUNCH_CONFIG_TYPE_ID);
+        ILaunchConfiguration cfg = mock(ILaunchConfiguration.class);
+        when(cfg.getName()).thenReturn(CONFIG);
+        when(cfg.getType()).thenReturn(type);
+        when(cfg.getAttribute(LaunchConfigUtils.ATTR_PROJECT_NAME, "")).thenReturn(project); //$NON-NLS-1$
+        if (appId == null)
+        {
+            when(cfg.getAttribute(LaunchConfigUtils.ATTR_APPLICATION_ID, "")) //$NON-NLS-1$
+                .thenThrow(new CoreException(new Status(IStatus.ERROR, "test", "attribute is not a String"))); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        else
+        {
+            when(cfg.getAttribute(LaunchConfigUtils.ATTR_APPLICATION_ID, "")).thenReturn(appId); //$NON-NLS-1$
+        }
+        return cfg;
+    }
+
+    @Test
+    public void testLaunchConfigTargetTakesBothFromABoundConfiguration() throws CoreException
+    {
+        UpdateDatabaseTool.LaunchTarget target = UpdateDatabaseTool.resolveLaunchConfigTarget(
+            runtimeClientConfig(PROJECT, "cfg-app"), "caller-app"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertNull(target.errorJson);
+        assertEquals(PROJECT, target.projectName);
+        assertEquals("a bound configuration fixes the pair", "cfg-app", target.applicationId); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testLaunchConfigTargetKeepsTheCallersIdWhenTheConfigIsUnbound() throws CoreException
+    {
+        // The wiring #379 is about: an unbound configuration used to be refused outright, and
+        // overwriting the caller's explicit target with the configuration's EMPTY attribute
+        // would drop a target the caller actually named.
+        UpdateDatabaseTool.LaunchTarget target = UpdateDatabaseTool.resolveLaunchConfigTarget(
+            runtimeClientConfig(PROJECT, ""), "caller-app"); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertNull("an unbound configuration is no longer refused outright", target.errorJson); //$NON-NLS-1$
+        assertEquals(PROJECT, target.projectName);
+        assertEquals("the caller's explicit id must survive", "caller-app", target.applicationId); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testLaunchConfigTargetDefersToTheProjectWhenNothingIsBoundOrRequested()
+        throws CoreException
+    {
+        // The empty applicationId is the signal execute() uses to run resolveSoleApplicationId.
+        UpdateDatabaseTool.LaunchTarget target = UpdateDatabaseTool.resolveLaunchConfigTarget(
+            runtimeClientConfig(PROJECT, ""), null); //$NON-NLS-1$
+
+        assertNull(target.errorJson);
+        assertEquals(PROJECT, target.projectName);
+        assertEquals("", target.applicationId); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testLaunchConfigTargetRefusesAnUnreadableAttributeSeparately() throws CoreException
+    {
+        // An attribute that cannot be READ must not be mistaken for one the configuration does
+        // not have: that would turn an unreadable binding into a project-derived write.
+        UpdateDatabaseTool.LaunchTarget target = UpdateDatabaseTool.resolveLaunchConfigTarget(
+            runtimeClientConfig(PROJECT, null), null);
+
+        assertNotNull("an unreadable attribute must be refused", target.errorJson); //$NON-NLS-1$
+        assertNull(target.applicationId);
+        assertTrue("the refusal must say the configuration could not be READ", //$NON-NLS-1$
+            target.errorJson.contains("could not be read")); //$NON-NLS-1$
+        assertTrue("the refusal must carry the platform reason", //$NON-NLS-1$
+            target.errorJson.contains("attribute is not a String")); //$NON-NLS-1$
+        assertFalse("it must NOT be reported as an absent binding", //$NON-NLS-1$
+            target.errorJson.contains("has no applicationId attribute")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testLaunchConfigTargetRefusesAConfigurationWithNoProject() throws CoreException
+    {
+        UpdateDatabaseTool.LaunchTarget target = UpdateDatabaseTool.resolveLaunchConfigTarget(
+            runtimeClientConfig("", "cfg-app"), null); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertNotNull(target.errorJson);
+        assertTrue("the refusal must name the missing project attribute", //$NON-NLS-1$
+            target.errorJson.contains("has no project attribute")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testLaunchConfigTargetRefusesANonRuntimeClientConfiguration() throws CoreException
+    {
+        ILaunchConfigurationType type = mock(ILaunchConfigurationType.class);
+        when(type.getIdentifier()).thenReturn(LaunchConfigUtils.TYPE_REMOTE_RUNTIME);
+        ILaunchConfiguration cfg = mock(ILaunchConfiguration.class);
+        when(cfg.getName()).thenReturn(CONFIG);
+        when(cfg.getType()).thenReturn(type);
+
+        UpdateDatabaseTool.LaunchTarget target =
+            UpdateDatabaseTool.resolveLaunchConfigTarget(cfg, null);
+
+        assertNotNull("an Attach configuration must be refused by type", target.errorJson); //$NON-NLS-1$
+        assertTrue(target.errorJson.contains("is not a runtime-client config")); //$NON-NLS-1$
+        // The type gate must come FIRST: the application attribute of a configuration we reject
+        // by type is never read (and so never mistaken for an absent binding).
+        verify(cfg, never()).getAttribute(LaunchConfigUtils.ATTR_APPLICATION_ID, ""); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testConfigurationBindingWinsOverTheCallersApplicationId()
+    {
+        // Unchanged rule: a configuration that HAS a binding fixes the pair.
+        assertEquals("cfg-app", //$NON-NLS-1$
+            UpdateDatabaseTool.effectiveApplicationId("cfg-app", "caller-app")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("cfg-app", //$NON-NLS-1$
+            UpdateDatabaseTool.effectiveApplicationId("cfg-app", null)); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testCallersApplicationIdSurvivesAnUnboundConfiguration()
+    {
+        // The caller named the target themselves — refusing them (old behaviour) or overwriting
+        // their value with the configuration's EMPTY attribute would both be wrong, and the
+        // project-derived fallback must not be consulted at all in this case.
+        assertEquals("an explicit id must survive an unbound configuration", //$NON-NLS-1$
+            "caller-app", UpdateDatabaseTool.effectiveApplicationId("", "caller-app")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    }
+
+    @Test
+    public void testUnboundConfigurationWithNoCallerIdDefersToTheProject()
+    {
+        // The empty return is the signal execute() uses to run resolveSoleApplicationId.
+        assertEquals("", UpdateDatabaseTool.effectiveApplicationId("", null)); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("", UpdateDatabaseTool.effectiveApplicationId("", "")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertEquals("", UpdateDatabaseTool.effectiveApplicationId(null, null)); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testSoleApplicationIsSubstituted() throws ApplicationException
+    {
+        IProject project = mock(IProject.class);
+        IApplication only = app("app-only", "The only infobase"); //$NON-NLS-1$ //$NON-NLS-2$
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(Collections.singletonList(only));
+        when(mgr.getDefaultApplication(project)).thenReturn(Optional.of(only));
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull("an unambiguous project must not be refused", result.errorJson); //$NON-NLS-1$
+        assertEquals("the project's single application is the target", //$NON-NLS-1$
+            "app-only", result.applicationId); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSoleApplicationSubstitutedWhenNoDefaultIsRecorded() throws ApplicationException
+    {
+        // A project can have exactly one application and no recorded default; that is not a
+        // disagreement — with one candidate the answer is still unambiguous.
+        IProject project = mock(IProject.class);
+        IApplication only = app("app-only", "The only infobase"); //$NON-NLS-1$ //$NON-NLS-2$
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(Collections.singletonList(only));
+        when(mgr.getDefaultApplication(project)).thenReturn(Optional.empty());
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull("no recorded default must not be refused", result.errorJson); //$NON-NLS-1$
+        assertEquals("app-only", result.applicationId); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSeveralApplicationsAreRefusedAndCandidatesNamed() throws ApplicationException
+    {
+        // THE point of the narrowed fallback: this tool WRITES to a database, so an ambiguous
+        // project must produce a refusal that lets the caller choose — never a silent guess.
+        IProject project = mock(IProject.class);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        // Build the applications BEFORE opening the outer stubbing: app() stubs its own mock,
+        // and a nested when(...) inside thenReturn(...) is an UnfinishedStubbingException.
+        List<IApplication> candidates = Arrays.asList(
+            app("app-dev", "Dev base"), app("app-prod", "Prod base")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        when(mgr.getApplications(project)).thenReturn(candidates);
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull("an ambiguous project must not resolve to any target", //$NON-NLS-1$
+            result.applicationId);
+        assertNotNull("an ambiguous project must be refused", result.errorJson); //$NON-NLS-1$
+        assertTrue("the refusal must name the configuration", result.errorJson.contains(CONFIG)); //$NON-NLS-1$
+        assertTrue("the refusal must name the project", result.errorJson.contains(PROJECT)); //$NON-NLS-1$
+        assertTrue("the refusal must list candidate id app-dev", //$NON-NLS-1$
+            result.errorJson.contains("app-dev")); //$NON-NLS-1$
+        assertTrue("the refusal must list candidate id app-prod", //$NON-NLS-1$
+            result.errorJson.contains("app-prod")); //$NON-NLS-1$
+        assertTrue("the refusal must carry the display names so the caller can tell them apart", //$NON-NLS-1$
+            result.errorJson.contains("Prod base")); //$NON-NLS-1$
+        assertTrue("the refusal must name the next step", //$NON-NLS-1$
+            result.errorJson.contains("get_applications")); //$NON-NLS-1$
+        // No default lookup at all on the ambiguous branch: the decision is already made.
+        verify(mgr, never()).getDefaultApplication(any(IProject.class));
+    }
+
+    @Test
+    public void testManyApplicationsAreCappedButStillPointAtGetApplications()
+        throws ApplicationException
+    {
+        IProject project = mock(IProject.class);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        List<IApplication> many = new ArrayList<>();
+        for (int i = 0; i < 13; i++)
+        {
+            many.add(app("app-" + i, "Base " + i)); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        when(mgr.getApplications(project)).thenReturn(many);
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNotNull(result.errorJson);
+        assertTrue("the listing must be capped rather than dumping every application", //$NON-NLS-1$
+            result.errorJson.contains("and 3 more")); //$NON-NLS-1$
+        assertFalse("the 11th application must not be spelled out", //$NON-NLS-1$
+            result.errorJson.contains("app-12")); //$NON-NLS-1$
+        assertTrue("the full count must still be stated", result.errorJson.contains("13")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testNoApplicationsIsRefusedWithTheOwningProjectHint() throws ApplicationException
+    {
+        // EDT resolves an application id ONLY through the project that owns it
+        // (ApplicationManager.getApplication filters getApplications(project)), so for a
+        // dependent/extension project the refusal must send the caller to the owning project
+        // instead of promising that get_applications hands back a usable id for this one.
+        IProject project = mock(IProject.class);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(Collections.emptyList());
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull(result.applicationId);
+        assertNotNull("a project with no applications must be refused", result.errorJson); //$NON-NLS-1$
+        assertTrue("the refusal must name the project", result.errorJson.contains(PROJECT)); //$NON-NLS-1$
+        assertTrue("the refusal must explain the extension/base-project ownership", //$NON-NLS-1$
+            result.errorJson.contains("base configuration")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSingleApplicationWithNoUsableIdIsRefusedNotForwarded() throws ApplicationException
+    {
+        // A blank id would reach the application lookup as if nothing had been asked for; the
+        // fallback must never hand the writer a target it cannot name. All three unusable
+        // shapes are checked from one loop so the guard cannot be narrowed to just one of them.
+        for (String unusable : Arrays.asList(null, "", "  \t")) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            IProject project = mock(IProject.class);
+            IApplication broken = mock(IApplication.class);
+            when(broken.getId()).thenReturn(unusable);
+            IApplicationManager mgr = mock(IApplicationManager.class);
+            when(mgr.getApplications(project)).thenReturn(Collections.singletonList(broken));
+
+            ApplicationFallback result =
+                UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+            assertNull("an unusable application id (" + unusable //$NON-NLS-1$
+                + ") must not become the update target", result.applicationId); //$NON-NLS-1$
+            assertNotNull("an unnameable application must be refused", result.errorJson); //$NON-NLS-1$
+        }
+    }
+
+    @Test
+    public void testNullApplicationListIsRefusedNotDereferenced() throws ApplicationException
+    {
+        IProject project = mock(IProject.class);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(null);
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull(result.applicationId);
+        assertNotNull("a null application list must be refused, not dereferenced", //$NON-NLS-1$
+            result.errorJson);
+    }
+
+    @Test
+    public void testApplicationListFailureIsRefusedWithTheReason() throws ApplicationException
+    {
+        // A failure to LIST is not "no applications": saying so would send the caller off to
+        // create an infobase they already have. Name the reason and the retry.
+        IProject project = mock(IProject.class);
+        when(project.getName()).thenReturn(PROJECT);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenThrow(new ApplicationException("index is cold")); //$NON-NLS-1$
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull(result.applicationId);
+        assertNotNull(result.errorJson);
+        assertTrue("the refusal must carry the platform reason", //$NON-NLS-1$
+            result.errorJson.contains("index is cold")); //$NON-NLS-1$
+        assertTrue("a listing failure must not be reported as 'no applications'", //$NON-NLS-1$
+            !result.errorJson.contains("has no applications of its own")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testSingleApplicationDisagreeingWithTheDefaultIsRefused() throws ApplicationException
+    {
+        // Unreachable in a consistent EDT state (getDefaultApplication returns the sole
+        // application when the project has exactly one), so it can only mean the enumeration
+        // this decision was made on and the resolver disagree about the project. Fail closed:
+        // picking either could update a database nobody named.
+        IProject project = mock(IProject.class);
+        IApplication only = app("app-only", "The only infobase"); //$NON-NLS-1$ //$NON-NLS-2$
+        IApplication other = app("app-elsewhere", "Another infobase"); //$NON-NLS-1$ //$NON-NLS-2$
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(Collections.singletonList(only));
+        when(mgr.getDefaultApplication(project)).thenReturn(Optional.of(other));
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull("a disagreement must not resolve to either candidate", result.applicationId); //$NON-NLS-1$
+        assertNotNull(result.errorJson);
+        assertTrue("the refusal must name both disagreeing ids", //$NON-NLS-1$
+            result.errorJson.contains("app-only") && result.errorJson.contains("app-elsewhere")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    // ============ #379: diagnosing a synthetic launch identifier passed as applicationId ============
+
+    @Test
+    public void testLaunchPrefixedIdIsDiagnosedAsALaunchIdentifier()
+    {
+        String hint = UpdateDatabaseTool.describeLaunchIdentifierHint("launch:ERP ThinClient"); //$NON-NLS-1$
+
+        assertTrue("a launch: id must be called out as not an application id", //$NON-NLS-1$
+            hint.contains("not an application id")); //$NON-NLS-1$
+        assertTrue("the diagnosis must echo the configuration name", //$NON-NLS-1$
+            hint.contains("ERP ThinClient")); //$NON-NLS-1$
+        assertTrue("the diagnosis must point at the launchConfigurationName route", //$NON-NLS-1$
+            hint.contains("launchConfigurationName")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAttachPrefixedIdIsNotSentToLaunchConfigurationName()
+    {
+        // update_database rejects an Attach config by type, so advising launchConfigurationName
+        // here would only buy the caller a second refusal.
+        String hint = UpdateDatabaseTool.describeLaunchIdentifierHint("attach:Server debug"); //$NON-NLS-1$
+
+        assertTrue("an attach: id must be called out as not an application id", //$NON-NLS-1$
+            hint.contains("not an application id")); //$NON-NLS-1$
+        assertTrue("the diagnosis must echo the configuration name", //$NON-NLS-1$
+            hint.contains("Server debug")); //$NON-NLS-1$
+        assertTrue("the diagnosis must say why that config cannot be the target", //$NON-NLS-1$
+            hint.contains("runtime-client configuration")); //$NON-NLS-1$
+        assertFalse("an Attach id must NOT be sent to launchConfigurationName", //$NON-NLS-1$
+            hint.contains("pass it as launchConfigurationName")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testServerApplicationIdGetsNoLaunchIdentifierDiagnosis()
+    {
+        // ServerApplication. is the prefix REAL 1C standalone-server applications carry in
+        // their own IApplication.getId() — LaunchConfigUtils.isSyntheticApplicationId matches it
+        // too, which is exactly why this diagnosis must not be built on that predicate. A
+        // missing/stale server application must NOT be told it is "not an application id".
+        assertEquals("", UpdateDatabaseTool.describeLaunchIdentifierHint( //$NON-NLS-1$
+            "ServerApplication.ERP")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testOrdinaryAndDegenerateIdsGetNoDiagnosis()
+    {
+        assertEquals("", UpdateDatabaseTool.describeLaunchIdentifierHint(null)); //$NON-NLS-1$
+        assertEquals("", UpdateDatabaseTool.describeLaunchIdentifierHint("")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("a real UUID-shaped id is not a launch identifier", //$NON-NLS-1$
+            "", UpdateDatabaseTool.describeLaunchIdentifierHint( //$NON-NLS-1$
+                "3f6c0b1e-9d28-49db-9273-2903d2ab859a")); //$NON-NLS-1$
+        assertEquals("a bare prefix carries no configuration name to advise about", //$NON-NLS-1$
+            "", UpdateDatabaseTool.describeLaunchIdentifierHint("launch:")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("", UpdateDatabaseTool.describeLaunchIdentifierHint("attach:")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("the prefix must be a real prefix, not a substring", //$NON-NLS-1$
+            "", UpdateDatabaseTool.describeLaunchIdentifierHint("my-launch:thing")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testGuideDocumentsTheNarrowedFallbackAndTheSyntheticId()
+    {
+        String guide = new UpdateDatabaseTool().getGuide();
+        assertTrue("guide must document that an app-less config resolves from the project", //$NON-NLS-1$
+            guide.contains("exactly one")); //$NON-NLS-1$
+        assertTrue("guide must document the ambiguity refusal", //$NON-NLS-1$
+            guide.contains("REFUSED")); //$NON-NLS-1$
+        assertTrue("guide must warn that list_configurations can report a launch: identifier", //$NON-NLS-1$
+            guide.contains("launch:<name>")); //$NON-NLS-1$
+    }
+    /**
+     * The confirmed path skips the session preflight where it does not apply, so the preview
+     * must not promise a check that will not happen and must not name a tool that cannot help.
+     */
+    @Test
+    public void previewDoesNotPromiseASessionCheckThatDoesNotApply()
+    {
+        IApplication application = applicationWithType(
+            "com.e1c.g5.dt.applications.type.infobase"); //$NON-NLS-1$
+        when(application.getName()).thenReturn("FileBase"); //$NON-NLS-1$
+
+        String preview = UpdateDatabaseTool.buildPreviewResult("Proj", "App", application, //$NON-NLS-1$
+            ApplicationUpdateType.FULL, ApplicationUpdateState.UNKNOWN, false, true, null, null);
+
+        JsonObject json = JsonParser.parseString(preview).getAsJsonObject();
+        assertFalse("a non-applicable type must not be promised a session check", //$NON-NLS-1$
+            json.get("willCheckInfobaseSessions").getAsBoolean()); //$NON-NLS-1$
+        String message = json.get("message").getAsString(); //$NON-NLS-1$
+        assertTrue("the preview must say the check does not apply: " + message, //$NON-NLS-1$
+            message.contains("does not apply to this application type")); //$NON-NLS-1$
+        assertFalse("the preview must not direct the caller to infobase_sessions: " + message, //$NON-NLS-1$
+            message.contains("clear those with infobase_sessions")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void previewStillPromisesTheSessionCheckForAStandaloneServer()
+    {
+        IApplication application = applicationWithType(
+            StandaloneServerSupport.WST_SERVER_APP_TYPE);
+        when(application.getName()).thenReturn("Server"); //$NON-NLS-1$
+
+        String preview = UpdateDatabaseTool.buildPreviewResult("Proj", "App", application, //$NON-NLS-1$
+            ApplicationUpdateType.FULL, ApplicationUpdateState.UNKNOWN, false, true, null, null);
+
+        JsonObject json = JsonParser.parseString(preview).getAsJsonObject();
+        assertTrue("an applicable type must still be promised the check", //$NON-NLS-1$
+            json.get("willCheckInfobaseSessions").getAsBoolean()); //$NON-NLS-1$
+        assertTrue(json.get("message").getAsString() //$NON-NLS-1$
+            .contains("clear those with infobase_sessions")); //$NON-NLS-1$
+    }
+
+    // ==================== #622: a wedged listing refuses, it does not guess ====================
+
+    @Test
+    public void testAWedgedApplicationListingRefusesInsteadOfHanging() throws Exception
+    {
+        // The narrowed fallback decides WHICH DATABASE gets written from this list. A read that
+        // never concluded must therefore refuse - never fall into the "no applications" branch,
+        // which reads as a measured fact about the project.
+        IProject project = mock(IProject.class);
+        when(project.getName()).thenReturn(PROJECT);
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        when(mgr.getApplications(project)).thenAnswer(invocation -> {
+            try
+            {
+                release.await(30, TimeUnit.SECONDS);
+                return Collections.emptyList();
+            }
+            finally
+            {
+                finished.countDown();
+            }
+        });
+
+        try
+        {
+            long startMs = System.currentTimeMillis();
+            ApplicationFallback result = UpdateDatabaseTool.resolveSoleApplicationId(project, mgr,
+                PROJECT, CONFIG, 250L);
+
+            assertTrue("the caller must answer on its own deadline, not on the wedge", //$NON-NLS-1$
+                System.currentTimeMillis() - startMs < 20_000L);
+            assertNull("a wedged listing must not resolve a target", result.applicationId); //$NON-NLS-1$
+            assertNotNull("a wedged listing must be refused", result.errorJson); //$NON-NLS-1$
+            assertTrue("the refusal must carry the deadline diagnosis", //$NON-NLS-1$
+                result.errorJson.contains("the EDT application list for project '" + PROJECT + "'")); //$NON-NLS-1$ //$NON-NLS-2$
+            assertTrue("the refusal must say nothing was updated", //$NON-NLS-1$
+                result.errorJson.contains("Nothing was updated")); //$NON-NLS-1$
+            assertFalse("an unread list must never be reported as a project with no applications", //$NON-NLS-1$
+                result.errorJson.contains("has no applications of its own")); //$NON-NLS-1$
+        }
+        finally
+        {
+            release.countDown();
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void testAWedgedDefaultApplicationReadRefusesInsteadOfSkippingTheCrossCheck()
+        throws Exception
+    {
+        // The fail-closed cross-check ("one application, but the default resolver names another")
+        // is the last guard before this irreversible tool writes a database. Its read used to go
+        // through LaunchLifecycleUtils.resolveDefaultApplicationId, which returns the id it was
+        // GIVEN ("") when the bounded read does not conclude - and the guard's own
+        // `!resolved.isEmpty()` test then waved that through, so a cross-check that never ran
+        // passed silently and the write proceeded. It must refuse, exactly like its sibling list
+        // read in the same method.
+        IProject project = mock(IProject.class);
+        when(project.getName()).thenReturn(PROJECT);
+        IApplication only = app("app-only", "The only infobase"); //$NON-NLS-1$ //$NON-NLS-2$
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(Collections.singletonList(only));
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
+        when(mgr.getDefaultApplication(project)).thenAnswer(invocation -> {
+            try
+            {
+                release.await(30, TimeUnit.SECONDS);
+                return Optional.of(only);
+            }
+            finally
+            {
+                finished.countDown();
+            }
+        });
+
+        try
+        {
+            long startMs = System.currentTimeMillis();
+            ApplicationFallback result = UpdateDatabaseTool.resolveSoleApplicationId(project, mgr,
+                PROJECT, CONFIG, 250L);
+
+            assertTrue("the caller must answer on its own deadline, not on the wedge", //$NON-NLS-1$
+                System.currentTimeMillis() - startMs < 20_000L);
+            // The defect, stated as the assertion that fails without the fix: the tool came back
+            // with a target and went on to write a database.
+            assertNull("a cross-check that never ran must not resolve a target", //$NON-NLS-1$
+                result.applicationId);
+            assertNotNull("a cross-check that never ran must be refused", result.errorJson); //$NON-NLS-1$
+            assertTrue("the refusal must say the cross-check could not be done", //$NON-NLS-1$
+                result.errorJson.contains("could not be cross-checked against the project's " //$NON-NLS-1$
+                    + "default application")); //$NON-NLS-1$
+            assertTrue("the refusal must carry the deadline diagnosis", //$NON-NLS-1$
+                result.errorJson.contains("the EDT default-application lookup for project '" //$NON-NLS-1$
+                    + PROJECT + "'")); //$NON-NLS-1$
+            assertTrue("the refusal must say nothing was updated", //$NON-NLS-1$
+                result.errorJson.contains("Nothing was updated")); //$NON-NLS-1$
+            // It must not be worded as the DISAGREEMENT refusal either: nothing disagreed.
+            assertFalse("an unread default must not be reported as a disagreement", //$NON-NLS-1$
+                result.errorJson.contains("but a different default application")); //$NON-NLS-1$
+        }
+        finally
+        {
+            release.countDown();
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void testADefaultApplicationReadThatRaisesRefusesToo() throws ApplicationException
+    {
+        // Consistency with the sibling list read, which refuses on an ApplicationException as well:
+        // a cross-check that blew up established nothing, and "not measured" must not be read as
+        // "no disagreement" by the tool that writes the database.
+        IProject project = mock(IProject.class);
+        when(project.getName()).thenReturn(PROJECT);
+        IApplication only = app("app-only", "The only infobase"); //$NON-NLS-1$ //$NON-NLS-2$
+        IApplicationManager mgr = mock(IApplicationManager.class);
+        when(mgr.getApplications(project)).thenReturn(Collections.singletonList(only));
+        when(mgr.getDefaultApplication(project))
+            .thenThrow(new ApplicationException("delegates are not up")); //$NON-NLS-1$
+
+        ApplicationFallback result =
+            UpdateDatabaseTool.resolveSoleApplicationId(project, mgr, PROJECT, CONFIG);
+
+        assertNull("a cross-check that raised must not resolve a target", result.applicationId); //$NON-NLS-1$
+        assertNotNull("a cross-check that raised must be refused", result.errorJson); //$NON-NLS-1$
+        assertTrue("the refusal must carry the platform reason", //$NON-NLS-1$
+            result.errorJson.contains("delegates are not up")); //$NON-NLS-1$
+        assertTrue("the refusal must say nothing was updated", //$NON-NLS-1$
+            result.errorJson.contains("Nothing was updated")); //$NON-NLS-1$
+    }
+}

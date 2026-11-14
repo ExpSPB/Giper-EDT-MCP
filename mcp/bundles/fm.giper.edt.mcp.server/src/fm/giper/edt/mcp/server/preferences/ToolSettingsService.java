@@ -1,0 +1,1092 @@
+/**
+ * MCP Server for EDT
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.server.preferences;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.eclipse.jface.preference.IPreferenceStore;
+
+import fm.giper.edt.mcp.server.Activator;
+import fm.giper.edt.mcp.server.SseStreamRegistry;
+
+/**
+ * Service managing tool enablement state.
+ * Keeps stored preferences separate from the effective launch-preset view used for tool enablement.
+ * Thread-safe: the launch selection is resolved once and published through an immutable volatile holder.
+ */
+public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
+{
+    private static final Set<String> STORED_PROFILE_V1_ADDITIONS = Set.of(
+        "git"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V2_ADDITIONS = Set.of(
+        "apply_quick_fix"); //$NON-NLS-1$
+
+    private static final Set<String> STORED_PROFILE_V3_ADDITIONS = Set.of(
+        "ask_workmate"); //$NON-NLS-1$
+
+    private static final Set<String> ANALYSIS_ONLY_V4_ADDITIONS = Set.of(
+        "adopt_metadata_object", //$NON-NLS-1$
+        "build_external_objects", //$NON-NLS-1$
+        "set_infobase_credentials", //$NON-NLS-1$
+        "stop_profiling", //$NON-NLS-1$
+        "get_outgoing_structures"); //$NON-NLS-1$
+
+    private static final Set<String> CODE_REVIEW_V4_ADDITIONS = Set.of(
+        "adopt_metadata_object", //$NON-NLS-1$
+        "build_external_objects", //$NON-NLS-1$
+        "set_infobase_credentials", //$NON-NLS-1$
+        "stop_profiling"); //$NON-NLS-1$
+
+    private static final Set<String> DEVELOPMENT_V4_ADDITIONS = Set.of(
+        "stop_profiling"); //$NON-NLS-1$
+
+    private static final Set<String> NO_DEBUG_V6_ADDITIONS = Set.of(
+        "set_error_breakpoint"); //$NON-NLS-1$
+
+    /*
+     * Version 6: the two destructive tools a stored read-only profile could not have excluded.
+     * merge_rules is new (its write half creates and REPLACES files); delete_project is not new at
+     * all - it sits in ToolGroup.CORE, which no preset disables, so it has been enabled in both
+     * read-only presets since they existed. Both read-only presets get the same two names, so one
+     * set answers for both.
+     */
+    private static final Set<String> READ_ONLY_V7_ADDITIONS = Set.of(
+        "merge_rules", //$NON-NLS-1$
+        "delete_project"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V8_ADDITIONS = Set.of(
+        "infobase_sessions"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V9_ADDITIONS = Set.of(
+        "cancel_job", //$NON-NLS-1$
+        "delete_infobase", //$NON-NLS-1$
+        "delete_metadata"); //$NON-NLS-1$
+
+    private static final Set<String> NO_DEBUG_V10_ADDITIONS = Set.of(
+        "debug_pause"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V11_ADDITIONS = Set.of(
+        "import_project_from_file"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V12_ADDITIONS = Set.of(
+        "export_configuration_to_file"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V14_ADDITIONS = Set.of(
+        "switch_git_branch", //$NON-NLS-1$
+        "create_git_branch", //$NON-NLS-1$
+        "set_branch_infobase", //$NON-NLS-1$
+        "create_project", //$NON-NLS-1$
+        "resync_to_disk", //$NON-NLS-1$
+        "clean_project"); //$NON-NLS-1$
+
+    private static final Set<String> STORED_PROFILE_V15_ADDITIONS = Set.of(
+        "get_form_screenshot"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V16_ADDITIONS = Set.of(
+        "business_process_route_map"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V17_ADDITIONS = Set.of("project_checks"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V18_ADDITIONS = Set.of("infobase_extensions"); //$NON-NLS-1$
+
+    private static final Set<String> ANALYSIS_ONLY_V19_ADDITIONS = Set.of("open_editor"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V20_ADDITIONS = Set.of("clone_metadata_object"); //$NON-NLS-1$
+
+    private static final Set<String> READ_ONLY_V21_ADDITIONS = Set.of("sort_metadata");
+
+    private static final Set<String> READ_ONLY_V22_ADDITIONS = Set.of("edt_dialog");
+
+    private static final Set<String> READ_ONLY_V23_ADDITIONS = Set.of("standalone_server"); //$NON-NLS-1$
+
+    /** Actual disabled-name additions registered for each Analysis Only migration. */
+    static final Map<Integer, Set<String>> ANALYSIS_ONLY_MIGRATION_ADDITIONS_BY_VERSION = Map.ofEntries(
+        Map.entry(1, STORED_PROFILE_V1_ADDITIONS),
+        Map.entry(2, READ_ONLY_V2_ADDITIONS),
+        Map.entry(3, STORED_PROFILE_V3_ADDITIONS),
+        Map.entry(4, ANALYSIS_ONLY_V4_ADDITIONS),
+        Map.entry(6, NO_DEBUG_V6_ADDITIONS),
+        Map.entry(7, READ_ONLY_V7_ADDITIONS),
+        Map.entry(8, READ_ONLY_V8_ADDITIONS),
+        Map.entry(9, READ_ONLY_V9_ADDITIONS),
+        Map.entry(10, NO_DEBUG_V10_ADDITIONS),
+        Map.entry(11, READ_ONLY_V11_ADDITIONS),
+        Map.entry(12, READ_ONLY_V12_ADDITIONS),
+        Map.entry(14, READ_ONLY_V14_ADDITIONS),
+        Map.entry(15, STORED_PROFILE_V15_ADDITIONS),
+        Map.entry(16, READ_ONLY_V16_ADDITIONS),
+        Map.entry(17, READ_ONLY_V17_ADDITIONS),
+        Map.entry(18, READ_ONLY_V18_ADDITIONS),
+        Map.entry(19, ANALYSIS_ONLY_V19_ADDITIONS),
+        Map.entry(20, READ_ONLY_V20_ADDITIONS),
+        Map.entry(21, READ_ONLY_V21_ADDITIONS),
+        Map.entry(22, READ_ONLY_V22_ADDITIONS),
+        Map.entry(23, READ_ONLY_V23_ADDITIONS));
+
+    /** Actual disabled-name additions registered for each Code Review migration. */
+    static final Map<Integer, Set<String>> CODE_REVIEW_MIGRATION_ADDITIONS_BY_VERSION = Map.ofEntries(
+        Map.entry(1, STORED_PROFILE_V1_ADDITIONS),
+        Map.entry(2, READ_ONLY_V2_ADDITIONS),
+        Map.entry(3, STORED_PROFILE_V3_ADDITIONS),
+        Map.entry(4, CODE_REVIEW_V4_ADDITIONS),
+        Map.entry(6, NO_DEBUG_V6_ADDITIONS),
+        Map.entry(7, READ_ONLY_V7_ADDITIONS),
+        Map.entry(8, READ_ONLY_V8_ADDITIONS),
+        Map.entry(9, READ_ONLY_V9_ADDITIONS),
+        Map.entry(10, NO_DEBUG_V10_ADDITIONS),
+        Map.entry(11, READ_ONLY_V11_ADDITIONS),
+        Map.entry(12, READ_ONLY_V12_ADDITIONS),
+        Map.entry(14, READ_ONLY_V14_ADDITIONS),
+        Map.entry(15, STORED_PROFILE_V15_ADDITIONS),
+        Map.entry(16, READ_ONLY_V16_ADDITIONS),
+        Map.entry(17, READ_ONLY_V17_ADDITIONS),
+        Map.entry(18, READ_ONLY_V18_ADDITIONS),
+        Map.entry(20, READ_ONLY_V20_ADDITIONS),
+        Map.entry(21, READ_ONLY_V21_ADDITIONS),
+        Map.entry(22, READ_ONLY_V22_ADDITIONS),
+        Map.entry(23, READ_ONLY_V23_ADDITIONS));
+
+    /*
+     * Frozen history for v1-v12 and the one-shot v13 stamp only. Newer preset-owed steps use
+     * storedPreset(store).isReadOnly() / isNoDebug(), never a recognition shape.
+     * Frozen recognition shapes: what any historical stored profile of this preset must contain.
+     * Never derive them from the live preset, which has grown over time. A shape is only ever
+     * extended after checking that every supported historical store still contains the new name.
+     *
+     * These are deliberately per-preset rather than a shared union. They omit the default-disabled
+     * tools, so a user who enabled git is still recognized, and apply_quick_fix is in none of them,
+     * so version 4 still recognizes a read-only store whose user deliberately re-enabled it.
+     *
+     * They name {@code launch}, not the historical {@code debug_launch}, ONLY because the version 5
+     * rename step runs before every shape check, so a store reaching one already spells the new
+     * name. A RENAMED tool must be handled that way - by migrating the stored list first - never by
+     * editing a shape to match the live preset.
+     */
+    static final Set<String> ANALYSIS_ONLY_RECOGNITION_SHAPE = Set.of(
+        "launch", //$NON-NLS-1$
+        "debug_status", //$NON-NLS-1$
+        "debug_yaxunit_tests", //$NON-NLS-1$
+        "evaluate_expression", //$NON-NLS-1$
+        "get_applications", //$NON-NLS-1$
+        "get_form_screenshot", //$NON-NLS-1$
+        "get_method_call_hierarchy", //$NON-NLS-1$
+        "get_module_structure", //$NON-NLS-1$
+        "get_profiling_results", //$NON-NLS-1$
+        "get_symbol_info", //$NON-NLS-1$
+        "get_variables", //$NON-NLS-1$
+        "go_to_definition", //$NON-NLS-1$
+        "list_breakpoints", //$NON-NLS-1$
+        "list_modules", //$NON-NLS-1$
+        "read_method_source", //$NON-NLS-1$
+        "read_module_source", //$NON-NLS-1$
+        "remove_breakpoint", //$NON-NLS-1$
+        "rename_metadata_object", //$NON-NLS-1$
+        "resume", //$NON-NLS-1$
+        "run_yaxunit_tests", //$NON-NLS-1$
+        "search_in_code", //$NON-NLS-1$
+        "set_breakpoint", //$NON-NLS-1$
+        "start_profiling", //$NON-NLS-1$
+        "step", //$NON-NLS-1$
+        "update_database", //$NON-NLS-1$
+        "validate_query", //$NON-NLS-1$
+        "wait_for_break", //$NON-NLS-1$
+        "write_module_source"); //$NON-NLS-1$
+
+    static final Set<String> CODE_REVIEW_RECOGNITION_SHAPE = Set.of(
+        "launch", //$NON-NLS-1$
+        "debug_status", //$NON-NLS-1$
+        "debug_yaxunit_tests", //$NON-NLS-1$
+        "evaluate_expression", //$NON-NLS-1$
+        "get_applications", //$NON-NLS-1$
+        "get_profiling_results", //$NON-NLS-1$
+        "get_variables", //$NON-NLS-1$
+        "list_breakpoints", //$NON-NLS-1$
+        "remove_breakpoint", //$NON-NLS-1$
+        "rename_metadata_object", //$NON-NLS-1$
+        "resume", //$NON-NLS-1$
+        "run_yaxunit_tests", //$NON-NLS-1$
+        "set_breakpoint", //$NON-NLS-1$
+        "start_profiling", //$NON-NLS-1$
+        "step", //$NON-NLS-1$
+        "update_database", //$NON-NLS-1$
+        "wait_for_break", //$NON-NLS-1$
+        "write_module_source"); //$NON-NLS-1$
+
+    static final Set<String> DEVELOPMENT_RECOGNITION_SHAPE = Set.of(
+        "debug_status", //$NON-NLS-1$
+        "debug_yaxunit_tests", //$NON-NLS-1$
+        "evaluate_expression", //$NON-NLS-1$
+        "get_profiling_results", //$NON-NLS-1$
+        "get_variables", //$NON-NLS-1$
+        "list_breakpoints", //$NON-NLS-1$
+        "remove_breakpoint", //$NON-NLS-1$
+        "resume", //$NON-NLS-1$
+        "set_breakpoint", //$NON-NLS-1$
+        "start_profiling", //$NON-NLS-1$
+        "step", //$NON-NLS-1$
+        "wait_for_break"); //$NON-NLS-1$
+
+    private static final ToolSettingsService INSTANCE = new ToolSettingsService();
+
+    static final String ENV_TOOL_PRESET = "EDT_MCP_TOOL_PRESET"; //$NON-NLS-1$
+
+    /** Package-visible environment seam; tests never change the process environment. */
+    Function<String, String> environment = System::getenv;
+
+    /** Null until first use; a holder with a null preset records a resolved stored-selection launch. */
+    private volatile SessionPreset sessionPreset;
+
+    private record SessionPreset(ToolPreset preset)
+    {
+    }
+
+    private ToolSettingsService()
+    {
+        // Singleton
+    }
+
+    /**
+     * Returns the singleton instance.
+     */
+    public static ToolSettingsService getInstance()
+    {
+        return INSTANCE;
+    }
+
+    /**
+     * Returns the active predefined launch preset from {@code EDT_MCP_TOOL_PRESET}, or null
+     * when the stored selection applies. IDs are case-insensitive and trimmed.
+     * An unset or blank value, or {@code custom}, uses the stored selection. Explicit {@code custom}
+     * logs once at INFO; unknown IDs log once at WARNING with only the predefined override IDs.
+     * Resolves once on first use, including bridge calls and manual starts without earlyStartup.
+     * The immutable holder publishes the complete decision atomically, including blank/invalid values.
+     */
+    public ToolPreset getSessionPreset()
+    {
+        SessionPreset resolved = sessionPreset;
+        if (resolved == null)
+        {
+            synchronized (this)
+            {
+                resolved = sessionPreset;
+                if (resolved == null)
+                {
+                    ToolPreset preset = resolveSessionPreset(environment.apply(ENV_TOOL_PRESET));
+                    resolved = new SessionPreset(preset);
+                    sessionPreset = resolved;
+                }
+            }
+        }
+        return resolved.preset();
+    }
+
+    private ToolPreset resolveSessionPreset(String value)
+    {
+        if (value == null || value.isBlank())
+        {
+            return null;
+        }
+        String id = value.trim();
+        for (ToolPreset preset : ToolPreset.values())
+        {
+            if (preset.getId().equalsIgnoreCase(id))
+            {
+                if (preset == ToolPreset.CUSTOM)
+                {
+                    Activator.logInfo("EDT_MCP_TOOL_PRESET=custom uses the stored tool selection; " //$NON-NLS-1$
+                        + "no launch override."); //$NON-NLS-1$
+                    return null;
+                }
+                return preset;
+            }
+        }
+        String validIds = Arrays.stream(ToolPreset.values())
+            .filter(preset -> preset != ToolPreset.CUSTOM)
+            .map(ToolPreset::getId).collect(Collectors.joining(", ")); //$NON-NLS-1$
+        Activator.logWarning("Invalid EDT_MCP_TOOL_PRESET value: " + value //$NON-NLS-1$
+            + ". Valid preset ids: " + validIds //$NON-NLS-1$
+            + ". Unset or custom uses the stored tool selection. Ignoring launch override."); //$NON-NLS-1$
+        return null;
+    }
+
+    /**
+     * Returns the effective disabled set for registry reads and call enablement.
+     * A predefined launch preset bypasses the store and its migrations.
+     */
+    public Set<String> getDisabledTools()
+    {
+        ToolPreset preset = getSessionPreset();
+        if (preset != null)
+        {
+            return preset.getDisabledTools();
+        }
+        return getStoredDisabledTools();
+    }
+
+    /**
+     * Returns the persisted selection after its normal lazy migrations, ignoring the launch preset.
+     * Preference editors and read-modify-write operations must use this view.
+     * Falls back to the shipped defaults when no store is available.
+     */
+    public Set<String> getStoredDisabledTools()
+    {
+        IPreferenceStore store = getStore();
+        if (store == null)
+        {
+            // Stored preferences fail closed without a store; the explicit headless registry ignores them.
+            return parseDisabledTools(PreferenceConstants.DEFAULT_DISABLED_TOOLS);
+        }
+        ensureMigrated(store);
+        String value = store.getString(PreferenceConstants.PREF_DISABLED_TOOLS);
+        return parseDisabledTools(value);
+    }
+
+    /**
+     * Test seam: runs the migration against a supplied store, so the one mechanism that keeps a
+     * default-off tool disabled on upgrade can be verified without an Eclipse runtime.
+     *
+     * @param store the preference store to migrate
+     */
+    static void ensureMigratedForTest(IPreferenceStore store)
+    {
+        INSTANCE.ensureMigrated(store);
+    }
+
+    /**
+     * Applies the tool-enablement preference MIGRATIONS once per store, lazily on the first read.
+     * <p>
+     * A tool that ships DISABLED by default gets that from {@code DEFAULT_DISABLED_TOOLS} - but only on
+     * a store that never persisted its own value. An installation that had already saved the Tools tab
+     * (or an "all tools" preset) holds an explicit list that predates the new tool, so without this the
+     * powerful {@code git} tool would silently arrive ENABLED on upgrade. Version 1 therefore adds it to
+     * such a stored list; the user can still enable it deliberately afterwards.
+     * <p>
+     * Version 2 covers a narrower case: {@code apply_quick_fix} is a normal (default-ON) tool, so it is
+     * NOT added to every stored list the way {@code git} is - only to a list that already CONTAINS
+     * the frozen recognition shape of Code Review or Analysis Only. That containment is the
+     * signature of a store saved by an older build under one of those two read-only presets, before
+     * this write-capable tool existed to be excluded from them - and it still holds for a user who
+     * tightened such a preset further. A selection that merely OVERLAPS one (without covering it)
+     * is left untouched. See
+     * {@link #migrateApplyQuickFixIntoReadOnlyPreset} for why containment rather than equality.
+     * <p>
+     * Version 6 is the version 2 case again, one tool generation later: a stored read-only profile
+     * is recognized by CONTAINMENT of its frozen shape - never by equality, which would miss the
+     * ordinary user who tightened the preset further - and gains the two destructive tools it
+     * could not have excluded. {@code merge_rules} did not exist when the profile was saved;
+     * {@code delete_project} did, but it lives in a group no preset disables and was never named
+     * by hand, so no stored read-only profile has it. Neither is re-added to a profile that
+     * already carries it, and a selection that merely OVERLAPS a shape is left alone.
+     * <p>
+     * Version 4 repairs stored preset shapes after previously ungrouped tools joined groups that
+     * those presets disable. It recognizes an older preset by containment of the frozen historical
+     * shape, which omits both names the store may predate and default-disabled names the user may
+     * intentionally have enabled. Because the recognized shapes are nested, it tests the most
+     * restrictive shape first; otherwise a broader match would add only part of the tools owed to
+     * an Analysis Only store.
+     *
+     * <p>
+     * Version 13 records provenance once, AFTER the frozen v1-v12 steps and the v5 rename,
+     * by containment of the bare historical shapes, most restrictive first. Later additions and
+     * stale names do not date a profile. Default-valued stores keep no ID. Existing IDs are never
+     * overwritten; a missing ID on a store already at version 13 is custom without another guess.
+     * <p>
+     * Version 14 uses the recorded read-only promise to disable the six workspace/git writers
+     * missed by earlier presets. It runs after the v13 stamp so a legacy store receives both in
+     * one pass. Owner edits and provenance are retained; post-v13 stores without an ID are custom.
+     * The disabled set is written once, after both steps; later reads never reapply v14.
+     * <p>
+     * Version 15 follows version 1: every explicit list gains {@code get_form_screenshot}.
+     * Buffered screenshots require a launch flag that affects the human designer for the
+     * whole session, so upgrades require a fresh opt-in. The v15 stamp lets a later deliberate
+     * re-enable survive every subsequent read. It runs after v14 in the same single set write.
+     * <p>
+     * Version 17 adds project_checks to recorded read-only profiles.
+     * Version 18 adds infobase_extensions after it joined the Applications group.
+     * <p>
+     * Version 19 adds open_editor to recorded Analysis Only profiles.
+     * <p>
+     * Version 20 adds clone_metadata_object to recorded read-only profiles.
+     * <p>
+     * Keep v1-v14 dispatch frozen. Future preset-owed steps use {@link #storedPreset} and the
+     * {@link ToolPreset#isReadOnly()} / {@link ToolPreset#isNoDebug()} promises, independent of owner
+     * edits. Universal default-off additions (like v1 and v3) still apply to every explicit list.
+     * Keep each historical threshold: versions 6 and 7 were originally described as the same
+     * version, but reusing 6 would skip a migration on stores that had already recorded it.
+     *
+     * @param store the preference store to migrate (never {@code null} here)
+     */
+    private void ensureMigrated(IPreferenceStore store)
+    {
+        int storedVersion = store.getInt(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION);
+        if (storedVersion >= PreferenceConstants.TOOL_PREFS_MIGRATION_VERSION)
+        {
+            return;
+        }
+        // Only an EXPLICITLY stored list needs fixing; a default-valued store already carries the new
+        // default (which includes the tool).
+        if (store.contains(PreferenceConstants.PREF_DISABLED_TOOLS)
+            && !store.isDefault(PreferenceConstants.PREF_DISABLED_TOOLS))
+        {
+            Set<String> disabled =
+                new LinkedHashSet<>(parseDisabledTools(store.getString(PreferenceConstants.PREF_DISABLED_TOOLS)));
+            boolean changed = false;
+            // Each step is gated by its OWN version threshold, NOT merely "storedVersion is below
+            // the CURRENT version" - an installation already at version 1 (git migrated in) that has
+            // since deliberately RE-ENABLED git must not have version 2's migration run re-silently
+            // re-disable it: bumping TOOL_PREFS_MIGRATION_VERSION for a NEW migration must never
+            // re-run an EARLIER one an installation already passed through.
+            // The tool names are used as literals here on purpose: the preferences layer must not
+            // depend on tools/impl (see the architecture rules).
+            // FIRST, before any shape-based step: the rename debug_launch -> launch. Every stored
+            // list predating this build spells the tool the old way, while the frozen recognition
+            // shapes below and every later lookup spell it the new way, so renaming here is what
+            // keeps both a deliberate disable AND preset recognition working across the rename.
+            if (storedVersion < 5 && disabled.remove("debug_launch")) //$NON-NLS-1$
+            {
+                disabled.add("launch"); //$NON-NLS-1$
+                changed = true;
+            }
+            if (storedVersion < 1)
+            {
+                changed |= disabled.addAll(STORED_PROFILE_V1_ADDITIONS);
+            }
+            if (storedVersion < 2)
+            {
+                changed |= migrateApplyQuickFixIntoReadOnlyPreset(disabled);
+            }
+            if (storedVersion < 3)
+            {
+                // ask_workmate ships OFF: it hands the question to an external plugin that
+                // reaches a cloud service and may then change the configuration with its
+                // own tools. That is a decision to opt into, not to inherit on upgrade.
+                changed |= disabled.addAll(STORED_PROFILE_V3_ADDITIONS);
+            }
+            if (storedVersion < 4)
+            {
+                // The v4 shapes intentionally omit apply_quick_fix, so this step recognizes a store
+                // whose user deliberately re-enabled it after version 2 without adding it back.
+                changed |= migrateRegroupedToolsIntoPresets(disabled);
+            }
+            if (storedVersion < 6)
+            {
+                // set_error_breakpoint is new, so a preset saved before it existed cannot name it.
+                // Without this step an upgraded store that chose a NO-DEBUG preset would silently
+                // gain a debugging tool - the same hazard version 2 and version 4 exist for.
+                changed |= migrateErrorBreakpointIntoNoDebugPresets(disabled);
+            }
+            if (storedVersion < 7)
+            {
+                // Its own version rather than sharing 6: a store that already ran the step above
+                // records 6, and reusing that number would skip this one on exactly those stores.
+                // Order against it does not matter - every step here only ADDS to the disabled
+                // list, and the recognition below is a containment test, which more disabled
+                // entries can never break.
+                changed |= migrateDestructiveToolsIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 8)
+            {
+                // infobase_sessions is new and destructive, so a stored read-only profile must
+                // not gain it merely because the Applications group now contains it.
+                changed |= migrateInfobaseSessionsIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 9)
+            {
+                // These older tools declare themselves destructive but missed read-only migrations.
+                changed |= migrateLegacyDestructiveToolsIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 10)
+            {
+                // debug_pause is new: a stored no-debug preset cannot name it, and a denylist
+                // would otherwise hand it a tool that suspends a running session.
+                changed |= migrateDebugPauseIntoNoDebugPresets(disabled);
+            }
+            if (storedVersion < 11)
+            {
+                // import_project_from_file is new and creates a project from a file.
+                changed |= migrateProjectFileImportIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 12)
+            {
+                // export_configuration_to_file is new and drives the Designer against an infobase.
+                changed |= migrateConfigurationFileExportIntoReadOnlyPresets(disabled);
+            }
+            if (storedVersion < 13 && !store.contains(PreferenceConstants.PREF_TOOL_PRESET_ID))
+            {
+                // Resolve once toward the historical preset's promise, after the launch rename.
+                // Stale names and missing later additions cannot defeat the frozen shapes.
+                store.setValue(PreferenceConstants.PREF_TOOL_PRESET_ID,
+                    recognizeStoredPreset(disabled).getId());
+            }
+            if (storedVersion < 14)
+            {
+                changed |= migrateMutatingToolsIntoReadOnlyPresets(store, disabled);
+            }
+            if (storedVersion < 15)
+            {
+                changed |= disabled.addAll(STORED_PROFILE_V15_ADDITIONS);
+            }
+            if (storedVersion < 16)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V16_ADDITIONS);
+            }
+            if (storedVersion < 17)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V17_ADDITIONS);
+            }
+            if (storedVersion < 18)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V18_ADDITIONS);
+            }
+            if (storedVersion < 19)
+            {
+                changed |= storedPreset(store) == ToolPreset.ANALYSIS_ONLY
+                    && disabled.addAll(ANALYSIS_ONLY_V19_ADDITIONS);
+            }
+            if (storedVersion < 20)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V20_ADDITIONS);
+            }
+            if (storedVersion < 21)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V21_ADDITIONS);
+            }
+            if (storedVersion < 22)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V22_ADDITIONS);
+            }
+            if (storedVersion < 23)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V23_ADDITIONS);
+            }
+            if (changed)
+            {
+                store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, serializeDisabledTools(disabled));
+            }
+        }
+        store.setValue(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION,
+            PreferenceConstants.TOOL_PREFS_MIGRATION_VERSION);
+    }
+
+    /** Adds the v14 writers only for a recorded read-only preset, irrespective of owner edits. */
+    private static boolean migrateMutatingToolsIntoReadOnlyPresets(IPreferenceStore store,
+        Set<String> disabled)
+    {
+        return storedPreset(store).isReadOnly() ? disabled.addAll(READ_ONLY_V14_ADDITIONS) : false;
+    }
+
+    /** One-shot v13 backfill; later preset migrations must use recorded provenance instead. */
+    private static ToolPreset recognizeStoredPreset(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE))
+        {
+            return ToolPreset.ANALYSIS_ONLY;
+        }
+        if (disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE))
+        {
+            return ToolPreset.CODE_REVIEW;
+        }
+        if (disabled.containsAll(DEVELOPMENT_RECOGNITION_SHAPE))
+        {
+            return ToolPreset.DEVELOPMENT;
+        }
+        return ToolPreset.CUSTOM;
+    }
+
+    /** Reads provenance for future preset-owed steps without inferring anything from the set. */
+    static ToolPreset storedPreset(IPreferenceStore store)
+    {
+        return ToolPreset.fromId(store.getString(PreferenceConstants.PREF_TOOL_PRESET_ID));
+    }
+
+    /** Returns the recorded preset ID, independent of the launch preset. */
+    public String getPresetId()
+    {
+        return getStoredPresetId();
+    }
+
+    /** Returns stored provenance after its normal lazy migrations, or custom without a store. */
+    public String getStoredPresetId()
+    {
+        IPreferenceStore store = getStore();
+        if (store == null)
+        {
+            return ToolPreset.CUSTOM.getId();
+        }
+        ensureMigrated(store);
+        return storedPreset(store).getId();
+    }
+
+    /**
+     * Adds {@code apply_quick_fix} to {@code disabled} when the stored list already expresses a
+     * no-write profile - i.e. it CONTAINS the frozen recognition shape of Code Review or Analysis
+     * Only, whether or not it disables more on top.
+     * <p>
+     * A SUPERSET test, not an exact match, on purpose. Exact matching (via
+     * {@link ToolPreset#matchPreset}) misses the ordinary case of someone who picked a read-only
+     * preset and then unticked another tool or two: their stored list is then a strict superset,
+     * {@code matchPreset} reports {@code CUSTOM}, and this write-capable tool would silently arrive
+     * ENABLED in a profile the user built to be read-only. There is no user intent to respect in
+     * the other direction either - the migration only ever runs against a store saved BEFORE
+     * {@code apply_quick_fix} existed, so nobody could have deliberately enabled it. And the two
+     * failure modes are not symmetric: one extra disabled tool is a checkbox away, whereas a
+     * metadata-MUTATING tool quietly live in a no-write profile is the exact hazard this migration
+     * exists to prevent.
+     * <p>
+     * Historical containment is separate from {@link ToolPreset#matchPreset}'s exact comparison.
+     * The Tools tab displays the recorded choice and keeps it through subsequent owner edits.
+     * <p>
+     * Stale/unknown names left in the stored list cannot defeat the check, which asks only whether
+     * the frozen historical shape is present.
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when {@code apply_quick_fix} was added
+     */
+    private static boolean migrateApplyQuickFixIntoReadOnlyPreset(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(READ_ONLY_V2_ADDITIONS);
+        }
+        if (disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(READ_ONLY_V2_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Adds {@code set_error_breakpoint} to a store that already expresses a NO-DEBUG profile.
+     * <p>
+     * The tool did not exist when those presets were saved, so their stored denylist cannot name
+     * it - and a denylist is an allow-by-default list: without this step, upgrading would hand a
+     * debugging switch to a profile that promised none. Recognition is by containment of the same
+     * frozen historical shapes the earlier migrations use, so a hand-tuned custom selection and
+     * All Tools are left alone.
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when the tool was added
+     */
+    private static boolean migrateErrorBreakpointIntoNoDebugPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+            || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)
+            || disabled.containsAll(DEVELOPMENT_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(NO_DEBUG_V6_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Adds {@code debug_pause} to a store that already expresses a NO-DEBUG profile - the version 6
+     * step again, one debugging tool later, recognized by the same frozen shapes.
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when the tool was added
+     */
+    private static boolean migrateDebugPauseIntoNoDebugPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+            || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)
+            || disabled.containsAll(DEVELOPMENT_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(NO_DEBUG_V10_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Adds the version 4 group-inherited disabled names to the first stored preset shape that
+     * contains all of its older asserted tools.
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when at least one newly inherited name was added
+     */
+    private static boolean migrateRegroupedToolsIntoPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(ANALYSIS_ONLY_V4_ADDITIONS);
+        }
+        if (disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(CODE_REVIEW_V4_ADDITIONS);
+        }
+        if (disabled.containsAll(DEVELOPMENT_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(DEVELOPMENT_V4_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Adds the version 6 destructive names to a stored list that already expresses a read-only
+     * profile - i.e. one CONTAINING the frozen recognition shape of Analysis Only or Code Review.
+     * <p>
+     * The same containment argument as version 2, and for the same reason: exact matching would
+     * miss the user who picked a read-only preset and then unticked another tool or two, and a
+     * write-capable tool silently live in a profile built to be read-only is exactly the hazard
+     * this step exists to prevent. Unlike version 4 the two shapes are NOT tried in order of
+     * restrictiveness, because both read-only presets are owed the SAME two names - so whichever
+     * shape matches first gives the right answer, and a store matching both gets it once.
+     * <p>
+     * Containment tolerates TIGHTENING, not loosening: a store that re-enabled any shape member -
+     * {@code get_applications} included - is not recognized and keeps both tools exactly as it has
+     * them today, still behind the consent gate. The shape is the preset's history, not a judgement
+     * of which members are reads, and is deliberately not filtered by the {@code readOnlyHint}
+     * prefix heuristic (see {@code ToolPresetTest}).
+     *
+     * @param disabled the mutable stored disabled-tools set; modified in place
+     * @return {@code true} when at least one name was added
+     */
+    private static boolean migrateDestructiveToolsIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+            || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE))
+        {
+            return disabled.addAll(READ_ONLY_V7_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v8 session tool only to stored profiles recognized as read-only. */
+    private static boolean migrateInfobaseSessionsIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(READ_ONLY_V7_ADDITIONS)
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            return disabled.addAll(READ_ONLY_V8_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v9 destructive tools only to stored profiles still recognized as read-only. */
+    private static boolean migrateLegacyDestructiveToolsIntoReadOnlyPresets(Set<String> disabled)
+    {
+        // A pristine v8 store has both prior safety sets; a missing name records a re-enable.
+        if (disabled.containsAll(READ_ONLY_V7_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V8_ADDITIONS)
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            // An absent v9 name dates nothing: a stored set is a preset plus arbitrary user edits
+            // in both directions, so this resolves toward the promise the preset makes.
+            return disabled.addAll(READ_ONLY_V9_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v11 project importer only to stored profiles still recognized as read-only. */
+    private static boolean migrateProjectFileImportIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(READ_ONLY_V7_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V8_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V9_ADDITIONS)
+            // A profile that re-enabled the configuration importer wants importers.
+            && disabled.contains("import_configuration_from_xml") //$NON-NLS-1$
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            return disabled.addAll(READ_ONLY_V11_ADDITIONS);
+        }
+        return false;
+    }
+
+    /** Adds the v12 infobase-dump tool only to stored profiles still recognized as read-only. */
+    private static boolean migrateConfigurationFileExportIntoReadOnlyPresets(Set<String> disabled)
+    {
+        if (disabled.containsAll(READ_ONLY_V7_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V8_ADDITIONS)
+            && disabled.containsAll(READ_ONLY_V9_ADDITIONS)
+            && (disabled.containsAll(ANALYSIS_ONLY_RECOGNITION_SHAPE)
+                || disabled.containsAll(CODE_REVIEW_RECOGNITION_SHAPE)))
+        {
+            return disabled.addAll(READ_ONLY_V12_ADDITIONS);
+        }
+        return false;
+    }
+
+    /**
+     * Saves the set of disabled tool names to preferences and, when the set actually changed,
+     * tells connected clients that {@code tools/list} changed with it.
+     *
+     * Owner edits preserve preset provenance, whether the disabled set changes or not.
+     *
+     * @param disabledTools the tool names to disable
+     */
+    public void setDisabledTools(Set<String> disabledTools)
+    {
+        setDisabledTools(disabledTools, null);
+    }
+
+    /**
+     * Saves an explicit preset choice alongside its snapshot and any owner edits.
+     * The choice is independent of the live preset's current disabled set.
+     *
+     * @param disabledTools the tool names to disable
+     * @param preset the selected or retained preset, or null to keep stored provenance
+     */
+    public void setDisabledTools(Set<String> disabledTools, ToolPreset preset)
+    {
+        IPreferenceStore store = getStore();
+        if (store == null)
+        {
+            return;
+        }
+        applyDisabledTools(store, disabledTools, preset);
+    }
+
+    /**
+     * Writes the disabled set into {@code store} and pushes {@code notifications/tools/list_changed}
+     * when that write CHANGED the set.
+     * <p>
+     * Enablement is a {@code tools/list} input: {@code getVisibleTools()} drops a disabled tool, so a
+     * tick on the Tools tab removes a tool from the list a connected client already holds. The server
+     * advertises {@code tools.listChanged: true} in {@code initialize}, so staying silent breaks a
+     * capability it promised and leaves that client calling a tool that now refuses (#576). This is
+     * the single write path - the Tools tab, {@link #setToolEnabled} and {@link #applyPreset} all
+     * funnel through it - so the notification cannot be lost by adding another caller.
+     * </p>
+     * <p>
+     * Only a real change notifies: Apply with nothing edited must not wake every client. The
+     * comparison is on the parsed SETS, so a reordered or differently-spaced stored value reads as
+     * unchanged, preserving the original stored bytes. Under progressive disclosure a disabled tool
+     * may already be hidden by its toolset, which makes the notification redundant rather than wrong - over-notifying costs one
+     * {@code tools/list}, under-notifying is the bug.
+     * </p>
+     *
+     * @param store the preference store to write (never {@code null})
+     * @param disabledTools the tool names to disable
+     * @return {@code true} when the stored set changed and clients were notified
+     */
+    boolean applyDisabledTools(IPreferenceStore store, Set<String> disabledTools)
+    {
+        return applyDisabledTools(store, disabledTools, null);
+    }
+
+    private boolean applyDisabledTools(IPreferenceStore store, Set<String> disabledTools, ToolPreset preset)
+    {
+        String value = serializeDisabledTools(disabledTools);
+        Set<String> selection = parseDisabledTools(value);
+        boolean changed;
+        // Only the compare-and-write is locked; the notification wait below runs outside it.
+        synchronized (this)
+        {
+            ensureMigrated(store);
+            changed = !parseDisabledTools(store.getString(PreferenceConstants.PREF_DISABLED_TOOLS))
+                .equals(selection);
+            if (preset != null)
+            {
+                store.setValue(PreferenceConstants.PREF_TOOL_PRESET_ID, preset.getId());
+            }
+            if (changed)
+            {
+                store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, value);
+            }
+        }
+        if (changed)
+        {
+            // Before the preference page's server restart, the only order in which an open stream
+            // can still receive it - but bounded, since this may be the UI thread.
+            notifyToolsListChangedBounded(NOTIFY_WAIT_MS);
+        }
+        return changed;
+    }
+
+    /** How long a caller (possibly the UI thread) waits for the tools/list_changed broadcast. */
+    static final long NOTIFY_WAIT_MS = 1000;
+
+    /**
+     * Broadcasts {@code notifications/tools/list_changed} from its own thread and waits at most
+     * {@code waitMs}: a client that stopped draining its socket blocks the write, and that must
+     * not freeze the caller.
+     *
+     * @param waitMs the longest the caller waits for the broadcast to finish
+     */
+    static void notifyToolsListChangedBounded(long waitMs)
+    {
+        Thread sender = new Thread(() -> SseStreamRegistry.getInstance().notifyToolsListChanged(),
+            "MCP tools/list_changed"); //$NON-NLS-1$
+        sender.setDaemon(true);
+        sender.start();
+        try
+        {
+            sender.join(waitMs);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Checks whether a specific tool is enabled.
+     */
+    public boolean isToolEnabled(String toolName)
+    {
+        return !getDisabledTools().contains(toolName);
+    }
+
+    /**
+     * Sets the enabled state for a specific tool.
+     */
+    public void setToolEnabled(String toolName, boolean enabled)
+    {
+        Set<String> disabled = new HashSet<>(getStoredDisabledTools());
+        if (enabled)
+        {
+            disabled.remove(toolName);
+        }
+        else
+        {
+            disabled.add(toolName);
+        }
+        setDisabledTools(disabled);
+    }
+
+    /**
+     * Checks whether all tools in a group are enabled.
+     */
+    public boolean isGroupFullyEnabled(ToolGroup group)
+    {
+        Set<String> disabled = getDisabledTools();
+        for (String toolName : group.getToolNames())
+        {
+            if (disabled.contains(toolName))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Checks whether at least one (but not all) tools in a group are enabled.
+     */
+    public boolean isGroupPartiallyEnabled(ToolGroup group)
+    {
+        Set<String> disabled = getDisabledTools();
+        boolean hasEnabled = false;
+        boolean hasDisabled = false;
+        for (String toolName : group.getToolNames())
+        {
+            if (disabled.contains(toolName))
+            {
+                hasDisabled = true;
+            }
+            else
+            {
+                hasEnabled = true;
+            }
+            if (hasEnabled && hasDisabled)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Enables or disables all tools in a group.
+     */
+    public void setGroupEnabled(ToolGroup group, boolean enabled)
+    {
+        Set<String> disabled = new HashSet<>(getStoredDisabledTools());
+        if (enabled)
+        {
+            disabled.removeAll(group.getToolNames());
+        }
+        else
+        {
+            disabled.addAll(group.getToolNames());
+        }
+        setDisabledTools(disabled);
+    }
+
+    /**
+     * Applies a preset by setting the disabled tools to the preset's definition.
+     */
+    public void applyPreset(ToolPreset preset)
+    {
+        Set<String> disabledTools = preset.getDisabledTools();
+        if (disabledTools != null)
+        {
+            setDisabledTools(disabledTools, preset);
+        }
+        else
+        {
+            setDisabledTools(getStoredDisabledTools(), ToolPreset.CUSTOM);
+        }
+    }
+
+    /**
+     * Returns the count of currently enabled tools.
+     * Only counts known tools (those belonging to a ToolGroup) to avoid
+     * incorrect counts from obsolete tool names left in preferences.
+     */
+    public int getEnabledToolCount()
+    {
+        Set<String> disabled = getDisabledTools();
+        int enabled = 0;
+        for (ToolGroup group : ToolGroup.values())
+        {
+            for (String toolName : group.getToolNames())
+            {
+                if (!disabled.contains(toolName))
+                {
+                    enabled++;
+                }
+            }
+        }
+        return enabled;
+    }
+
+    /**
+     * Parses a comma-separated string of disabled tool names.
+     */
+    static Set<String> parseDisabledTools(String value)
+    {
+        if (value == null || value.isBlank())
+        {
+            return Collections.emptySet();
+        }
+        return Arrays.stream(value.split(",")) //$NON-NLS-1$
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * Serializes a set of disabled tool names to a comma-separated string.
+     */
+    static String serializeDisabledTools(Set<String> disabledTools)
+    {
+        if (disabledTools == null || disabledTools.isEmpty())
+        {
+            return ""; //$NON-NLS-1$
+        }
+        return disabledTools.stream()
+            .sorted()
+            .collect(Collectors.joining(",")); //$NON-NLS-1$
+    }
+
+    private IPreferenceStore getStore()
+    {
+        Activator activator = Activator.getDefault();
+        return activator != null ? activator.getPreferenceStore() : null;
+    }
+}

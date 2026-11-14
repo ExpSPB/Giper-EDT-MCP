@@ -32,7 +32,7 @@ from harness import (
 
 SETTINGS = Path(PROJECT_DIR) / ".settings"
 PREFS = SETTINGS / "com.e1c.g5.v8.dt.check.prefs"
-CHECK_DOCS = Path(harness.REPO_ROOT) / "mcp/bundles/com.ditrix.edt.mcp.server/checks"
+CHECK_DOCS = Path(harness.REPO_ROOT) / "mcp/bundles/fm.giper.edt.mcp.server/checks"
 SEVERITIES = ("BLOCKER", "CRITICAL", "MAJOR", "MINOR", "TRIVIAL")
 
 

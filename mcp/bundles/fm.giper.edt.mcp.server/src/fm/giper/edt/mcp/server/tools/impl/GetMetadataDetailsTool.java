@@ -1,0 +1,1677 @@
+﻿/**
+ * MCP Server for EDT
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.server.tools.impl;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.eclipse.core.resources.IProject;
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EObject;
+
+import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.integration.IBmModel;
+import com._1c.g5.v8.dt.dcs.model.schema.DataCompositionSchema;
+import com._1c.g5.v8.dt.metadata.mdclass.AbstractRoleDescription;
+import com._1c.g5.v8.dt.metadata.mdclass.BasicTemplate;
+import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
+import com._1c.g5.v8.dt.metadata.mdclass.ChartOfAccounts;
+import com._1c.g5.v8.dt.metadata.mdclass.ChartOfCalculationTypes;
+import com._1c.g5.v8.dt.metadata.mdclass.ChartOfCharacteristicTypes;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonForm;
+import com._1c.g5.v8.dt.metadata.mdclass.CommonModule;
+import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.InformationRegister;
+import com._1c.g5.v8.dt.metadata.mdclass.InformationRegisterDimension;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
+import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.PredefinedItem;
+import com._1c.g5.v8.dt.metadata.mdclass.Role;
+import com._1c.g5.v8.dt.metadata.mdclass.ScheduledJob;
+import com._1c.g5.v8.dt.metadata.mdclass.TemplateType;
+import com._1c.g5.v8.dt.metadata.mdclass.XDTOPackage;
+import com._1c.g5.v8.dt.xdto.model.Package;
+import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
+import fm.giper.edt.mcp.server.protocol.JsonUtils;
+import fm.giper.edt.mcp.server.protocol.McpKeys;
+import fm.giper.edt.mcp.server.protocol.ToolResult;
+import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.tools.metadata.MetadataFormatterRegistry;
+import fm.giper.edt.mcp.server.utils.BmTransactions;
+import fm.giper.edt.mcp.server.utils.ReadToolExecution;
+import fm.giper.edt.mcp.server.utils.Refusals;
+import fm.giper.edt.mcp.server.utils.CommandInterfaceAddress;
+import fm.giper.edt.mcp.server.utils.CommandInterfaceSupport;
+import fm.giper.edt.mcp.server.utils.ConfigurationRoot;
+import fm.giper.edt.mcp.server.utils.DcsStructureReader;
+import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils;
+import fm.giper.edt.mcp.server.utils.ExcludedCommandsSupport;
+import fm.giper.edt.mcp.server.utils.FieldListSupport;
+import fm.giper.edt.mcp.server.utils.FormElementWriter;
+import fm.giper.edt.mcp.server.utils.FormStructureReader;
+import fm.giper.edt.mcp.server.utils.FormValidationException;
+import fm.giper.edt.mcp.server.utils.MarkdownUtils;
+import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
+import fm.giper.edt.mcp.server.utils.MetadataNodeResolver;
+import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector;
+import fm.giper.edt.mcp.server.utils.MetadataScope;
+import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
+import fm.giper.edt.mcp.server.utils.ReferencedTopObjects;
+import fm.giper.edt.mcp.server.utils.Pagination;
+import fm.giper.edt.mcp.server.utils.PredefinedWriter;
+import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.RoleRightsReader;
+import fm.giper.edt.mcp.server.utils.SubsystemUtils;
+import fm.giper.edt.mcp.server.utils.TemplateContentSupport;
+import fm.giper.edt.mcp.server.utils.VendorSupportGuard;
+import fm.giper.edt.mcp.server.utils.XdtoStructureReader;
+import fm.giper.edt.mcp.server.utils.XdtoWriter;
+
+/**
+ * Tool to get detailed properties of metadata objects from 1C configuration.
+ * Supports sections: basic, attributes, tabular, forms, commands.
+ */
+public class GetMetadataDetailsTool implements IMcpTool
+{
+    public static final String NAME = "get_metadata_details"; //$NON-NLS-1$
+
+    /** Markdown separator between rendered object sections. */
+    private static final String SECTION_SEPARATOR = "\n---\n\n"; //$NON-NLS-1$
+
+    /** Placeholder for an absent/empty value in the type-specific property tables below. */
+    private static final String DASH = "-"; //$NON-NLS-1$
+
+    /** The failure reason of a nested-subsystem chain that addresses no existing subsystem. */
+    static final String NESTED_SUBSYSTEM_NOT_FOUND = "Subsystem not found - no subsystem exists at this " //$NON-NLS-1$
+        + "chain. " + SubsystemUtils.addressingHint(); //$NON-NLS-1$
+
+    /** The failure reason of a subsystem address that goes on past its name without being a chain. */
+    static final String MALFORMED_SUBSYSTEM_CHAIN = "Not a subsystem address. " //$NON-NLS-1$
+        + SubsystemUtils.addressingHint();
+
+    /** Which tool reads the configuration root, and what this tool renders of it (issue #741). */
+    static final String ROOT_DETAILS_ROUTE = "the configuration root is read with " //$NON-NLS-1$
+        + "get_configuration_properties; pass assignable:true for the properties modify_metadata sets on '" //$NON-NLS-1$
+        + ConfigurationRoot.FQN + "'"; //$NON-NLS-1$
+
+    @Override
+    public String getName()
+    {
+        return NAME;
+    }
+    
+    @Override
+    public String getDescription()
+    {
+        return "Inspect metadata objects and members, including managed-form root properties and " //$NON-NLS-1$
+            + "structure, and a section's command interface. Parameters and examples: " //$NON-NLS-1$
+            + "get_tool_guide('get_metadata_details')."; //$NON-NLS-1$
+    }
+
+    @Override
+    public String getInputSchema()
+    {
+        return JsonSchemaBuilder.object()
+            .stringProperty(McpKeys.PROJECT_NAME,
+                "EDT project name (required)", true) //$NON-NLS-1$
+            .stringArrayProperty("objectFqns", //$NON-NLS-1$
+                "Required. FQNs as Type.Name, e.g. ['Catalog.Products', 'Document.SalesOrder'], or " + //$NON-NLS-1$
+                "'Configuration' for the configuration root itself; " + //$NON-NLS-1$
+                "Russian type tokens also work (e.g. '\u0421\u043F\u0440\u0430\u0432\u043E\u0447\u043D\u0438\u043A.Products').", //$NON-NLS-1$
+                true)
+            .booleanProperty("full", //$NON-NLS-1$
+                "All reflected properties (true) or only key info (false). Default: false") //$NON-NLS-1$
+            .integerProperty("roleObjectOffset", //$NON-NLS-1$
+                "For a ROLE FQN only: 0-based object offset into the rights matrix, for paging past the " + //$NON-NLS-1$
+                "first 100 authored objects in the default (non-full) view (default: 0; ignored when " + //$NON-NLS-1$
+                "'full: true', which renders every object up to 1000). Use it (or 'full: true') to read a " + //$NON-NLS-1$
+                "role that authors more than 100 objects.") //$NON-NLS-1$
+            .booleanProperty("assignable", //$NON-NLS-1$
+                "Instead of the details view, return the ASSIGNABLE-property schema (default false): " + //$NON-NLS-1$
+                "per property its value kind, current value and ALLOWED values (enum literals). This " + //$NON-NLS-1$
+                "is what modify_metadata can set; FQNs may address managed-form roots " + //$NON-NLS-1$
+                "('Catalog.Products.Form.ItemForm' / 'CommonForm.Main') and members (e.g. " + //$NON-NLS-1$
+                "'Catalog.Products.Attribute.Weight'), and 'Configuration' the configuration root (only the " + //$NON-NLS-1$
+                "properties modify_metadata sets on it). For CommonForm.Main the mdclass properties " + //$NON-NLS-1$
+                "remain first and content-root properties are added in a labeled second section. " + //$NON-NLS-1$
+                "This mode does NOT cover a predefined item " + //$NON-NLS-1$
+                "('...Predefined.<Item>' is not resolvable in this mode - its settable surface is " + //$NON-NLS-1$
+                "FIXED and depends on the OWNER: description / code everywhere; isFolder on a Catalog " + //$NON-NLS-1$
+                "/ ChartOfCharacteristicTypes; valueType (alias 'type') on a " + //$NON-NLS-1$
+                "ChartOfCharacteristicTypes; accountType / offBalance / order / accountingFlags / " + //$NON-NLS-1$
+                "extDimensionTypes on a ChartOfAccounts; base / displaced / leading / " + //$NON-NLS-1$
+                "actionPeriodIsBase on a ChartOfCalculationTypes; and 'parent' at CREATE time only " + //$NON-NLS-1$
+                "(Catalog / ChartOfCharacteristicTypes / ChartOfAccounts). " + //$NON-NLS-1$
+                "modify_metadata names the same set in its own description, and its guide says which " + //$NON-NLS-1$
+                "owner each belongs to).") //$NON-NLS-1$
+            .stringProperty("language", //$NON-NLS-1$
+                "Synonym language code, e.g. 'en'/'ru' (default: configuration default)") //$NON-NLS-1$
+            .build();
+    }
+
+    @Override
+    public ResponseType getResponseType()
+    {
+        return ResponseType.MARKDOWN;
+    }
+    
+    @Override
+    public String getResultFileName(Map<String, String> params)
+    {
+        String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
+        if (projectName != null && !projectName.isEmpty())
+        {
+            return "metadata-details-" + projectName.toLowerCase() + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return "metadata-details.md"; //$NON-NLS-1$
+    }
+    
+    @Override
+    public String execute(Map<String, String> params)
+    {
+        String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
+        List<String> objectFqns = JsonUtils.extractArrayArgument(params, "objectFqns"); //$NON-NLS-1$
+        String fullStr = JsonUtils.extractStringArgument(params, "full"); //$NON-NLS-1$
+        boolean assignable = JsonUtils.extractBooleanArgument(params, "assignable", false); //$NON-NLS-1$
+        String language = JsonUtils.extractStringArgument(params, "language"); //$NON-NLS-1$
+        // Role-matrix pagination offset (0-based objects). Only the ROLE branch consumes it; a negative
+        // request is clamped to 0 downstream. Ignored in full mode.
+        int roleObjectOffset = JsonUtils.extractIntArgument(params, "roleObjectOffset", 0); //$NON-NLS-1$
+
+        // Validate required parameters
+        String err = JsonUtils.requireArgument(params, McpKeys.PROJECT_NAME);
+        if (err != null)
+        {
+            return err;
+        }
+
+        if (objectFqns == null || objectFqns.isEmpty())
+        {
+            return ToolResult.error("objectFqns is required (array of FQNs like 'Catalog.Products')").toJson(); //$NON-NLS-1$
+        }
+
+        boolean full = "true".equalsIgnoreCase(fullStr); //$NON-NLS-1$
+
+        // Preserve windowed dispatch; headless reads stay on the calling thread.
+        AtomicReference<String> resultRef = new AtomicReference<>();
+        final List<String> fqns = objectFqns;
+        final boolean fullMode = full;
+        final boolean assignableMode = assignable;
+        final String lang = language;
+        final int roleOffset = roleObjectOffset;
+
+        ReadToolExecution.dispatch(() -> {
+            try
+            {
+                String result =
+                    getMetadataDetailsInternal(projectName, fqns, fullMode, assignableMode, lang, roleOffset);
+                resultRef.set(result);
+            }
+            catch (Exception e)
+            {
+                Refusals.log("Error getting metadata details", e); //$NON-NLS-1$
+                resultRef.set(ToolResult.error(e.getMessage()).toJson());
+            }
+        });
+        
+        return resultRef.get();
+    }
+    
+    /**
+     * Reads metadata under the caller's BM boundary.
+     */
+    private String getMetadataDetailsInternal(String projectName, List<String> objectFqns,
+                                               boolean full, boolean assignable, String language,
+                                               int roleObjectOffset)
+    {
+        ProjectContext project = ProjectContext.of(projectName);
+        if (!project.exists())
+        {
+            return ToolResult.error(ProjectContext.notFoundMessage(projectName)).toJson();
+        }
+        ReadSetup setup = ReadToolExecution.readModel(project.project(), NAME,
+            model -> prepareRead(projectName, full, assignable, language, roleObjectOffset, model));
+        if (setup.error() != null) { return setup.error(); }
+        RenderContext ctx = setup.context();
+        StringBuilder sb = new StringBuilder();
+        sb.append("# Metadata Details: ").append(projectName).append("\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
+        List<String[]> failures = new ArrayList<>();
+
+        // Process each FQN
+        for (String fqn : objectFqns)
+        {
+            processFqn(fqn, sb, failures, ctx);
+        }
+
+        if (!failures.isEmpty())
+        {
+            sb.append(formatFailures(failures));
+        }
+
+        return sb.toString();
+    }
+
+    private record ReadSetup(RenderContext context, String error) { }
+
+    private ReadSetup prepareRead(String projectName, boolean full, boolean assignable,
+        String language, int roleObjectOffset, IBmModel bmModel)
+    {
+        ProjectContext.ConfigurationResult resolved = ProjectContext.resolveMetadataRoot(projectName);
+        if (!resolved.ok())
+        {
+            return new ReadSetup(null, resolved.errorJson());
+        }
+        IProject project = resolved.project();
+
+        // Synonyms use language codes; an external-object scope supplies its own default.
+        String effectiveLanguage = resolved.scope().resolveLanguageCode(language);
+
+        // An object's ORIGIN (core vs extension-adopted vs extension-own) is resolved
+        // against the project type, computed once for the whole request.
+        boolean isExtensionProject = ExtensionOriginUtils.isExtensionProject(project);
+
+        return new ReadSetup(new RenderContext(project, resolved.scope(), bmModel, effectiveLanguage,
+            full, assignable, isExtensionProject, roleObjectOffset), null);
+    }
+
+    private record LazyContent(String template, String xdto) { }
+    private record ContentIds(Long template, Long xdto) { }
+
+    private LazyContent prepareContent(String fqn, RenderContext ctx)
+    {
+        if (ctx.assignable) { return new LazyContent(null, null); }
+        ContentIds ids = BmTransactions.read(ctx.bmModel, "MetadataContentIds", (tx, monitor) -> {
+            var node = MetadataNodeResolver.resolveExisting(ctx.scope, fqn);
+            if (node == null || !(node.object instanceof IBmObject bm)) { return new ContentIds(null, null); }
+            return new ContentIds(node.object instanceof BasicTemplate ? bm.bmGetId() : null,
+                node.object instanceof XDTOPackage ? bm.bmGetId() : null);
+        });
+        String template = null;
+        if (ids.template() != null)
+        {
+            template = renderTemplateText(ctx.project, ctx.bmModel, ids.template(), fqn);
+            if (template == null)
+            {
+                template = renderTemplateDcs(ctx.bmModel, ids.template(), fqn, ctx.effectiveLanguage);
+            }
+        }
+        String xdto = ids.xdto() == null ? null : renderXdtoPackageStructure(ctx.bmModel, ids.xdto(), fqn);
+        return new LazyContent(template, xdto);
+    }
+
+    /** Render one FQN inside BM; lazy materialization completes before opening the read task. */
+    void processFqn(String fqn, StringBuilder sb, List<String[]> failures, RenderContext ctx)
+    {
+        if (ctx.bmModel == null)
+        {
+            processFqnRead(fqn, sb, failures, ctx, new LazyContent(null, null));
+            return;
+        }
+        LazyContent content = prepareContent(fqn, ctx);
+        BmTransactions.read(ctx.bmModel, NAME, (tx, monitor) -> {
+            processFqnRead(fqn, sb, failures, ctx, content);
+            return null;
+        });
+    }
+
+    private void processFqnRead(String fqn, StringBuilder sb, List<String[]> failures, RenderContext ctx,
+        LazyContent content)
+    {
+        // A section's command interface renders its commands by panel group (issue #666). Checked
+        // first: it is its own top object, and no other view has anything to say about it.
+        CommandInterfaceAddress commandInterface = CommandInterfaceAddress.parse(fqn);
+        if (commandInterface != null)
+        {
+            appendCommandInterfaceView(commandInterface, fqn, sb, failures, ctx);
+            return;
+        }
+        if (isMisaddressedCommandInterface(fqn))
+        {
+            // resolveObject reads only the first two segments, so this would render the owner instead.
+            failures.add(new String[] { fqn, "only a subsystem and the configuration have a section " //$NON-NLS-1$
+                + "command interface: address it as 'Subsystem.<Name>.CommandInterface' or " //$NON-NLS-1$
+                + "'Configuration.MainSectionCommandInterface'" }); //$NON-NLS-1$
+            return;
+        }
+
+        // Assignable-schema mode: resolve the node (top object OR member) via the shared
+        // resolver and render its assignable-property table - what modify_metadata can set.
+        if (ctx.assignable)
+        {
+            appendAssignableView(fqn, sb, failures, ctx);
+            return;
+        }
+
+        // The configuration ROOT (issue #741) is read with get_configuration_properties, and what
+        // modify_metadata sets on it renders with assignable=true; this view does not render it.
+        ConfigurationRoot.Resolution root = ConfigurationRoot.resolve(ctx.scope, fqn);
+        if (root != null)
+        {
+            failures.add(new String[] { fqn, root.error != null ? root.error : ROOT_DETAILS_ROUTE });
+            return;
+        }
+
+        // A FQN that addresses a FORM ITSELF (Type.Object.Form.FormName or CommonForm.FormName)
+        // renders the form's STRUCTURE (items / attributes / commands) via the cross-model hop
+        // (FormStructureReader). Form MEMBERS use their own create/modify/delete FQNs; this branch
+        // is for the whole form.
+        String formPath = FormElementWriter.parseFormPath(MetadataTypeUtils.normalizeFqn(fqn));
+        if (formPath != null)
+        {
+            String formStructure = renderFormStructure(ctx.scope, ctx.bmModel, formPath, ctx.effectiveLanguage);
+            if (formStructure == null)
+            {
+                failures.add(new String[] { fqn, "the form has no editable content model (it may " //$NON-NLS-1$
+                    + "be empty, an ordinary/legacy form, or not yet built)" }); //$NON-NLS-1$
+                return;
+            }
+            sb.append(formStructure);
+            sb.append(SECTION_SEPARATOR);
+            return;
+        }
+
+        if (content.template() != null)
+        {
+            sb.append(content.template());
+            sb.append(SECTION_SEPARATOR);
+            return;
+        }
+
+        // A FQN addressing a single PREDEFINED item (Catalog/ChartOfCharacteristicTypes.Name.Predefined.
+        // Item, issue #293) renders that ONE item's properties. This must run BEFORE resolveObject
+        // below: resolveObject only looks at the first two FQN segments, so without this branch a
+        // predefined-item FQN would silently render its OWNER's full details instead of the item (or
+        // fail outright) - never a silent wrong render.
+        String normFqnForPredefined = MetadataTypeUtils.normalizeFqn(fqn);
+        PredefinedWriter.PredefinedRef predefinedRef = PredefinedWriter.parseRef(normFqnForPredefined);
+        if (predefinedRef != null)
+        {
+            appendPredefinedItemView(predefinedRef, fqn, normFqnForPredefined, sb, failures, ctx);
+            return;
+        }
+
+        // A FORM MEMBER FQN must not fall through to resolveObject either: like the predefined-item
+        // branch above, resolveObject reads only the first two segments, so it would silently render
+        // the OWNING object's details for an address the caller meant as a member - and would do so
+        // whatever the kind segment said, which is the very thing issue #343 is about. The member view
+        // lives behind assignable=true, so say that instead of answering about something else.
+        FormElementWriter.FormMemberRef defaultMemberRef =
+            FormElementWriter.parse(MetadataTypeUtils.normalizeFqn(fqn));
+        if (defaultMemberRef != null)
+        {
+            // A HANDLER address is not renderable by either view (the assignable view never renders
+            // handlers), so it must not be told to retry there - the form's structure is what lists
+            // handlers.
+            boolean handlerRef = FormElementWriter.isHandlerToken(defaultMemberRef.kindToken);
+            failures.add(new String[] { fqn, "this addresses a form " //$NON-NLS-1$
+                + (handlerRef ? "event HANDLER, which this tool renders as part of the form's " //$NON-NLS-1$
+                    + "structure - read the form's own FQN ('" + defaultMemberRef.formPath + "')" //$NON-NLS-1$ //$NON-NLS-2$
+                    : "MEMBER, whose properties render with assignable=true (which also names the " //$NON-NLS-1$
+                        + "kind when the FQN's kind segment is wrong); the whole form's structure " //$NON-NLS-1$
+                        + "renders from the form's own FQN ('" + defaultMemberRef.formPath + "')") //$NON-NLS-1$ //$NON-NLS-2$
+                + ". Rendering the owning object's details instead would answer about something " //$NON-NLS-1$
+                + "else." }); //$NON-NLS-1$
+            return;
+        }
+
+        // A NESTED subsystem chain must not fall through to resolveObject either: a nested subsystem is
+        // its own top object that its parent only REFERS to, and resolveObject reads only the first two
+        // segments - so it rendered the PARENT for the child's address (issue #708). The chain resolves
+        // by the shared rule (SubsystemUtils.resolveInScope, the one MetadataNodeResolver.resolveAddress
+        // resolves a chain with), and a chain that addresses nothing is a failure row, never one of its
+        // parents.
+        String[] nestedChain = SubsystemUtils.nestedChain(MetadataTypeUtils.normalizeFqn(fqn));
+        // Nor may a subsystem address that goes on past 'Subsystem.<Name>' without being a whole chain
+        // (one cut short, or with a foreign segment): resolveObject would render its FIRST level. A chain
+        // with a stray or padded segment is refused too, though it parses: the tolerant parse would
+        // render the subsystem its trimmed reading names (one rule with the writes, issue #897).
+        if (isMalformedSubsystemChain(fqn) && !ctx.scope.isExternalObjects())
+        {
+            String segment = SubsystemUtils.malformedSegmentError(MetadataTypeUtils.normalizeFqn(fqn));
+            failures.add(new String[] { fqn, segment != null ? segment : MALFORMED_SUBSYSTEM_CHAIN });
+            return;
+        }
+        // Only the special views above may consume a deeper address. The generic resolver reads
+        // Type.Name only, so otherwise it would render the owner even for a missing member (#731).
+        String normalizedFqn = MetadataTypeUtils.normalizeFqn(fqn);
+        MetadataNodeResolver.MetadataNode referenced = MetadataNodeResolver.resolveExisting(ctx.scope, normalizedFqn);
+        boolean referencedTop = referenced != null
+            && ReferencedTopObjects.isReferencedTopCollection(referenced.feature);
+        if (nestedChain == null && !referencedTop && normalizedFqn.split("\\.", -1).length > 2) //$NON-NLS-1$
+        {
+            failures.add(new String[] { fqn, memberAddressReason(ctx.scope, normalizedFqn) });
+            return;
+        }
+        MdObject mdObject = nestedChain != null ? SubsystemUtils.resolveInScope(ctx.scope, nestedChain)
+            : referencedTop ? referenced.object : resolveObject(ctx.scope, fqn);
+        if (mdObject == null)
+        {
+            failures.add(new String[] { fqn, nestedChain != null && !ctx.scope.isExternalObjects()
+                ? NESTED_SUBSYSTEM_NOT_FOUND : describeResolutionFailure(fqn, ctx.scope) });
+            return;
+        }
+
+        // A Role FQN renders its ACCESS-RIGHTS matrix (rights values / RLS / templates / role
+        // properties) via the cross-model hop into the editable rights model, mirroring the FORM branch.
+        // The rights model is a sub-resource of the Role top object, so it is read inside a BM read
+        // boundary; the EObjects must not escape the read task.
+        if (mdObject instanceof Role)
+        {
+            appendRoleRightsView((Role)mdObject, fqn, sb, failures, ctx);
+            return;
+        }
+
+        sb.append(MetadataFormatterRegistry.format(mdObject, ctx.full, ctx.effectiveLanguage));
+        // Type-specific properties the universal reflective formatter's default view omits
+        // (issue #288): ScheduledJob / CommonModule / an InformationRegister's dimension Indexing.
+        sb.append(formatTypeSpecificProperties(mdObject, ctx.full));
+        // An XDTOPackage FQN additionally renders its CONTENT (object types with their properties,
+        // package-global properties, value types, dependencies - issue #183 stream 1) via the
+        // cross-model hop (XdtoStructureReader), APPENDED after the standard property block (unlike
+        // the template/DCS branch above, the package's own properties - namespace, comment, synonym -
+        // stay useful, so this augments rather than replaces the generic render).
+        if (content.xdto() != null) { sb.append(content.xdto()); }
+        // ORIGIN footer: core / core (adopted) / extension. For a base
+        // configuration this is always "core"; for an extension it distinguishes
+        // an adopted base object from one the extension itself owns.
+        sb.append("\n**Origin:** ") //$NON-NLS-1$
+            .append(ExtensionOriginUtils.originLabel(mdObject.getObjectBelonging(),
+                ctx.isExtensionProject, ctx.scope.isExternalObjects()))
+            .append("\n"); //$NON-NLS-1$
+        // Present only for an object vendor support locks, so an agent sees it before writing (#642).
+        sb.append(VendorSupportGuard.detailsLine(mdObject, ctx.scope));
+        sb.append(SECTION_SEPARATOR);
+    }
+
+    /**
+     * Renders a section's command interface: its panel groups in display order, each with its
+     * commands, their visibility and what the section customizes. Read from EDT's computed command
+     * interface inside one BM read transaction.
+     */
+    private void appendCommandInterfaceView(CommandInterfaceAddress address, String fqn, StringBuilder sb,
+        List<String[]> failures, RenderContext ctx)
+    {
+        String refusal = commandInterfaceRefusal(address, ctx);
+        if (refusal != null)
+        {
+            failures.add(new String[] { fqn, refusal });
+            return;
+        }
+        Boolean computed = CommandInterfaceSupport.isComputed(ctx.project);
+        CommandInterfaceSupport.Snapshot snapshot = CommandInterfaceSupport.read(ctx.bmModel, address);
+        if (snapshot.error != null)
+        {
+            failures.add(new String[] { fqn, snapshot.error });
+            return;
+        }
+        String note = Boolean.FALSE.equals(computed) ? CommandInterfaceSupport.staleNote() : null;
+        sb.append(snapshot.section.render(note));
+        sb.append(SECTION_SEPARATOR);
+    }
+
+    /** Why a command-interface address cannot be read in this request, or {@code null}. */
+    private static String commandInterfaceRefusal(CommandInterfaceAddress address, RenderContext ctx)
+    {
+        if (ctx.assignable)
+        {
+            return "a command interface has no assignable properties: read it without 'assignable', and " //$NON-NLS-1$
+                + "change its commands with modify_metadata 'commands'"; //$NON-NLS-1$
+        }
+        if (address.kind() == CommandInterfaceAddress.Kind.SECTIONS_PANEL)
+        {
+            return CommandInterfaceSupport.sectionsPanelRefusal();
+        }
+        if (ctx.scope.isExternalObjects())
+        {
+            return "an external-objects project has no command interface; address it in the " //$NON-NLS-1$
+                + "configuration project"; //$NON-NLS-1$
+        }
+        if (ctx.isExtensionProject)
+        {
+            return CommandInterfaceSupport.extensionRefusal(ctx.project.getName());
+        }
+        return ctx.bmModel == null ? "the project's BM model is not available" : null; //$NON-NLS-1$
+    }
+
+    /**
+     * Whether a three-part FQN puts a command interface under an object that has none, e.g.
+     * {@code Catalog.Products.CommandInterface}. Package-visible for tests.
+     */
+    static boolean isMisaddressedCommandInterface(String fqn)
+    {
+        return fqn != null && fqn.trim().split("\\.", -1).length == 3 //$NON-NLS-1$
+            && CommandInterfaceAddress.hasCommandInterfaceTail(fqn)
+            && CommandInterfaceAddress.parse(fqn) == null;
+    }
+
+    /**
+     * Renders the ASSIGNABLE-property view for one FQN of the request: an owned-form root or form
+     * member is routed through the form resolver (issues #549 / #235), while a common form first
+     * takes the shared mdclass resolver and then adds its content-root table.
+     * Appends the table to {@code sb}, or records a {@code {fqn, reason}} row in {@code failures}
+     * when the node cannot be resolved.
+     */
+    private void appendAssignableView(String fqn, StringBuilder sb, List<String[]> failures, RenderContext ctx)
+    {
+        // The configuration ROOT (issue #741): its own address, never the generic resolver's, which
+        // has no root to offer (and must not: it backs delete, rename, adopt and reference targets).
+        ConfigurationRoot.Resolution root = ConfigurationRoot.resolve(ctx.scope, fqn);
+        if (root != null)
+        {
+            if (root.error != null)
+            {
+                failures.add(new String[] { fqn, root.error });
+                return;
+            }
+            sb.append(formatConfigurationRootAssignable((Configuration)root.node.object));
+            sb.append(SECTION_SEPARATOR);
+            return;
+        }
+        String normFqn = MetadataTypeUtils.normalizeFqn(fqn);
+        // A four-part owned-form ROOT has no mdclass node at that address. Resolve it through the
+        // form seams before the mdclass resolver and render the editable form:Form object's own
+        // assignable features inside readEditableForm's BM READ transaction. A two-part
+        // CommonForm.Name is deliberately deferred: it needs the mdclass table plus an additive
+        // content-root section below.
+        String formRootPath = FormElementWriter.parseFormPath(normFqn);
+        if (FormElementWriter.parseFormObjectCreate(normFqn) != null)
+        {
+            if (resolveFormRootForAssignable(ctx.scope, normFqn) == null)
+            {
+                failures.add(new String[] { fqn, formRootNotFoundReason(formRootPath) });
+                return;
+            }
+            String rootAssignable = ctx.bmModel == null ? null
+                : renderFormRootAssignable(ctx.project, ctx.scope, formRootPath, normFqn, false);
+            if (rootAssignable == null)
+            {
+                failures.add(new String[] { fqn, "the managed form root has no editable content " //$NON-NLS-1$
+                    + "model (the project may still be building, or the form may be empty/legacy)" }); //$NON-NLS-1$
+                return;
+            }
+            sb.append(rootAssignable);
+            sb.append(SECTION_SEPARATOR);
+            return;
+        }
+
+        // A form-member FQN (a group / field / table / decoration inside a form's editable content
+        // model) is NOT part of the mdclass tree, so MetadataNodeResolver cannot see it and the
+        // assignable view used to fail with "Object not found". Route it - BEFORE the mdclass
+        // resolver - through the SAME form resolver modify_metadata uses, and render the element's
+        // own features UNION its extInfo's layout props (the general reflective extInfo path,
+        // issue #235). A plain mdclass FQN yields no FormMemberRef, so its path is unchanged.
+        FormElementWriter.FormMemberRef memberRef = FormElementWriter.parse(normFqn);
+        if (memberRef != null)
+        {
+            // The resolution is kind-aware (issue #343), so a wrong / misspelt kind segment is a MISS
+            // here too; the advice (read inside the transaction) names the kind the same-named element
+            // really has, so the reason is not "does not exist" about something the caller can see.
+            String[] kindAdvice = new String[] { "" }; //$NON-NLS-1$
+            String memberAssignable =
+                renderFormMemberAssignable(ctx.scope, ctx.bmModel, normFqn, memberRef, kindAdvice);
+            if (memberAssignable == null)
+            {
+                // With advice the element DOES exist under another kind, so the generic "or the
+                // element does not exist" would contradict the very next clause - drop it there.
+                failures.add(new String[] { fqn, kindAdvice[0].isEmpty()
+                    ? "the form member could not be resolved (the form may have no editable content " //$NON-NLS-1$
+                        + "model, or the element does not exist)" //$NON-NLS-1$
+                    : "the form member could not be resolved" + kindAdvice[0] }); //$NON-NLS-1$
+                return;
+            }
+            sb.append(memberAssignable);
+            sb.append(SECTION_SEPARATOR);
+            return;
+        }
+        MetadataNodeResolver.MetadataNode node = MetadataNodeResolver.resolveExisting(ctx.scope, fqn);
+        if (node == null || node.object == null)
+        {
+            failures.add(new String[] { fqn, describeResolutionFailure(fqn, ctx.scope) });
+            return;
+        }
+        // CommonForm.Name is BOTH a first-class mdclass top object and a form root. Keep the mdclass
+        // assignable table byte-for-byte first, then add the content root under an unmistakable
+        // heading. Every other mdclass FQN remains the single-table path.
+        sb.append(formatAssignable(normFqn, node.object));
+        if (node.object instanceof CommonForm)
+        {
+            formRootPath = FormElementWriter.parseFormPath(normFqn);
+            String rootAssignable = formRootPath == null || ctx.bmModel == null ? null
+                : renderFormRootAssignable(ctx.project, ctx.scope, formRootPath, normFqn, true);
+            if (rootAssignable == null)
+            {
+                failures.add(new String[] { fqn, "the common form's content root has no editable " //$NON-NLS-1$
+                    + "model (the project may still be building, or the form may be empty/legacy)" }); //$NON-NLS-1$
+            }
+            else
+            {
+                sb.append('\n').append(rootAssignable);
+            }
+        }
+        sb.append(SECTION_SEPARATOR);
+    }
+
+    /**
+     * Renders a Role FQN's ACCESS-RIGHTS matrix (rights values / RLS / templates / role properties)
+     * followed by the ORIGIN footer. Appends the section to {@code sb}, or records a
+     * {@code {fqn, reason}} row in {@code failures} when the editable rights model is unavailable.
+     * Extracted verbatim from the {@code Role} branch of {@link #processFqn}; no behaviour change.
+     */
+    private void appendRoleRightsView(Role role, String fqn, StringBuilder sb, List<String[]> failures,
+        RenderContext ctx)
+    {
+        String roleRights = renderRoleRights(ctx.bmModel, role,
+            MetadataTypeUtils.normalizeFqn(fqn), ctx.full, ctx.effectiveLanguage, ctx.roleObjectOffset);
+        if (roleRights == null)
+        {
+            failures.add(new String[] { fqn, "the role's rights model is unavailable (the BM model " //$NON-NLS-1$
+                + "is not ready or the project is not yet built)" }); //$NON-NLS-1$
+            return;
+        }
+        sb.append(roleRights);
+        sb.append("\n**Origin:** ") //$NON-NLS-1$
+            .append(ExtensionOriginUtils.originLabel(role.getObjectBelonging(),
+                ctx.isExtensionProject, ctx.scope.isExternalObjects()))
+            .append("\n"); //$NON-NLS-1$
+        sb.append(VendorSupportGuard.detailsLine(role, ctx.scope));
+        sb.append(SECTION_SEPARATOR);
+    }
+
+    /**
+     * Renders a single PREDEFINED item's properties (issue #293). The predefined items are plain EMF
+     * containment on the already-resolved {@code Configuration} - the SAME in-resource data the owner
+     * FQN's own "Predefined items" section reads ({@link #appendPredefinedItems}) - NOT a
+     * lazily-loaded sub-resource like a form's content or a role's rights, so it needs no BM read
+     * transaction and stays inspectable even before the project's BM model is built (matching the
+     * owner-section behaviour: a client must not be able to read the whole table yet be denied a
+     * single row of it).
+     */
+    private void appendPredefinedItemView(PredefinedWriter.PredefinedRef ref, String fqn, String normFqn,
+        StringBuilder sb, List<String[]> failures, RenderContext ctx)
+    {
+        String rendered = renderPredefinedItemViewBody(ref, fqn, normFqn, failures, ctx);
+        if (rendered != null)
+        {
+            sb.append(rendered);
+            sb.append(SECTION_SEPARATOR);
+        }
+    }
+
+    /**
+     * The body of {@link #appendPredefinedItemView}: resolves the owner
+     * (yo-fallback), finds the item (recursive, exact name match) and renders a Property/Value table
+     * (Name / Code / Description / Value type / Folder / Parent / nested-item count when it is a
+     * folder). Returns
+     * the Markdown, or {@code null} after adding a {fqn, reason} failure row when the owner TYPE is
+     * unsupported, the owner does not exist, or the item is not found - never a silent wrong render.
+     * Package-private: the unit tests exercise it directly against an in-memory {@code Configuration}.
+     */
+    String renderPredefinedItemViewBody(PredefinedWriter.PredefinedRef ref, String fqn, String normFqn,
+        List<String[]> failures, RenderContext ctx)
+    {
+        String ownerTypeErr = PredefinedWriter.unsupportedOwnerTypeError(ref.ownerType);
+        if (ownerTypeErr != null)
+        {
+            failures.add(new String[] { fqn, ownerTypeErr });
+            return null;
+        }
+        MetadataNodeResolver.ResolvedNode ownerResolved =
+            MetadataNodeResolver.resolveExistingWithYoFallback(ctx.scope, ref.ownerFqn());
+        if (ownerResolved.node == null)
+        {
+            failures.add(new String[] { fqn, "Owner object not found: " + ref.ownerFqn() //$NON-NLS-1$
+                + ". Use get_metadata_objects to list available objects." }); //$NON-NLS-1$
+            return null;
+        }
+        PredefinedWriter.ItemLookup lookup = PredefinedWriter.lookup(ownerResolved.node.object, ref.itemName);
+        if (lookup == null)
+        {
+            failures.add(new String[] { fqn, "Predefined item not found: '" + ref.itemName + "' on " //$NON-NLS-1$ //$NON-NLS-2$
+                + ref.ownerFqn() }); //$NON-NLS-1$
+            return null;
+        }
+        PredefinedWriter.ItemRow row = findItemRow(ownerResolved.node.object, lookup);
+        return formatPredefinedItem(normFqn, lookup, ownerResolved.node.object, row);
+    }
+
+    /**
+     * Finds the {@link PredefinedWriter.ItemRow} for {@code lookup}'s item among the owner's flattened
+     * listing - the SAME pre-order items+content walk {@link PredefinedWriter#lookup} used, matched on
+     * Name and parent, so it is exactly the located item's row. This lets the single-item view CONSUME
+     * the widened ItemRow (its owner-specific fields) rather than re-deriving them - the same source the
+     * owner-level listing renders. Returns {@code null} only on an internal inconsistency (the located
+     * item somehow not enumerated), which the caller then renders as dashes.
+     */
+    private static PredefinedWriter.ItemRow findItemRow(MdObject owner, PredefinedWriter.ItemLookup lookup)
+    {
+        String name = lookup.item.getName();
+        for (PredefinedWriter.ItemRow row : PredefinedWriter.listAll(owner))
+        {
+            if (name != null && name.equals(row.name)
+                && Objects.equals(lookup.parentName, row.parentName))
+            {
+                return row;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Renders one predefined item's properties as a Property/Value Markdown table. The owner-specific
+     * rows (issue #296 Phase 2/3) are gated on the owner kind: a ChartOfAccounts item adds Account type
+     * / Off-balance / Order / Accounting flags / Ext dimension types; a ChartOfCalculationTypes item
+     * adds Base / Displaced / Leading / Action period is base; a Catalog / ChartOfCharacteristicTypes
+     * item renders none of them (Phase-1 output byte-unchanged). Each new value is sourced from the
+     * widened {@code row} and follows the dash-when-N/A precedent of {@code formatValueType}. The Folder
+     * row shows a dash for the two new kinds - a chart of accounts nests via its childItems, a chart of
+     * calculation types is flat, and neither carries the Catalog/CCT {@code isFolder} flag.
+     *
+     * @param row the item's widened listing row (its owner-specific fields), or {@code null} on an
+     *     internal inconsistency (owner-specific values then render as dashes)
+     */
+    private static String formatPredefinedItem(String normFqn, PredefinedWriter.ItemLookup lookup,
+        EObject owner, PredefinedWriter.ItemRow row)
+    {
+        PredefinedItem item = lookup.item;
+        boolean chartOfAccounts = owner instanceof ChartOfAccounts;
+        boolean chartOfCalculationTypes = owner instanceof ChartOfCalculationTypes;
+        boolean newOwnerKind = chartOfAccounts || chartOfCalculationTypes;
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Predefined item: ").append(normFqn).append("\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
+        sb.append(MarkdownUtils.tableHeader("Property", "Value")); //$NON-NLS-1$ //$NON-NLS-2$
+        sb.append(MarkdownUtils.tableRow("Name", item.getName())); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Code", valueOrDash(PredefinedWriter.displayCode(item)))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Description", valueOrDash(item.getDescription()))); //$NON-NLS-1$
+        // Value type (issue #296 P2): meaningful only for a ChartOfCharacteristicTypes item - dash for
+        // any other owner kind (a Catalog item has no such concept) or when unset.
+        sb.append(MarkdownUtils.tableRow("Value type", valueOrDash(PredefinedWriter.displayValueType(item)))); //$NON-NLS-1$
+        if (chartOfAccounts)
+        {
+            appendChartOfAccountsItemRows(sb, row);
+        }
+        if (chartOfCalculationTypes)
+        {
+            appendChartOfCalculationTypesItemRows(sb, row);
+        }
+        // Folder: dash for the two new kinds (a chart of accounts nests via childItems, a chart of
+        // calculation types is flat) - neither carries the Catalog/CCT isFolder flag; Yes/No otherwise.
+        sb.append(MarkdownUtils.tableRow("Folder", //$NON-NLS-1$
+            newOwnerKind ? DASH : yesNo(PredefinedWriter.isFolder(item))));
+        sb.append(MarkdownUtils.tableRow("Parent", valueOrDash(lookup.parentName))); //$NON-NLS-1$
+        // Nested items: a Catalog/CCT folder always reports its (possibly 0) descendant count; a chart of
+        // accounts reports it only when the account actually nests child accounts (a flat calc type never
+        // does, so its count stays 0 and the row is skipped).
+        int descendants = PredefinedWriter.countDescendants(item);
+        boolean showNested = newOwnerKind ? descendants > 0 : PredefinedWriter.isFolder(item);
+        if (showNested)
+        {
+            sb.append(MarkdownUtils.tableRow("Nested items", String.valueOf(descendants))); //$NON-NLS-1$
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Appends the ChartOfAccounts-specific single-item rows (issue #296 Phase 3): Account type /
+     * Off-balance / Order and the joined reference lists (Accounting flags, Ext dimension types), each
+     * dash-when-N/A. Sourced from the widened {@link PredefinedWriter.ItemRow} (whose joined target-name
+     * strings {@link PredefinedWriter} resolves from the live in-resource EObjects); this formatter only
+     * renders them. A {@code null} row (internal inconsistency) renders every value as a dash.
+     */
+    private static void appendChartOfAccountsItemRows(StringBuilder sb, PredefinedWriter.ItemRow row)
+    {
+        String accountType = row != null ? row.accountType : null;
+        Boolean offBalance = row != null ? row.offBalance : null;
+        String order = row != null ? row.order : null;
+        String accountingFlags = row != null ? row.accountingFlags : null;
+        String extDimensionTypes = row != null ? row.extDimensionTypes : null;
+        sb.append(MarkdownUtils.tableRow("Account type", valueOrDash(accountType))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Off-balance", nullableYesNo(offBalance))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Order", valueOrDash(order))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Accounting flags", valueOrDash(accountingFlags))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Ext dimension types", valueOrDash(extDimensionTypes))); //$NON-NLS-1$
+    }
+
+    /**
+     * Appends the ChartOfCalculationTypes-specific single-item rows (issue #296 Phase 2): the joined
+     * Base / Displaced / Leading sibling lists and Action period is base, each dash-when-N/A. Sourced
+     * from the widened {@link PredefinedWriter.ItemRow} (whose joined sibling-name strings
+     * {@link PredefinedWriter} produces); this formatter only renders them. A {@code null} row (internal
+     * inconsistency) renders every value as a dash.
+     */
+    private static void appendChartOfCalculationTypesItemRows(StringBuilder sb, PredefinedWriter.ItemRow row)
+    {
+        String base = row != null ? row.base : null;
+        String displaced = row != null ? row.displaced : null;
+        String leading = row != null ? row.leading : null;
+        Boolean actionPeriodIsBase = row != null ? row.actionPeriodIsBase : null;
+        sb.append(MarkdownUtils.tableRow("Base", valueOrDash(base))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Displaced", valueOrDash(displaced))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Leading", valueOrDash(leading))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Action period is base", nullableYesNo(actionPeriodIsBase))); //$NON-NLS-1$
+    }
+
+    /** Per-request scope, captured BM model and detached rendering options. */
+    static final class RenderContext
+    {
+        /** Workspace project used to obtain the form edit/read scaffold. */
+        final IProject project;
+        /** The ROOT an FQN resolves against: the configuration, or an external-objects project's roots. */
+        final MetadataScope scope;
+        final IBmModel bmModel;
+        final String effectiveLanguage;
+        final boolean full;
+        final boolean assignable;
+        final boolean isExtensionProject;
+        /** 0-based object offset for a Role FQN's paginated rights matrix (ignored in {@code full} mode). */
+        final int roleObjectOffset;
+
+        RenderContext(IProject project, MetadataScope scope, IBmModel bmModel, // NOSONAR established render contract
+            String effectiveLanguage, boolean full, boolean assignable, boolean isExtensionProject,
+            int roleObjectOffset)
+        {
+            this.project = project;
+            this.scope = scope;
+            this.bmModel = bmModel;
+            this.effectiveLanguage = effectiveLanguage;
+            this.full = full;
+            this.assignable = assignable;
+            this.isExtensionProject = isExtensionProject;
+            this.roleObjectOffset = roleObjectOffset;
+        }
+    }
+
+    /**
+     * Renders a node's ASSIGNABLE-property schema as a Markdown table: per property its value kind,
+     * current value, and (for an enum) the allowed values. This is the discovery view for
+     * modify_metadata - it lists exactly what can be set and the valid enum literals. The shared
+     * {@link MarkdownUtils} builder escapes every cell.
+     * <p>
+     * Widened to any {@link EObject} so it also serves a FORM MEMBER: for a form element the table is
+     * the element's own assignable features UNION its {@code extInfo}'s layout properties (the general
+     * reflective extInfo path, issue #235). A plain mdclass object has no {@code extInfo}
+     * ({@link FormElementWriter#resolveExtInfoEClass} returns {@code null}), so it takes the
+     * single-argument introspection and its output is byte-identical - the mdclass assignable view is
+     * unchanged.
+     *
+     * @param fqn the (normalized) FQN, for the section heading
+     * @param obj the resolved node (a top object, an mdclass member, or a form member)
+     * @return the Markdown section
+     */
+    static String formatAssignable(String fqn, EObject obj)
+    {
+        return formatAssignableSection("## Assignable properties: ", fqn, obj); //$NON-NLS-1$
+    }
+
+    /** Renders the separately-labeled content-root section appended for a common form. */
+    static String formatFormContentRootAssignable(String fqn, EObject obj)
+    {
+        return formatAssignableSection("## Form content root assignable properties: ", fqn, obj); //$NON-NLS-1$
+    }
+
+    /**
+     * Renders the configuration ROOT's assignable section (issue #741) under its canonical address: the
+     * shared table, which for a {@link Configuration} lists only the properties {@code modify_metadata}
+     * sets on the root, then the sentence that says what else reads the root - no more than
+     * {@code get_configuration_properties} renders (its name, behaviour settings and languages, not every
+     * other property).
+     *
+     * @param config the project's own configuration
+     * @return the Markdown section
+     */
+    static String formatConfigurationRootAssignable(Configuration config)
+    {
+        return formatAssignable(ConfigurationRoot.FQN, config) + "\nOnly these properties of the " //$NON-NLS-1$
+            + "configuration root are settable; get_configuration_properties also reads its name, behaviour " //$NON-NLS-1$
+            + "settings and languages.\n"; //$NON-NLS-1$
+    }
+
+    /** Shared table body; callers supply the heading that identifies the represented surface. */
+    private static String formatAssignableSection(String heading, String fqn, EObject obj)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.append(heading).append(fqn).append("\n\n"); //$NON-NLS-1$
+        sb.append("Set these with `modify_metadata`. For an ENUM property the value must be one of " //$NON-NLS-1$
+            + "the listed Allowed values; a FIELD_LIST property takes a JSON array of the listed field " //$NON-NLS-1$
+            + "addresses (at most " + FieldListSupport.MAX_LISTED + " are listed, then the rest is " //$NON-NLS-1$ //$NON-NLS-2$
+            + "counted).\n\n"); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableHeader("Property", "Kind", "Current", "Allowed values")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        // A form element additionally exposes the assignable properties nested in its <extInfo> (e.g. a
+        // UsualGroup's group / united layout props). When it carries a LIVE extInfo instance (the common
+        // designer-authored case) render those props off that instance, so their Current column shows the
+        // SET values just like the direct features do; fall back to the EClass-only listing (kind +
+        // allowed values, no Current) when the <extInfo> slot is empty, and to the single-arg
+        // introspection for a plain mdclass object (no extInfo - byte-identical, mdclass view unchanged).
+        EObject liveExtInfo = FormElementWriter.extInfoInstance(obj);
+        EClass extInfoEClass = FormElementWriter.resolveExtInfoEClass(obj); // type-authoritative
+        // Read Current values off the live instance ONLY when it MATCHES the type-derived class. A form
+        // group whose `type` was changed carries a STALE extInfo (class != the type-derived one); list the
+        // NEW type's props (kind + allowed, no Current) rather than the stale instance's, so the assignable
+        // view stays consistent with the group's current type (#235 review).
+        boolean liveMatches = liveExtInfo != null && extInfoEClass != null
+            && liveExtInfo.eClass().getName().equals(extInfoEClass.getName());
+        Iterable<MetadataPropertyIntrospector.PropertyInfo> props;
+        if (liveMatches)
+        {
+            props = MetadataPropertyIntrospector.introspect(obj, liveExtInfo);
+        }
+        else if (extInfoEClass != null)
+        {
+            props = MetadataPropertyIntrospector.introspect(obj, extInfoEClass);
+        }
+        else if (obj instanceof Configuration)
+        {
+            // The configuration root offers only what modify_metadata sets on it (issue #741), and its
+            // collections - every top object of the configuration - are never read for the table.
+            props = MetadataPropertyIntrospector.introspectOnly(obj, ConfigurationRoot::isSettable);
+        }
+        else
+        {
+            props = MetadataPropertyIntrospector.introspect(obj);
+        }
+        for (MetadataPropertyIntrospector.PropertyInfo p : props)
+        {
+            // A field list offers every lockable field of the object for data locking - several KB on an
+            // ERP-size document - so its Allowed cell is bounded (issue #740), as are form commands.
+            String allowed = p.allowedValues.isEmpty() ? null
+                : p.valueKind == MetadataPropertyIntrospector.ValueKind.FIELD_LIST
+                    ? Pagination.boundedListing(p.allowedValues, FieldListSupport.MAX_LISTED)
+                    : p.valueKind == MetadataPropertyIntrospector.ValueKind.EXCLUDED_COMMANDS
+                        ? Pagination.boundedListing(p.allowedValues, ExcludedCommandsSupport.MAX_LISTED)
+                        : String.join(", ", p.allowedValues); //$NON-NLS-1$
+            sb.append(MarkdownUtils.tableRow(p.name, p.valueKind.toString(), p.currentValue, allowed));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Renders TYPE-SPECIFIC properties that the universal reflective formatter's DEFAULT
+     * (non-{@code full}) view does not surface (issue #288): {@code modify_metadata} already WRITES
+     * a ScheduledJob's execution properties (Schedule presence via {@code eIsSet} - EXPLICITLY set,
+     * not a non-null default), a CommonModule's context-availability flags, and an
+     * InformationRegister dimension's Indexing, but the basic details view rendered only Name /
+     * Synonym for the first two, and no Indexing at all for the third - reading them back was
+     * impossible. Appended right after the universal object section, before the ORIGIN footer.
+     * <p>
+     * The ScheduledJob/CommonModule "Properties" table is skipped when {@code full} is {@code true}:
+     * {@code UniversalMetadataFormatter}'s full-mode "All Properties" reflective dump already lists
+     * every plain {@code EAttribute} of both types (methodName / use / predefined /
+     * restartCountOnFailure / restartIntervalOnFailure / key; server / serverCall / ... /
+     * returnValuesReuse), so a second table here would only duplicate it.
+     * <p>
+     * The InformationRegister "Dimension Indexing" table is emitted regardless of {@code full}: the
+     * generic attributes-table Indexing column (in {@code UniversalMetadataFormatter}) only
+     * recognizes {@code com._1c.g5.v8.dt.metadata.mdclass.DbObjectAttribute}, while a register
+     * dimension is a {@code com._1c.g5.v8.dt.metadata.mdclass.RegisterDimension} - a SEPARATE
+     * sub-interface of {@code BasicFeature} - so a dimension never gets an Indexing value there in
+     * EITHER mode; this is the only place Indexing is visible for a dimension.
+     *
+     * @param mdObject the resolved top object (a type this method does not handle is a no-op)
+     * @param full the request's full-mode flag
+     * @return the Markdown section to append (possibly empty)
+     */
+    static String formatTypeSpecificProperties(MdObject mdObject, boolean full)
+    {
+        StringBuilder sb = new StringBuilder();
+        // Render in BOTH basic and full mode. It would be tempting to skip these in full mode
+        // (the generic "All Properties" dump repeats the scalar getters), but that dump does NOT
+        // include the transient Schedule reference, so skipping in full mode silently LOSES the
+        // Schedule row that basic mode shows (codex #288). A little overlap in full mode is
+        // preferable to full mode carrying LESS information than basic.
+        if (mdObject instanceof ScheduledJob)
+        {
+            appendScheduledJobProperties(sb, (ScheduledJob)mdObject);
+        }
+        else if (mdObject instanceof CommonModule)
+        {
+            appendCommonModuleProperties(sb, (CommonModule)mdObject);
+        }
+        else if (mdObject instanceof InformationRegister)
+        {
+            appendDimensionIndexing(sb, (InformationRegister)mdObject);
+        }
+        // Predefined items (issue #293, #296): rendered in BOTH basic and full modes - a mode must never
+        // carry less (the #288 lesson above). A Catalog / ChartOfCharacteristicTypes / ChartOfAccounts /
+        // ChartOfCalculationTypes with no predefined content yet renders nothing (PredefinedWriter.listAll
+        // returns an empty list).
+        if (mdObject instanceof Catalog || mdObject instanceof ChartOfCharacteristicTypes
+            || mdObject instanceof ChartOfAccounts || mdObject instanceof ChartOfCalculationTypes)
+        {
+            appendPredefinedItems(sb, mdObject);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Renders the owner's "Predefined items" section: one row per item (recursively, items + content),
+     * with a per-owner-kind column set. A Catalog / ChartOfCharacteristicTypes keeps the Phase-1 table
+     * (Name / Code / Description / Type / Folder / Parent) byte-unchanged; a ChartOfAccounts /
+     * ChartOfCalculationTypes gets its own owner-specific columns (issue #296 Phase 2/3). A no-op (no
+     * section at all) when the owner has no predefined content yet.
+     */
+    private static void appendPredefinedItems(StringBuilder sb, MdObject mdObject)
+    {
+        List<PredefinedWriter.ItemRow> rows = PredefinedWriter.listAll(mdObject);
+        if (rows.isEmpty())
+        {
+            return;
+        }
+        sb.append("\n### Predefined items\n\n"); //$NON-NLS-1$
+        if (mdObject instanceof ChartOfAccounts)
+        {
+            appendChartOfAccountsPredefinedRows(sb, rows);
+        }
+        else if (mdObject instanceof ChartOfCalculationTypes)
+        {
+            appendChartOfCalculationTypesPredefinedRows(sb, rows);
+        }
+        else
+        {
+            appendCatalogLikePredefinedRows(sb, rows);
+        }
+    }
+
+    /**
+     * The Phase-1 Catalog / ChartOfCharacteristicTypes predefined listing (byte-unchanged): the Parent
+     * column shows nesting (top-level items carry {@link #DASH}); the Type column is populated only for a
+     * ChartOfCharacteristicTypes item's value type (issue #296 P2, dash for a Catalog item / an unset
+     * type).
+     */
+    private static void appendCatalogLikePredefinedRows(StringBuilder sb,
+        List<PredefinedWriter.ItemRow> rows)
+    {
+        sb.append(MarkdownUtils.tableHeader("Name", "Code", "Description", "Type", "Folder", "Parent")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+        for (PredefinedWriter.ItemRow row : rows)
+        {
+            sb.append(MarkdownUtils.tableRow(row.name, valueOrDash(row.code), valueOrDash(row.description),
+                valueOrDash(row.valueType), yesNo(row.isFolder), valueOrDash(row.parentName)));
+        }
+    }
+
+    /**
+     * The ChartOfAccounts predefined listing (issue #296 Phase 3): the account's Code / Description plus
+     * Account type / Off-balance / Order and the joined reference lists (Accounting flags, Ext dimension
+     * types), each dash-when-N/A. Folder is always a dash (a chart of accounts nests via childItems, not
+     * the isFolder flag); Parent names the containing account (the childItems hierarchy that
+     * {@link PredefinedWriter#listAll} recurses).
+     */
+    private static void appendChartOfAccountsPredefinedRows(StringBuilder sb,
+        List<PredefinedWriter.ItemRow> rows)
+    {
+        sb.append(MarkdownUtils.tableHeader("Name", "Code", "Description", "Account type", "Off-balance", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+            "Order", "Accounting flags", "Ext dimension types", "Folder", "Parent")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+        for (PredefinedWriter.ItemRow row : rows)
+        {
+            sb.append(MarkdownUtils.tableRow(row.name, valueOrDash(row.code), valueOrDash(row.description),
+                valueOrDash(row.accountType), nullableYesNo(row.offBalance), valueOrDash(row.order),
+                valueOrDash(row.accountingFlags), valueOrDash(row.extDimensionTypes), DASH,
+                valueOrDash(row.parentName)));
+        }
+    }
+
+    /**
+     * The ChartOfCalculationTypes predefined listing (issue #296 Phase 2): the calc type's Code /
+     * Description plus the joined Base / Displaced / Leading sibling lists and Action period is base,
+     * each dash-when-N/A. Folder and Parent are always a dash - a chart of calculation types is flat (no
+     * folders, no nesting).
+     */
+    private static void appendChartOfCalculationTypesPredefinedRows(StringBuilder sb,
+        List<PredefinedWriter.ItemRow> rows)
+    {
+        sb.append(MarkdownUtils.tableHeader("Name", "Code", "Description", "Base", "Displaced", "Leading", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+            "Action period is base", "Folder", "Parent")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        for (PredefinedWriter.ItemRow row : rows)
+        {
+            sb.append(MarkdownUtils.tableRow(row.name, valueOrDash(row.code), valueOrDash(row.description),
+                valueOrDash(row.base), valueOrDash(row.displaced), valueOrDash(row.leading),
+                nullableYesNo(row.actionPeriodIsBase), DASH, valueOrDash(row.parentName)));
+        }
+    }
+
+    /**
+     * Renders a ScheduledJob's execution properties as a Property/Value table: the method it calls,
+     * whether it is enabled/predefined, its failure-restart policy, its (import) key, and whether a
+     * Schedule is attached. The Schedule is rendered as mere PRESENCE ("set" / {@link #DASH}), never a
+     * {@code toString()} dump - a {@code Schedule} is a cross-model {@code EObject} (not an
+     * {@code MdObject}), so dumping it would print an unhelpful implementation-detail string instead of
+     * a meaningful value. Presence is read via {@link #scheduledJobHasSchedule(ScheduledJob)}.
+     */
+    private static void appendScheduledJobProperties(StringBuilder sb, ScheduledJob job)
+    {
+        sb.append("\n### Properties\n\n"); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableHeader("Property", "Value")); //$NON-NLS-1$ //$NON-NLS-2$
+        sb.append(MarkdownUtils.tableRow("Method Name", valueOrDash(job.getMethodName()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Use", yesNo(job.isUse()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Predefined", yesNo(job.isPredefined()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Restart Count On Failure", //$NON-NLS-1$
+            String.valueOf(job.getRestartCountOnFailure())));
+        sb.append(MarkdownUtils.tableRow("Restart Interval On Failure", //$NON-NLS-1$
+            String.valueOf(job.getRestartIntervalOnFailure())));
+        sb.append(MarkdownUtils.tableRow("Key", valueOrDash(job.getKey()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Schedule", scheduledJobHasSchedule(job) ? "set" : DASH)); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * Returns whether the job has an EXPLICITLY-configured Schedule, via EMF {@code eIsSet} on the
+     * {@code SCHEDULED_JOB__SCHEDULE} feature. This deliberately does NOT use {@code getSchedule() != null}:
+     * a {@code create_metadata}-made job carries a non-null DEFAULT schedule, so a null-check would
+     * always report "set". {@code eIsSet} needs only the EMF feature literal, so it avoids importing the
+     * {@code com._1c.g5.v8.dt.schedule.model} package (which this bundle's {@code MANIFEST.MF} does not
+     * declare) and needs no reflection.
+     */
+    private static boolean scheduledJobHasSchedule(ScheduledJob job)
+    {
+        // eIsSet (EXPLICITLY configured), NOT getSchedule() != null: a create_metadata-made job
+        // carries a non-null DEFAULT schedule, so a plain null-check would always render "set".
+        // eIsSet is true only once a schedule is actually assigned - and it takes the EMF feature
+        // literal, so it needs no import of the schedule model package (which this bundle does not
+        // declare in its MANIFEST).
+        return job.eIsSet(MdClassPackage.Literals.SCHEDULED_JOB__SCHEDULE);
+    }
+
+    /**
+     * Renders a CommonModule's context-availability flags and its return-values-reuse mode as a
+     * Property/Value table. Every boolean is rendered directly (Yes/No) - {@code false} is a valid,
+     * meaningful value here (the user wants to see e.g. server=No), not an "absent" marker. The
+     * {@code returnValuesReuse} enum is rendered by its LITERAL name (via {@link #enumLiteral(Object)}),
+     * never a raw object dump.
+     */
+    private static void appendCommonModuleProperties(StringBuilder sb, CommonModule module)
+    {
+        sb.append("\n### Properties\n\n"); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableHeader("Property", "Value")); //$NON-NLS-1$ //$NON-NLS-2$
+        sb.append(MarkdownUtils.tableRow("Server", yesNo(module.isServer()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Server Call", yesNo(module.isServerCall()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Client (Managed Application)", //$NON-NLS-1$
+            yesNo(module.isClientManagedApplication())));
+        sb.append(MarkdownUtils.tableRow("Client (Ordinary Application)", //$NON-NLS-1$
+            yesNo(module.isClientOrdinaryApplication())));
+        sb.append(MarkdownUtils.tableRow("External Connection", yesNo(module.isExternalConnection()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Global", yesNo(module.isGlobal()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Privileged", yesNo(module.isPrivileged()))); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableRow("Return Values Reuse", //$NON-NLS-1$
+            enumLiteral(module.getReturnValuesReuse())));
+    }
+
+    /**
+     * Renders an InformationRegister's dimensions' Indexing as a small Dimension/Indexing table. A
+     * no-op when the register has no dimensions. See {@link #formatTypeSpecificProperties} for why this
+     * cannot be folded into the shared attributes table.
+     */
+    private static void appendDimensionIndexing(StringBuilder sb, InformationRegister register)
+    {
+        List<InformationRegisterDimension> dimensions = register.getDimensions();
+        if (dimensions == null || dimensions.isEmpty())
+        {
+            return;
+        }
+        sb.append("\n### Dimension Indexing\n\n"); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableHeader("Dimension", "Indexing")); //$NON-NLS-1$ //$NON-NLS-2$
+        for (InformationRegisterDimension dimension : dimensions)
+        {
+            sb.append(MarkdownUtils.tableRow(dimension.getName(), enumLiteral(dimension.getIndexing())));
+        }
+    }
+
+    /**
+     * Renders a possibly-{@code null}/empty string, or {@link #DASH} when absent.
+     */
+    private static String valueOrDash(String value)
+    {
+        return value != null && !value.isEmpty() ? value : DASH;
+    }
+
+    /**
+     * Renders a boolean as {@code Yes}/{@code No}, matching the Yes/No Markdown convention the rest of
+     * get_metadata_details uses. {@code false} is rendered as {@code No}, not omitted - it is a real,
+     * meaningful value for these flags.
+     */
+    private static String yesNo(boolean value)
+    {
+        return value ? "Yes" : "No"; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * Renders a nullable boolean flag as {@code Yes}/{@code No}, or {@link #DASH} when {@code null} (the
+     * flag does not apply to this owner kind / this predefined-item kind) - the boolean counterpart of
+     * {@link #valueOrDash}, used for the ChartOfAccounts {@code offBalance} and the
+     * ChartOfCalculationTypes {@code actionPeriodIsBase} owner-specific rows (issue #296 Phase 2/3).
+     */
+    private static String nullableYesNo(Boolean value)
+    {
+        return value == null ? DASH : yesNo(value.booleanValue());
+    }
+
+    /**
+     * Renders an EMF enum's LITERAL name (its {@code toString()}, which the generated enum overrides to
+     * return the literal), or {@link #DASH} when {@code null}. Never used on a plain {@link EObject}
+     * (e.g. a ScheduledJob's Schedule) - only on an actual enum value.
+     */
+    private static String enumLiteral(Object enumValue)
+    {
+        return enumValue != null ? enumValue.toString() : DASH;
+    }
+
+    /**
+     * Renders a form's structure (items / attributes / commands) for a form FQN, reusing
+     * {@code FormStructureReader}'s resolver + renderer: resolve the {@code BasicForm}, then inside a
+     * BM READ transaction reach its editable {@code Form} content and render it to markdown (the
+     * EObjects must not escape the read task). Returns {@code null} when the form has no editable
+     * content model (empty / legacy / not built) or the BM model is unavailable.
+     */
+    private static String renderFormStructure(MetadataScope scope, IBmModel bmModel, String formPath,
+        String language)
+    {
+        if (bmModel == null)
+        {
+            return null;
+        }
+        MdObject mdForm = FormStructureReader.resolveMdForm(scope, formPath);
+        if (!(mdForm instanceof IBmObject))
+        {
+            return null;
+        }
+        final long mdFormBmId = ((IBmObject)mdForm).bmGetId();
+        final String normalized = MetadataTypeUtils.normalizeFqn(formPath);
+        return BmTransactions.read(bmModel, "GetMetadataDetailsForm", (tx, monitor) -> //$NON-NLS-1$
+        {
+            EObject txMdForm = tx.getObjectById(mdFormBmId);
+            if (txMdForm == null)
+            {
+                return null;
+            }
+            EObject formModel = FormElementWriter.getEditableForm(txMdForm);
+            if (formModel == null)
+            {
+                return null;
+            }
+            return FormStructureReader.render(normalized, formModel, language);
+        });
+    }
+
+    /** Read the file-backed text under a BM boundary, without changing the model or the file. */
+    private static String renderTemplateText(IProject project, IBmModel bmModel, long templateId, String fqn)
+    {
+        return BmTransactions.executeAndRollback(bmModel, "GetMetadataDetailsTextTemplate", (tx, monitor) ->
+        {
+            Object object = tx.getObjectById(templateId);
+            if (!(object instanceof BasicTemplate)
+                || ((BasicTemplate)object).getTemplateType() != TemplateType.TEXT_DOCUMENT)
+            {
+                return null;
+            }
+            BasicTemplate template = (BasicTemplate)object;
+            String text = TemplateContentSupport.readText(TemplateContentSupport.contentFile(project, template));
+            return TemplateContentSupport.renderText(MetadataTypeUtils.normalizeFqn(fqn), text);
+        });
+    }
+
+    /** Lazy DCS materialization needs a rollback task, outside the ordinary read transaction. */
+    private static String renderTemplateDcs(IBmModel bmModel, long templateBmId, String fqn, String language)
+    {
+        final String normalized = MetadataTypeUtils.normalizeFqn(fqn);
+        return BmTransactions.executeAndRollback(bmModel, "GetMetadataDetailsTemplateDcs", (tx, monitor) -> //$NON-NLS-1$
+        {
+            EObject txTemplate = tx.getObjectById(templateBmId);
+            EObject content =
+                txTemplate instanceof BasicTemplate ? ((BasicTemplate)txTemplate).getTemplate() : null;
+            if (!(content instanceof DataCompositionSchema))
+            {
+                return null;
+            }
+            return DcsStructureReader.render(normalized, (DataCompositionSchema)content, language);
+        });
+    }
+
+    /** Lazy XDTO materialization retains its rollback boundary and never persists changes. */
+    private static String renderXdtoPackageStructure(IBmModel bmModel, long pkgBmId, String fqn)
+    {
+        final String normalized = MetadataTypeUtils.normalizeFqn(fqn);
+        return BmTransactions.executeAndRollback(bmModel, "GetMetadataDetailsXdtoPackage", (tx, monitor) -> //$NON-NLS-1$
+        {
+            EObject txPackage = tx.getObjectById(pkgBmId);
+            Package content = txPackage instanceof XDTOPackage ? ((XDTOPackage)txPackage).getPackage() : null;
+            return XdtoStructureReader.render(normalized, content);
+        });
+    }
+
+    /**
+     * Describes a missing syntactically-valid form-root address. Owned forms name their owner so the
+     * failure cannot be mistaken for the mdclass resolver's generic object miss. Package-visible for
+     * the headless routing tests.
+     */
+    static String formRootNotFoundReason(String formPath)
+    {
+        String[] parts = formPath == null ? new String[0] : formPath.split("\\."); //$NON-NLS-1$
+        if (parts.length == 4)
+        {
+            String ownerFqn = parts[0] + "." + parts[1]; //$NON-NLS-1$
+            return "Form '" + parts[3] + "' not found on owner '" + ownerFqn //$NON-NLS-1$ //$NON-NLS-2$
+                + "'. Use get_metadata_details on '" + ownerFqn + "' to list its forms, or " //$NON-NLS-1$ //$NON-NLS-2$
+                + "get_metadata_objects to verify the owner FQN."; //$NON-NLS-1$
+        }
+        if (parts.length == 2)
+        {
+            return "Common form '" + parts[1] //$NON-NLS-1$
+                + "' not found. Use get_metadata_objects to list " //$NON-NLS-1$
+                + "available CommonForm FQNs."; //$NON-NLS-1$
+        }
+        return "Form not found for '" + formPath //$NON-NLS-1$
+            + "'. Use get_metadata_objects to verify the owner and form FQN."; //$NON-NLS-1$
+    }
+
+    /**
+     * Resolves only the existing managed-form root accepted by the assignable branch. Token parsing
+     * and scope-aware MD-form lookup stay delegated to the shared form seams. Package-visible so the
+     * exact pre-BM dispatch decision is testable headlessly.
+     */
+    static MdObject resolveFormRootForAssignable(MetadataScope scope, String normFqn)
+    {
+        String formPath = FormElementWriter.parseFormPath(normFqn);
+        return formPath == null ? null : FormStructureReader.resolveMdForm(scope, formPath);
+    }
+
+    /**
+     * Renders the editable {@code form:Form} ROOT's assignable properties. Resolution uses the same
+     * form-write context as modify_metadata; the root EObject is consumed wholly inside
+     * {@link FormElementWriter#readEditableForm}, so no transaction-bound model object escapes.
+     */
+    private static String renderFormRootAssignable(IProject project, MetadataScope scope,
+        String formRootPath, String normFqn, boolean commonFormSection)
+    {
+        if (project == null)
+        {
+            return null;
+        }
+        try
+        {
+            FormElementWriter.FormEditContext fctx = FormElementWriter.resolveForEdit(project, scope,
+                formRootPath, formRootNotFoundReason(formRootPath));
+            return FormElementWriter.readEditableForm(fctx, "GetMetadataDetailsFormRoot", //$NON-NLS-1$
+                (formModel, tx) -> commonFormSection
+                    ? formatFormContentRootAssignable(normFqn, formModel)
+                    : formatAssignable(normFqn, formModel));
+        }
+        catch (RuntimeException e)
+        {
+            if (FormValidationException.jsonOf(e) != null)
+            {
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Renders the ASSIGNABLE-property table for a FORM MEMBER (a group / field / table / decoration /
+     * attribute / command inside a form's editable content model). A form member is NOT in the mdclass
+     * tree, so {@link MetadataNodeResolver} cannot see it; this reuses modify_metadata's proven form
+     * resolver instead - the SAME BM-read hop {@link #renderFormStructure} uses. It resolves the
+     * {@code BasicForm} from {@code ref.formPath}, then INSIDE a BM READ transaction hops to the
+     * editable content form, resolves the member and renders its assignable table (the element's own
+     * features UNION its {@code extInfo}'s layout properties, issue #235). The member EObject must not
+     * escape the read task, so the whole render runs inside it.
+     *
+     * @param scope the resolution root of the project (configuration, or external-objects roots)
+     * @param bmModel the (best-effort) BM model; {@code null} yields {@code null}
+     * @param normFqn the normalized member FQN, for the section heading
+     * @param ref the parsed form-member reference (see {@link FormElementWriter#parse})
+     * @param kindAdviceOut a one-slot out-parameter that receives the kind-mismatch advice (issue
+     *     #343) when the member does not resolve; the model is tx-bound, so it must be read INSIDE the
+     *     read task. Left as the caller's empty default when there is nothing to add.
+     * @return the Markdown assignable table, or {@code null} when the BM model is unavailable, the form
+     *     has no editable content model, or the member does not exist
+     */
+    private static String renderFormMemberAssignable(MetadataScope scope, IBmModel bmModel,
+        String normFqn, FormElementWriter.FormMemberRef ref, String[] kindAdviceOut)
+    {
+        if (bmModel == null)
+        {
+            return null;
+        }
+        MdObject mdForm = FormStructureReader.resolveMdForm(scope, ref.formPath);
+        if (!(mdForm instanceof IBmObject))
+        {
+            return null;
+        }
+        final long mdFormBmId = ((IBmObject)mdForm).bmGetId();
+        return BmTransactions.read(bmModel, "GetMetadataDetailsFormMember", (tx, monitor) -> //$NON-NLS-1$
+        {
+            EObject txMdForm = tx.getObjectById(mdFormBmId);
+            if (txMdForm == null)
+            {
+                return null;
+            }
+            EObject formModel = FormElementWriter.getEditableForm(txMdForm);
+            if (formModel == null)
+            {
+                return null;
+            }
+            EObject member = FormElementWriter.resolveFormMember(formModel, ref);
+            if (member == null)
+            {
+                // A handler FQN has no element kind segment at its leaf (the leaf is the EVENT), and
+                // this view never renders handlers anyway - only a MEMBER address gets kind advice.
+                if (!FormElementWriter.isHandlerToken(ref.kindToken))
+                {
+                    kindAdviceOut[0] = FormElementWriter.kindMismatchAdvice(formModel, ref, normFqn);
+                }
+                return null;
+            }
+            return formatAssignable(normFqn, member);
+        });
+    }
+
+    /**
+     * Renders a Role's access-rights matrix (rights values / RLS restrictions / RLS templates / the three
+     * role-property booleans) for a Role FQN, reusing {@link RoleRightsReader}: resolve the Role live
+     * inside a BM READ transaction and read its editable rights model ({@code Role.getRights()}, guarded to
+     * the concrete {@code RoleDescription}), then render it to Markdown. The rights EObjects must not escape
+     * the read task. Returns {@code null} when the BM model is unavailable or the Role cannot be
+     * re-resolved in the transaction; a role that simply has no editable rights model still renders a
+     * document (with a note), so it is NOT a failure.
+     *
+     * @param bmModel the (best-effort) BM model; {@code null} yields {@code null}
+     * @param role the resolved Role MdObject (used only for its BM id)
+     * @param normalizedFqn the normalized Role FQN, for the heading
+     * @param full render every object with any right cell (true) or only the authored/non-default objects
+     *            plus a summary count and pagination (false)
+     * @param language the right/field-name language CODE (may be {@code null})
+     * @param objectOffset the 0-based object offset into the paginated matrix (ignored in {@code full}
+     *            mode); lets a caller page past the first 100 authored objects in the default view
+     * @return the Markdown document, or {@code null} when the rights model is unavailable
+     */
+    private static String renderRoleRights(IBmModel bmModel, Role role, String normalizedFqn,
+        boolean full, String language, int objectOffset)
+    {
+        if (bmModel == null || !(role instanceof IBmObject))
+        {
+            return null;
+        }
+        final long roleBmId = ((IBmObject)role).bmGetId();
+        return BmTransactions.read(bmModel, "GetMetadataDetailsRole", (tx, monitor) -> //$NON-NLS-1$
+        {
+            EObject txRole = tx.getObjectById(roleBmId);
+            if (!(txRole instanceof Role))
+            {
+                return null;
+            }
+            // Role.getRights() may be null or a bare AbstractRoleDescription marker; the reader guards on
+            // the concrete RoleDescription and renders a note when the matrix is absent.
+            AbstractRoleDescription rights = ((Role)txRole).getRights();
+            return RoleRightsReader.render(normalizedFqn, rights, full, language, objectOffset);
+        });
+    }
+
+    /**
+     * Resolves a single FQN to its metadata object, or {@code null} when the FQN
+     * is malformed or the object does not exist. A {@code null} result is a
+     * per-object failure (recorded in the machine-readable failures table), never
+     * a whole-call failure.
+     */
+    private MdObject resolveObject(MetadataScope scope, String fqn)
+    {
+        // Parse FQN: Type.Name
+        String[] parts = fqn.split("\\."); //$NON-NLS-1$
+        if (parts.length < 2)
+        {
+            return null;
+        }
+
+        String mdType = parts[0];
+        String mdName = parts[1];
+
+        // Normalize metadata type to English singular form (supports Russian and plural forms)
+        String normalized = MetadataTypeUtils.toEnglishSingular(mdType);
+        if (normalized != null)
+        {
+            mdType = normalized;
+        }
+
+        return scope.findObject(mdType, mdName);
+    }
+
+    /** Explains an unhandled deeper address without silently substituting its owner. */
+    private String memberAddressReason(MetadataScope scope, String normalizedFqn)
+    {
+        // The shared parsers discard trailing empty segments; these do not name an existing member.
+        if (normalizedFqn.endsWith(".")) //$NON-NLS-1$
+        {
+            return describeResolutionFailure(normalizedFqn, scope);
+        }
+        // Exact resolution only: the routes this text points to (assignable: true, the owner's
+        // Type.Name, the package view) resolve exactly, so a yo/ye-only match must not be called existing.
+        XdtoWriter.MemberRef xdtoRef = XdtoWriter.parseMemberRef(normalizedFqn);
+        if (xdtoRef != null && MetadataNodeResolver.resolveAddress(scope, xdtoRef.packageFqn, false) != null)
+        {
+            // XDTO content is not an MdObject and has no assignable view. Parsing its address does
+            // not establish that the member exists; the package's content view is where to check.
+            return "This is an XDTO member address; read package '" + xdtoRef.packageFqn //$NON-NLS-1$
+                + "' to inspect its content."; //$NON-NLS-1$
+        }
+        MdObject member = MetadataNodeResolver.isValidArity(normalizedFqn.split("\\.", -1).length) //$NON-NLS-1$
+            ? MetadataNodeResolver.resolveAddress(scope, normalizedFqn, false) : null;
+        if (member instanceof BasicTemplate && isRenderedTemplateType(((BasicTemplate)member).getTemplateType()))
+        {
+            // A text or DCS template has its own plain view; it only lands here when that view could
+            // not read the content (the BM model is not available yet), so the call is worth retrying.
+            return "This template's content could not be read right now (the project model is not ready); " //$NON-NLS-1$
+                + "retry the same call once the project is ready."; //$NON-NLS-1$
+        }
+        if (member != null)
+        {
+            String[] parts = normalizedFqn.split("\\.", 3); //$NON-NLS-1$
+            String ownerFqn = parts[0] + "." + parts[1]; //$NON-NLS-1$
+            MetadataNodeResolver.MetadataNode node = MetadataNodeResolver.resolveExisting(scope, normalizedFqn);
+            if (node != null && node.owner instanceof MdObject)
+            {
+                String address = MetadataNodeResolver.resolvableAddressOf(renderableOwner((MdObject)node.owner));
+                if (address != null)
+                {
+                    ownerFqn = address;
+                }
+            }
+            return "This addresses a member of '" + ownerFqn //$NON-NLS-1$
+                + "'; read its properties with assignable: true. The owner's details render from '" //$NON-NLS-1$
+                + ownerFqn + "'."; //$NON-NLS-1$
+        }
+        return describeResolutionFailure(normalizedFqn, scope);
+    }
+
+    /**
+     * The nearest ancestor this view renders: a containment-nested owner (a tabular section) is climbed
+     * to its top object, while a referenced top object (an external data source's Table) is itself
+     * renderable and stays. Package-visible for tests.
+     */
+    static MdObject renderableOwner(MdObject owner)
+    {
+        MdObject current = owner;
+        while (current.eContainer() instanceof MdObject && !(current.eContainer() instanceof Configuration))
+        {
+            current = (MdObject)current.eContainer();
+        }
+        return current;
+    }
+
+    /** Template types the plain view renders itself (text and Data Composition Schema). */
+    private static boolean isRenderedTemplateType(TemplateType type)
+    {
+        return type == TemplateType.TEXT_DOCUMENT || type == TemplateType.DATA_COMPOSITION_SCHEMA;
+    }
+
+    /**
+     * Whether {@code fqn} starts with a subsystem type token and goes on past {@code Subsystem.<Name>}
+     * without being a whole chain of subsystems - a chain cut short ({@code Subsystem.Sales.Subsystem})
+     * or one with a foreign segment ({@code Subsystem.Sales.Attribute.Weight}). Below a subsystem
+     * nothing but a nested subsystem has an address (its command interface is taken before this is
+     * asked), so such an address names nothing - and {@link #resolveObject}, which reads only the
+     * first two segments, would render its FIRST level for it. A chain with an empty or padded segment
+     * ({@code Subsystem.Sales.Subsystem.Orders.}) counts too: it parses, but only by dropping what the
+     * caller typed. Package-visible for tests.
+     *
+     * @param fqn the requested FQN (may be {@code null})
+     * @return {@code true} for a subsystem address that no subsystem walk can take
+     */
+    static boolean isMalformedSubsystemChain(String fqn)
+    {
+        // The shared rule every subsystem write refuses a chain request by (issue #897).
+        return SubsystemUtils.malformedChainError(MetadataTypeUtils.normalizeFqn(fqn)) != null;
+    }
+
+    /**
+     * Builds the machine-readable reason for a FQN that {@link #resolveObject}
+     * could not resolve. The reason becomes data in the failures table, never
+     * prose mixed into the data body.
+     */
+    String describeResolutionFailure(String fqn)
+    {
+        return describeResolutionFailure(fqn, null);
+    }
+
+    /**
+     * The {@link #describeResolutionFailure(String)} variant that can say WHY the address cannot
+     * resolve in THIS project - an external-objects type asked of a configuration, or the reverse
+     * (issue #309). {@code scope} may be {@code null}, and the reason is then the generic one.
+     *
+     * @param fqn the FQN that did not resolve
+     * @param scope the project's resolution root, or {@code null}
+     * @return the machine-readable reason
+     */
+    String describeResolutionFailure(String fqn, MetadataScope scope)
+    {
+        String[] parts = fqn.split("\\."); //$NON-NLS-1$
+        if (parts.length < 2)
+        {
+            return "Invalid FQN. Expected format: Type.Name (e.g. Catalog.Products); the configuration " //$NON-NLS-1$
+                + "root itself is '" + ConfigurationRoot.FQN + "'"; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        String hint = scope == null ? "" : scope.addressingHint(fqn); //$NON-NLS-1$
+        return "Object not found - use get_metadata_objects to list valid FQNs" + hint; //$NON-NLS-1$
+    }
+
+    /**
+     * Renders the per-object failures as a dedicated, clearly-delimited
+     * machine-readable section. Every cell goes through the shared table builder,
+     * so an FQN or reason containing '|' or a newline cannot break the table. The
+     * heading marker {@code ## Errors} lets a structural client locate failed
+     * objects without scraping prose out of the data body.
+     */
+    String formatFailures(List<String[]> failures)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Errors\n\n"); //$NON-NLS-1$
+        sb.append(MarkdownUtils.tableHeader("FQN", "Status", "Reason")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        for (String[] failure : failures)
+        {
+            sb.append(MarkdownUtils.tableRow(failure[0], "ERROR", failure[1])); //$NON-NLS-1$
+        }
+        return sb.toString();
+    }
+
+}

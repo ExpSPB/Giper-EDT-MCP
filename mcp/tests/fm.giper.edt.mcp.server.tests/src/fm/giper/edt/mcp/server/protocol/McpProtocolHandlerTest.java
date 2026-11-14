@@ -1,0 +1,1950 @@
+/**
+ * MCP Server for EDT
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.server.protocol;
+
+import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.core.runtime.ILog;
+import org.eclipse.core.runtime.ILogListener;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Platform;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.FrameworkUtil;
+
+import fm.giper.edt.mcp.server.UserSignal;
+import fm.giper.edt.mcp.server.UserSignal.SignalType;
+import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
+import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolCallResult;
+import fm.giper.edt.mcp.server.tools.IMcpTool;
+import fm.giper.edt.mcp.server.tools.McpToolRegistry;
+import fm.giper.edt.mcp.server.utils.OutputSizeGuard;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+/**
+ * Tests for {@link McpProtocolHandler}.
+ * Verifies JSON-RPC protocol handling for initialize, tools/list, and error cases.
+ * <p>
+ * Note: tools/call with successful execution cannot be fully tested without
+ * OSGi runtime (Activator.getDefault() returns null), but error paths are testable.
+ * </p>
+ */
+public class McpProtocolHandlerTest
+{
+    private McpProtocolHandler handler;
+    private McpToolRegistry registry;
+
+    @Before
+    public void setUp()
+    {
+        registry = McpToolRegistry.getInstance();
+        registry.clear();
+        handler = new McpProtocolHandler();
+    }
+
+    @After
+    public void tearDown()
+    {
+        registry.clear();
+    }
+
+    @Test
+    public void testJsonUserSignalMessageIsTruncatedToTheBound()
+    {
+        String message = "x".repeat(McpProtocolHandler.MAX_USER_SIGNAL_MESSAGE_CHARS + 100); //$NON-NLS-1$
+
+        JsonObject augmented = JsonParser.parseString(handler.addUserSignalToJson("{\"value\":1}", //$NON-NLS-1$
+            new UserSignal(SignalType.CUSTOM, message))).getAsJsonObject();
+        String retained = augmented.getAsJsonObject("userSignal").get("message").getAsString(); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals(McpProtocolHandler.MAX_USER_SIGNAL_MESSAGE_CHARS, retained.length());
+        assertTrue(retained, retained.endsWith("\u2026")); //$NON-NLS-1$
+        assertEquals(message.substring(0, McpProtocolHandler.MAX_USER_SIGNAL_MESSAGE_CHARS - 1)
+            + "\u2026", retained); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testMarkdownUserSignalIsBoundedByTheReservedAugmentation()
+    {
+        String markdown = "page"; //$NON-NLS-1$
+        String augmented = McpProtocolHandler.addUserSignalToMarkdown(markdown,
+            new UserSignal(SignalType.CUSTOM,
+                "x".repeat(McpProtocolHandler.MAX_USER_SIGNAL_MESSAGE_CHARS + 100))); //$NON-NLS-1$
+
+        assertEquals(markdown.length()
+            + McpProtocolHandler.MAX_MARKDOWN_USER_SIGNAL_AUGMENTATION_CHARS,
+            augmented.length());
+        assertTrue(augmented, augmented.endsWith("\u2026")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testJsonUserSignalTruncationNeverSplitsSurrogatePair()
+    {
+        String message = "x".repeat(McpProtocolHandler.MAX_USER_SIGNAL_MESSAGE_CHARS - 2) //$NON-NLS-1$
+            + "\uD83D\uDE00tail"; //$NON-NLS-1$
+
+        JsonObject augmented = JsonParser.parseString(handler.addUserSignalToJson("{\"value\":1}", //$NON-NLS-1$
+            new UserSignal(SignalType.CUSTOM, message))).getAsJsonObject();
+        String retained = augmented.getAsJsonObject("userSignal").get("message").getAsString(); //$NON-NLS-1$ //$NON-NLS-2$
+
+        assertEquals("x".repeat(McpProtocolHandler.MAX_USER_SIGNAL_MESSAGE_CHARS - 2) //$NON-NLS-1$
+            + "\u2026", retained); //$NON-NLS-1$
+        assertFalse(Character.isHighSurrogate(retained.charAt(retained.length() - 2)));
+        assertFalse(Character.isLowSurrogate(retained.charAt(retained.length() - 2)));
+    }
+
+    @Test
+    public void testJsonUserSignalPreservesRawHtmlSensitiveCharacters()
+    {
+        String original = "{\"xml\":\"<root>A&B</root>\",\"comparison\":\"x > y\"}"; //$NON-NLS-1$
+
+        String augmented = handler.addUserSignalToJson(original,
+            new UserSignal(SignalType.CUSTOM, "continue")); //$NON-NLS-1$
+
+        assertTrue(augmented, augmented.contains("<root>A&B</root>")); //$NON-NLS-1$
+        assertTrue(augmented, augmented.contains("x > y")); //$NON-NLS-1$
+        assertFalse(augmented, augmented.contains("\\u003c")); //$NON-NLS-1$
+        assertFalse(augmented, augmented.contains("\\u003e")); //$NON-NLS-1$
+        assertFalse(augmented, augmented.contains("\\u0026")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testJsonUserSignalChangesNoExistingParsedMembers()
+    {
+        String original = "{\"success\":true,\"xml\":\"<root>A&B</root>\"," //$NON-NLS-1$
+            + "\"nested\":{\"items\":[1,2,3]}}"; //$NON-NLS-1$
+        JsonObject expected = JsonParser.parseString(original).getAsJsonObject();
+
+        JsonObject augmented = JsonParser.parseString(handler.addUserSignalToJson(original,
+            new UserSignal(SignalType.BACKGROUND, "still running"))).getAsJsonObject(); //$NON-NLS-1$
+        JsonObject signal = augmented.remove("userSignal").getAsJsonObject(); //$NON-NLS-1$
+
+        assertEquals(expected, augmented);
+        assertEquals("BACKGROUND", signal.get("type").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+        assertEquals("still running", signal.get("message").getAsString()); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    // === History timing ===
+
+    @Test
+    public void testTheOneArgumentOverloadTimesItsOwnParse()
+    {
+        DurationCapturingHandler timed = new DurationCapturingHandler();
+
+        timed.processRequest(buildJsonRpcRequest(1, "initialize", null)); //$NON-NLS-1$
+
+        // Lower bound only: load can only make this larger, never smaller.
+        assertTrue("the parse belongs inside the recorded duration, got " + timed.recordedDurationMs //$NON-NLS-1$
+            + "ms for a parse that alone takes " + DurationCapturingHandler.PARSE_MILLIS + "ms", //$NON-NLS-1$ //$NON-NLS-2$
+            timed.recordedDurationMs >= DurationCapturingHandler.PARSE_MILLIS);
+    }
+
+    @Test
+    public void testTheParsedOverloadTimesFromTheCallersClock()
+    {
+        // The transport parses first to decide the route, so it - not this method - knows when
+        // the exchange began. If the duration were taken here instead, everything the caller did
+        // before handing the request down would vanish from the history.
+        DurationCapturingHandler timed = new DurationCapturingHandler();
+        String request = buildJsonRpcRequest(1, "initialize", null); //$NON-NLS-1$
+        JsonRpcRequest parsed = timed.parse(request);
+        long startedFiveSecondsAgo = System.nanoTime() - TimeUnit.SECONDS.toNanos(5);
+
+        timed.processRequest(request, parsed, startedFiveSecondsAgo);
+
+        assertTrue("the caller's start must be what is measured, got " + timed.recordedDurationMs //$NON-NLS-1$
+            + "ms for an exchange that began 5000ms ago", timed.recordedDurationMs >= 5000L); //$NON-NLS-1$
+    }
+
+    // === Initialize ===
+
+    @Test
+    public void testInitialize()
+    {
+        String request = buildJsonRpcRequest(1, "initialize", null);
+        String response = handler.processRequest(request);
+
+        assertNotNull(response);
+        JsonObject json = parseResponse(response);
+        assertEquals("2.0", json.get("jsonrpc").getAsString());
+        assertNotNull(json.get("result"));
+
+        JsonObject result = json.getAsJsonObject("result");
+        assertNotNull("Should have protocolVersion", result.get("protocolVersion"));
+        assertNotNull("Should have capabilities", result.get("capabilities"));
+        assertNotNull("Should have serverInfo", result.get("serverInfo"));
+
+        JsonObject serverInfo = result.getAsJsonObject("serverInfo");
+        assertNotNull(serverInfo.get("name"));
+        assertNotNull(serverInfo.get("version"));
+    }
+
+    @Test
+    public void testInitializeEchosClientProtocolVersion()
+    {
+        // Per MCP spec: server must echo back client's requested protocol version
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
+            + "\"clientInfo\":{\"name\":\"lmstudio\",\"version\":\"1.0.0\"}}}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        String echoed = json.getAsJsonObject("result").get("protocolVersion").getAsString();
+        assertEquals("Server must echo back client's protocol version", "2025-06-18", echoed);
+    }
+
+    @Test
+    public void testInitializeUsesOwnVersionWhenClientVersionMissing()
+    {
+        // When no protocolVersion in params, fall back to server's latest
+        String request = buildJsonRpcRequest(1, "initialize", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        String version = json.getAsJsonObject("result").get("protocolVersion").getAsString();
+        assertEquals(McpConstants.PROTOCOL_VERSION, version);
+    }
+
+    @Test
+    public void testInitializeEchosSupportedOlderVersion()
+    {
+        // An older but still-supported version (per SUPPORTED_VERSIONS) is echoed back.
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        String echoed = json.getAsJsonObject("result").get("protocolVersion").getAsString();
+        assertEquals("A supported version must be echoed back", "2024-11-05", echoed);
+        assertTrue("2024-11-05 must be in SUPPORTED_VERSIONS",
+            McpConstants.SUPPORTED_VERSIONS.contains("2024-11-05"));
+    }
+
+    @Test
+    public void testInitializeNegotiatesUnsupportedFutureVersionToLatest()
+    {
+        // A well-formed but unsupported (future) version must NOT be echoed; the
+        // server negotiates down to its latest supported version (PROTOCOL_VERSION).
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2030-01-01\",\"capabilities\":{},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        String version = json.getAsJsonObject("result").get("protocolVersion").getAsString();
+        assertEquals("Unsupported future version must negotiate to latest supported",
+            McpConstants.PROTOCOL_VERSION, version);
+        assertFalse("2030-01-01 must not be a supported version",
+            McpConstants.SUPPORTED_VERSIONS.contains("2030-01-01"));
+    }
+
+    @Test
+    public void testInitializeNegotiatesUnknownNonDateVersionToLatest()
+    {
+        // A malformed / non-date version is also unsupported and negotiates to latest.
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"not-a-version\",\"capabilities\":{},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        String version = json.getAsJsonObject("result").get("protocolVersion").getAsString();
+        assertEquals(McpConstants.PROTOCOL_VERSION, version);
+    }
+
+    @Test
+    public void testSupportedVersionsContainsCurrentAsFirstEntry()
+    {
+        // The latest supported version is the current PROTOCOL_VERSION and is first.
+        assertTrue("current PROTOCOL_VERSION must be supported",
+            McpConstants.SUPPORTED_VERSIONS.contains(McpConstants.PROTOCOL_VERSION));
+        String first = McpConstants.SUPPORTED_VERSIONS.iterator().next();
+        assertEquals("latest supported version must be listed first",
+            McpConstants.PROTOCOL_VERSION, first);
+        assertTrue("the echo-test version 2025-06-18 must stay supported",
+            McpConstants.SUPPORTED_VERSIONS.contains("2025-06-18"));
+    }
+
+    @Test
+    public void testInitializePreservesRequestId()
+    {
+        String request = buildJsonRpcRequest(42, "initialize", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertEquals(42, json.get("id").getAsInt());
+    }
+
+    @Test
+    public void testInitializeWithIdZeroPreservesIntegerType()
+    {
+        // LM Studio sends "id":0 - must not become "id":0.0 in response
+        String request = buildJsonRpcRequest(0, "initialize", null);
+        String response = handler.processRequest(request);
+
+        assertNotNull(response);
+        assertFalse("Response must not contain 0.0 as id", response.contains("\"id\":0.0"));
+        JsonObject json = parseResponse(response);
+        assertEquals(0, json.get("id").getAsInt());
+    }
+
+    @Test
+    public void testInitializeStringId()
+    {
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":\"abc-123\",\"method\":\"initialize\"}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertEquals("abc-123", json.get("id").getAsString());
+    }
+
+    // === Client capabilities (parse / store / gate) ===
+
+    @Test
+    public void testInitializeParsesAndStoresClientCapabilities()
+    {
+        // (a) Capabilities sent in an initialize request are parsed and retrievable.
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"roots\":{\"listChanged\":true},\"sampling\":{}},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertNotNull("capabilities holder must never be null", caps);
+        assertTrue("a supplied capabilities object must be present", caps.isPresent());
+        assertTrue("declared roots capability must be retrievable", caps.has("roots"));
+        assertTrue("declared sampling capability must be retrievable", caps.has("sampling"));
+        assertFalse("an undeclared capability must read absent", caps.has("elicitation"));
+    }
+
+    @Test
+    public void testAnOversizedCapabilitiesObjectIsNotRetained()
+    {
+        // Every open SESSION keeps the capabilities its client declared, so the size of that
+        // object is memory a caller can pin on its own word, multiplied by the session cap. A
+        // real capabilities object is a few hundred characters; one past the ceiling is treated
+        // exactly like a malformed one - the permissive default - rather than stored.
+        StringBuilder padding = new StringBuilder();
+        while (padding.length() < McpProtocolHandler.MAX_RETAINED_CAPABILITIES_CHARS)
+        {
+            padding.append('x');
+        }
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"roots\":{\"listChanged\":true},\"pad\":\"" + padding + "\"},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertFalse("an oversized capabilities object must not be retained", caps.isPresent());
+        assertFalse("and none of it may be readable afterwards", caps.has("roots"));
+        assertTrue("the refusal keeps the permissive default, it is not a failure",
+            caps.allowsStructuredContent());
+    }
+
+    @Test
+    public void testACapabilitiesObjectAtTheCeilingIsStillRetained()
+    {
+        // The other edge: the ceiling must admit anything a real client sends, so a capabilities
+        // object just under it is stored in full. Without this, a tightened limit could silently
+        // start discarding legitimate declarations and nothing would notice.
+        StringBuilder padding = new StringBuilder();
+        while (padding.length() < McpProtocolHandler.MAX_RETAINED_CAPABILITIES_CHARS - 200)
+        {
+            padding.append('x');
+        }
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"roots\":{\"listChanged\":true},\"pad\":\"" + padding + "\"},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertTrue("a capabilities object under the ceiling must still be stored", caps.isPresent());
+        assertTrue("and remain readable", caps.has("roots"));
+    }
+
+    @Test
+    public void testAnOversizedCapabilitiesObjectStillHonoursAnExplicitOptOut()
+    {
+        // The ceiling bounds what the server RETAINS. It must not also decide what the client
+        // MEANT: dropping the whole object would turn an explicit
+        // experimental.structuredContent=false into the permissive default, so the one client
+        // that refused structuredContent would be the one client that receives it.
+        StringBuilder padding = new StringBuilder();
+        while (padding.length() < McpProtocolHandler.MAX_RETAINED_CAPABILITIES_CHARS)
+        {
+            padding.append('x');
+        }
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"experimental\":{\"structuredContent\":false},"
+            + "\"roots\":{\"listChanged\":true},\"pad\":\"" + padding + "\"},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertFalse("an explicit opt-out must survive the size ceiling",
+            caps.allowsStructuredContent());
+        assertFalse("but the oversized declaration itself is still not retained",
+            caps.has("pad"));
+        assertFalse("nor anything else it declared alongside it", caps.has("roots"));
+    }
+
+    @Test
+    public void testWhatSurvivesAnOversizedDeclarationIsConstantSize()
+    {
+        // The other edge of the same change: honouring the opt-out must not become a way to
+        // retain the payload it arrived with. Whatever the client sent, what is kept is the
+        // flag - so the per-session memory cost stays constant no matter how large the
+        // declaration was.
+        StringBuilder padding = new StringBuilder();
+        while (padding.length() < McpProtocolHandler.MAX_RETAINED_CAPABILITIES_CHARS * 20)
+        {
+            padding.append('x');
+        }
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"experimental\":{\"structuredContent\":false,"
+            + "\"pad\":\"" + padding + "\"}},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertFalse("the opt-out is still honoured", caps.allowsStructuredContent());
+        assertNotNull("a distilled holder still exposes what it kept", caps.getRaw());
+        int retained = caps.getRaw().toString().length();
+        assertTrue("what is retained must not scale with the declaration: " + retained
+            + " characters", retained < 100);
+    }
+
+    @Test
+    public void testGetClientCapabilitiesDefaultsToAbsentBeforeInitialize()
+    {
+        // (c) The stored capabilities are exposed for gating and have a safe,
+        // permissive default before any initialize has been processed.
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertNotNull("default capabilities must never be null", caps);
+        assertFalse("no initialize yet => not present", caps.isPresent());
+        assertTrue("default must allow structuredContent", caps.allowsStructuredContent());
+    }
+
+    @Test
+    public void testInitializeWithoutCapabilitiesKeepsPermissiveDefault()
+    {
+        // An initialize that omits capabilities entirely leaves the permissive
+        // default in place (structuredContent allowed).
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertFalse("an absent capabilities object must read not-present", caps.isPresent());
+        assertTrue("absent capabilities must still allow structuredContent",
+            caps.allowsStructuredContent());
+    }
+
+    @Test
+    public void testToolCallEmitsStructuredContentAfterInitializeWithoutCapabilities()
+    {
+        // (b) NO-REGRESSION: a tools/call after an initialize WITHOUT capabilities
+        // must STILL emit structuredContent on a JSON-responseType tool result.
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+
+        String initialize = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(initialize);
+
+        String response = handler.processRequest(buildToolCallRequest(2, "ok_tool", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertNotNull("structuredContent must be present by default",
+            result.get("structuredContent"));
+        assertEquals("structuredContent must carry the payload", 7,
+            result.getAsJsonObject("structuredContent").get("value").getAsInt());
+    }
+
+    @Test
+    public void testToolCallEmitsStructuredContentWithEmptyCapabilities()
+    {
+        // NO-REGRESSION: an explicit but EMPTY capabilities object must not change
+        // the default — structuredContent stays present.
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+
+        String initialize = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(initialize);
+
+        String response = handler.processRequest(buildToolCallRequest(2, "ok_tool", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertNotNull("empty capabilities must still emit structuredContent",
+            result.get("structuredContent"));
+    }
+
+    @Test
+    public void testToolCallEmitsStructuredContentWithNoInitializeAtAll()
+    {
+        // NO-REGRESSION: even with no initialize handshake, a JSON tool result still
+        // carries structuredContent (the default holder is permissive).
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "ok_tool", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertNotNull("structuredContent must be present without any initialize",
+            result.get("structuredContent"));
+    }
+
+    @Test
+    public void testToolCallSuppressesStructuredContentWhenClientExplicitlyOptsOut()
+    {
+        // The gating substrate: a client that EXPLICITLY opts out via
+        // experimental.structuredContent=false suppresses structuredContent; the
+        // JSON payload is then delivered as text so the data is still returned.
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+
+        String initialize = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"experimental\":{\"structuredContent\":false}},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(initialize);
+        assertFalse("an explicit opt-out must disable structuredContent",
+            handler.getClientCapabilities().allowsStructuredContent());
+
+        String response = handler.processRequest(buildToolCallRequest(2, "ok_tool", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertNull("structuredContent must be suppressed for an opted-out client",
+            result.get("structuredContent"));
+        // The data is still returned as the text content payload.
+        String text = result.getAsJsonArray("content").get(0)
+            .getAsJsonObject().get("text").getAsString();
+        assertTrue("the JSON payload must still be returned as text", text.contains("value"));
+    }
+
+    @Test
+    public void testExplicitStructuredContentTrueStillAllows()
+    {
+        // experimental.structuredContent=true is the same as the default: allowed.
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"experimental\":{\"structuredContent\":true}},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(request);
+        assertTrue("explicit true must allow structuredContent",
+            handler.getClientCapabilities().allowsStructuredContent());
+    }
+
+    @Test
+    public void testMalformedCapabilitiesFallsBackToPermissiveDefault()
+    {
+        // A malformed (non-object) capabilities value must not break initialize and
+        // must leave the permissive default in place.
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":\"not-an-object\","
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        String response = handler.processRequest(request);
+
+        // initialize must still succeed.
+        JsonObject json = parseResponse(response);
+        assertNotNull("initialize must still return a result", json.get("result"));
+
+        ClientCapabilities caps = handler.getClientCapabilities();
+        assertFalse("a non-object capabilities value must read not-present", caps.isPresent());
+        assertTrue("malformed capabilities must keep the permissive default",
+            caps.allowsStructuredContent());
+    }
+
+    // === Initialized notification ===
+
+    @Test
+    public void testInitializedNotification()
+    {
+        String request = buildJsonRpcRequest(1, "notifications/initialized", null);
+        String response = handler.processRequest(request);
+        assertNull("notifications/initialized should return null (202 Accepted)", response);
+    }
+
+    // === Tools/List ===
+
+    @Test
+    public void testToolsListEmpty()
+    {
+        String request = buildJsonRpcRequest(1, "tools/list", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        JsonObject result = json.getAsJsonObject("result");
+        assertNotNull(result.get("tools"));
+        assertEquals(0, result.getAsJsonArray("tools").size());
+    }
+
+    @Test
+    public void testPingReturnsEmptyResult()
+    {
+        // MCP basic-utilities ping: no params, MUST respond promptly with an empty result {}.
+        String request = buildJsonRpcRequest(1, "ping", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNull("ping must not be a JSON-RPC error", json.get("error"));
+        JsonObject result = json.getAsJsonObject("result");
+        assertNotNull("ping must return a result", result);
+        assertEquals("ping result must be an empty object", 0, result.entrySet().size());
+    }
+
+    @Test
+    public void testToolsListWithTools()
+    {
+        registry.register(new StubTool("tool_alpha", "Alpha tool", "{\"type\":\"object\"}"));
+        registry.register(new StubTool("tool_beta", "Beta tool",
+            "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}}}"));
+
+        String request = buildJsonRpcRequest(1, "tools/list", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        JsonObject result = json.getAsJsonObject("result");
+        assertEquals(2, result.getAsJsonArray("tools").size());
+
+        // Verify tool entries have required fields
+        for (JsonElement toolEl : result.getAsJsonArray("tools"))
+        {
+            JsonObject tool = toolEl.getAsJsonObject();
+            assertNotNull("Tool should have name", tool.get("name"));
+            assertNotNull("Tool should have description", tool.get("description"));
+            assertNotNull("Tool should have inputSchema", tool.get("inputSchema"));
+        }
+    }
+
+    @Test
+    public void testToolsListAdvertisesOutputSchemaWhenTheCallWillCarryStructuredContent()
+    {
+        // NO-REGRESSION and the positive half of the #574 invariant: by default the schema is
+        // advertised AND the call that follows carries the structured payload it describes.
+        registry.register(new StubSchemaJsonTool("schema_tool", "{\"value\":7}"));
+
+        JsonObject listed = firstListedTool(handler.processRequest(
+            buildJsonRpcRequest(1, "tools/list", null)));
+        assertNotNull("the default surface must advertise outputSchema", listed.get("outputSchema"));
+
+        JsonObject called = parseResponse(handler.processRequest(
+            buildToolCallRequest(2, "schema_tool", null))).getAsJsonObject("result");
+        assertNotNull("a declared outputSchema obliges structuredContent",
+            called.get("structuredContent"));
+    }
+
+    @Test
+    public void testToolsListWithholdsOutputSchemaWhenStructuredContentIsSuppressed()
+    {
+        // #574: a client that opted out of structuredContent gets its payload as text - so the
+        // schema describing that payload must NOT be advertised either. A client that enforces
+        // the MCP rule ("declared an output schema but returned no structured content") rejects
+        // the whole call with -32600 when the two disagree, which silently killed eight tools.
+        registry.register(new StubSchemaJsonTool("schema_tool", "{\"value\":7}"));
+
+        String initialize = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+            + "\"params\":{\"protocolVersion\":\"2025-06-18\","
+            + "\"capabilities\":{\"experimental\":{\"structuredContent\":false}},"
+            + "\"clientInfo\":{\"name\":\"client\",\"version\":\"1.0.0\"}}}";
+        handler.processRequest(initialize);
+
+        JsonObject listed = firstListedTool(handler.processRequest(
+            buildJsonRpcRequest(2, "tools/list", null)));
+        assertNull("outputSchema must not be advertised when the call will not honour it",
+            listed.get("outputSchema"));
+
+        // The other half of the same invariant, asserted on the same session: the call really
+        // does withhold the structured payload, so withholding the schema was right.
+        JsonObject called = parseResponse(handler.processRequest(
+            buildToolCallRequest(3, "schema_tool", null))).getAsJsonObject("result");
+        assertNull("the opt-out must still suppress structuredContent",
+            called.get("structuredContent"));
+        // ... and the data is still delivered, in the text channel.
+        assertTrue("the payload must still be returned as text",
+            called.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString()
+                .contains("value"));
+    }
+
+    @Test
+    public void testAdvertisedSchemaAndDeliveredStructuredContentAgreeOnEveryInput()
+    {
+        // THE invariant of #574, pinned mechanically rather than case by case: for every
+        // combination of the two inputs, tools/list advertises the outputSchema exactly when
+        // tools/call will produce structuredContent. Pinned on the pure functions because the
+        // plain-text half reads a preference store no unit test has (Activator is absent here),
+        // so only the capability half is reachable through processRequest.
+        ClientCapabilities optedOut = ClientCapabilities.from(JsonParser.parseString(
+            "{\"experimental\":{\"structuredContent\":false}}"));
+
+        for (ClientCapabilities caps : new ClientCapabilities[] {ClientCapabilities.ABSENT, optedOut})
+        {
+            for (boolean plainText : new boolean[] {false, true})
+            {
+                boolean delivers =
+                    McpProtocolHandler.jsonDeliveryFor(plainText, caps) != McpProtocolHandler.JsonDelivery.TEXT_ONLY;
+                assertEquals("schema/content disagree for plainText=" + plainText,
+                    McpProtocolHandler.advertisesOutputSchema(caps), delivers);
+            }
+        }
+    }
+
+    @Test
+    public void testPlainTextModeMovesThePayloadIntoTextWithoutTakingItOutOfStructured()
+    {
+        // The fix for the race the invariant above would otherwise still have: plain-text mode is
+        // a MUTABLE global preference, so if it decided the schema, a flip between a client's
+        // tools/list and its next call would break the promise, and no notification can reach a
+        // client that holds no SSE stream. It therefore does not decide it - it only moves the
+        // payload into the text channel, which is all issue #39 ever asked for.
+        assertEquals(McpProtocolHandler.JsonDelivery.TEXT_PAYLOAD_AND_STRUCTURED,
+            McpProtocolHandler.jsonDeliveryFor(true, ClientCapabilities.ABSENT));
+        assertEquals(McpProtocolHandler.JsonDelivery.STRUCTURED,
+            McpProtocolHandler.jsonDeliveryFor(false, ClientCapabilities.ABSENT));
+
+        // ... and the opt-out still wins over it, in both directions.
+        ClientCapabilities optedOut = ClientCapabilities.from(JsonParser.parseString(
+            "{\"experimental\":{\"structuredContent\":false}}"));
+        assertEquals(McpProtocolHandler.JsonDelivery.TEXT_ONLY,
+            McpProtocolHandler.jsonDeliveryFor(true, optedOut));
+        assertEquals(McpProtocolHandler.JsonDelivery.TEXT_ONLY,
+            McpProtocolHandler.jsonDeliveryFor(false, optedOut));
+    }
+
+    @Test
+    public void testPlainTextDeliveryCarriesTheWholePayloadInBothChannels()
+    {
+        // What TEXT_PAYLOAD_AND_STRUCTURED actually produces, asserted on the result builder the
+        // handler uses: the text channel gets the payload itself (not the "OK - keys: ..." digest
+        // that made #39's clients show nothing), and structuredContent carries it too.
+        JsonObject payload = JsonParser.parseString("{\"success\":true,\"value\":7}").getAsJsonObject();
+        ToolCallResult r = ToolCallResult.textWithStructured(payload, false);
+
+        String text = r.getContent().get(0).getText();
+        assertTrue("the text channel must carry the payload, not a digest", text.contains("\"value\""));
+        assertTrue("the text channel must carry the payload, not a digest", text.contains("7"));
+        assertNotNull("structuredContent must still be there", r.getStructuredContent());
+        assertNull("a success must not be flagged as an error", r.getIsError());
+
+        // A failed payload keeps isError, so moving it into the text channel cannot make a
+        // failure read as a success.
+        JsonObject failed = JsonParser.parseString(
+            "{\"success\":false,\"error\":\"bad param\"}").getAsJsonObject();
+        assertEquals(Boolean.TRUE, ToolCallResult.textWithStructured(failed, true).getIsError());
+    }
+
+    @Test
+    public void testARefusalIsFlaggedAsAnErrorAndCarriesNoStructuredContent()
+    {
+        // The shape the disabled-tool branch answers with. It matters to the #574 invariant
+        // because enablement is the one input to the outputSchema promise that can change UNDER
+        // a client: a JSON tool can be listed with its schema and switched off before the next
+        // call, and only an error result is exempt from the obligation the schema created.
+        ToolCallResult r = ToolCallResult.refusal("Tool 'x' is disabled by the user.");
+
+        assertEquals("a refusal must be flagged as an error", Boolean.TRUE, r.getIsError());
+        assertNull("a refusal carries no structured payload - nothing ran", r.getStructuredContent());
+        assertTrue("the reason must reach the text channel",
+            r.getContent().get(0).getText().contains("disabled by the user"));
+    }
+
+    @Test
+    public void testADisabledToolIsRefusedOnTheWireAndNeverRuns()
+    {
+        // The shape above, asserted where a client actually sees it: the serialized tools/call
+        // response. "git" ships DISABLED (DEFAULT_DISABLED_TOOLS) and the store-less fallback keeps
+        // it that way, so the handler's disabled branch is reachable without an Eclipse runtime.
+        RecordingTool tool = new RecordingTool("git");
+        registry.register(tool);
+        assertFalse("git must ship disabled, or this asserts nothing",
+            registry.isToolEnabled("git"));
+
+        JsonObject result = parseResponse(handler.processRequest(
+            buildToolCallRequest(1, "git", "{\"projectName\":\"X\"}"))).getAsJsonObject("result");
+
+        assertNull("a refused tool must not have run", tool.params);
+        assertTrue("a refusal must be machine-distinguishable from a result",
+            result.has("isError") && result.get("isError").getAsBoolean());
+        assertFalse("no structuredContent on a refusal: a tool switched off between tools/list and "
+            + "this call would otherwise answer against its advertised outputSchema",
+            result.has("structuredContent"));
+        // The text channel is the ONLY channel a refusal has, so both the reason and the fix live
+        // there - the machine half of the contract is carried by isError, not by a payload.
+        String text = result.getAsJsonArray("content").get(0).getAsJsonObject()
+            .get("text").getAsString();
+        assertTrue(text, text.contains("Tool 'git' is disabled by the user"));
+        assertTrue("the refusal must name where to switch it back on: " + text,
+            text.contains("Tools tab"));
+    }
+
+    /**
+     * The single tool entry of a tools/list response, so a test can assert what was advertised
+     * for it without restating the envelope.
+     */
+    private JsonObject firstListedTool(String response)
+    {
+        JsonArray tools = parseResponse(response).getAsJsonObject("result").getAsJsonArray("tools");
+        assertEquals("expected exactly one listed tool", 1, tools.size());
+        return tools.get(0).getAsJsonObject();
+    }
+
+    // === Invalid Requests ===
+
+    @Test
+    public void testInvalidJsonRpcVersion()
+    {
+        String request = "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"initialize\"}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+        assertEquals(McpConstants.ERROR_INVALID_REQUEST,
+            json.getAsJsonObject("error").get("code").getAsInt());
+    }
+
+    @Test
+    public void testMissingJsonRpcVersion()
+    {
+        String request = "{\"id\":1,\"method\":\"initialize\"}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+    }
+
+    @Test
+    public void testMethodNotFound()
+    {
+        String request = buildJsonRpcRequest(1, "unknown/method", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+        assertEquals(McpConstants.ERROR_METHOD_NOT_FOUND,
+            json.getAsJsonObject("error").get("code").getAsInt());
+    }
+
+    @Test
+    public void testInvalidVersionDoesNotFabricateIdOne()
+    {
+        // Per JSON-RPC 2.0: a version-mismatch / invalid-request error whose id
+        // cannot be determined must carry id:null (present, not a fabricated value
+        // that could be mis-correlated to a pending request, and not omitted).
+        String request = "{\"jsonrpc\":\"1.0\",\"method\":\"initialize\"}";
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+        assertTrue("id field must be present per spec", json.has("id"));
+        assertTrue("undeterminable id must serialize as JSON null", json.get("id").isJsonNull());
+    }
+
+    @Test
+    public void testValidRequestIdStillEchoedOnError()
+    {
+        // A request that carries a real id but an unknown method must echo that id.
+        String request = buildJsonRpcRequest(7, "unknown/method", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+        assertEquals("Real request id must be echoed back", 7, json.get("id").getAsInt());
+    }
+
+    @Test
+    public void testInvalidJson()
+    {
+        String response = handler.processRequest("not valid json {{{");
+        // Should return an error response (either parse error or invalid request)
+        assertNotNull(response);
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+        // Parse error => id cannot be determined => id:null present per JSON-RPC 2.0
+        assertTrue("parse-error response must carry id:null",
+            json.has("id") && json.get("id").isJsonNull());
+    }
+
+    @Test
+    public void testEmptyBody()
+    {
+        String response = handler.processRequest("");
+        assertNotNull(response);
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+    }
+
+    @Test
+    public void testNullBody()
+    {
+        String response = handler.processRequest(null);
+        assertNotNull(response);
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+    }
+
+    // === Resources (capability + resources/list + resources/read) ===
+
+    @Test
+    public void testInitializeAdvertisesResourcesCapability()
+    {
+        // The server must advertise a resources capability so a client knows it can
+        // call resources/list + resources/read for the per-tool guide:// documents.
+        String request = buildJsonRpcRequest(1, "initialize", null);
+        String response = handler.processRequest(request);
+
+        JsonObject capabilities = parseResponse(response)
+            .getAsJsonObject("result").getAsJsonObject("capabilities");
+        assertNotNull("initialize must advertise a resources capability",
+            capabilities.get("resources"));
+        assertTrue("resources capability must be an object", capabilities.get("resources").isJsonObject());
+        // A static guide set never changes within a session => listChanged is false.
+        assertFalse("static guide set must not advertise listChanged",
+            capabilities.getAsJsonObject("resources").get("listChanged").getAsBoolean());
+        // The pre-existing tools capability must remain advertised.
+        assertNotNull("tools capability must still be advertised", capabilities.get("tools"));
+    }
+
+    @Test
+    public void testResourcesListReturnsGuideEntryForEachTool()
+    {
+        registry.register(new StubTool("tool_alpha", "Alpha tool", "{\"type\":\"object\"}"));
+        registry.register(new StubTool("tool_beta", "Beta tool", "{\"type\":\"object\"}"));
+
+        String request = buildJsonRpcRequest(1, "resources/list", "{}");
+        String response = handler.processRequest(request);
+
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertNotNull("resources/list must return a resources array", result.get("resources"));
+        assertEquals("one guide resource per enabled tool", 2,
+            result.getAsJsonArray("resources").size());
+
+        boolean foundAlpha = false;
+        for (JsonElement el : result.getAsJsonArray("resources"))
+        {
+            JsonObject res = el.getAsJsonObject();
+            assertTrue("each resource uri must use the guide:// scheme",
+                res.get("uri").getAsString().startsWith("guide://"));
+            assertEquals("each guide resource must be text/markdown",
+                "text/markdown", res.get("mimeType").getAsString());
+            assertNotNull("each resource must carry a name", res.get("name"));
+            assertNotNull("each resource must carry a description", res.get("description"));
+            if ("guide://tool_alpha".equals(res.get("uri").getAsString()))
+            {
+                foundAlpha = true;
+            }
+        }
+        assertTrue("resources/list must include a guide:// entry for a known tool", foundAlpha);
+    }
+
+    @Test
+    public void testResourcesReadReturnsMarkdownGuideForKnownTool()
+    {
+        registry.register(new StubTool("tool_alpha", "Alpha tool",
+            "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}}}"));
+
+        String request = buildJsonRpcRequest(1, "resources/read",
+            "{\"uri\":\"guide://tool_alpha\"}");
+        String response = handler.processRequest(request);
+
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertNotNull("resources/read must return a contents array", result.get("contents"));
+        assertEquals(1, result.getAsJsonArray("contents").size());
+
+        JsonObject content = result.getAsJsonArray("contents").get(0).getAsJsonObject();
+        assertEquals("content must echo the requested uri",
+            "guide://tool_alpha", content.get("uri").getAsString());
+        assertEquals("guide content must be text/markdown",
+            "text/markdown", content.get("mimeType").getAsString());
+        String text = content.get("text").getAsString();
+        // The rendered guide carries the tool title and the parsed parameter table.
+        assertTrue("guide text must name the documented tool", text.contains("tool_alpha"));
+        assertTrue("guide text must contain a Parameters section", text.contains("Parameters"));
+    }
+
+    @Test
+    public void testResourcesReadUnknownToolReturnsError()
+    {
+        // A guide:// uri whose tool is not registered must be a JSON-RPC error.
+        String request = buildJsonRpcRequest(1, "resources/read",
+            "{\"uri\":\"guide://no_such_tool\"}");
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull("unknown guide must return a JSON-RPC error", json.get("error"));
+        String message = json.getAsJsonObject("error").get("message").getAsString();
+        assertTrue("error must name the unknown uri", message.contains("guide://no_such_tool"));
+    }
+
+    @Test
+    public void testResourcesReadBadSchemeReturnsError()
+    {
+        // A uri that is not the guide:// scheme is unsupported and must error.
+        String request = buildJsonRpcRequest(1, "resources/read",
+            "{\"uri\":\"file:///etc/passwd\"}");
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull("a non-guide:// uri must return a JSON-RPC error", json.get("error"));
+        assertEquals("bad uri is an invalid-params error", McpConstants.ERROR_INVALID_PARAMS,
+            json.getAsJsonObject("error").get("code").getAsInt());
+    }
+
+    @Test
+    public void testResourcesReadMissingUriReturnsError()
+    {
+        // resources/read without a uri is an invalid-params error, not a crash.
+        String request = buildJsonRpcRequest(1, "resources/read", "{}");
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull("missing uri must return a JSON-RPC error", json.get("error"));
+        assertEquals(McpConstants.ERROR_INVALID_PARAMS,
+            json.getAsJsonObject("error").get("code").getAsInt());
+    }
+
+    // === Error-path guide hint (appended to the human-readable error TEXT) ===
+
+    @Test
+    public void testToolCallErrorTextCarriesGuideHint()
+    {
+        // A failing tool's error TEXT channel must point the caller to get_tool_guide
+        // so they can find the full parameter list and examples. The structured
+        // error and isError flag stay unchanged (machine-readable semantics intact).
+        registry.register(new StubJsonTool("failing_tool",
+            "{\"success\":false,\"error\":\"bad param\"}"));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "failing_tool", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+
+        assertTrue("error payload must still set isError:true",
+            result.get("isError").getAsBoolean());
+        // structuredContent must be unchanged: still the original failure payload.
+        assertFalse("structuredContent must carry the unchanged failure",
+            result.getAsJsonObject("structuredContent").get("success").getAsBoolean());
+        assertEquals("structuredContent error must be unchanged", "bad param",
+            result.getAsJsonObject("structuredContent").get("error").getAsString());
+
+        String text = result.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+        assertTrue("error text must point the caller to get_tool_guide",
+            text.contains("get_tool_guide"));
+        assertTrue("error text hint must name the failing tool", text.contains("failing_tool"));
+    }
+
+    @Test
+    public void testGetToolGuideFailureDoesNotSuggestItself()
+    {
+        // The hint must be skipped when the FAILING tool is get_tool_guide itself,
+        // to avoid a circular suggestion.
+        registry.register(new StubJsonTool("get_tool_guide",
+            "{\"success\":false,\"error\":\"Unknown tool: zzz\"}"));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "get_tool_guide", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+
+        assertTrue("the get_tool_guide failure is still an error",
+            result.get("isError").getAsBoolean());
+        String text = result.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+        assertFalse("a get_tool_guide failure must NOT suggest itself",
+            text.contains("get_tool_guide("));
+    }
+
+    @Test
+    public void testSuccessfulJsonToolTextHasNoGuideHint()
+    {
+        // The hint is error-only: a successful JSON tool result must not carry it.
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "ok_tool", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        String text = result.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+        assertFalse("a success result must not carry the guide hint",
+            text.contains("get_tool_guide"));
+    }
+
+    @Test
+    public void testGuideHintNamesToolAndPointsToGetToolGuide()
+    {
+        // Pure helper: the hint text references get_tool_guide and the tool name.
+        String hint = McpProtocolHandler.guideHint("write_module_source");
+        assertTrue("hint must reference get_tool_guide", hint.contains("get_tool_guide"));
+        assertTrue("hint must name the tool", hint.contains("write_module_source"));
+    }
+
+    // === Tools/Call Error Cases ===
+
+    @Test
+    public void testToolCallToolNotFound()
+    {
+        String request = buildToolCallRequest(1, "nonexistent_tool", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNotNull(json.get("error"));
+        String message = json.getAsJsonObject("error").get("message").getAsString();
+        assertTrue("Error should mention tool name", message.contains("nonexistent_tool"));
+    }
+
+    @Test
+    public void testToolCallNullToolName()
+    {
+        assertInvalidToolName("{\"arguments\":{}}");
+    }
+
+    @Test
+    public void testToolCallExplicitNullToolName()
+    {
+        assertInvalidToolName("{\"name\":null,\"arguments\":{}}");
+    }
+
+    @Test
+    public void testToolCallEmptyToolName()
+    {
+        assertInvalidToolName("{\"name\":\"\",\"arguments\":{}}");
+    }
+
+    @Test
+    public void testToolCallBlankToolName()
+    {
+        assertInvalidToolName("{\"name\":\" \\t\\n\",\"arguments\":{}}");
+    }
+
+    @Test
+    public void testToolCallMissingParams()
+    {
+        assertInvalidToolName(null);
+    }
+
+    private void assertInvalidToolName(String paramsJson)
+    {
+        Bundle bundle = FrameworkUtil.getBundle(McpProtocolHandler.class);
+        assertNotNull("Observe the real server bundle log", bundle);
+        ILog log = Platform.getLog(bundle);
+        List<IStatus> logged = new CopyOnWriteArrayList<>();
+        ILogListener listener = (status, plugin) -> {
+            if (bundle.getSymbolicName().equals(status.getPlugin()))
+            {
+                logged.add(status);
+            }
+        };
+        log.addLogListener(listener);
+        try
+        {
+            JsonObject json = parseResponse(handler.processRequest(
+                buildJsonRpcRequest(1, "tools/call", paramsJson)));
+            assertTrue("Invalid params must not log an exception: " + logged,
+                logged.stream().noneMatch(status -> status.getException() != null));
+            assertTrue("Invalid params must not be logged as server errors: " + logged,
+                logged.stream().noneMatch(status -> status.getSeverity() == IStatus.ERROR));
+            assertEquals(1, json.get("id").getAsInt());
+            assertFalse(json.has("result"));
+            JsonObject error = json.getAsJsonObject("error");
+            assertEquals(McpConstants.ERROR_INVALID_PARAMS, error.get("code").getAsInt());
+            String message = error.get("message").getAsString();
+            assertTrue(message, message.contains("params.name"));
+            assertTrue(message, message.contains("tools/list"));
+        }
+        finally
+        {
+            log.removeLogListener(listener);
+        }
+    }
+
+    /**
+     * An argument sent as JSON {@code null} does not reach the tool as an empty value - it does not
+     * reach it as a key at all.
+     * <p>
+     * Nothing asserted this until here, and a tool stands on it: {@code compare_configurations}
+     * decides between "release a comparison" and "start one" from whether
+     * {@code releaseComparisonId} is a KEY in the map this handler builds, so the map's treatment of
+     * an explicit null is what answers {@code releaseComparisonId: null}. It reads as an omission
+     * and starts a comparison, which is the intended reading of a null optional argument - but only
+     * for as long as this stays true, and it is not the tool's own code that keeps it true.
+     */
+    @Test
+    public void testAnArgumentSentAsJsonNullReachesTheToolAsNoKeyAtAll()
+    {
+        RecordingTool tool = new RecordingTool("recording_tool");
+        registry.register(tool);
+
+        handler.processRequest(buildToolCallRequest(1, "recording_tool",
+            "{\"kept\":\"x\",\"dropped\":null}"));
+
+        assertNotNull("the tool must have been called", tool.params);
+        assertTrue("a key sent with a value reaches the tool", tool.params.containsKey("kept"));
+        assertFalse("a key sent as JSON null must not reach the tool at all",
+            tool.params.containsKey("dropped"));
+    }
+
+    @Test
+    public void testToolCallErrorPayloadFlagsIsError()
+    {
+        // A JSON tool returning a ToolResult.error payload (success:false) must be
+        // surfaced with isError:true so clients can detect a tool-level failure.
+        registry.register(new StubJsonTool("failing_tool",
+            "{\"success\":false,\"error\":\"boom\"}"));
+
+        String request = buildToolCallRequest(1, "failing_tool", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNull("tool-level failure is not a JSON-RPC error", json.get("error"));
+        JsonObject result = json.getAsJsonObject("result");
+        assertTrue("error payload must set isError:true",
+            result.get("isError").getAsBoolean());
+        assertFalse("structuredContent must carry the failure",
+            result.getAsJsonObject("structuredContent").get("success").getAsBoolean());
+    }
+
+    @Test
+    public void testToolCallSuccessPayloadOmitsIsError()
+    {
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+
+        String request = buildToolCallRequest(1, "ok_tool", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        JsonObject result = json.getAsJsonObject("result");
+        assertFalse("success result must not carry isError", result.has("isError"));
+        assertEquals(7, result.getAsJsonObject("structuredContent").get("value").getAsInt());
+
+        // The content fallback must carry a bounded, non-empty digest derived
+        // from the structuredContent (NOT the opaque "Done"), so a spec-compliant
+        // client that reads content[0].text still sees something meaningful.
+        String contentText = result.getAsJsonArray("content").get(0)
+            .getAsJsonObject().get("text").getAsString();
+        assertFalse("content fallback must not be empty", contentText.isEmpty());
+        assertNotEquals("content fallback must not be the opaque \"Done\"", "Done", contentText);
+        assertTrue("digest must be bounded", contentText.length() <= 500);
+        assertTrue("digest should reference the structured key", contentText.contains("value"));
+    }
+
+    @Test
+    public void testToolCallSuccessPayloadWithErrorFieldOmitsIsError()
+    {
+        // Regression for the isJsonErrorPayload tightening: a SUCCESSFUL JSON result
+        // (success:true) that ALSO carries a populated "error" field must NOT be
+        // flagged isError. Detection is by success==false only, never by the mere
+        // presence of an "error" key, so future field names stay decoupled from the
+        // error-detection contract.
+        registry.register(new StubJsonTool("ok_with_error_field",
+            "{\"success\":true,\"error\":\"this is data, not a failure\",\"value\":7}"));
+
+        String request = buildToolCallRequest(1, "ok_with_error_field", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNull("tool-level success is not a JSON-RPC error", json.get("error"));
+        JsonObject result = json.getAsJsonObject("result");
+        assertFalse("a success payload carrying an 'error' field must not set isError",
+            result.has("isError"));
+        assertEquals("the structured content must round-trip intact", 7,
+            result.getAsJsonObject("structuredContent").get("value").getAsInt());
+    }
+
+    @Test
+    public void testToolResultErrorPayloadFlagsIsError()
+    {
+        // The actual ToolResult.error(...) output ({"success":false,"error":...})
+        // must still be classified as an error: the tightened predicate keys on the
+        // canonical success==false produced by the shared error builder.
+        String errorPayload = ToolResult.error("module not found").toJson();
+        registry.register(new StubJsonTool("toolresult_error", errorPayload));
+
+        String request = buildToolCallRequest(1, "toolresult_error", null);
+        String response = handler.processRequest(request);
+
+        JsonObject json = parseResponse(response);
+        assertNull("tool-level failure is not a JSON-RPC error", json.get("error"));
+        JsonObject result = json.getAsJsonObject("result");
+        assertTrue("ToolResult.error payload must set isError:true",
+            result.get("isError").getAsBoolean());
+        assertFalse("structuredContent must carry the failure",
+            result.getAsJsonObject("structuredContent").get("success").getAsBoolean());
+    }
+
+    @Test
+    public void testMarkdownErrorPayloadDeliveredAsJsonError()
+    {
+        // A MARKDOWN tool that returns a ToolResult.error JSON payload is delivered
+        // as a structured JSON error (isError:true), not wrapped as a markdown
+        // resource — failures are machine-detectable regardless of response type.
+        registry.register(new StubTypedTool("md_fail",
+            "{\"success\":false,\"error\":\"boom\"}", IMcpTool.ResponseType.MARKDOWN));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "md_fail", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertTrue("markdown error payload must set isError:true",
+            result.has("isError") && result.get("isError").getAsBoolean());
+        assertNotNull("error must carry structuredContent, not a resource",
+            result.get("structuredContent"));
+    }
+
+    @Test
+    public void testMarkdownNormalDeliveredAsResource()
+    {
+        // Normal markdown output is unaffected: embedded resource, no isError.
+        registry.register(new StubTypedTool("md_ok", "# Title", IMcpTool.ResponseType.MARKDOWN));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "md_ok", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertFalse("normal markdown must not carry isError", result.has("isError"));
+        assertEquals("resource",
+            result.getAsJsonArray("content").get(0).getAsJsonObject().get("type").getAsString());
+    }
+
+    @Test
+    public void testYamlDeliveredAsResourceWithYamlMimeType()
+    {
+        // A YAML-responseType tool is delivered as an embedded resource whose
+        // mimeType agrees with the YAML body (text/yaml), not text/markdown.
+        registry.register(new StubTypedTool("yaml_ok", "key: value\n", IMcpTool.ResponseType.YAML)); //$NON-NLS-1$ //$NON-NLS-2$
+
+        String response = handler.processRequest(buildToolCallRequest(1, "yaml_ok", null)); //$NON-NLS-1$
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertFalse("normal yaml must not carry isError", result.has("isError")); //$NON-NLS-1$
+        assertEquals("resource",
+            result.getAsJsonArray("content").get(0).getAsJsonObject().get("type").getAsString());
+        assertTrue("yaml resource must advertise text/yaml", response.contains("text/yaml")); //$NON-NLS-1$ //$NON-NLS-2$
+        assertFalse("yaml resource must not be text/markdown", response.contains("text/markdown")); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    @Test
+    public void testTextErrorPayloadDeliveredAsJsonError()
+    {
+        registry.register(new StubTypedTool("txt_fail",
+            "{\"success\":false,\"error\":\"boom\"}", IMcpTool.ResponseType.TEXT));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "txt_fail", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        assertTrue("text error payload must set isError:true",
+            result.has("isError") && result.get("isError").getAsBoolean());
+    }
+
+    // === Absolute output-size guard (content-text cap) ===
+
+    @Test
+    public void testSubBudgetMarkdownContentIsByteIdentical()
+    {
+        // A normal markdown result is far below the cap, so the embedded resource
+        // body must be byte-for-byte identical to what the tool produced — the
+        // guard is a pure no-op below its budget.
+        String body = "# Title\n\n| Name | Value |\n| --- | --- |\n| Code | 9 |\n";
+        registry.register(new StubTypedTool("md_small", body, IMcpTool.ResponseType.MARKDOWN));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "md_small", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        String text = result.getAsJsonArray("content").get(0)
+            .getAsJsonObject().getAsJsonObject("resource").get("text").getAsString();
+        assertEquals("sub-budget content must pass through unchanged", body, text);
+        assertFalse("sub-budget content must NOT carry a truncation notice",
+            text.contains("[OUTPUT TRUNCATED]"));
+    }
+
+    @Test
+    public void testOverBudgetTextContentIsTruncatedWithNotice()
+    {
+        // A TEXT tool that returns more than the budget must have its content text
+        // capped and carry the actionable, size-keyed truncation notice.
+        StringBuilder huge = new StringBuilder();
+        for (int i = 0; i < OutputSizeGuard.MAX_CONTENT_CHARS + 20_000; i++)
+        {
+            huge.append('x');
+        }
+        registry.register(new StubTypedTool("txt_huge", huge.toString(), IMcpTool.ResponseType.TEXT));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "txt_huge", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        String text = result.getAsJsonArray("content").get(0)
+            .getAsJsonObject().get("text").getAsString();
+        assertTrue("over-budget content must be capped to the budget",
+            text.length() <= OutputSizeGuard.MAX_CONTENT_CHARS);
+        assertTrue("over-budget content must carry the truncation notice",
+            text.contains("[OUTPUT TRUNCATED]"));
+        assertTrue("notice must name a narrowing param", text.contains("limit"));
+    }
+
+    @Test
+    public void testJsonStructuredContentIsNotCappedByTheGuard()
+    {
+        // A JSON tool with a payload far larger than the budget must keep its
+        // structuredContent intact (the guard caps only content text, never the
+        // structured JSON object that must round-trip). The bounded content[0].text
+        // is just the digest, not the full payload.
+        StringBuilder bigValue = new StringBuilder();
+        for (int i = 0; i < OutputSizeGuard.MAX_CONTENT_CHARS + 50_000; i++)
+        {
+            bigValue.append('a');
+        }
+        String payload = "{\"success\":true,\"blob\":\"" + bigValue + "\",\"value\":7}";
+        registry.register(new StubJsonTool("json_huge", payload));
+
+        String response = handler.processRequest(buildToolCallRequest(1, "json_huge", null));
+        JsonObject result = parseResponse(response).getAsJsonObject("result");
+        JsonObject structured = result.getAsJsonObject("structuredContent");
+        // structuredContent must be intact and round-trip the full data.
+        assertEquals("structuredContent must round-trip the scalar intact", 7,
+            structured.get("value").getAsInt());
+        assertEquals("structuredContent blob must NOT be truncated",
+            bigValue.length(), structured.get("blob").getAsString().length());
+        assertFalse("structuredContent must NOT carry a truncation notice",
+            structured.get("blob").getAsString().contains("[OUTPUT TRUNCATED]"));
+    }
+
+    // === Per-call completion log line (pure helpers) ===
+
+    @Test
+    public void testCompletionLineCarriesNameDurationAndOkOutcome()
+    {
+        String line = McpProtocolHandler.formatCompletionLine("list_projects", 12, false);
+        assertTrue("must reference the tool name", line.contains("list_projects"));
+        assertTrue("must carry the duration in ms", line.contains("12ms"));
+        assertTrue("a non-error outcome must read ok", line.contains("outcome=ok"));
+        assertFalse("a non-error outcome must not read error", line.contains("outcome=error"));
+    }
+
+    @Test
+    public void testCompletionLineReflectsErrorOutcome()
+    {
+        String line = McpProtocolHandler.formatCompletionLine("write_module_source", 3, true);
+        assertTrue("must reference the tool name", line.contains("write_module_source"));
+        assertTrue("must carry the duration in ms", line.contains("3ms"));
+        assertTrue("an error outcome must read error", line.contains("outcome=error"));
+    }
+
+    @Test
+    public void testCompletionLineToleratesNullToolName()
+    {
+        // Defensive: a null tool name must not throw while formatting the line.
+        String line = McpProtocolHandler.formatCompletionLine(null, 0, false);
+        assertNotNull(line);
+        assertTrue("zero duration is still rendered", line.contains("0ms"));
+    }
+
+    @Test
+    public void testWarnWorthyOnError()
+    {
+        // An error outcome is warn-worthy even when the call was fast.
+        assertTrue("a fast error must still warn", McpProtocolHandler.isWarnWorthy(1, true));
+    }
+
+    @Test
+    public void testWarnWorthyOnSlowSuccess()
+    {
+        // A success at/over the slow threshold is warn-worthy.
+        assertTrue("at the threshold must warn",
+            McpProtocolHandler.isWarnWorthy(McpProtocolHandler.SLOW_TOOL_CALL_MS, false));
+        assertTrue("over the threshold must warn",
+            McpProtocolHandler.isWarnWorthy(McpProtocolHandler.SLOW_TOOL_CALL_MS + 1, false));
+    }
+
+    @Test
+    public void testNotWarnWorthyOnFastSuccess()
+    {
+        // A fast success is logged at INFO, not WARNING.
+        assertFalse("a fast success must not warn",
+            McpProtocolHandler.isWarnWorthy(McpProtocolHandler.SLOW_TOOL_CALL_MS - 1, false));
+    }
+
+    // === Per-call error log line (pure helpers) ===
+
+    @Test
+    public void testErrorLogLineCarriesNameAndMessage()
+    {
+        String line = McpProtocolHandler.formatErrorLogLine("write_module_source", "module not found");
+        assertTrue("must reference the tool name", line.contains("write_module_source"));
+        assertTrue("must carry the error message", line.contains("module not found"));
+    }
+
+    @Test
+    public void testErrorLogLineToleratesNullMessage()
+    {
+        // A thrown exception can leave no payload (null message); the line must still
+        // render with the tool name and a placeholder instead of throwing.
+        String line = McpProtocolHandler.formatErrorLogLine("list_projects", null);
+        assertNotNull(line);
+        assertTrue("must reference the tool name", line.contains("list_projects"));
+        assertTrue("a missing message renders a placeholder", line.contains("(no message)"));
+    }
+
+    @Test
+    public void testErrorLogLineToleratesEmptyMessage()
+    {
+        // An empty error string is treated like a missing message.
+        String line = McpProtocolHandler.formatErrorLogLine("list_projects", "");
+        assertNotNull(line);
+        assertTrue("an empty message renders a placeholder", line.contains("(no message)"));
+    }
+
+    @Test
+    public void testExtractErrorMessageFromErrorPayload()
+    {
+        // A ToolResult.error payload carries the human-readable cause in "error".
+        String msg = McpProtocolHandler.extractErrorMessage(
+            "{\"success\":false,\"error\":\"module not found\"}");
+        assertEquals("module not found", msg);
+    }
+
+    @Test
+    public void testExtractErrorMessageFromObjectError()
+    {
+        // A structured (object) error is preserved as its JSON text, not dropped.
+        String msg = McpProtocolHandler.extractErrorMessage(
+            "{\"success\":false,\"error\":{\"code\":42,\"detail\":\"boom\"}}");
+        assertNotNull(msg);
+        assertTrue("structured error must retain its detail", msg.contains("boom"));
+        assertTrue("structured error must retain its code", msg.contains("42"));
+    }
+
+    @Test
+    public void testExtractErrorMessageNullForSuccessPayload()
+    {
+        // A success payload has no error field => no message to extract.
+        assertNull("a success payload yields no error message",
+            McpProtocolHandler.extractErrorMessage("{\"value\":7}"));
+    }
+
+    @Test
+    public void testExtractErrorMessageNullForNullAndEmpty()
+    {
+        // A thrown execute can leave no payload at all; tolerate null/empty.
+        assertNull("null payload yields no message",
+            McpProtocolHandler.extractErrorMessage(null));
+        assertNull("empty payload yields no message",
+            McpProtocolHandler.extractErrorMessage(""));
+    }
+
+    @Test
+    public void testExtractErrorMessageNullForNonJson()
+    {
+        // A non-JSON / non-object result (e.g. markdown) is not an error payload.
+        assertNull("markdown text yields no error message",
+            McpProtocolHandler.extractErrorMessage("# Title"));
+        assertNull("a JSON array is not an error object",
+            McpProtocolHandler.extractErrorMessage("[1,2,3]"));
+    }
+
+    @Test
+    public void testExtractErrorMessageNullForNullErrorValue()
+    {
+        // An explicit null error value yields no message.
+        assertNull("a null error value yields no message",
+            McpProtocolHandler.extractErrorMessage("{\"success\":false,\"error\":null}"));
+    }
+
+    // === Request/response history recorder at the choke point (#254) ===
+
+    @Test
+    public void testRecordingProducesByteIdenticalOutput()
+    {
+        // NO-REGRESSION: recording ON must produce byte-for-byte the same wire output
+        // as with the recorder disabled. The recorder runs in a finally and only
+        // reads, so a capturing handler and a no-op handler must agree on every kind.
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+        RecordingSpyHandler recording = new RecordingSpyHandler();
+        SilentHandler silent = new SilentHandler();
+
+        String[] requests = {
+            buildJsonRpcRequest(1, "initialize", null),
+            buildJsonRpcRequest(2, "tools/list", null),
+            buildToolCallRequest(3, "ok_tool", null),
+            buildJsonRpcRequest(4, "notifications/initialized", null),
+            buildJsonRpcRequest(5, "ping", null),
+            buildJsonRpcRequest(6, "unknown/method", null),
+            "not valid json {{{"
+        };
+        for (String req : requests)
+        {
+            assertEquals("recording on must not change the wire output",
+                silent.processRequest(req), recording.processRequest(req));
+        }
+    }
+
+    @Test
+    public void testEachMessageKindRecordedExactlyOnce()
+    {
+        // Every MCP message kind flowing through the single choke point must be
+        // recorded exactly once, carrying its method (and tool name for tools/call).
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+        RecordingSpyHandler spy = new RecordingSpyHandler();
+
+        spy.processRequest(buildJsonRpcRequest(1, "initialize", null));
+        assertEquals("initialize must record exactly once", 1, spy.recordCount());
+        assertEquals("initialize", spy.methods.get(0));
+        assertNull("a non-tools/call has no tool name", spy.toolNames.get(0));
+
+        spy.processRequest(buildJsonRpcRequest(2, "tools/list", null));
+        assertEquals(2, spy.recordCount());
+        assertEquals("tools/list", spy.methods.get(1));
+
+        String toolResponse = spy.processRequest(buildToolCallRequest(3, "ok_tool", null));
+        assertEquals(3, spy.recordCount());
+        assertEquals("tools/call", spy.methods.get(2));
+        assertEquals("a tools/call must record its tool name", "ok_tool", spy.toolNames.get(2));
+        assertEquals("the recorded response must be dispatch's exact string",
+            toolResponse, spy.responses.get(2));
+
+        spy.processRequest(buildJsonRpcRequest(4, "notifications/initialized", null));
+        assertEquals("a notification must record exactly once", 4, spy.recordCount());
+        assertEquals("notifications/initialized", spy.methods.get(3));
+
+        spy.processRequest(buildJsonRpcRequest(5, "ping", null));
+        assertEquals(5, spy.recordCount());
+        assertEquals("ping", spy.methods.get(4));
+
+        spy.processRequest(buildJsonRpcRequest(6, "unknown/method", null));
+        assertEquals("an error response must still record exactly once", 6, spy.recordCount());
+        assertEquals("unknown/method", spy.methods.get(5));
+
+        spy.processRequest("not valid json {{{");
+        assertEquals("an unparseable request must record exactly once", 7, spy.recordCount());
+        assertNull("an unparseable request records a null method", spy.methods.get(6));
+        assertNull("an unparseable request records a null tool name", spy.toolNames.get(6));
+    }
+
+    @Test
+    public void testNullNotificationRecordedAsOk()
+    {
+        // A notification (notifications/initialized) is answered with 202 and no body,
+        // so dispatch returns null. It must still be recorded exactly once, with a
+        // null response body — a normal successful exchange, neither skipped nor an
+        // error — so the recorder classifies it as ok.
+        RecordingSpyHandler spy = new RecordingSpyHandler();
+
+        String response = spy.processRequest(buildJsonRpcRequest(1, "notifications/initialized", null));
+
+        assertNull("a notification must still return null (202 Accepted)", response);
+        assertEquals("the notification must be recorded exactly once", 1, spy.recordCount());
+        assertNull("a notification records a null response body", spy.responses.get(0));
+        assertEquals("notifications/initialized", spy.methods.get(0));
+        assertNull("a notification has no tool name", spy.toolNames.get(0));
+    }
+
+    @Test
+    public void testRecorderFailureDoesNotBreakCall()
+    {
+        // A recorder that throws must NEVER break the wire path: the call still
+        // returns dispatch's exact response and the exception is swallowed at the
+        // choke point.
+        registry.register(new StubJsonTool("ok_tool", "{\"value\":7}"));
+        RecordingSpyHandler spy = new RecordingSpyHandler();
+        spy.throwOnRecord = true;
+
+        String initResponse = spy.processRequest(buildJsonRpcRequest(1, "initialize", null));
+        assertNotNull("a throwing recorder must not suppress the response", initResponse);
+        assertNotNull("initialize must still succeed", parseResponse(initResponse).get("result"));
+
+        String toolResponse = spy.processRequest(buildToolCallRequest(2, "ok_tool", null));
+        JsonObject result = parseResponse(toolResponse).getAsJsonObject("result");
+        assertEquals("the tool result must be intact despite a throwing recorder", 7,
+            result.getAsJsonObject("structuredContent").get("value").getAsInt());
+
+        // The throwing recorder was actually exercised for each call (guard swallowed it).
+        assertEquals("the recorder must have been invoked for each call", 2, spy.recordCount());
+    }
+
+    // === Helpers ===
+
+    private String buildJsonRpcRequest(Object id, String method, String paramsJson)
+    {
+        StringBuilder sb = new StringBuilder("{\"jsonrpc\":\"2.0\"");
+        if (id instanceof String)
+        {
+            sb.append(",\"id\":\"").append(id).append("\"");
+        }
+        else
+        {
+            sb.append(",\"id\":").append(id);
+        }
+        sb.append(",\"method\":\"").append(method).append("\"");
+        if (paramsJson != null)
+        {
+            sb.append(",\"params\":").append(paramsJson);
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private String buildToolCallRequest(Object id, String toolName, String argsJson)
+    {
+        StringBuilder params = new StringBuilder("{\"name\":\"").append(toolName).append("\"");
+        if (argsJson != null)
+        {
+            params.append(",\"arguments\":").append(argsJson);
+        }
+        else
+        {
+            params.append(",\"arguments\":{}");
+        }
+        params.append("}");
+        return buildJsonRpcRequest(id, "tools/call", params.toString());
+    }
+
+    private JsonObject parseResponse(String response)
+    {
+        return JsonParser.parseString(response).getAsJsonObject();
+    }
+
+    /**
+     * Minimal IMcpTool stub for testing.
+     */
+    private static class StubTool implements IMcpTool
+    {
+        private final String name;
+        private final String description;
+        private final String inputSchema;
+
+        StubTool(String name, String description, String inputSchema)
+        {
+            this.name = name;
+            this.description = description;
+            this.inputSchema = inputSchema;
+        }
+
+        @Override
+        public String getName() { return name; }
+
+        @Override
+        public String getDescription() { return description; }
+
+        @Override
+        public String getInputSchema() { return inputSchema; }
+
+        @Override
+        public String execute(Map<String, String> params) { return "{}"; }
+    }
+
+    /** IMcpTool stub that keeps the parameter map it was handed, so the map itself can be asserted. */
+    private static class RecordingTool implements IMcpTool
+    {
+        private final String name;
+        private Map<String, String> params;
+
+        RecordingTool(String name)
+        {
+            this.name = name;
+        }
+
+        @Override
+        public String getName() { return name; }
+
+        @Override
+        public String getDescription() { return "records the params it receives"; }
+
+        @Override
+        public String getInputSchema() { return "{\"type\":\"object\"}"; }
+
+        @Override
+        public String execute(Map<String, String> params)
+        {
+            this.params = params;
+            return "{}";
+        }
+    }
+
+    /**
+     * IMcpTool stub with a JSON response type returning a fixed payload, used to
+     * exercise the isError flagging on the tools/call JSON path.
+     */
+    private static class StubJsonTool implements IMcpTool
+    {
+        private final String name;
+        private final String payload;
+
+        StubJsonTool(String name, String payload)
+        {
+            this.name = name;
+            this.payload = payload;
+        }
+
+        @Override
+        public String getName() { return name; }
+
+        @Override
+        public String getDescription() { return "stub json tool"; }
+
+        @Override
+        public String getInputSchema() { return "{\"type\":\"object\"}"; }
+
+        @Override
+        public ResponseType getResponseType() { return ResponseType.JSON; }
+
+        @Override
+        public String execute(Map<String, String> params) { return payload; }
+    }
+
+    /**
+     * A JSON stub that also DECLARES an {@code outputSchema}, like every real JSON tool does
+     * (enforced by {@code BuiltInToolOutputSchemaTest}). Needed to assert the tools/list
+     * &lt;-&gt; tools/call agreement of #574: the schema may be advertised only when the call
+     * that follows will actually carry {@code structuredContent}.
+     */
+    private static class StubSchemaJsonTool implements IMcpTool
+    {
+        private final String name;
+        private final String payload;
+
+        StubSchemaJsonTool(String name, String payload)
+        {
+            this.name = name;
+            this.payload = payload;
+        }
+
+        @Override
+        public String getName() { return name; }
+
+        @Override
+        public String getDescription() { return "stub json tool with an output schema"; }
+
+        @Override
+        public String getInputSchema() { return "{\"type\":\"object\"}"; }
+
+        @Override
+        public String getOutputSchema()
+        {
+            return "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}}}";
+        }
+
+        @Override
+        public ResponseType getResponseType() { return ResponseType.JSON; }
+
+        @Override
+        public String execute(Map<String, String> params) { return payload; }
+    }
+
+    /**
+     * IMcpTool stub with a configurable response type returning a fixed payload,
+     * used to exercise the isJsonErrorPayload diversion on the MARKDOWN/TEXT paths.
+     */
+    private static class StubTypedTool implements IMcpTool
+    {
+        private final String name;
+        private final String payload;
+        private final ResponseType responseType;
+
+        StubTypedTool(String name, String payload, ResponseType responseType)
+        {
+            this.name = name;
+            this.payload = payload;
+            this.responseType = responseType;
+        }
+
+        @Override
+        public String getName() { return name; }
+
+        @Override
+        public String getDescription() { return "stub typed tool"; }
+
+        @Override
+        public String getInputSchema() { return "{\"type\":\"object\"}"; }
+
+        @Override
+        public ResponseType getResponseType() { return responseType; }
+
+        @Override
+        public String execute(Map<String, String> params) { return payload; }
+    }
+
+    /**
+     * A {@link McpProtocolHandler} that captures every {@code recordToHistory} call
+     * (instead of delegating to the live history singleton), so the recorder hook at
+     * the choke point can be asserted without a running EDT/OSGi runtime. Optionally
+     * throws from the seam to prove the guard in {@code processRequest} swallows a
+     * recorder failure without altering the returned response.
+     */
+    private static class RecordingSpyHandler extends McpProtocolHandler
+    {
+        final List<String> methods = new ArrayList<>();
+        final List<String> toolNames = new ArrayList<>();
+        final List<String> requests = new ArrayList<>();
+        final List<String> responses = new ArrayList<>();
+        final List<Long> durations = new ArrayList<>();
+        boolean throwOnRecord;
+
+        @Override
+        void recordToHistory(String method, String toolName, String requestJson, String responseJson,
+            long durationMs)
+        {
+            methods.add(method);
+            toolNames.add(toolName);
+            requests.add(requestJson);
+            responses.add(responseJson);
+            durations.add(durationMs);
+            if (throwOnRecord)
+            {
+                throw new IllegalStateException("recorder failure (test)");
+            }
+        }
+
+        int recordCount()
+        {
+            return methods.size();
+        }
+    }
+
+    /**
+     * A handler that reports what the recorder was told, and whose parse is deliberately slow:
+     * the parse of a multi-megabyte tool call is real work, and the point of these two tests is
+     * that it lands INSIDE the duration the history reports, whichever overload was called.
+     */
+    private static class DurationCapturingHandler extends McpProtocolHandler
+    {
+        static final long PARSE_MILLIS = 60L;
+
+        long recordedDurationMs = -1L;
+
+        @Override
+        public JsonRpcRequest parse(String requestBody)
+        {
+            try
+            {
+                Thread.sleep(PARSE_MILLIS);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+            return super.parse(requestBody);
+        }
+
+        @Override
+        void recordToHistory(String method, String toolName, String requestJson, String responseJson,
+            long durationMs)
+        {
+            recordedDurationMs = durationMs;
+        }
+    }
+
+    /**
+     * A {@link McpProtocolHandler} whose recorder seam is a no-op, used as the
+     * recording-disabled baseline to prove recording does not change the wire output.
+     */
+    private static class SilentHandler extends McpProtocolHandler
+    {
+        @Override
+        void recordToHistory(String method, String toolName, String requestJson, String responseJson,
+            long durationMs)
+        {
+            // Intentionally no-op: the recording-off baseline for the byte-identical
+            // output comparison.
+        }
+    }
+}

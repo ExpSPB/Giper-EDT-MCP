@@ -12,7 +12,7 @@ data. **MUTATES the configuration on disk** (it writes translated
 synonyms/strings into the model) and depends on an externally-installed
 LanguageTool plugin (and, depending on how the dictionaries are configured, an
 external translation provider). Source:
-`mcp/bundles/com.ditrix.edt.mcp.server/src/com/ditrix/edt/mcp/server/tools/impl/TranslateConfigurationTool.java`.
+`mcp/bundles/fm.giper.edt.mcp.server/src/fm/giper/edt/mcp/server/tools/impl/TranslateConfigurationTool.java`.
 
 > **DO NOT run this tool live during routine testing.** It mutates the
 > configuration, is heavy, and needs LanguageTool + a configured dictionary/

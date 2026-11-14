@@ -62,7 +62,7 @@ class DeleteInfobaseDiagnosticsTest(unittest.TestCase):
     @staticmethod
     def _warning(directory, detail):
         return (
-            "!ENTRY com.ditrix.edt.mcp.server 2 0 2026-10-19 12:00:00.000\n"
+            "!ENTRY fm.giper.edt.mcp.server 2 0 2026-10-19 12:00:00.000\n"
             "!MESSAGE delete_infobase: could not delete the database directory '%s' "
             "(non-fatal — the registration is already removed; delete it manually): %s\n"
         ) % (directory, detail)

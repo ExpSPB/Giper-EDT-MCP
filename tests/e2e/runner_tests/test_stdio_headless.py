@@ -249,7 +249,7 @@ class HeadlessDriverTest(unittest.TestCase):
             (install / "plugins").mkdir()
             (install / "plugins/org.eclipse.equinox.launcher_1.jar").touch()
             command = S.launch_command(Path("java"), install, install / "workspace")
-            self.assertEqual("com.ditrix.edt.mcp.server.stdioHost", command[command.index("-application") + 1])
+            self.assertEqual("fm.giper.edt.mcp.server.stdioHost", command[command.index("-application") + 1])
             self.assertIn("-Dedt.mcp.stdioOnly=true", command)
             self.assertIn("-Dedt.mcp.headlessIdleMinutes=1", command)
             self.assertNotIn("xvfb-run", command)

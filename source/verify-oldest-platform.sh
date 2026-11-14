@@ -140,7 +140,7 @@ MVN="mvn"
 echo "-- compiling against $INSTALL"
 cd "$REPO/mcp" || exit 1
 LOG="$BACKUP/maven.log"
-"$MVN" -B -ntp -pl targets/default,bundles/com.ditrix.edt.mcp.server clean compile 2>&1 | tee "$LOG"
+"$MVN" -B -ntp -pl targets/default,bundles/fm.giper.edt.mcp.server clean compile 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 
 # An unreadable location does not fail the build - it produces an EMPTY target platform and then

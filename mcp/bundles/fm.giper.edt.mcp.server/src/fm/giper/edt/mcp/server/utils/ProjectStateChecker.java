@@ -1,0 +1,1931 @@
+﻿/**
+ * MCP Server for EDT
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.server.utils;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+
+import org.eclipse.core.resources.IProject;
+
+import com._1c.g5.v8.derived.DerivedDataStatus;
+import com._1c.g5.v8.derived.IDerivedDataManager;
+import com._1c.g5.v8.derived.pipeline.DerivedDataSegmentBucket;
+import com._1c.g5.v8.derived.pipeline.PipelineSegmentStatus;
+import com._1c.g5.v8.derived.pipeline.PipelineStatus;
+import com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider;
+import com._1c.g5.v8.dt.core.platform.IDtProject;
+import com._1c.g5.v8.dt.core.platform.IDtProjectManager;
+import com._1c.g5.v8.dt.core.platform.IWorkspaceOrchestrator;
+import fm.giper.edt.mcp.server.Activator;
+import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils.DeclaredBaseProject;
+
+/**
+ * Utility class for checking project state and readiness.
+ * Uses EDT services to determine if a project is ready for operations.
+ */
+public final class ProjectStateChecker
+{
+    /** Poll interval while EDT is reopening project storage and registering BM models. */
+    private static final long MODEL_REGISTRATION_POLL_MS = 50L;
+
+    /** Bounds passes that discover previously unseen participants while EDT contexts keep changing. */
+    private static final int MAX_NEW_PARTICIPANT_DISCOVERY_PASSES = 3;
+
+    private static final String V8_EXTENSION_PROJECT_NATURE =
+        "com._1c.g5.v8.dt.core.V8ExtensionNature"; //$NON-NLS-1$
+
+    private static final String V8_EXTERNAL_OBJECTS_PROJECT_NATURE =
+        "com._1c.g5.v8.dt.core.V8ExternalObjectsNature"; //$NON-NLS-1$
+
+    /**
+     * Persistent project-description natures declared by EDT 2026.1 for projects that can own a BM
+     * model. Unlike {@link IDtProjectManager#getDtProject(IProject)} and
+     * {@code IV8ProjectManager.getProjects()}, these do not disappear when EDT disposes and restarts a
+     * project context: EDT's source removes both runtime registrations during disposal, while the
+     * nature IDs remain in the Eclipse {@code .project} description until the project is converted or
+     * deleted. That makes the nature the safe permanent/non-EDT discriminator for the bounded wait and
+     * the failure-aware participant/search-dependency lookups.
+     */
+    private static final List<String> BM_MODEL_PROJECT_NATURES = Arrays.asList(
+        "com._1c.g5.v8.dt.core.V8ConfigurationNature", //$NON-NLS-1$
+        V8_EXTENSION_PROJECT_NATURE,
+        V8_EXTERNAL_OBJECTS_PROJECT_NATURE);
+
+    private static final List<String> V8_EXTENSION_PROJECT_NATURES =
+        Collections.singletonList(V8_EXTENSION_PROJECT_NATURE);
+
+    private static final List<String> V8_DEPENDENT_PROJECT_NATURES = Arrays.asList(
+        V8_EXTENSION_PROJECT_NATURE,
+        V8_EXTERNAL_OBJECTS_PROJECT_NATURE);
+
+    /**
+     * Project state enumeration.
+     */
+    public enum ProjectState
+    {
+        /** Project is ready for operations */
+        READY("ready"), //$NON-NLS-1$
+        
+        /** Project is building or computing derived data */
+        BUILDING("building"), //$NON-NLS-1$
+        
+        /** Project is not available (closed, not EDT project, etc.) */
+        NOT_AVAILABLE("not_available"), //$NON-NLS-1$
+        
+        /** State cannot be determined */
+        UNKNOWN("unknown"); //$NON-NLS-1$
+        
+        private final String value;
+        
+        ProjectState(String value)
+        {
+            this.value = value;
+        }
+        
+        /**
+         * Gets the string value for JSON serialization.
+         * @return string value
+         */
+        public String getValue()
+        {
+            return value;
+        }
+    }
+    
+    /** Why a project is not ready, without changing the public state values. */
+    public enum NotReadyReason
+    {
+        NONE,
+        MISSING,
+        CLOSED,
+        MANAGER_UNAVAILABLE,
+        NOT_EDT_PROJECT,
+        NATURE_UNREADABLE,
+        CONTEXT_NOT_STARTED,
+        CONTEXT_STARTING,
+        CONTEXT_RESTARTING,
+        BUILDING,
+        BUILD_STATE_UNKNOWN
+    }
+
+    /**
+     * Result of project state check.
+     */
+    public static class ProjectStateResult
+    {
+        private final ProjectState state;
+        private final NotReadyReason reason;
+        private final String message;
+        private final String contextDetail;
+        private final boolean ready;
+        
+        public ProjectStateResult(ProjectState state, String message)
+        {
+            this(state, defaultReason(state), message);
+        }
+
+        private static NotReadyReason defaultReason(ProjectState state)
+        {
+            if (state == ProjectState.BUILDING)
+            {
+                return NotReadyReason.BUILDING;
+            }
+            if (state == ProjectState.UNKNOWN)
+            {
+                return NotReadyReason.BUILD_STATE_UNKNOWN;
+            }
+            return NotReadyReason.NONE;
+        }
+
+        public ProjectStateResult(ProjectState state, NotReadyReason reason, String message)
+        {
+            this(state, reason, message, null);
+        }
+
+        /**
+         * @param contextDetail a sentence about the EDT context that explains the verdict without
+         *     changing its {@code message}, or {@code null}
+         */
+        public ProjectStateResult(ProjectState state, NotReadyReason reason, String message,
+            String contextDetail)
+        {
+            this.state = state;
+            this.reason = reason;
+            this.message = message;
+            this.contextDetail = contextDetail;
+            this.ready = state == ProjectState.READY;
+        }
+        
+        public ProjectState getState()
+        {
+            return state;
+        }
+        
+        public NotReadyReason getReason()
+        {
+            return reason;
+        }
+
+        public String getMessage()
+        {
+            return message;
+        }
+
+        /** The context sentence attached to the verdict, or {@code null}. */
+        public String getContextDetail()
+        {
+            return contextDetail;
+        }
+
+        /**
+         * The full explanation a project listing shows: the verdict text, followed by the context
+         * sentence when there is one. Refusals keep using {@link #getMessage()}.
+         */
+        public String getReasonText()
+        {
+            return contextDetail == null ? message : message + ". " + contextDetail; //$NON-NLS-1$
+        }
+        
+        public boolean isReady()
+        {
+            return ready;
+        }
+        
+        public String getStateValue()
+        {
+            return state.getValue();
+        }
+    }
+    
+    private ProjectStateChecker()
+    {
+        // Utility class
+    }
+    
+    /**
+     * The derived-data segments a metadata CREATE or MODIFY depends on: the metadata model and the
+     * form model.
+     * <p>
+     * An explicit list, on purpose. EDT's own "important" set is every segment in the SYNC,
+     * AFTER_SYNC and BEFORE_BUILD buckets, and the only way to ask about it is
+     * {@code waitImportantDataComputations} - a WAIT that its own timeout does not bound, which then
+     * needs a job wrapper and a one-in-flight claim whose ownership rules produced a defect on every
+     * attempt. The gate therefore does not call it: naming the segments lets
+     * {@code isComputed(MODEL_SEGMENTS)} answer as a pure query that cannot block, and makes the
+     * assumption reviewable, which a wait never was.
+     */
+    private static final java.util.List<String> MODEL_SEGMENTS =
+        java.util.Arrays.asList("MD", "FORM"); //$NON-NLS-1$ //$NON-NLS-2$
+
+    /**
+     * At most this many active derived-data segments are named in a "still building" refusal, so a
+     * large configuration with many active segments cannot bloat the message.
+     */
+    private static final int MAX_RENDERED_SEGMENTS = 8;
+
+    /** What a "still building" refusal says when the platform status names nothing more specific. */
+    private static final String UNSPECIFIED_BUILD_STATUS = "derived data is being computed"; //$NON-NLS-1$
+
+    /** The DT project behind a workspace project, or {@code null} when it is not an EDT project. */
+    private static IDtProject resolveDtProject(IProject project)
+    {
+        IDtProjectManager dtProjectManager = Activator.getDefault().getDtProjectManager();
+        return dtProjectManager == null ? null : dtProjectManager.getDtProject(project);
+    }
+
+    /**
+     * Checks whether a workspace project has a started EDT context and complete derived data.
+     * <ul>
+     * <li>The project must exist and be open, with an available DT project manager.</li>
+     * <li>When no DT project is registered, reads the persistent BM nature lazily to distinguish
+     * an unstarted EDT context from a plain project or an unreadable description. Only a known
+     * EDT nature needs the lazy workspace-wide pending-restart-job snapshot.</li>
+     * <li>A registered DT project is judged by its derived data, exactly as before the context
+     * state existed: the verdict (ready, building or unknown) and its text are unchanged. Only a
+     * NOT-ready verdict whose context EDT reports as not started yet additionally carries the
+     * {@link NotReadyReason#CONTEXT_STARTING} reason and a context sentence; a ready verdict never
+     * does. A missing or throwing lifecycle service leaves that answer unknown and adds nothing.</li>
+     * </ul>
+     * 
+     * @param project the IProject to check
+     * @return ProjectStateResult with state and message
+     */
+    public static ProjectStateResult checkProjectState(IProject project)
+    {
+        if (project == null)
+        {
+            return new ProjectStateResult(ProjectState.NOT_AVAILABLE, NotReadyReason.MISSING,
+                "Project is null"); //$NON-NLS-1$
+        }
+        boolean exists = project.exists();
+        boolean open = exists && project.isOpen();
+        Activator activator = open ? Activator.getDefault() : null;
+        IDtProjectManager manager = activator == null ? null : activator.getDtProjectManager();
+        IDtProject dtProject = manager == null ? null : manager.getDtProject(project);
+        return classifyContext(exists, open, manager != null, dtProject != null,
+            () -> hasBmModelProjectNature(project), () -> readStarted(activator, project),
+            RestartJobFailureSignal::anyRestartJobPending, () -> checkDtProjectState(dtProject));
+    }
+
+    /** Snapshot classification; expensive platform facts are consulted only where needed. */
+    static ProjectStateResult classifyContext(boolean exists, boolean isOpen,
+        boolean managerAvailable, boolean dtProjectPresent, Supplier<Boolean> bmNature,
+        Supplier<Boolean> started, BooleanSupplier restartJobPending,
+        Supplier<ProjectStateResult> derivedData)
+    {
+        if (!exists)
+        {
+            return new ProjectStateResult(ProjectState.NOT_AVAILABLE, NotReadyReason.MISSING,
+                "Project does not exist"); //$NON-NLS-1$
+        }
+        if (!isOpen)
+        {
+            return new ProjectStateResult(ProjectState.NOT_AVAILABLE, NotReadyReason.CLOSED,
+                "Project is closed"); //$NON-NLS-1$
+        }
+        if (!managerAvailable)
+        {
+            return new ProjectStateResult(ProjectState.UNKNOWN, NotReadyReason.MANAGER_UNAVAILABLE,
+                "DtProjectManager not available"); //$NON-NLS-1$
+        }
+        if (!dtProjectPresent)
+        {
+            Boolean nature = bmNature.get();
+            if (isUnstartedEdtProject(managerAvailable, dtProjectPresent, nature))
+            {
+                if (restartJobPending.getAsBoolean())
+                {
+                    return new ProjectStateResult(ProjectState.NOT_AVAILABLE,
+                        NotReadyReason.CONTEXT_RESTARTING,
+                        "EDT context is unavailable: a project-restart job is pending in the workspace; " //$NON-NLS-1$
+                            + "poll list_projects until it reads 'ready'"); //$NON-NLS-1$
+                }
+                return new ProjectStateResult(ProjectState.NOT_AVAILABLE,
+                    NotReadyReason.CONTEXT_NOT_STARTED,
+                    "EDT project whose context is not started: it has an EDT nature but no DtProject. " //$NON-NLS-1$
+                        + "If it was just imported or created it is still starting - poll list_projects " //$NON-NLS-1$
+                        + "until it reads 'ready'. If it stays here, close and reopen the project in EDT, " //$NON-NLS-1$
+                        + "or delete_project it and import it again; EDT does not restart it by itself"); //$NON-NLS-1$
+            }
+            if (Boolean.FALSE.equals(nature))
+            {
+                return new ProjectStateResult(ProjectState.NOT_AVAILABLE, NotReadyReason.NOT_EDT_PROJECT,
+                    "Not an EDT project"); //$NON-NLS-1$
+            }
+            return new ProjectStateResult(ProjectState.NOT_AVAILABLE, NotReadyReason.NATURE_UNREADABLE,
+                "Project description could not be read, so it cannot be told from a non-EDT project"); //$NON-NLS-1$
+        }
+        ProjectStateResult verdict = derivedData.get();
+        if (verdict.isReady() || !Boolean.FALSE.equals(started.get()))
+        {
+            return verdict;
+        }
+        return new ProjectStateResult(verdict.getState(), NotReadyReason.CONTEXT_STARTING,
+            verdict.getMessage(), STARTING_CONTEXT);
+    }
+
+    /** Why a registered DT project whose derived data is not ready may stay that way. */
+    static final String STARTING_CONTEXT =
+        "EDT is starting this project's context (services are starting). If it stays here " //$NON-NLS-1$
+            + "after clean_project reported a failed restart, run clean_project on it again - " //$NON-NLS-1$
+            + "it recovers stranded contexts - or close and reopen the project in EDT"; //$NON-NLS-1$
+
+    /** A missing lifecycle service or a failed snapshot must not turn an unknown answer into false. */
+    static Boolean readStarted(Activator activator, IProject project)
+    {
+        try
+        {
+            IWorkspaceOrchestrator orchestrator = activator == null ? null : activator.getWorkspaceOrchestrator();
+            return orchestrator == null ? null : orchestrator.isStarted(project);
+        }
+        catch (RuntimeException e)
+        {
+            Activator.logInfo("Cannot read whether EDT has started project '" + project.getName() //$NON-NLS-1$
+                + "': " + e); //$NON-NLS-1$
+            return null;
+        }
+    }
+
+    /** The persistent EDT nature distinguishes a stopped context from a plain Eclipse project. */
+    public static boolean isUnstartedEdtProject(boolean managerAvailable, boolean dtProjectPresent,
+        Boolean hasBmNature)
+    {
+        return managerAvailable && !dtProjectPresent && Boolean.TRUE.equals(hasBmNature);
+    }
+
+    /** A context-specific recovery sentence, or null when a different condition explains the state. */
+    public static String unstartedContextReasonOrNull(IProject project)
+    {
+        return unstartedContextReasonOrNull(checkProjectState(project));
+    }
+
+    /**
+     * The recovery sentence for a context state, with the retry rule of
+     * {@link #readyOrError(ProjectStateResult)}: a starting or restarting context is transient and
+     * ends with the retry advice, an unstarted context (which EDT does not restart by itself) does
+     * not. A starting context is named by its context sentence, not by its derived-data verdict;
+     * a registered context whose derived data reads ready carries no reason and gets none.
+     */
+    static String unstartedContextReasonOrNull(ProjectStateResult result)
+    {
+        switch (result.getReason())
+        {
+            case CONTEXT_NOT_STARTED:
+            case CONTEXT_RESTARTING:
+                return readyOrError(result);
+            case CONTEXT_STARTING:
+                return withRetryRule(result.getReason(), result.getContextDetail() == null
+                    ? result.getMessage() : result.getContextDetail());
+            default:
+                return null;
+        }
+    }
+
+    /** Keeps a sibling tool's existing refusal and adds recovery advice only for a known EDT nature. */
+    public static String withUnstartedContextReason(IProject project, String refusal)
+    {
+        return withUnstartedContextReason(project, refusal, refusal);
+    }
+
+    /** Uses an alternate prefix only when context recovery advice is available. */
+    public static String withUnstartedContextReason(IProject project, String refusal, String contextRefusal)
+    {
+        return withUnstartedContextReason(refusal, contextRefusal, hasBmModelProjectNature(project),
+            () -> checkProjectState(project));
+    }
+
+    static String withUnstartedContextReason(String refusal, Boolean hasBmNature,
+        Supplier<ProjectStateResult> context)
+    {
+        return withUnstartedContextReason(refusal, refusal, hasBmNature, context);
+    }
+
+    private static String withUnstartedContextReason(String refusal, String contextRefusal, Boolean hasBmNature,
+        Supplier<ProjectStateResult> context)
+    {
+        if (!Boolean.TRUE.equals(hasBmNature))
+        {
+            return refusal;
+        }
+        String reason = unstartedContextReasonOrNull(context.get());
+        if (reason == null)
+        {
+            return refusal;
+        }
+        String separator = contextRefusal.endsWith(".") ? " " : ". "; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return contextRefusal + separator + reason;
+    }
+
+    /**
+     * Checks if a DT project is ready for operations.
+     * 
+     * @param dtProject the IDtProject to check
+     * @return ProjectStateResult with state and message
+     */
+    public static ProjectStateResult checkDtProjectState(IDtProject dtProject)
+    {
+        if (dtProject == null)
+        {
+            return new ProjectStateResult(ProjectState.NOT_AVAILABLE, "DtProject is null");
+        }
+        
+        // Check derived data status
+        IDerivedDataManagerProvider ddProvider = Activator.getDefault().getDerivedDataManagerProvider();
+        if (ddProvider == null)
+        {
+            // Cannot determine state without DD provider
+            Activator.logInfo("DerivedDataManagerProvider not available for " + dtProject.getName());
+            return new ProjectStateResult(ProjectState.UNKNOWN, "Cannot determine build state");
+        }
+        
+        IDerivedDataManager ddManager = ddProvider.get(dtProject);
+        if (ddManager == null)
+        {
+            Activator.logInfo("DerivedDataManager not available for " + dtProject.getName());
+            return new ProjectStateResult(ProjectState.UNKNOWN, "Cannot determine build state");
+        }
+
+        return checkDerivedDataState(ddManager);
+    }
+
+    /**
+     * The derived-data half of {@link #checkDtProjectState(IDtProject)}: the verdict from the
+     * project's derived-data manager, and the wording of a BUILDING verdict.
+     * <p>
+     * Issue #769: the refusal used to append {@code DerivedDataStatus.toString()}, which the platform
+     * does not override, so every client got {@code com._1c.g5.v8.derived.DerivedDataStatus@<hash>}
+     * - a JVM object identity that changes on every call and says nothing about what is building.
+     * The wording now comes from {@link #describeBuildStatus(DerivedDataStatus)}; the verdict is
+     * decided exactly as before, and the stable {@code "Project is building: "} prefix the e2e
+     * harness retries on is kept.
+     * <p>
+     * On EDT 2026.1 and 2026.2, the polled snapshot names only the stage, the pipeline status and
+     * the model-sync flag. Active segment maps are filled only for status listeners; the renderer's
+     * segment support is forward-compatible. The idle but incomplete branch keeps its base text
+     * without polling a status.
+     *
+     * @param ddManager the project's derived-data manager, never {@code null}
+     * @return BUILDING while the pipeline is busy or not everything is computed, READY otherwise
+     */
+    static ProjectStateResult checkDerivedDataState(IDerivedDataManager ddManager)
+    {
+        // Check if computation pipeline is idle
+        if (!ddManager.isIdle())
+        {
+            return new ProjectStateResult(ProjectState.BUILDING,
+                "Project is building: " + describeBuildStatus(readBuildStatus(ddManager))); //$NON-NLS-1$
+        }
+
+        // Check if all derived data is computed
+        if (!ddManager.isAllComputed())
+        {
+            return new ProjectStateResult(ProjectState.BUILDING,
+                "Project build in progress (derived data not complete)"); //$NON-NLS-1$
+        }
+
+        return new ProjectStateResult(ProjectState.READY, "Project is ready");
+    }
+
+    /**
+     * The status to word a BUILDING verdict with, or {@code null} when it cannot be read. Only the
+     * wording depends on it: the verdict has already been decided by the caller.
+     */
+    private static DerivedDataStatus readBuildStatus(IDerivedDataManager ddManager)
+    {
+        try
+        {
+            return ddManager.getDerivedDataStatus();
+        }
+        catch (RuntimeException e)
+        {
+            Activator.logWarning("Cannot read the derived-data status to describe a build in progress: " //$NON-NLS-1$
+                + e);
+            return null;
+        }
+    }
+
+    /**
+     * Words a derived-data status for a client. On EDT 2026.1 and 2026.2, the polled snapshot names
+     * only the active stage, the pipeline status and the model-sync flag. For example
+     * {@code stage NORMAL, pipeline WAITING_STAGE_PROCCESING_END, model sync active}.
+     * <p>
+     * The active segment map is filled only for status listeners on these platforms. Segment
+     * rendering is retained as forward-compatible support if a future polled snapshot supplies the
+     * map: it appends the segment keys and their remaining and total units of work. This checker
+     * does not subscribe to status listeners, so current live refusals contain no segment details.
+     * <p>
+     * Never calls {@code toString()} on the status (issue #769: it is not overridden, so it renders
+     * a JVM object identity). A {@code null} status, a status with nothing to name, or a getter that
+     * throws yields the neutral {@value #UNSPECIFIED_BUILD_STATUS}; a {@code null} stage, pipeline
+     * status, segment key or segment status is left out rather than rendered as {@code null}.
+     *
+     * @param status the status, may be {@code null}
+     * @return the wording, never {@code null} or empty, without a trailing period
+     */
+    static String describeBuildStatus(DerivedDataStatus status)
+    {
+        if (status == null)
+        {
+            return UNSPECIFIED_BUILD_STATUS;
+        }
+        try
+        {
+            List<String> parts = new ArrayList<>();
+            DerivedDataSegmentBucket stage = status.getActiveStage();
+            if (stage != null)
+            {
+                parts.add("stage " + stage.name()); //$NON-NLS-1$
+            }
+            PipelineStatus pipeline = status.getPipelineStatus();
+            if (pipeline != null)
+            {
+                parts.add("pipeline " + pipeline.name()); //$NON-NLS-1$
+            }
+            if (status.isModelSyncActive())
+            {
+                parts.add("model sync active"); //$NON-NLS-1$
+            }
+            String head = String.join(", ", parts); //$NON-NLS-1$
+            String segments = renderSegments(status.getActivePipelineSegments());
+            if (segments.isEmpty())
+            {
+                return head.isEmpty() ? UNSPECIFIED_BUILD_STATUS : head;
+            }
+            return (head.isEmpty() ? "" : head + "; ") + "computing " + segments; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        }
+        catch (RuntimeException e)
+        {
+            Activator.logWarning("Cannot describe the derived-data status for a build in progress: " //$NON-NLS-1$
+                + e);
+            return UNSPECIFIED_BUILD_STATUS;
+        }
+    }
+
+    /**
+     * {@code KEY (remaining of total units remaining)} per segment, in key order so the wording is
+     * deterministic, cut after {@link #MAX_RENDERED_SEGMENTS} with a count of the rest.
+     */
+    private static String renderSegments(Map<String, PipelineSegmentStatus> segments)
+    {
+        if (segments == null || segments.isEmpty())
+        {
+            return ""; //$NON-NLS-1$
+        }
+        TreeMap<String, PipelineSegmentStatus> named = new TreeMap<>();
+        for (Map.Entry<String, PipelineSegmentStatus> segment : segments.entrySet())
+        {
+            if (segment.getKey() != null && segment.getValue() != null)
+            {
+                named.put(segment.getKey(), segment.getValue());
+            }
+        }
+        StringBuilder text = new StringBuilder();
+        int rendered = 0;
+        for (Map.Entry<String, PipelineSegmentStatus> segment : named.entrySet())
+        {
+            if (rendered == MAX_RENDERED_SEGMENTS)
+            {
+                text.append(", ... (+").append(named.size() - rendered).append(" more)"); //$NON-NLS-1$ //$NON-NLS-2$
+                break;
+            }
+            if (rendered > 0)
+            {
+                text.append(", "); //$NON-NLS-1$
+            }
+            PipelineSegmentStatus work = segment.getValue();
+            text.append(segment.getKey()).append(" (").append(work.getRemainingUnitsOfWork()) //$NON-NLS-1$
+                .append(" of ").append(work.getTotalUnitsOfWork()).append(" units remaining)"); //$NON-NLS-1$ //$NON-NLS-2$
+            rendered++;
+        }
+        return text.toString();
+    }
+
+    /**
+     * The MODEL-readiness gate: {@code null} when the project's model and index have been computed,
+     * an actionable error otherwise. Unlike {@link #buildingErrorOrNull(IProject)} this does NOT wait
+     * for the validation checks.
+     * <p>
+     * Issue #495: on a large configuration the checks run for HOURS, and they keep both
+     * {@code isIdle()} and {@code isAllComputed()} false - so a gate built on those switched metadata
+     * editing off for that whole time. The checks are not what a metadata edit depends on: a rename
+     * cascade needs the model and the reference index in order to compute the sites it must rewrite,
+     * and the checks produce markers from that model rather than contributing to it.
+     * <p>
+     * Nor can excluding them re-create the batch-session collision {@link
+     * #settleBeforeCascadeOrError(String, long)} exists to avoid: {@code Reactor.executeTask} raises
+     * "Unable to execute task because batch session is active" only for a {@code READ_WRITE}
+     * transaction, and every check computer - {@code ModelCheckDerivedDataComputer},
+     * {@code LanguageCheckDerivedDataComputer}, {@code MarkerCleanerDerivedDataComputer} - runs
+     * through {@code executeReadonlyTask}. The check bundle contains no read-write BM task at all.
+     * <p>
+     * The question is asked as PURE QUERIES that cannot block - no wait, no job, no claim (see
+     * {@link #isModelDataComputed(IDerivedDataManager)}): {@code isComputed} on the named model
+     * segments, bracketed by two reads of whether a model synchronisation is pending. Inferring
+     * readiness from the active pipeline STAGE is not used - a change arriving during a long
+     * post-build check enqueues model work in an earlier bucket while the reported stage stays
+     * {@code AFTER_BUILD}.
+     *
+     * @param project the project the caller wants to edit (a {@code null} project skips the check)
+     * @return an actionable error, or {@code null} when the model may be edited
+     */
+    public static String modelBuildingErrorOrNull(IProject project)
+    {
+        if (project == null)
+        {
+            return null;
+        }
+        IDtProject dtProject = resolveDtProject(project);
+        if (dtProject == null)
+        {
+            return null;
+        }
+        IDerivedDataManagerProvider ddProvider = Activator.getDefault().getDerivedDataManagerProvider();
+        IDerivedDataManager ddManager = ddProvider == null ? null : ddProvider.get(dtProject);
+        if (ddManager == null)
+        {
+            // Cannot ask: fall back to the strict gate rather than inventing readiness.
+            return buildingErrorOrNull(project);
+        }
+        if (isModelDataComputed(ddManager))
+        {
+            return null;
+        }
+        return "Project is building: the model or the reference index is still being computed. " //$NON-NLS-1$
+            + "Please wait and retry."; //$NON-NLS-1$
+    }
+
+    /**
+     * Name-addressed {@link #modelBuildingErrorOrNull(IProject)}.
+     *
+     * @param projectName the project the caller wants to edit (null/empty skips the check)
+     * @return an actionable error, or {@code null} when the model may be edited
+     */
+    public static String modelBuildingErrorOrNull(String projectName)
+    {
+        if (projectName == null || projectName.isEmpty())
+        {
+            return null;
+        }
+        return modelBuildingErrorOrNull(org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+            .getRoot().getProject(projectName));
+    }
+
+    /**
+     * Probes whether the platform's IMPORTANT (model and index) computations are complete, without
+     * waiting for validation. See {@link #modelBuildingErrorOrNull(IProject)} for why this shape.
+     * <p>
+     * Ready means: no model synchronisation pending (see
+     * {@link #isModelSyncPending(IDerivedDataManager)}), the {@link #MODEL_SEGMENTS} computed, and
+     * still no synchronisation pending after that. The segment check is required in every case -
+     * an empty pipeline never stands in for it.
+     *
+     * @param ddManager the project's derived-data manager
+     * @return {@code true} only when the important computations are proven complete
+     */
+    static boolean isModelDataComputed(IDerivedDataManager ddManager)
+    {
+        try
+        {
+            // A model synchronisation with scheduled work may have model contexts the segments below
+            // do not reflect yet, so they could still read as computed for the PREVIOUS model.
+            if (isModelSyncPending(ddManager))
+            {
+                return false;
+            }
+            // A PURE query: isComputed takes the pipeline read lock and returns, with no wait, no
+            // job and no claim to hand back. This replaces a waitImportantDataComputations probe
+            // that had to be wrapped in a BoundedJob (the platform call is not bounded by its own
+            // timeout) and guarded against accumulating stuck jobs - machinery whose ownership rules
+            // produced a defect on every attempt. Asking a question that cannot block removes that
+            // whole class instead of patching it again.
+            if (!ddManager.isComputed(MODEL_SEGMENTS))
+            {
+                return false;
+            }
+            // Asked again with the SAME predicate: a synchronisation that began during the probe.
+            return !isModelSyncPending(ddManager);
+        }
+        catch (RuntimeException e)
+        {
+            // isSegmentComputed asserts on a segment this EDT does not register, and anything else
+            // here is equally unanswerable. Never proof of readiness.
+            Activator.logError("Cannot probe model-data readiness; treating it as not ready", e); //$NON-NLS-1$
+            return false;
+        }
+    }
+
+    /**
+     * Whether a model synchronisation is pending - or whether that cannot be established, which
+     * counts the same way.
+     * <p>
+     * Pending means the CACHED {@code DerivedDataStatus.isModelSyncActive()} is {@code true} AND the
+     * live pipeline is not empty ({@code !isAllComputed()}). The flag alone is not enough (issue
+     * #699): the platform writes it only when derived-data work is scheduled, activated or
+     * recovered, or a computation ends or is unblocked, and the end of a background synchronisation
+     * does not refresh it - so after an import whose work finished while the synchronisation still
+     * counted as active, the flag stays {@code true} with nothing scheduled, and a gate on the flag
+     * alone refused every metadata write until something else scheduled derived-data work.
+     * Synchronisation work, once its contexts are scheduled into the pipeline, both refreshes the
+     * flag and makes the pipeline non-empty, so it is still refused.
+     * <p>
+     * The boundary, stated: the newly admitted window is "flag {@code true}, nothing scheduled in
+     * the pipeline". {@code isAllComputed()} sees only contexts already scheduled into the pipeline,
+     * not those still accumulated in the platform's context manager, so this window covers both a
+     * synchronisation that has not scheduled anything yet and the pauses BETWEEN batches of a
+     * running one (one batch computed, the next still accumulating). Both are the same class of
+     * state the gate already admitted before the flag flips (a synchronisation active with an empty
+     * pipeline). And {@code isAllComputed()} also
+     * covers the post-build validation (#495), so with a stale flag AND a long validation running
+     * the gate stays shut exactly as it did before this change - never worse than the flag alone.
+     * <p>
+     * Fail closed: a {@code null} status, a status read that throws, or a pipeline probe that throws
+     * all count as pending.
+     *
+     * @param ddManager the project's derived-data manager
+     * @return {@code true} when a synchronisation with scheduled work is active, OR the status or the
+     *     pipeline state could not be read
+     */
+    private static boolean isModelSyncPending(IDerivedDataManager ddManager)
+    {
+        try
+        {
+            DerivedDataStatus status = ddManager.getDerivedDataStatus();
+            if (status == null)
+            {
+                return true;
+            }
+            return status.isModelSyncActive() && !ddManager.isAllComputed();
+        }
+        catch (RuntimeException e)
+        {
+            Activator.logError("Cannot read the derived-data status or the pipeline state; " //$NON-NLS-1$
+                + "treating it as not ready", e); //$NON-NLS-1$
+            return true;
+        }
+    }
+
+    /**
+     * Checks if a project is ready and returns error message if not.
+     * Convenience method for tools that need to check before executing.
+     * 
+     * @param project the IProject to check
+     * @return null if ready, error message if not ready
+     */
+    public static String checkReadyOrError(IProject project)
+    {
+        return readyOrError(checkProjectState(project));
+    }
+
+    /**
+     * Retry advice is reserved for conditions that may clear without caller intervention. A
+     * {@code .project} description that could not be read is one of them: the read can fail
+     * transiently, and the same input was refused with retry advice before the reasons existed.
+     * Missing, closed, non-EDT and unstarted-context projects are refused without it.
+     */
+    static String readyOrError(ProjectStateResult result)
+    {
+        if (result.isReady())
+        {
+            return null;
+        }
+        return withRetryRule(result.getReason(), result.getMessage());
+    }
+
+    private static String withRetryRule(NotReadyReason reason, String text)
+    {
+        switch (reason)
+        {
+            case BUILDING:
+            case BUILD_STATE_UNKNOWN:
+            case MANAGER_UNAVAILABLE:
+            case NATURE_UNREADABLE:
+            case CONTEXT_STARTING:
+            case CONTEXT_RESTARTING:
+                return text + ". Please wait and retry."; //$NON-NLS-1$
+            default:
+                return text + "."; //$NON-NLS-1$
+        }
+    }
+    
+    /**
+     * Checks if a project is ready and returns error message if not.
+     * Convenience method for tools that need to check before executing.
+     * 
+     * @param projectName the project name to check
+     * @return null if ready, error message if not ready
+     */
+    public static String checkReadyOrError(String projectName)
+    {
+        if (projectName == null || projectName.isEmpty())
+        {
+            return null; // No specific project, skip check
+        }
+        
+        IProject project = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+            .getRoot().getProject(projectName);
+
+        return checkReadyOrError(project);
+    }
+
+    /**
+     * Returns a "still building" error message ONLY when the project's derived data
+     * (the reference index) is actively building, otherwise {@code null}.
+     * <p>
+     * Unlike {@link #checkReadyOrError(IProject)} this does NOT reject a project that is
+     * merely missing / closed / unknown: those are PERMANENT conditions a retry will not
+     * fix, and the caller's own resolution yields a sharper, value-naming error
+     * ("Project not found: X"). Use this for a model-mutating or cascade pre-flight where
+     * the only state worth refusing for is a transient in-progress build (running the
+     * cascade against an incomplete index would silently miss references).
+     * <p>
+     * A registered context that EDT has not started yet needs no case here: the classifier
+     * keeps its derived-data verdict and text, so it is refused exactly while that reads
+     * building - {@code clean_project}, which recovers a stranded context, is gated here too.
+     *
+     * @param project the IProject to check
+     * @return the building message with a retry hint, or {@code null} when not building
+     */
+    public static String buildingErrorOrNull(IProject project)
+    {
+        return buildingErrorOrNull(checkProjectState(project));
+    }
+
+    /** The admission rule of {@link #buildingErrorOrNull(IProject)} on an already classified state. */
+    static String buildingErrorOrNull(ProjectStateResult result)
+    {
+        if (result.getState() == ProjectState.BUILDING)
+        {
+            return result.getMessage() + ". Please wait and retry."; //$NON-NLS-1$
+        }
+        return null;
+    }
+
+    /**
+     * Whether {@code project} carries a nature of a project that can own a BM model.
+     *
+     * <p>The permanent, description-level answer to "is this an EDT project at all?", as opposed to
+     * {@link IDtProjectManager#getDtProject(IProject)}, which additionally requires EDT to have
+     * STARTED the project's context. The two together separate an un-started EDT project (nature
+     * yes, DtProject no - recoverable, and worth saying so) from a plain Eclipse project (nature
+     * no - not this plugin's business).
+     *
+     * @param project the project to inspect (may be {@code null})
+     * @return {@code TRUE}/{@code FALSE} when the natures could be read, and {@code null} when they
+     *     could NOT be determined at all - which is never the same statement as "no"
+     */
+    public static Boolean hasBmModelProjectNature(IProject project)
+    {
+        return ProjectContext.hasAnyNature(project, BM_MODEL_PROJECT_NATURES);
+    }
+
+    /**
+     * The pre-flight for a CASCADE operation (a rename / delete refactoring): actively waits for the
+     * project's derived-data pipeline to drain and for EDT to register every BM model the refactoring
+     * will use, then returns an actionable error when either condition did not settle in time.
+     * <p>
+     * {@link #buildingErrorOrNull(IProject)} alone is an INSTANT probe, and a cascade needs more than
+     * that. EDT's refactoring opens a BM batch session; a derived-data task that is still pending when
+     * it does cannot run ("Unable to execute task because batch session is active") and the refactoring
+     * then waits for the pipeline from INSIDE the session - measured at 301 seconds on CI, with the
+     * call finally succeeding. Whoever is on the wire has long since timed out, which is what made
+     * this look like a flaky test rather than what it is: an unbounded wait we walked into.
+     * <p>
+     * So: drain first, on the CALLER's thread (never inside the UI-thread scope - the pipeline may
+     * need it), and if the pipeline is still busy afterwards, refuse with the same actionable,
+     * retryable message every other tool uses instead of blocking the wire for five minutes.
+     *
+     * @param projectName the project the cascade will mutate (a null/empty name skips the check)
+     * @param settleTimeoutMs how long to wait for the pipeline and BM models to settle
+     * @return an actionable error, or {@code null} when the cascade may proceed
+     */
+    public static String settleBeforeCascadeOrError(String projectName, long settleTimeoutMs)
+    {
+        return settleBeforeCascadeOrError(projectName, settleTimeoutMs,
+            "the cascade operation", "No cascade was started."); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * Operation-aware cascade pre-flight. The operation and state statement keep a BM-model timeout
+     * identical to the guarded refusal the calling tool already exposes.
+     *
+     * @param projectName the project the cascade will mutate (a null/empty name skips the check)
+     * @param settleTimeoutMs how long to wait for derived data and BM-model registration
+     * @param operationName the MCP tool the caller may retry
+     * @param stateStatement what is known about the refused mutation, including punctuation
+     * @return an actionable error, or {@code null} when the cascade may proceed
+     */
+    public static String settleBeforeCascadeOrError(String projectName, long settleTimeoutMs,
+        String operationName, String stateStatement)
+    {
+        if (projectName == null || projectName.isEmpty())
+        {
+            return null;
+        }
+        IProject project = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+            .getRoot().getProject(projectName);
+        return settleBeforeCascadeOrError(project, settleTimeoutMs, CascadeEnvironment.DEFAULT,
+            operationName, stateStatement);
+    }
+
+    /**
+     * Seam-taking variant of {@link #settleBeforeCascadeOrError(String, long)}, package-visible so a
+     * unit test can drive it with a fake {@link CascadeEnvironment} and no live workspace / EDT
+     * services. Production code only ever reaches this through the {@code (String, long)} overload,
+     * which resolves {@code project} from the workspace and injects {@link CascadeEnvironment#DEFAULT}.
+     *
+     * @param project the project the cascade will mutate
+     * @param settleTimeoutMs how long to wait for the pipeline and BM models to settle
+     * @param env the seam over the workspace/derived-data services
+     * @return an actionable error, or {@code null} when the cascade may proceed
+     */
+    static String settleBeforeCascadeOrError(IProject project, long settleTimeoutMs, CascadeEnvironment env)
+    {
+        return settleBeforeCascadeOrError(project, settleTimeoutMs, env,
+            "the cascade operation", "No cascade was started."); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** Package-visible operation-aware seam for headless cascade-settle tests. */
+    static String settleBeforeCascadeOrError(IProject project, long settleTimeoutMs,
+        CascadeEnvironment env, String operationName, String stateStatement)
+    {
+        if (cannotSettle(project, env))
+        {
+            return null;
+        }
+        long deadline = System.currentTimeMillis() + settleTimeoutMs;
+        // A cascade is not confined to the named project: a rename builds one refactoring per
+        // PARTICIPATING project, which includes the configuration EXTENSIONS that adopt the
+        // renamed object - drain those too, sharing the SAME deadline, so this cannot multiply
+        // the wait. An unrelated open project takes no part in the refactoring and cannot collide
+        // with its batch session, so it is never drained or asked about here: one slow, unrelated
+        // project must not eat the shared deadline and delay a rename of an otherwise-ready project.
+        Set<String> settledParticipantNames = new HashSet<>();
+        Set<String> discoveredParticipantNames = new HashSet<>();
+        int newParticipantDiscoveryPasses = 0;
+        while (true)
+        {
+            boolean discoveredNewParticipantThisPass = false;
+            IProject lastNewParticipant = null;
+
+            // Drain the base UNCONDITIONALLY on every pass. An instant READY probe can become stale
+            // while BM models are registering; a quiet pipeline returns immediately, while a project
+            // that restarted since the previous pass gets another chance under the shared deadline.
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining > 0)
+            {
+                env.waitForDerivedData(project, remaining);
+            }
+            List<IProject> participants = findParticipants(project, env);
+            lastNewParticipant = rememberNewParticipants(participants,
+                discoveredParticipantNames);
+            discoveredNewParticipantThisPass = lastNewParticipant != null;
+            IProject stillBuilding = drainParticipants(participants, deadline, env,
+                settledParticipantNames);
+            String building = env.buildingErrorOrNull(project);
+            if (building != null || stillBuilding != null)
+            {
+                if (discoveredNewParticipantThisPass)
+                {
+                    newParticipantDiscoveryPasses++;
+                }
+                String currentError = building != null ? building
+                    : participantBuildingError(project, stillBuilding);
+                if (newParticipantDiscoveryPasses >= MAX_NEW_PARTICIPANT_DISCOVERY_PASSES
+                    || deadline - System.currentTimeMillis() <= 0)
+                {
+                    // Both probes above are fresh: a limit is never allowed to manufacture a
+                    // "still building" claim about a project that was not actually checked.
+                    return currentError;
+                }
+                if (!waitBeforeAnotherSettlePass(deadline, env))
+                {
+                    return currentError;
+                }
+                continue;
+            }
+
+            // Derived data and BM-model registration are separate EDT lifecycles. A storage reopen can
+            // leave the target or one of EDT's dependent refactoring projects without a registered model
+            // after the index is already READY. Both mdclass and form refactorings go through the same
+            // RefactoringService, which collects dependent models identically, so both wait for the
+            // complete refactoring-model set under the SAME deadline.
+            String modelError = waitForRefactoringModels(project, deadline, env, operationName,
+                stateStatement);
+            if (modelError != null)
+            {
+                return modelError;
+            }
+
+            // Model polling happens during the same storage-reopen window that can start fresh derived
+            // data. Re-check the base and every participant that was already settled; a stale pre-model
+            // verdict must never be the one used to release the cascade.
+            String refreshedBuilding = env.buildingErrorOrNull(project);
+            participants = findParticipants(project, env);
+            IProject newlyDiscovered = rememberNewParticipants(participants,
+                discoveredParticipantNames);
+            if (newlyDiscovered != null)
+            {
+                discoveredNewParticipantThisPass = true;
+                lastNewParticipant = newlyDiscovered;
+            }
+            Set<String> rebuildingParticipantNames = new HashSet<>();
+            IProject refreshedParticipantBuilding = null;
+            for (IProject participant : participants)
+            {
+                String participantName = participant.getName();
+                if (settledParticipantNames.contains(participantName)
+                    && env.isBuilding(participant))
+                {
+                    settledParticipantNames.remove(participantName);
+                    rebuildingParticipantNames.add(participantName);
+                    if (refreshedParticipantBuilding == null)
+                    {
+                        refreshedParticipantBuilding = participant;
+                    }
+                }
+            }
+            List<IProject> unserved = findUnsettledParticipants(participants,
+                settledParticipantNames);
+            if (refreshedBuilding == null && unserved.isEmpty())
+            {
+                return null;
+            }
+
+            // Newly discovered participants have not been drained yet. Probe all of them now so a
+            // deadline/discovery-limit refusal names a participant that is verifiably building.
+            for (IProject participant : unserved)
+            {
+                if (!rebuildingParticipantNames.contains(participant.getName())
+                    && env.isBuilding(participant)
+                    && refreshedParticipantBuilding == null)
+                {
+                    refreshedParticipantBuilding = participant;
+                }
+            }
+            if (discoveredNewParticipantThisPass)
+            {
+                newParticipantDiscoveryPasses++;
+            }
+            String currentError = refreshedBuilding;
+            if (currentError == null && refreshedParticipantBuilding != null)
+            {
+                currentError = participantBuildingError(project, refreshedParticipantBuilding);
+            }
+            if (newParticipantDiscoveryPasses >= MAX_NEW_PARTICIPANT_DISCOVERY_PASSES)
+            {
+                return currentError != null ? currentError
+                    : participantDiscoveryError(project, lastNewParticipant);
+            }
+            if (deadline - System.currentTimeMillis() <= 0)
+            {
+                // The fresh probes found no busy project. The deadline forbids more waiting, not a
+                // cascade whose complete currently-visible participant set is already idle.
+                return currentError;
+            }
+            if (currentError != null && !waitBeforeAnotherSettlePass(deadline, env))
+            {
+                return currentError;
+            }
+        }
+    }
+
+    private static boolean waitBeforeAnotherSettlePass(long deadline, CascadeEnvironment env)
+    {
+        long remaining = deadline - System.currentTimeMillis();
+        if (remaining <= 0)
+        {
+            return false;
+        }
+        return env.waitBeforeModelRetry(Math.min(MODEL_REGISTRATION_POLL_MS, remaining));
+    }
+
+    private static String waitForRefactoringModels(IProject project, long deadline,
+        CascadeEnvironment env, String operationName, String stateStatement)
+    {
+        BmModelResolver.Resolution resolution = env.resolveModelsForRefactoring(project);
+        while (!resolution.isAvailable())
+        {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0)
+            {
+                return resolution.actionableError(operationName, stateStatement);
+            }
+            long waitMs = Math.min(MODEL_REGISTRATION_POLL_MS, remaining);
+            if (!env.waitBeforeModelRetry(waitMs))
+            {
+                return resolution.actionableError(operationName, stateStatement);
+            }
+            resolution = env.resolveModelsForRefactoring(project);
+        }
+        return null;
+    }
+
+    /**
+     * Waits for the PARTICIPATING open EDT projects' derived data, until the shared
+     * {@code deadline}, then verifies them unconditionally.
+     * <p>
+     * The supplied projects are the participating extensions discovered for the cascade's base:
+     * the rename builds a refactoring for each of them, so one that is still building is the
+     * collision this whole pre-flight exists to prevent. An unrelated open project is never
+     * supplied here and cannot consume the shared deadline or cause a refusal.
+     *
+     * @param participants the currently visible participating extension projects
+     * @param deadline absolute time (ms) the whole drain must not exceed
+     * @param env the seam over the workspace/derived-data services
+     * @return the first PARTICIPATING extension that is still building, or {@code null} when every
+     *         participant settled
+     */
+    private static IProject drainParticipants(List<IProject> participants, long deadline,
+        CascadeEnvironment env,
+        Set<String> settledParticipantNames)
+    {
+        for (IProject participant : findUnsettledParticipants(participants,
+            settledParticipantNames))
+        {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining > 0)
+            {
+                env.waitForDerivedData(participant, remaining);
+            }
+            // Checked after the drain attempt and REGARDLESS of the remaining time: running out of
+            // deadline is not a reason to stop asking whether a participant is ready - it only
+            // prevents another wait.
+            if (env.isBuilding(participant))
+            {
+                return participant;
+            }
+            settledParticipantNames.add(participant.getName());
+        }
+        return null;
+    }
+
+    private static IProject rememberNewParticipants(List<IProject> participants,
+        Set<String> discoveredParticipantNames)
+    {
+        IProject lastNewParticipant = null;
+        for (IProject participant : participants)
+        {
+            if (discoveredParticipantNames.add(participant.getName()))
+            {
+                lastNewParticipant = participant;
+            }
+        }
+        return lastNewParticipant;
+    }
+
+    private static List<IProject> findUnsettledParticipants(List<IProject> discoveredParticipants,
+        Set<String> settledParticipantNames)
+    {
+        List<IProject> unsettledParticipants = new ArrayList<>();
+        for (IProject participant : discoveredParticipants)
+        {
+            if (!settledParticipantNames.contains(participant.getName()))
+            {
+                unsettledParticipants.add(participant);
+            }
+        }
+        return unsettledParticipants;
+    }
+
+    /**
+     * The projects a cascade rooted at {@code base} takes part in, besides {@code base} itself.
+     * <p>
+     * The SAME selection the cascade pre-flight settles on, exposed so the post-flight export wait
+     * cannot drift away from it: two independent readings of "who takes part" is how a cascade ends
+     * up settling one set and awaiting another. It is a fresh reading, not a snapshot of the
+     * pre-flight one - a project can be closed in between, and the set that matters to the wait is
+     * the one in force when the write happened.
+     * <p>
+     * It answers "who COULD take part", not "who was written": EDT's refactoring does not report
+     * what it touched, which is exactly why a caller must grade these projects as ones it may have
+     * written in rather than ones it did.
+     * <p>
+     * This standalone live reading is intentionally retained for the post-write refactoring wait,
+     * where failure only widens a wait. Reference search must not use it: adopted targets and BSL
+     * sources must instead come from one {@link #determineSearchDependencies(IProject)} snapshot.
+     *
+     * @param base the project the cascade mutates; {@code null} yields an empty list
+     * @return the participating projects, never {@code null}
+     */
+    public static List<IProject> cascadeParticipants(IProject base)
+    {
+        if (base == null)
+        {
+            return new ArrayList<>();
+        }
+        try
+        {
+            return findParticipants(base, CascadeEnvironment.DEFAULT);
+        }
+        catch (RuntimeException e)
+        {
+            // This reading only ever WIDENS a wait. Failing to read it must therefore never fail the
+            // operation that already happened - the caller falls back to awaiting what it can name
+            // itself, which is what it did before the participants were awaited at all.
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Captures the base project and every open EDT project that depends on it for reference-search
+     * scoping. Unlike the refactoring cascade, this includes BOTH configuration extensions and linked
+     * external-object projects: both can contain BSL references to base-configuration objects, while
+     * only extensions adopt configuration objects and participate in adopted-target augmentation.
+     * <p>
+     * Runtime registrations are cross-checked against the permanent dependent-project natures
+     * ({@code V8ExtensionNature} and {@code V8ExternalObjectsNature}). A dependent project missing
+     * from the registry, or an EXTENSION whose parent cannot be resolved, leaves the snapshot
+     * undetermined and therefore workspace-wide: without that registration the nature cannot tell
+     * us which base the project depends on. A non-extension dependent project is skipped as unrelated
+     * only when its DT-INF/PROJECT.PMF manifest PROVES it declares no base - a null runtime parent
+     * alone does not, since EDT also returns null while the parent is unwired or inaccessible.
+     * The result records each member's current {@link ProjectState} and derives
+     * its extension subset from those SAME members. By construction, every extension used for adopted
+     * TARGET augmentation therefore belongs to the SOURCE scope represented by this snapshot; a target
+     * can never be searched in a scope that excludes the project it lives in. Extension kind is filtered
+     * with {@link CascadeEnvironment#isExtensionProject(IProject)} and checked against the permanent
+     * extension nature so a missing runtime registration cannot look like an external-object project.
+     *
+     * @param base the base configuration project; {@code null} is undeterminable
+     * @return the dependency/readiness snapshot, never {@code null}
+     */
+    public static SearchDependenciesResult determineSearchDependencies(IProject base)
+    {
+        return determineSearchDependencies(base, CascadeEnvironment.DEFAULT);
+    }
+
+    /** Package-visible seam for headless search-snapshot tests. */
+    static SearchDependenciesResult determineSearchDependencies(IProject base, CascadeEnvironment env)
+    {
+        if (base == null || env == null)
+        {
+            return SearchDependenciesResult.undetermined();
+        }
+        try
+        {
+            List<IProject> openDtProjects = env.getOpenDtProjects();
+            List<IProject> openDependentNatureProjects = env.getOpenDependentNatureProjects();
+            List<IProject> openExtensionNatureProjects = env.getOpenExtensionNatureProjects();
+            if (openDtProjects == null || openDependentNatureProjects == null
+                || openExtensionNatureProjects == null)
+            {
+                return SearchDependenciesResult.undetermined();
+            }
+
+            Map<String, IProject> registeredProjects = new LinkedHashMap<>();
+            for (IProject project : openDtProjects)
+            {
+                String name = requiredProjectName(project);
+                if (registeredProjects.put(name, project) != null)
+                {
+                    return SearchDependenciesResult.undetermined();
+                }
+            }
+
+            // Collected BEFORE the dependent walk: an EXTENSION structurally requires a parent while
+            // an external-objects project may legitimately have none, and only the permanent nature
+            // can tell those two apart when the parent resolves to null.
+            Set<String> extensionNatureProjectNames = new HashSet<>();
+            for (IProject extensionNatureProject : openExtensionNatureProjects)
+            {
+                if (!extensionNatureProjectNames.add(requiredProjectName(extensionNatureProject)))
+                {
+                    return SearchDependenciesResult.undetermined();
+                }
+            }
+
+            Map<String, IProject> resolvedDependentBases = new LinkedHashMap<>();
+            Set<String> unlinkedDependentNames = new HashSet<>();
+            for (IProject natureProject : openDependentNatureProjects)
+            {
+                String name = requiredProjectName(natureProject);
+                IProject registeredProject = registeredProjects.get(name);
+                if (registeredProject == null || resolvedDependentBases.containsKey(name)
+                    || unlinkedDependentNames.contains(name))
+                {
+                    return SearchDependenciesResult.undetermined();
+                }
+                IProject resolvedBase = env.resolveBaseProject(registeredProject);
+                if (resolvedBase == null)
+                {
+                    if (extensionNatureProjectNames.contains(name)
+                        || env.isExtensionProject(registeredProject))
+                    {
+                        // An extension cannot exist without its base, so null here means the runtime
+                        // registration is currently unusable rather than "unrelated" - and a project
+                        // the two views disagree about is not classifiable at all.
+                        return SearchDependenciesResult.undetermined();
+                    }
+                    // An external-objects project is legitimately UNLINKED when created without
+                    // baseProjectName. Without a parent it has no base-configuration scope and can therefore hold
+                    // no reference to a base-configuration object, which makes it genuinely
+                    // unrelated. Failing closed here instead would hand every workspace that merely
+                    // has one open the workspace-wide scan this scoping exists to avoid.
+                    ProjectStateResult unlinkedState = env.getProjectState(registeredProject);
+                    if (unlinkedState == null || unlinkedState.getState() != ProjectState.READY)
+                    {
+                        // A project that has not SETTLED proves nothing about what its Xtext
+                        // contribution currently holds. While an unlink is being taken up, the
+                        // manifest can already say "no base" although the index still carries the
+                        // references the project had while it was linked - excluding it then would
+                        // drop indexed references AND report the scan complete.
+                        return SearchDependenciesResult.undetermined();
+                    }
+                    if (env.readDeclaredBaseProject(registeredProject) != DeclaredBaseProject.NONE)
+                    {
+                        // DECLARED: the manifest says this project HAS a base that the runtime could
+                        // not give us, so the registration is unusable - not an unrelated project.
+                        // UNREADABLE: nothing is proven either way. Only a manifest that provably
+                        // declares no base earns the unrelated shortcut below, because a null runtime
+                        // parent ALSO means "parent not wired yet" or "parent not accessible".
+                        return SearchDependenciesResult.undetermined();
+                    }
+                    unlinkedDependentNames.add(name);
+                    continue;
+                }
+                resolvedDependentBases.put(name, resolvedBase);
+            }
+
+            for (String extensionNatureProjectName : extensionNatureProjectNames)
+            {
+                if (!resolvedDependentBases.containsKey(extensionNatureProjectName))
+                {
+                    // The extension-nature view must be a subset of the already-validated dependent
+                    // view. A mismatch means the supposedly single capture changed underneath us.
+                    return SearchDependenciesResult.undetermined();
+                }
+            }
+
+            Map<String, Boolean> extensionKinds = new LinkedHashMap<>();
+            for (String name : resolvedDependentBases.keySet())
+            {
+                IProject registeredProject = registeredProjects.get(name);
+                boolean runtimeExtension = env.isExtensionProject(registeredProject);
+                if (runtimeExtension != extensionNatureProjectNames.contains(name))
+                {
+                    // False means either a genuine external-object project or a disappearing EDT
+                    // registration. The permanent nature distinguishes those two cases.
+                    return SearchDependenciesResult.undetermined();
+                }
+                extensionKinds.put(name, Boolean.valueOf(runtimeExtension));
+            }
+
+            List<IProject> searchProjects = new ArrayList<>();
+            List<IProject> extensionProjects = new ArrayList<>();
+            Set<String> searchProjectNames = new HashSet<>();
+            String baseName = requiredProjectName(base);
+            searchProjects.add(base);
+            searchProjectNames.add(baseName);
+            for (Map.Entry<String, IProject> entry : registeredProjects.entrySet())
+            {
+                if (baseName.equals(entry.getKey()))
+                {
+                    continue;
+                }
+                IProject resolvedBase = resolvedDependentBases.get(entry.getKey());
+                if (resolvedBase == null)
+                {
+                    resolvedBase = env.resolveBaseProject(entry.getValue());
+                    if (resolvedBase != null)
+                    {
+                        // A runtime-dependent project missing from the permanent-nature view is not a
+                        // safe basis for either source membership or extension classification.
+                        return SearchDependenciesResult.undetermined();
+                    }
+                }
+                if (base.equals(resolvedBase))
+                {
+                    if (!searchProjectNames.add(entry.getKey()))
+                    {
+                        return SearchDependenciesResult.undetermined();
+                    }
+                    searchProjects.add(entry.getValue());
+                    if (Boolean.TRUE.equals(extensionKinds.get(entry.getKey())))
+                    {
+                        extensionProjects.add(entry.getValue());
+                    }
+                }
+            }
+
+            Map<String, ProjectState> readiness = new LinkedHashMap<>();
+            for (IProject searchProject : searchProjects)
+            {
+                String name = requiredProjectName(searchProject);
+                ProjectStateResult state = env.getProjectState(searchProject);
+                if (state == null || state.getState() == null
+                    || readiness.put(name, state.getState()) != null)
+                {
+                    return SearchDependenciesResult.undetermined();
+                }
+            }
+            return SearchDependenciesResult.determined(searchProjects, extensionProjects, readiness);
+        }
+        catch (RuntimeException e)
+        {
+            return SearchDependenciesResult.undetermined();
+        }
+    }
+
+    /**
+     * Waits within a caller-owned budget for every reference-search project to be ready.
+     * Must run outside the UI thread: derived-data work can need that thread to progress.
+     *
+     * @param projectName the base project name
+     * @param budgetMs the total polling budget in milliseconds
+     * @return the last dependency/readiness snapshot, including an incomplete one on expiry
+     */
+    public static SearchDependenciesResult awaitSearchScopeReady(String projectName, long budgetMs)
+    {
+        if (projectName == null || projectName.isEmpty())
+        {
+            return SearchDependenciesResult.undetermined();
+        }
+        IProject project;
+        try
+        {
+            project = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+                .getRoot().getProject(projectName);
+        }
+        catch (RuntimeException e)
+        {
+            // A name the workspace cannot even form a handle for is the caller's validation error to
+            // report; the settle runs before that validation and must not pre-empt it.
+            return SearchDependenciesResult.undetermined();
+        }
+        return awaitSearchScopeReady(project, budgetMs, CascadeEnvironment.DEFAULT);
+    }
+
+    /**
+     * Package-visible polling seam; the snapshot predicate itself never waits.
+     * <p>
+     * A base that can never become ready (missing, closed, or permanently outside EDT - see
+     * {@link #cannotSettle(IProject, CascadeEnvironment)}) gets one snapshot and no wait: the
+     * settle runs BEFORE the caller's project validation, so waiting here would only put the full
+     * budget in front of an error the caller reports instantly ("Project not found: X").
+     */
+    static SearchDependenciesResult awaitSearchScopeReady(IProject base, long budgetMs,
+        CascadeEnvironment env)
+    {
+        if (env == null || cannotSettle(base, env))
+        {
+            return determineSearchDependencies(base, env);
+        }
+        long deadline = System.currentTimeMillis() + Math.max(0L, budgetMs);
+        while (true)
+        {
+            SearchDependenciesResult snapshot = determineSearchDependencies(base, env);
+            if (snapshot.isAllReady())
+            {
+                return snapshot;
+            }
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0L || env == null
+                || !env.waitBeforeModelRetry(Math.min(MODEL_REGISTRATION_POLL_MS, remaining)))
+            {
+                return snapshot;
+            }
+        }
+    }
+
+    /**
+     * Whether waiting for {@code project} to settle is pointless because it can never become ready:
+     * it is missing, closed, or permanently outside EDT (its description carries no BM-model
+     * nature). An unreadable description ({@code null}) is not proof of "outside EDT", so such a
+     * project is still waited for. Asking a missing or closed project anyway can also block on a
+     * project EDT is still disposing. None of these is the settle's error to report: the caller's
+     * own resolution names the value ("Project not found: X") instead of advising a retry that can
+     * never succeed.
+     */
+    private static boolean cannotSettle(IProject project, CascadeEnvironment env)
+    {
+        return project == null || !project.exists() || !project.isOpen()
+            || Boolean.FALSE.equals(env.hasBmModelProjectNature(project));
+    }
+
+    /** Immutable search membership, extension-subset, and readiness snapshot. */
+    public static final class SearchDependenciesResult
+    {
+        private final List<IProject> projects;
+        private final List<IProject> extensionProjects;
+        private final Set<String> extensionProjectNames;
+        private final Map<String, ProjectState> readiness;
+
+        private SearchDependenciesResult(List<IProject> projects, List<IProject> extensionProjects,
+            Map<String, ProjectState> readiness)
+        {
+            this.projects = projects;
+            this.extensionProjects = extensionProjects;
+            this.extensionProjectNames = extensionProjects != null
+                ? projectNames(extensionProjects) : null;
+            this.readiness = readiness;
+        }
+
+        static SearchDependenciesResult determined(List<IProject> projects,
+            List<IProject> extensionProjects, Map<String, ProjectState> readiness)
+        {
+            Set<String> projectNames = projectNames(projects);
+            Set<String> extensionNames = projectNames(extensionProjects);
+            if (projectNames.size() != projects.size()
+                || extensionNames.size() != extensionProjects.size()
+                || !projectNames.containsAll(extensionNames)
+                || !projectNames.equals(readiness.keySet()))
+            {
+                throw new IllegalArgumentException(
+                    "Search dependency snapshot components are inconsistent"); //$NON-NLS-1$
+            }
+            return new SearchDependenciesResult(Collections.unmodifiableList(
+                new ArrayList<>(projects)), Collections.unmodifiableList(
+                    new ArrayList<>(extensionProjects)), Collections.unmodifiableMap(
+                    new LinkedHashMap<>(readiness)));
+        }
+
+        static SearchDependenciesResult undetermined()
+        {
+            return new SearchDependenciesResult(null, null, null);
+        }
+
+        /** @return whether membership, extension classification, and readiness were captured */
+        public boolean isDetermined()
+        {
+            return projects != null && extensionProjects != null
+                && extensionProjectNames != null && readiness != null;
+        }
+
+        /** @return whether every captured project was READY; false when undetermined */
+        public boolean isAllReady()
+        {
+            if (!isDetermined())
+            {
+                return false;
+            }
+            for (ProjectState state : readiness.values())
+            {
+                if (state != ProjectState.READY)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /** @return the base followed by its dependent search projects, or an empty list */
+        public List<IProject> getProjects()
+        {
+            return projects != null ? projects : Collections.emptyList();
+        }
+
+        /**
+         * @return the configuration-extension subset derived from {@link #getProjects()}, or empty
+         *     when the snapshot is undetermined
+         */
+        public List<IProject> getExtensionProjects()
+        {
+            return extensionProjects != null ? extensionProjects : Collections.emptyList();
+        }
+
+        /** @return captured readiness in snapshot order, or an empty map when undetermined */
+        public Map<String, ProjectState> getReadiness()
+        {
+            return readiness != null ? readiness : Collections.emptyMap();
+        }
+
+        /** @return only non-ready project names, in snapshot order; empty when undetermined */
+        public List<String> getNotReadyProjectNames()
+        {
+            List<String> names = new ArrayList<>();
+            for (Map.Entry<String, ProjectState> entry : getReadiness().entrySet())
+            {
+                if (entry.getValue() != ProjectState.READY)
+                {
+                    names.add(entry.getKey());
+                }
+            }
+            return names;
+        }
+
+        /** @return captured project names, or an empty set when undetermined */
+        public Set<String> getProjectNames()
+        {
+            return readiness != null ? readiness.keySet() : Collections.emptySet();
+        }
+
+        /**
+         * @return whether both captures contain identical membership, extension kind, and readiness
+         */
+        public boolean hasSameSnapshot(SearchDependenciesResult other)
+        {
+            return isDetermined() && other != null && other.isDetermined()
+                && readiness.equals(other.readiness)
+                && extensionProjectNames.equals(other.extensionProjectNames);
+        }
+
+        private static Set<String> projectNames(List<IProject> sourceProjects)
+        {
+            Set<String> names = new HashSet<>();
+            for (IProject project : sourceProjects)
+            {
+                names.add(requiredProjectName(project));
+            }
+            return Collections.unmodifiableSet(names);
+        }
+    }
+
+    private static List<IProject> findParticipants(IProject base, CascadeEnvironment env)
+    {
+        List<IProject> participants = new ArrayList<>();
+        for (IProject candidate : env.getOpenDtProjects())
+        {
+            if (candidate.equals(base))
+            {
+                continue;
+            }
+            if (env.isExtensionProject(candidate) && base.equals(env.resolveBaseProject(candidate)))
+            {
+                participants.add(candidate);
+            }
+        }
+        return participants;
+    }
+
+    private static String requiredProjectName(IProject project)
+    {
+        if (project == null)
+        {
+            throw new IllegalStateException("Project enumeration contained null"); //$NON-NLS-1$
+        }
+        String name = project.getName();
+        if (name == null || name.isEmpty())
+        {
+            throw new IllegalStateException("Project enumeration contained an unnamed project"); //$NON-NLS-1$
+        }
+        return name;
+    }
+
+    private static List<IProject> getOpenNatureProjects(List<String> natureIds)
+    {
+        List<IProject> result = new ArrayList<>();
+        for (IProject candidate : org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+            .getRoot().getProjects())
+        {
+            if (!candidate.exists() || !candidate.isOpen())
+            {
+                continue;
+            }
+            Boolean matchingNature = ProjectContext.hasAnyNature(candidate, natureIds);
+            if (matchingNature == null)
+            {
+                throw new IllegalStateException(
+                    "Could not read project nature for: " + candidate.getName()); //$NON-NLS-1$
+            }
+            if (matchingNature.booleanValue())
+            {
+                result.add(candidate);
+            }
+        }
+        return result;
+    }
+
+    private static String participantBuildingError(IProject base, IProject participant)
+    {
+        return "Project '" + participant.getName() + "' extends '" + base.getName() //$NON-NLS-1$
+            + "' and is still building, so it takes part in this cascade with an " //$NON-NLS-1$
+            + "incomplete index. Please wait and retry."; //$NON-NLS-1$
+    }
+
+    private static String participantDiscoveryError(IProject base, IProject participant)
+    {
+        return "Project '" + participant.getName() + "' newly appeared as a cascade participant of '" //$NON-NLS-1$ //$NON-NLS-2$
+            + base.getName() + "' while EDT project contexts were still changing. The participant " //$NON-NLS-1$
+            + "set did not stabilize, so no cascade was started. Please wait and retry."; //$NON-NLS-1$
+    }
+
+    /**
+     * Seam over the workspace / derived-data services used by cascade and reference-scope checks, so
+     * a unit test can substitute a fake and exercise {@code drainParticipants} (and
+     * {@link #settleBeforeCascadeOrError(IProject, long,
+     * CascadeEnvironment)}) with no live workspace. {@link #DEFAULT} delegates to the same EDT
+     * services ({@link IDtProjectManager}, {@link ExtensionOriginUtils#resolveBaseProject(IProject)},
+     * {@link BuildUtils#waitForDerivedData(IProject, long)},
+     * {@link BmModelResolver#resolveForRefactoring(IProject)}) these checks use.
+     * <p>
+     * Public (unlike the package-visible {@code settleBeforeCascadeOrError} overload that takes
+     * it): Mockito's proxy generation cannot mock a non-public type across the fragment-test /
+     * host-bundle classloader split this test bundle runs under, so the type itself must be
+     * accessible even though only test code in this package ever implements or references it.
+     */
+    public interface CascadeEnvironment
+    {
+        /** The open EDT projects currently in the workspace (participants and unrelated alike). */
+        List<IProject> getOpenDtProjects();
+
+        /**
+         * The open workspace projects permanently marked as configuration extensions. This is an
+         * independent completeness and runtime-kind check, not a participant list. An unreadable
+         * project description must fail the lookup rather than look like "not an extension".
+         */
+        List<IProject> getOpenExtensionNatureProjects();
+
+        /**
+         * The open workspace projects permanently marked as a configuration extension OR an
+         * external-objects project. This independently checks search-dependency registry completeness.
+         */
+        List<IProject> getOpenDependentNatureProjects();
+
+        /** Current EDT/derived-data state used to prove a scoped project's index contribution settled. */
+        ProjectStateResult getProjectState(IProject project);
+
+        /**
+         * Resolves the BASE (parent) project a dependent project derives from, or {@code null} when
+         * {@code project} is not dependent on another project. NB an EXTERNAL-OBJECTS project is
+         * dependent too - see {@link #isExtensionProject(IProject)} for why that matters here.
+         */
+        IProject resolveBaseProject(IProject project);
+
+        /**
+         * Whether {@code project} PERMANENTLY declares a base project in its {@code DT-INF/PROJECT.PMF}.
+         * The runtime parent cannot answer this - see
+         * {@link ExtensionOriginUtils#readDeclaredBaseProject(IProject)}.
+         */
+        DeclaredBaseProject readDeclaredBaseProject(IProject project);
+
+        /**
+         * Whether {@code project} is a configuration EXTENSION (not merely dependent).
+         * <p>
+         * The cascade builds one refactoring per EXTENSION of the renamed object's configuration.
+         * An external-objects project shares the same parent and would answer
+         * {@link #resolveBaseProject(IProject)} identically, yet takes no part in that cascade -
+         * treating it as a participant would let it spend the shared drain budget and, worse,
+         * refuse the rename with an "extends ... still building" error about a project the rename
+         * never touches.
+         * <p>
+         * Reference search also applies this discriminator to members of its single dependency
+         * snapshot to derive the adopted-target subset. The permanent nature check above prevents a
+         * disappearing runtime registration from being mistaken for an external-object project.
+         */
+        boolean isExtensionProject(IProject project);
+
+        /** Waits, bounded by {@code timeoutMs}, for {@code project}'s derived-data pipeline to drain. */
+        void waitForDerivedData(IProject project, long timeoutMs);
+
+        /** Whether {@code project}'s derived-data pipeline is still (transiently) building. */
+        boolean isBuilding(IProject project);
+
+        /** The target project's actionable build error, or {@code null} when it has settled. */
+        String buildingErrorOrNull(IProject project);
+
+        /**
+         * Whether the persistent project description carries an EDT nature that can own a BM model.
+         * {@code null} means the description could not be read, which is not proof of a non-EDT project.
+         */
+        Boolean hasBmModelProjectNature(IProject project);
+
+        /** Resolves all BM models EDT will map while constructing this project's refactoring. */
+        BmModelResolver.Resolution resolveModelsForRefactoring(IProject project);
+
+        /** Waits before another BM-model resolution attempt; {@code false} means the wait was interrupted. */
+        boolean waitBeforeModelRetry(long timeoutMs);
+
+        /** Delegates to the live, {@code Activator}-backed EDT services. */
+        CascadeEnvironment DEFAULT = new CascadeEnvironment()
+        {
+            @Override
+            public List<IProject> getOpenDtProjects()
+            {
+                List<IProject> result = new ArrayList<>();
+                IDtProjectManager dtProjectManager = Activator.getDefault().getDtProjectManager();
+                if (dtProjectManager == null)
+                {
+                    return result;
+                }
+                for (IProject candidate : org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+                    .getRoot().getProjects())
+                {
+                    if (candidate.exists() && candidate.isOpen()
+                        && dtProjectManager.getDtProject(candidate) != null)
+                    {
+                        result.add(candidate);
+                    }
+                }
+                return result;
+            }
+
+            @Override
+            public List<IProject> getOpenExtensionNatureProjects()
+            {
+                return getOpenNatureProjects(V8_EXTENSION_PROJECT_NATURES);
+            }
+
+            @Override
+            public List<IProject> getOpenDependentNatureProjects()
+            {
+                return getOpenNatureProjects(V8_DEPENDENT_PROJECT_NATURES);
+            }
+
+            @Override
+            public ProjectStateResult getProjectState(IProject project)
+            {
+                return ProjectStateChecker.checkProjectState(project);
+            }
+
+            @Override
+            public IProject resolveBaseProject(IProject project)
+            {
+                return ExtensionOriginUtils.resolveBaseProject(project);
+            }
+
+            @Override
+            public DeclaredBaseProject readDeclaredBaseProject(IProject project)
+            {
+                return ExtensionOriginUtils.readDeclaredBaseProject(project);
+            }
+
+            @Override
+            public boolean isExtensionProject(IProject project)
+            {
+                return ExtensionOriginUtils.isExtensionProject(project);
+            }
+
+            @Override
+            public void waitForDerivedData(IProject project, long timeoutMs)
+            {
+                BuildUtils.waitForDerivedData(project, timeoutMs);
+            }
+
+            @Override
+            public boolean isBuilding(IProject project)
+            {
+                return buildingErrorOrNull(project) != null;
+            }
+
+            @Override
+            public String buildingErrorOrNull(IProject project)
+            {
+                // The cascade stays STRICT. It rewrites BSL occurrences found through EDT's FULL-TEXT
+                // search index, whose FTS_INDEXING_SEGMENT and FTS_CLEANER_SEGMENT sit in the NORMAL
+                // bucket - and initAutoWaitRules builds the "important" set from SYNC, AFTER_SYNC and
+                // BEFORE_BUILD only, so the model wait does NOT cover them. A rename admitted on that
+                // wait could miss an occurrence and leave a stale reference behind.
+                return ProjectStateChecker.buildingErrorOrNull(project);
+            }
+
+            @Override
+            public Boolean hasBmModelProjectNature(IProject project)
+            {
+                return ProjectStateChecker.hasBmModelProjectNature(project);
+            }
+
+            @Override
+            public BmModelResolver.Resolution resolveModelsForRefactoring(IProject project)
+            {
+                return BmModelResolver.resolveForRefactoring(project);
+            }
+
+            @Override
+            public boolean waitBeforeModelRetry(long timeoutMs)
+            {
+                try
+                {
+                    Thread.sleep(timeoutMs);
+                    return true;
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        };
+    }
+
+    /**
+     * Name-based variant of {@link #buildingErrorOrNull(IProject)}. A null/empty name
+     * skips the check (returns {@code null}), leaving the caller's required-argument
+     * handling to produce the proper error.
+     *
+     * @param projectName the project name to check
+     * @return the building message with a retry hint, or {@code null} when not building
+     */
+    public static String buildingErrorOrNull(String projectName)
+    {
+        if (projectName == null || projectName.isEmpty())
+        {
+            return null;
+        }
+        IProject project = org.eclipse.core.resources.ResourcesPlugin.getWorkspace()
+            .getRoot().getProject(projectName);
+        return buildingErrorOrNull(project);
+    }
+}

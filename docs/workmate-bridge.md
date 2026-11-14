@@ -20,7 +20,7 @@ sent.
   the question to an external cloud service and Workmate may change the
   configuration with its own tools — so enable it under
   *Preferences → EDT MCP Server → Tools* first.
-- The OSGi service `com.ditrix.edt.mcp.server.bridge.IEdtMcpBridge` lets
+- The OSGi service `fm.giper.edt.mcp.server.bridge.IEdtMcpBridge` lets
   Workmate/JShell list and call EDT-MCP tools without importing EDT-MCP packages.
   `callTool` goes through the same dispatcher as MCP `tools/call` and returns its
   JSON-RPC response.
@@ -47,7 +47,7 @@ as Workmate's JShell tool.
 
 ```java
 // Take the context from an ALWAYS-ACTIVE bundle, not from EDT-MCP's own: this bundle
-// uses lazy activation, so `Platform.getBundle("com.ditrix.edt.mcp.server")
+// uses lazy activation, so `Platform.getBundle("fm.giper.edt.mcp.server")
 // .getBundleContext()` can hand back null and the next line then fails with
 // "because ctx is null". OSGi services are global, so any live context finds this one.
 var bundleContext = org.osgi.framework.FrameworkUtil
@@ -66,7 +66,7 @@ invoke it reflectively:
 
 ```java
 var serviceReference = bundleContext.getServiceReference(
-    "com.ditrix.edt.mcp.server.bridge.IEdtMcpBridge");
+    "fm.giper.edt.mcp.server.bridge.IEdtMcpBridge");
 var bridgeService = bundleContext.getService(serviceReference);
 try {
     var callTool = bridgeService.getClass().getMethod(

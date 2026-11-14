@@ -1,0 +1,358 @@
+/**
+ * MCP Server for EDT - Tests
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.server.utils;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+import java.util.Arrays;
+
+import org.junit.Test;
+
+import com._1c.g5.v8.dt.dcs.model.core.DataCompositionAppearance;
+import com._1c.g5.v8.dt.dcs.model.core.DataCompositionParameterValue;
+import com._1c.g5.v8.dt.dcs.model.core.LocalString;
+import com._1c.g5.v8.dt.dcs.model.schema.DataCompositionSchema;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionChart;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionChartGroup;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionGroupFields;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionSettings;
+import com._1c.g5.v8.dt.dcs.model.settings.DataCompositionTable;
+import com._1c.g5.v8.dt.dcs.parameters.DcsAvailableParameterCollection;
+import com._1c.g5.v8.dt.form.model.DynamicListExtInfo;
+import com._1c.g5.v8.dt.form.model.FormFactory;
+import com._1c.g5.v8.dt.mcore.BooleanValue;
+import com._1c.g5.v8.dt.mcore.ColorValue;
+import com._1c.g5.v8.dt.mcore.FontValue;
+import com._1c.g5.v8.dt.mcore.NumberValue;
+import com._1c.g5.v8.dt.platform.version.Version;
+import fm.giper.edt.mcp.server.utils.DcsTargetResolver.TargetKind;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+/** Pins the platform-derived keys, declared types, enum literals, and pagination contract. */
+public class DcsOptionsTest
+{
+    @Test
+    public void testOutputOptionsExposeStoredKeyDeclaredTypeAndAcceptedEnumLiterals()
+    {
+        DcsOptions.Result result;
+        DcsOptions.Result russian;
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            result = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+                address("Report.Options"), "outputParameter", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Integer.valueOf(1000), 0);
+            russian = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+                address("Report.Options"), "outputParameter", "ru", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Integer.valueOf(1000), 0);
+        }
+
+        assertTrue(result.error(), result.isSuccess());
+        String markdown = result.markdown();
+        assertTrue(markdown, markdown.contains("VerticalOverallPlacement")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("TotalPlacementType")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("Auto")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("None")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("The other English/Russian spelling is also accepted")); //$NON-NLS-1$
+        assertTrue(russian.error(), russian.isSuccess());
+        assertTrue(russian.markdown(), russian.markdown()
+            .contains("ВертикальноеРасположениеОбщихИтогов")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAppearanceAndBodyEnumOptionsUseTheWriterSourcesAndPaginate()
+    {
+        DcsOptions.Result appearance;
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            appearance = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+                address("Report.Options"), "conditionalAppearance", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Integer.valueOf(1000), 0);
+        }
+        assertTrue(appearance.error(), appearance.isSuccess());
+        assertTrue(appearance.markdown(), appearance.markdown().contains("TextColor")); //$NON-NLS-1$
+        assertTrue(appearance.markdown(), appearance.markdown().contains("Color")); //$NON-NLS-1$
+
+        DcsOptions.Result filter = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+            address("Report.Options"), "filter", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            Integer.valueOf(1), 0);
+        assertTrue(filter.error(), filter.isSuccess());
+        assertTrue(filter.markdown(), filter.markdown().contains("comparisonType") //$NON-NLS-1$
+            || filter.markdown().contains("viewMode")); //$NON-NLS-1$
+        assertTrue(filter.markdown(), filter.markdown().contains("**Next offset:** `1`")); //$NON-NLS-1$
+
+        DcsOptions.Result allFilter = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+            address("Report.Options"), "filter", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            Integer.valueOf(100), 0);
+        assertTrue(allFilter.markdown(), allFilter.markdown().contains("comparisonType")); //$NON-NLS-1$
+        assertTrue(allFilter.markdown(), allFilter.markdown().contains("Equal")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testRealAppearanceCatalogueReportsAndWritesTheSameConcreteValueTypes()
+        throws Exception
+    {
+        DcsOptions.Result options;
+        DcsAvailableParameterCollection catalogue;
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            catalogue = DcsSettingsWriter.appearanceParameters(
+                DcsSettingsWriter.AppearanceCatalogue.SCHEMA, Version.V8_3_27, "en"); //$NON-NLS-1$
+            options = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+                address("Report.Options"), "conditionalAppearance", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Integer.valueOf(1000), 0);
+        }
+
+        assertTrue(options.error(), options.isSuccess());
+        String markdown = options.markdown();
+        assertRow(markdown, "BackColor", "Color"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertRow(markdown, "Font", "Font"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertRow(markdown, "Indent", "Number"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertRow(markdown, "MarkNegatives", "Boolean"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertRow(markdown, "Text", "LocalString"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue("a multi-entry catalogue description must not leak EMF Type records\n" + markdown, //$NON-NLS-1$
+            !markdown.contains("LocalString, Type")); //$NON-NLS-1$
+        assertTrue("no declared-type cell may contain the EMF Type class name\n" + markdown, //$NON-NLS-1$
+            !markdown.contains(" | Type |")); //$NON-NLS-1$
+
+        DataCompositionAppearance written = write(catalogue,
+            "{\"BackColor\":{\"color\":{\"red\":12,\"green\":34,\"blue\":56}}," //$NON-NLS-1$
+            + "\"Font\":{\"font\":{\"faceName\":\"Arial\",\"height\":11}}," //$NON-NLS-1$
+            + "\"Indent\":{\"kind\":\"number\",\"value\":7}," //$NON-NLS-1$
+            + "\"MarkNegatives\":{\"kind\":\"boolean\",\"value\":true}," //$NON-NLS-1$
+            + "\"Text\":{\"en\":\"Pinned localized text\"}}"); //$NON-NLS-1$
+
+        assertWrittenType(written, "BackColor", ColorValue.class); //$NON-NLS-1$
+        assertWrittenType(written, "Font", FontValue.class); //$NON-NLS-1$
+        assertWrittenType(written, "Indent", NumberValue.class); //$NON-NLS-1$
+        assertWrittenType(written, "MarkNegatives", BooleanValue.class); //$NON-NLS-1$
+        DataCompositionParameterValue text = item(written, "Text"); //$NON-NLS-1$
+        assertTrue(text.getValues().get(0) instanceof LocalString);
+        assertEquals("Pinned localized text", //$NON-NLS-1$
+            ((LocalString)text.getValues().get(0)).getContent().get("en")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testChartOptionsListTheChartCatalogueAndAxisEnums()
+    {
+        DcsOptions.Result chart;
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            chart = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+                address("Report.Options"), "chart", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Integer.valueOf(1000), 0);
+        }
+        assertTrue(chart.error(), chart.isSuccess());
+        String markdown = chart.markdown();
+        assertTrue(markdown, markdown.contains("ChartType")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("pointsViewMode")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("seriesViewMode")); //$NON-NLS-1$
+        for (String axis : new String[] {"points", "series"}) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            assertTrue(markdown, markdown.contains(axis + "[].groupFields.items[].groupType")); //$NON-NLS-1$
+            assertTrue(markdown, markdown.contains(axis //$NON-NLS-1$
+                + "[].groupFields.items[].periodAdditionType")); //$NON-NLS-1$
+        }
+        assertTrue("a chart does not offer the report-level catalogue", //$NON-NLS-1$
+            !markdown.contains("VerticalOverallPlacement")); //$NON-NLS-1$
+    }
+
+    /** An exact points/series/rows/columns address is written as an axis group, not its item. */
+    @Test
+    public void testAxisGroupAddressListsTheAxisGroupEnums()
+    {
+        com._1c.g5.v8.dt.dcs.model.settings.DcsFactory factory =
+            com._1c.g5.v8.dt.dcs.model.settings.DcsFactory.eINSTANCE;
+        DataCompositionSchema schema =
+            com._1c.g5.v8.dt.dcs.model.schema.DcsFactory.eINSTANCE.createDataCompositionSchema();
+        DataCompositionSettings settings = factory.createDataCompositionSettings();
+        DataCompositionChart chart = factory.createDataCompositionChart();
+        chart.getPoints().add(factory.createDataCompositionChartGroup());
+        chart.getSeries().add(factory.createDataCompositionChartGroup());
+        settings.getItems().add(chart);
+        DataCompositionTable table = factory.createDataCompositionTable();
+        table.getRows().add(factory.createDataCompositionTableGroup());
+        settings.getItems().add(table);
+        schema.setDefaultSettings(settings);
+
+        String root = "Report.Options#/defaultSettings/items/"; //$NON-NLS-1$
+        String chartItem = options(schema, root + "0", "chart"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(chartItem, chartItem.contains("pointsViewMode")); //$NON-NLS-1$
+        assertTrue(chartItem, !chartItem.contains("groupState")); //$NON-NLS-1$
+        for (String axis : new String[] {"0/points/0", "0/series/0"}) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            String markdown = options(schema, root + axis, "chart"); //$NON-NLS-1$
+            assertTrue(markdown, markdown.contains("groupState")); //$NON-NLS-1$
+            assertTrue(markdown, markdown.contains("itemsViewMode")); //$NON-NLS-1$
+            assertTrue(markdown, markdown.contains("groupFields.items[].periodAdditionType")); //$NON-NLS-1$
+            assertTrue(markdown, !markdown.contains("pointsViewMode")); //$NON-NLS-1$
+            assertTrue(markdown, !markdown.contains("seriesViewMode")); //$NON-NLS-1$
+        }
+        String rows = options(schema, root + "1/rows/0", "table"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(rows, rows.contains("groupState")); //$NON-NLS-1$
+        assertTrue(rows, !rows.contains("rowsViewMode")); //$NON-NLS-1$
+    }
+
+    /** An exact group-field address lists only the members applyGroupField writes. */
+    @Test
+    public void testGroupFieldAddressListsTheGroupFieldEnums()
+    {
+        com._1c.g5.v8.dt.dcs.model.settings.DcsFactory factory =
+            com._1c.g5.v8.dt.dcs.model.settings.DcsFactory.eINSTANCE;
+        DataCompositionSchema schema =
+            com._1c.g5.v8.dt.dcs.model.schema.DcsFactory.eINSTANCE.createDataCompositionSchema();
+        DataCompositionSettings settings = factory.createDataCompositionSettings();
+        DataCompositionChart chart = factory.createDataCompositionChart();
+        DataCompositionChartGroup point = factory.createDataCompositionChartGroup();
+        DataCompositionGroupFields fields = factory.createDataCompositionGroupFields();
+        fields.getItems().add(factory.createDataCompositionGroupField());
+        point.setGroupFields(fields);
+        chart.getPoints().add(point);
+        settings.getItems().add(chart);
+        schema.setDefaultSettings(settings);
+
+        String markdown = options(schema,
+            "Report.Options#/defaultSettings/items/0/points/0/groupFields/items/0", "grouping"); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(markdown, markdown.contains("DataCompositionGroupType")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("DataCompositionPeriodAdditionType")); //$NON-NLS-1$
+        assertTrue(markdown, !markdown.contains("groupState")); //$NON-NLS-1$
+        assertTrue(markdown, !markdown.contains("itemsViewMode")); //$NON-NLS-1$
+        assertTrue(markdown, !markdown.contains("groupFields.items[]")); //$NON-NLS-1$
+        assertTrue(markdown, !markdown.contains("output parameter")); //$NON-NLS-1$
+        assertTrue(markdown, markdown.contains("**Total:** 2 options")); //$NON-NLS-1$
+    }
+
+    /** A dynamic list refuses every chart change, so its options offer no chart vocabulary. */
+    @Test
+    public void testDynamicListRefusesChartOptions()
+    {
+        com._1c.g5.v8.dt.dcs.model.settings.DcsFactory factory =
+            com._1c.g5.v8.dt.dcs.model.settings.DcsFactory.eINSTANCE;
+        DataCompositionSettings settings = factory.createDataCompositionSettings();
+        DataCompositionChart chart = factory.createDataCompositionChart();
+        DataCompositionChartGroup point = factory.createDataCompositionChartGroup();
+        DataCompositionGroupFields fields = factory.createDataCompositionGroupFields();
+        fields.getItems().add(factory.createDataCompositionGroupField());
+        point.setGroupFields(fields);
+        chart.getPoints().add(point);
+        settings.getItems().add(chart);
+        DynamicListExtInfo list = FormFactory.eINSTANCE.createDynamicListExtInfo();
+        list.setListSettings(settings);
+        String root = "Catalog.Products.Form.ListForm.Attribute.List"; //$NON-NLS-1$
+
+        String[][] refused = {
+            {root, "chart"}, //$NON-NLS-1$
+            {root + "#/listSettings/items/0", "chart"}, //$NON-NLS-1$ //$NON-NLS-2$
+            {root + "#/listSettings/items/0/points/0", "chart"}, //$NON-NLS-1$ //$NON-NLS-2$
+            {root + "#/listSettings/items/0/points/0/groupFields/items/0", "grouping"}}; //$NON-NLS-1$ //$NON-NLS-2$
+        for (String[] request : refused)
+        {
+            DcsOptions.Result result = dynamicListOptions(list, request[0], request[1]);
+            assertTrue(request[0] + " must be refused", !result.isSuccess()); //$NON-NLS-1$
+            assertTrue(result.error(), result.error().contains("A dynamic list draws no chart")); //$NON-NLS-1$
+            assertTrue(result.error(), result.error().contains("'" + request[0] + "'")); //$NON-NLS-1$ //$NON-NLS-2$
+            assertTrue(result.error(), result.error().contains("defaultSettings or variants")); //$NON-NLS-1$
+        }
+        DcsOptions.Result appearance = dynamicListOptions(list, root, "conditionalAppearance"); //$NON-NLS-1$
+        assertTrue(appearance.error(), appearance.isSuccess());
+    }
+
+    private static DcsOptions.Result dynamicListOptions(DynamicListExtInfo list, String address,
+        String type)
+    {
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            return DcsOptions.render("Catalog.Products.Form.ListForm.Attribute.List", //$NON-NLS-1$
+                TargetKind.DYNAMIC_LIST, list, address(address), type, "en", Version.V8_3_27, //$NON-NLS-1$
+                Integer.valueOf(1000), 0);
+        }
+    }
+
+    private static String options(DataCompositionSchema schema, String address, String type)
+    {
+        DcsOptions.Result result;
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            result = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, schema, //$NON-NLS-1$
+                address(address), type, "en", Version.V8_3_27, Integer.valueOf(1000), 0); //$NON-NLS-1$
+        }
+        assertTrue(result.error(), result.isSuccess());
+        return result.markdown();
+    }
+
+    @Test
+    public void testPlatformCatalogueDeclaresAutoIndentAsNumber()
+        throws Exception
+    {
+        DcsOptions.Result options;
+        try (DcsCatalogueTestRuntime.Scope ignored =
+            DcsCatalogueTestRuntime.prepareCatalogues(Version.V8_3_27))
+        {
+            options = DcsOptions.render("Report.Options", TargetKind.REPORT_MAIN_DCS, null, //$NON-NLS-1$
+                address("Report.Options"), "conditionalAppearance", "en", Version.V8_3_27, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                Integer.valueOf(1000), 0);
+        }
+        assertTrue(options.error(), options.isSuccess());
+        assertRow(options.markdown(), "AutoIndent", "Number"); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    private static DataCompositionAppearance write(DcsAvailableParameterCollection catalogue,
+        String source)
+    {
+        JsonObject body = JsonParser.parseString(source).getAsJsonObject();
+        DcsPresentationParser.LanguageContext english =
+            new DcsPresentationParser.LanguageContext(Arrays.asList("en", "ru"), "en"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        DcsSettingsWriter.AppearanceResult result = DcsSettingsWriter.buildAppearanceForTest(
+            body, null, english, catalogue);
+        assertNull(result.error, result.error);
+        assertNotNull(result.value);
+        return result.value;
+    }
+
+    private static void assertWrittenType(DataCompositionAppearance appearance, String name,
+        Class<?> type)
+    {
+        assertTrue(name + " must land as " + type.getSimpleName(), //$NON-NLS-1$
+            type.isInstance(item(appearance, name).getValues().get(0)));
+    }
+
+    private static DataCompositionParameterValue item(DataCompositionAppearance appearance,
+        String name)
+    {
+        for (DataCompositionParameterValue item : appearance.getItems())
+        {
+            if (item.getParameter() != null && name.equals(item.getParameter().getValue()))
+            {
+                return item;
+            }
+        }
+        throw new AssertionError("Missing written appearance parameter " + name); //$NON-NLS-1$
+    }
+
+    private static void assertRow(String markdown, String name, String type)
+    {
+        String row = "| appearance | " + name + " | " + type + " |"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertTrue("Missing options row prefix '" + row + "' in:\n" + markdown, //$NON-NLS-1$ //$NON-NLS-2$
+            markdown.contains(row));
+    }
+
+    private static DcsAddress address(String source)
+    {
+        DcsAddress.ParseResult parsed = DcsAddress.parse(source);
+        if (!parsed.isSuccess()) throw new AssertionError(parsed.failure().message());
+        return parsed.address();
+    }
+}

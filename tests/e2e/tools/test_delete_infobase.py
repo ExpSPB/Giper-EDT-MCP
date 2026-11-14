@@ -347,7 +347,7 @@ def _assert_directory_warning(workspace, directory, message_fragment, with_detai
                     entries.append(entry)
     assert entries, "the server must log the directory outcome in this workspace: %s" % directory
     for entry in entries:
-        assert entry.startswith("!ENTRY com.ditrix.edt.mcp.server 2 "), entry
+        assert entry.startswith("!ENTRY fm.giper.edt.mcp.server 2 "), entry
         assert "!STACK" not in entry, "a non-fatal directory outcome must carry no stack: %s" % entry
         if with_detail:
             message = entry.split("!MESSAGE ", 1)[1].splitlines()[0]

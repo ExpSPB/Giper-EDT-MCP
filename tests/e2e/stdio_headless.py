@@ -17,7 +17,7 @@ from headless_development_contracts import (READ_TOOLS, WRITE_TOOLS, run_metadat
                                            failure_details)
 
 
-APPLICATION = "com.ditrix.edt.mcp.server.stdioHost"
+APPLICATION = "fm.giper.edt.mcp.server.stdioHost"
 
 
 def launch_command(java, install, workspace):

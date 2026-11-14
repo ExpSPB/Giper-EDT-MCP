@@ -1,22 +1,30 @@
-[![GitHub all releases](https://img.shields.io/github/downloads/DitriXNew/EDT-MCP/total)](https://github.com/DitriXNew/EDT-MCP/releases)
+[![GitHub all releases](https://img.shields.io/github/downloads/ExpSPB/Giper-EDT-MCP/total)](https://github.com/ExpSPB/Giper-EDT-MCP/releases)
 
 
-[![Build & Unit Tests](https://github.com/DitriXNew/EDT-MCP/actions/workflows/build.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/build.yml)
-[![Proxy](https://github.com/DitriXNew/EDT-MCP/actions/workflows/proxy.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/proxy.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=bugs)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=DitriXNew_EDT-MCP&metric=coverage)](https://sonarcloud.io/summary/new_code?id=DitriXNew_EDT-MCP)
+[![Build & Unit Tests](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/build.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/build.yml)
+[![Proxy](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/proxy.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/proxy.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=bugs)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ExpSPB_Giper-EDT-MCP&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ExpSPB_Giper-EDT-MCP)
 
-[![E2E 2026.2](https://github.com/DitriXNew/EDT-MCP/actions/workflows/e2e-2026.2.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/e2e-2026.2.yml)
+[![E2E 2026.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2026.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/e2e-2026.2.yml)
 
-[![Conformance 2026.2](https://github.com/DitriXNew/EDT-MCP/actions/workflows/conformance-2026.2.yml/badge.svg)](https://github.com/DitriXNew/EDT-MCP/actions/workflows/conformance-2026.2.yml)
+[![Conformance 2026.2](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2026.2.yml/badge.svg)](https://github.com/ExpSPB/Giper-EDT-MCP/actions/workflows/conformance-2026.2.yml)
 
 > **Build & Unit Tests**, **E2E**, and **MCP Conformance** all run on stock GitHub-hosted runners (cloud CI) — no docker image, no self-hosted runner. E2E and Conformance run against **EDT 2026.2** (build 2026.2, Eclipse 4.38 / Java 25): the setup step installs a headless EDT of that version on the runner via `p2 director`. E2E additionally imports the test fixtures into an empty workspace via the plugin's headless bootstrap (`EDT_MCP_IMPORT_PROJECTS`) and skips the live-infobase tools, so no 1C platform is needed. Each badge reflects its latest run.
 
-# EDT MCP Server
+# Giper-EDT-MCP
+
+Giper-EDT-MCP is maintained by ExpSPB and forked from [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX. See [NOTICE](NOTICE).
 
 MCP (Model Context Protocol) server plugin for 1C:EDT, enabling AI assistants (Claude, GitHub Copilot, Cursor, etc.) to interact with EDT workspace.
+
+<details open>
+<summary><strong>1.0.14</strong></summary>
+
+Giper-EDT-MCP for EDT 2026.2.2, based on upstream commit `9273628f`.
+</details>
 
 > [!TIP]
 > **Contributing / making changes?** Read [CLAUDE.md](CLAUDE.md) first — it's the code-conduct "minefield map": hard don'ts and the stop-and-think-twice zones for this codebase (BM transactions, the bilingual ru/en model, cascading rename, etc.). Detailed how-to lives in the skills under `.claude/skills/`.
@@ -66,11 +74,13 @@ for prompt/resource-template arguments; it does not autocomplete ordinary tool a
 
 ## Installation
 
+EDT identifies Giper-EDT-MCP as a separate feature from upstream EDT-MCP. If you are switching an existing installation, uninstall the upstream feature first and configure Giper-EDT-MCP in EDT Preferences after installation.
+
 ### From Update Site
 
 1. In EDT: **Help → Install New Software...**
-2. Add update site URL: `https://ditrixnew.github.io/EDT-MCP/`
-3. Select **EDT MCP Server Feature**
+2. Add update site URL: `https://expspb.github.io/Giper-EDT-MCP/`
+3. Select **EDT MCP Server (for Giper.fm)**
 4. Restart EDT
 
 ### From Windows command line</strong> - "one shot" very fast install
@@ -78,13 +88,13 @@ for prompt/resource-template arguments; it does not autocomplete ordinary tool a
 Close your EDT (!) and run:
 
 ```bash
-rem Here  "%VER_EDT% = 2025.2.3+30"  just for example - please, set YOUR actual version !
-set VER_EDT=2025.2.3+30
+rem Here  "%VER_EDT% = 2026.2.2+21"  just for example - please, set YOUR actual version !
+set VER_EDT=2026.2.2+21
 
 "\your\path\to\EDT\components\1c-edt-%VER_EDT%-x86_64\1cedt.exe" -nosplash ^
     -application org.eclipse.equinox.p2.director ^
-    -repository https://ditrixnew.github.io/EDT-MCP/ ^
-	-installIU com.ditrix.edt.mcp.server.feature.feature.group ^
+    -repository https://expspb.github.io/Giper-EDT-MCP/ ^
+	-installIU fm.giper.edt.mcp.server.feature.feature.group ^
 	-profileProperties org.eclipse.update.reconcile=true
 ```
 
@@ -249,7 +259,7 @@ Enable or disable entire groups or individual tools from the **Tools** tab in **
 (off by default). It opens metadata objects, members and managed forms by `fqn`, or BSL modules
 by `modulePath` with an optional `line` or `methodName`. Pass `projectName` and exactly one target.
 Calls require an EDT workbench and wait at most 5 seconds for its UI thread; timed-out queued
-requests are cancelled. See the [open_editor guide](mcp/bundles/com.ditrix.edt.mcp.server/guides/open_editor.md).
+requests are cancelled. See the [open_editor guide](mcp/bundles/fm.giper.edt.mcp.server/guides/open_editor.md).
 
 ### Presets
 
@@ -433,7 +443,7 @@ The proxy supports [client bearer authentication and separate tokens for each ED
 Network listeners require a proxy token; use HTTPS through a reverse proxy or a VPN to encrypt LAN traffic.
 An HTTPS reverse proxy must forward only `/mcp` (and optionally `/health`), never `/admin/` or a catch-all `/` route; see [proxy security](proxy/README.md#security).
 
-Running more than one EDT instance at once? [`edt-mcp-proxy`](proxy/) is a standalone router that exposes a single, stable MCP endpoint on `:8764` and forwards each call to the right EDT-MCP instance by `projectName`, discovering live instances in the background. It ships as `edt-mcp-proxy-<version>.jar` alongside the plugin archive in every [release](https://github.com/DitriXNew/EDT-MCP/releases). See [proxy/README.md](proxy/README.md) for setup, CLI options and configuration.
+Running more than one EDT instance at once? [`edt-mcp-proxy`](proxy/) is a standalone router that exposes a single, stable MCP endpoint on `:8764` and forwards each call to the right EDT-MCP instance by `projectName`, discovering live instances in the background. It ships as `edt-mcp-proxy-<version>.jar` alongside the plugin archive in every [release](https://github.com/ExpSPB/Giper-EDT-MCP/releases). See [proxy/README.md](proxy/README.md) for setup, CLI options and configuration.
 
 For duplicate project names, the proxy reports `workspacePath` in `list_projects` and
 `router_status`; pass that exact value alongside `projectName` to select the intended
@@ -787,7 +797,7 @@ An action/confirmation/status result with **none** of these returns **Markdown**
 
 Which tool families stay JSON, and why:
 
-- **metadata-writes** (`create_metadata`, `sort_metadata`, `modify_metadata`, `delete_metadata`, via `AbstractMetadataWriteTool`) — return the edited object's round-trip **FQN** *(a)*. `delete_metadata` also accepts `operations: [{action: "delete", fqn: "..."}]` instead of `fqn` for 1..100 members of one form: preview, then `confirm:true`. Its batch mode uses one model transaction/export, aggregates preflight errors with zero applied writes, and preserves committed operation indexes on export refusals. `atomic` defaults to true; false is refused. Attributes/columns, multiple containers, create/modify actions, `force:true`, `timeout` and unknown fields are unsupported. Disk-export state and written-object markers remain separate from model atomicity. See the [batch contract](mcp/bundles/com.ditrix.edt.mcp.server/guides/delete_metadata.md#atomic-single-form-batch).
+- **metadata-writes** (`create_metadata`, `sort_metadata`, `modify_metadata`, `delete_metadata`, via `AbstractMetadataWriteTool`) — return the edited object's round-trip **FQN** *(a)*. `delete_metadata` also accepts `operations: [{action: "delete", fqn: "..."}]` instead of `fqn` for 1..100 members of one form: preview, then `confirm:true`. Its batch mode uses one model transaction/export, aggregates preflight errors with zero applied writes, and preserves committed operation indexes on export refusals. `atomic` defaults to true; false is refused. Attributes/columns, multiple containers, create/modify actions, `force:true`, `timeout` and unknown fields are unsupported. Disk-export state and written-object markers remain separate from model atomicity. See the [batch contract](mcp/bundles/fm.giper.edt.mcp.server/guides/delete_metadata.md#atomic-single-form-batch).
 - **debug / profiling tools** — return launch / application / breakpoint IDs and live session state consumed by follow-up calls *(a)*;
 - **`validate_query`** — returns the error **line/column** *(b)*; complete native DBView validation reports `VALID`, `INVALID`, or `PARTIAL`; query-bearing DCS/DynamicList writes share this validator and refuse proven errors before mutation.
 - **`list_configurations`** — returns config **identities** consumed by other tools *(a)*;
@@ -1290,7 +1300,7 @@ This is a valid p2 update site — install via EDT → *Help → Install New Sof
 | `--archive-prefix PREFIX` | — | `MCP-EDT.v` | Archive name prefix (final name: `<prefix><version>.zip`) |
 | `--project-root PATH` | `EDT_MCP_PROJECT_ROOT` | parent of script dir | Repo root containing `mcp/` |
 | `--mcp-dir PATH` | — | `<project-root>/mcp` | Maven project directory |
-| `--repo-dir PATH` | — | `<project-root>/mcp/repositories/com.ditrix.edt.mcp.server.repository/target/repository` | Tycho p2 output to repackage |
+| `--repo-dir PATH` | — | `<project-root>/mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository` | Tycho p2 output to repackage |
 | `--output-dir PATH` | `EDT_MCP_OUTPUT_DIR` | `<script-dir>/dist` | Where the final zip lands |
 | `--java-home PATH` | `JAVA_HOME` | — | JDK 25 home; if set, prepended to `PATH` for Maven |
 | `--maven-home PATH` | `MAVEN_HOME` / `M2_HOME` | — | Maven home (uses `<maven-home>/bin/mvn`); otherwise falls back to `mvn` on `PATH` |

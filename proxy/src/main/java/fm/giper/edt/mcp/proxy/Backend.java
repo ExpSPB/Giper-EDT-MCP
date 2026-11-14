@@ -1,0 +1,601 @@
+/**
+ * MCP Server for EDT
+ * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Licensed under AGPL-3.0-or-later
+ */
+
+package fm.giper.edt.mcp.proxy;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+
+import com.google.gson.JsonObject;
+
+/**
+ * One discovered EDT-MCP instance, addressed by its port on localhost.
+ * <p>
+ * Owns the MCP client-side session against that instance: the session is established
+ * lazily on first use ({@link #ensureSession()}), cached, and transparently re-established
+ * once when the backend reports it stale (HTTP 404 on {@link #forward(String)}).
+ * All requests mirror the wire behaviour of the e2e harness client: JSON body and the
+ * {@code Mcp-Session-Id} header echoed back verbatim once the backend issues one. The
+ * {@code Accept} header defaults to {@code application/json, text/event-stream} for every
+ * internal caller (the session handshake, {@link #callToolBlocking}, the fan-out path) since
+ * they all parse the response themselves and tolerate either framing; the ROUTED pass-through
+ * ({@link #forward(String, String)}) instead forwards the end client's own {@code Accept}
+ * header, so the backend answers in the framing that client actually asked for and the
+ * byte-for-byte relay stays correct.
+ */
+public final class Backend
+{
+    /** MCP protocol version this proxy speaks to its backends. */
+    static final String PROTOCOL_VERSION = "2025-11-25"; //$NON-NLS-1$
+
+    private static final String HEADER_SESSION_ID = "Mcp-Session-Id"; //$NON-NLS-1$
+    private static final String HEADER_PROTOCOL_VERSION = "MCP-Protocol-Version"; //$NON-NLS-1$
+    private static final String CONTENT_TYPE_JSON = "application/json; charset=utf-8"; //$NON-NLS-1$
+    private static final String ACCEPT_JSON_AND_SSE = "application/json, text/event-stream"; //$NON-NLS-1$
+
+    /** Health probes must stay cheap: a hung port must not stall a whole registry scan. */
+    private static final int HEALTH_TIMEOUT_SECONDS = 2;
+
+    /** The MCP handshake is two tiny requests; it never needs the long per-call budget. */
+    private static final int HANDSHAKE_TIMEOUT_SECONDS = 10;
+
+    private final int port;
+    private final HttpClient client;
+    private final int timeoutSeconds;
+    private final URI mcpUri;
+    private final URI healthUri;
+    private final String authToken;
+    private final AtomicLong authenticationRequestSequence = new AtomicLong();
+    private final AtomicReference<AuthenticationObservation> authentication =
+        new AtomicReference<>(new AuthenticationObservation(0, 0));
+
+    private record AuthenticationObservation(long sequence, int failureStatus)
+    {
+    }
+    private final AtomicLong requestId = new AtomicLong(0);
+
+    /** Guarded by {@code this}: whether the lazy MCP handshake has been performed. */
+    private boolean handshakeDone;
+
+    /** Guarded by {@code this}: the session id the backend issued, or {@code null} for a session-less backend. */
+    private String sessionId;
+
+    /**
+     * Creates a backend handle for an EDT-MCP instance on {@code 127.0.0.1:<port>}.
+     *
+     * @param port the backend's HTTP port
+     * @param client the shared HTTP client to send requests through
+     * @param timeoutSeconds the per-forwarded-call timeout in seconds
+     */
+    public Backend(int port, HttpClient client, int timeoutSeconds)
+    {
+        this(port, client, timeoutSeconds, null);
+    }
+
+    /** The configured token belongs only to this local backend port. */
+    Backend(int port, HttpClient client, int timeoutSeconds, String authToken)
+    {
+        this.port = port;
+        this.client = client;
+        this.timeoutSeconds = timeoutSeconds;
+        this.mcpUri = URI.create("http://127.0.0.1:" + port + "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+        this.healthUri = URI.create("http://127.0.0.1:" + port + "/health"); //$NON-NLS-1$ //$NON-NLS-2$
+        this.authToken = authToken;
+    }
+
+    /**
+     * Returns the backend's port.
+     *
+     * @return the port this backend listens on
+     */
+    public int getPort()
+    {
+        return port;
+    }
+
+    /**
+     * Probes the backend's {@code /health} endpoint.
+     * <p>
+     * The plugin's health handler always answers HTTP 200 and distinguishes readiness in
+     * the {@code status} field ({@code ok} / {@code starting} / {@code degraded}), so the
+     * probe requires BOTH a 200 status AND {@code "status":"ok"} in the JSON body.
+     * <p>
+     * A healthy responder that declares {@code "role":"proxy"} is REJECTED: that is another
+     * edt-mcp-proxy - or this very proxy, when its own port falls inside the scan range.
+     * Registering a proxy as a backend makes every forwarded request re-enter a proxy and
+     * recurse without bound, exhausting memory or the request pool.
+     *
+     * @return {@code true} when the backend answered 200 with {@code status == "ok"} and is
+     *         not itself a proxy
+     */
+    public boolean probeHealth()
+    {
+        HttpRequest request = HttpRequest.newBuilder(healthUri)
+            .timeout(Duration.ofSeconds(HEALTH_TIMEOUT_SECONDS))
+            .GET()
+            .build();
+        try
+        {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200)
+            {
+                return false;
+            }
+            JsonObject body = Json.parseObject(response.body());
+            return body != null && "ok".equals(Json.str(body, "status")) //$NON-NLS-1$ //$NON-NLS-2$
+                && !"proxy".equals(Json.str(body, "role")); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        catch (IOException e)
+        {
+            return false;
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Ensures an MCP session against the backend, performing the lazy handshake on first
+     * use: {@code initialize} (capturing the {@code Mcp-Session-Id} response header) followed
+     * by {@code notifications/initialized}. The result is cached until
+     * {@link #invalidateSession()}; a session-less backend (no header issued, and no error
+     * reported) is cached too, so the handshake runs at most once per (in)validation cycle. A
+     * JSON-RPC error in the reply means the backend REFUSED - whether or not it minted a session
+     * on the way - and is thrown, never cached.
+     *
+     * @return the backend-issued session id, or {@code null} when the backend is session-less
+     * @throws IOException when the handshake request fails or the backend rejects it
+     * @throws InterruptedException when the calling thread is interrupted mid-handshake
+     */
+    public synchronized String ensureSession() throws IOException, InterruptedException
+    {
+        if (handshakeDone)
+        {
+            return sessionId;
+        }
+
+        JsonObject clientInfo = new JsonObject();
+        clientInfo.addProperty("name", "edt-mcp-proxy"); //$NON-NLS-1$ //$NON-NLS-2$
+        clientInfo.addProperty("version", "1"); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject params = new JsonObject();
+        params.addProperty("protocolVersion", PROTOCOL_VERSION); //$NON-NLS-1$
+        params.add("capabilities", new JsonObject()); //$NON-NLS-1$
+        params.add("clientInfo", clientInfo); //$NON-NLS-1$
+
+        HttpRequest initialize =
+            newPostRequest(buildJsonRpcRequest("initialize", params), null, HANDSHAKE_TIMEOUT_SECONDS); //$NON-NLS-1$
+        HttpResponse<String> response = sendMcpRequest(initialize, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200)
+        {
+            throw new IOException("initialize against backend :" + port + " failed with HTTP " //$NON-NLS-1$ //$NON-NLS-2$
+                + response.statusCode());
+        }
+        String issued = response.headers().firstValue(HEADER_SESSION_ID).orElse(null);
+        // A REFUSED handshake also arrives as 200: JSON-RPC puts its errors in the body, and the
+        // plugin answers its session-cap that way - 200, a JSON-RPC error, no session header.
+        // Caching that as "a backend that issues no sessions" would be wrong twice over: the
+        // refusal is discarded, and every later call would present no session, be answered 400,
+        // and be retried as if this were a pre-session plugin - two calls per request, forever,
+        // with the real reason never reaching the caller.
+        //
+        // Judged on the BODY alone, not on whether a session came with it. A backend is free to
+        // mint a session and still report the handshake as failed, and "it gave me an id" is no
+        // evidence that it agreed to talk - accepting that would send notifications/initialized
+        // and forward calls into an initialization that never completed.
+        // Through stripSseFraming, because this handshake asks for SSE like every other request
+        // and the payload therefore arrives inside a data: frame - reading the raw body would
+        // simply never parse, and the check would pass everything.
+        String handshakeBody = stripSseFraming(response.body());
+        if (Json.isJsonRpcError(handshakeBody))
+        {
+            throw new IOException("initialize against backend :" + port + " was refused: " //$NON-NLS-1$ //$NON-NLS-2$
+                + Json.jsonRpcErrorMessage(handshakeBody));
+        }
+
+        String initialized = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}"; //$NON-NLS-1$
+        sendMcpRequest(newPostRequest(initialized, issued, HANDSHAKE_TIMEOUT_SECONDS),
+            HttpResponse.BodyHandlers.discarding());
+
+        sessionId = issued;
+        handshakeDone = true;
+        return sessionId;
+    }
+
+    /**
+     * Drops the cached session so the next {@link #ensureSession()} re-handshakes.
+     */
+    public synchronized void invalidateSession()
+    {
+        handshakeDone = false;
+        sessionId = null;
+    }
+
+    /**
+     * Drops the cached session ONLY if it is still exactly the session that was just
+     * presented and rejected with a stale-session {@code 404} - a compare-and-invalidate.
+     * Without this guard, two callers racing a stale session both retry: the first
+     * re-handshakes and caches a fresh session, and the second (slower to reach this point)
+     * would unconditionally wipe that fresh session out from under the first, forcing a
+     * needless third handshake.
+     *
+     * @param staleSession the session id that was presented and rejected with 404
+     */
+    private synchronized void invalidateSessionIfCurrent(String staleSession)
+    {
+        if (handshakeDone && Objects.equals(sessionId, staleSession))
+        {
+            handshakeDone = false;
+            sessionId = null;
+        }
+    }
+
+    /**
+     * Forwards a raw JSON-RPC request body to the backend's {@code /mcp} endpoint using the
+     * cached session and the default {@code Accept} header (see the class javadoc). Equivalent
+     * to {@code forward(rawBody, null)}.
+     *
+     * @param rawBody the raw JSON-RPC request body to forward unchanged
+     * @return the backend's HTTP response with a streaming body
+     * @throws IOException when the request (or the re-handshake) fails at the HTTP level
+     * @throws InterruptedException when the calling thread is interrupted mid-call
+     */
+    public HttpResponse<InputStream> forward(String rawBody) throws IOException, InterruptedException
+    {
+        return forward(rawBody, null);
+    }
+
+    /**
+     * Forwards a raw JSON-RPC request body to the backend's {@code /mcp} endpoint using the
+     * cached session and the given {@code Accept} header. On HTTP 404 (the backend no longer
+     * knows the session, e.g. it was restarted) the session is re-established ONCE (via
+     * {@link #invalidateSessionIfCurrent}, a compare-and-invalidate so a concurrent caller's
+     * freshly re-established session is not wiped out) and the request retried; a second 404
+     * is returned to the caller as-is.
+     * <p>
+     * The response body is an {@link InputStream} so the caller can stream it back to the
+     * client byte-for-byte without buffering; the caller owns closing it. This is the ROUTED
+     * pass-through's entry point: {@code acceptHeader} should be the end client's own
+     * {@code Accept} header so the backend answers in the framing that client actually asked
+     * for, and the byte-for-byte relay stays correct.
+     *
+     * @param rawBody the raw JSON-RPC request body to forward unchanged
+     * @param acceptHeader the {@code Accept} header to send; {@code null} or blank falls back
+     *            to the default {@code application/json, text/event-stream}
+     * @return the backend's HTTP response with a streaming body
+     * @throws IOException when the request (or the re-handshake) fails at the HTTP level
+     * @throws InterruptedException when the calling thread is interrupted mid-call
+     */
+    public HttpResponse<InputStream> forward(String rawBody, String acceptHeader)
+        throws IOException, InterruptedException
+    {
+        return sendWithStaleSessionRetry(rawBody, acceptHeader, timeoutSeconds);
+    }
+
+    /** Verifies explicit workspace selection in the same backend session as the forwarded call. */
+    HttpResponse<InputStream> forward(String rawBody, String acceptHeader, String workspacePath)
+        throws IOException, InterruptedException
+    {
+        return sendWithStaleSessionRetry(rawBody, acceptHeader, timeoutSeconds, workspacePath);
+    }
+
+    private HttpResponse<InputStream> sendWithStaleSessionRetry(String rawBody, String acceptHeader,
+        int requestTimeoutSeconds) throws IOException, InterruptedException
+    {
+        return sendWithStaleSessionRetry(rawBody, acceptHeader, requestTimeoutSeconds, null);
+    }
+
+    private HttpResponse<InputStream> sendWithStaleSessionRetry(String rawBody, String acceptHeader,
+        int requestTimeoutSeconds, String workspacePath) throws IOException, InterruptedException
+    {
+        String accept = acceptHeader == null || acceptHeader.isBlank() ? ACCEPT_JSON_AND_SSE : acceptHeader;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            String session = ensureSession();
+            if (workspacePath != null && !verifyWorkspace(session, workspacePath))
+            {
+                invalidateSessionIfCurrent(session);
+                continue;
+            }
+            HttpResponse<InputStream> response = sendMcpRequest(
+                newPostRequest(rawBody, session, requestTimeoutSeconds, accept),
+                HttpResponse.BodyHandlers.ofInputStream());
+            if (attempt == 0 && isStaleSession(response, session))
+            {
+                closeQuietly(response.body());
+                invalidateSessionIfCurrent(session);
+                continue;
+            }
+            return response;
+        }
+        throw new WorkspaceMismatchException("Backend :" + port //$NON-NLS-1$
+            + " kept changing sessions while verifying workspacePath '" + workspacePath //$NON-NLS-1$
+            + "'; call router_refresh and retry."); //$NON-NLS-1$
+    }
+
+    private static boolean isStaleSession(HttpResponse<?> response, String session)
+    {
+        return response.statusCode() == 404 || (response.statusCode() == 400 && session == null);
+    }
+
+    private boolean verifyWorkspace(String session, String expected) throws IOException, InterruptedException
+    {
+        if (session == null)
+        {
+            throw new WorkspaceMismatchException("Cannot verify workspacePath '" + expected //$NON-NLS-1$
+                + "' on session-less backend :" + port + "; update its EDT-MCP plugin and call router_refresh."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        JsonObject arguments = new JsonObject();
+        arguments.addProperty("format", "json"); //$NON-NLS-1$ //$NON-NLS-2$
+        JsonObject params = new JsonObject();
+        params.addProperty("name", "list_projects"); //$NON-NLS-1$ //$NON-NLS-2$
+        params.add("arguments", arguments); //$NON-NLS-1$
+        HttpResponse<InputStream> response = sendMcpRequest(newPostRequest(
+            buildJsonRpcRequest("tools/call", params), session, HANDSHAKE_TIMEOUT_SECONDS), //$NON-NLS-1$
+            HttpResponse.BodyHandlers.ofInputStream());
+        if (isStaleSession(response, session))
+        {
+            closeQuietly(response.body());
+            return false;
+        }
+        String raw = readToolResponse(response, "list_projects"); //$NON-NLS-1$
+        JsonObject result = Json.obj(Json.parseObject(raw), "result"); //$NON-NLS-1$
+        String actual = WorkspaceRouting.workspacePath(BackendRegistry.machinePayload(result));
+        if (response.statusCode() != 200 || BackendRegistry.isToolError(raw) || !expected.equals(actual))
+        {
+            throw new WorkspaceMismatchException("Backend :" + port + " no longer confirms workspacePath '" //$NON-NLS-1$ //$NON-NLS-2$
+                + expected + "' (reported: " + actual + "). Call router_refresh and select the workspace again."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return true;
+    }
+
+    static final class WorkspaceMismatchException extends IOException
+    {
+        private static final long serialVersionUID = 1L;
+
+        WorkspaceMismatchException(String message)
+        {
+            super(message);
+        }
+    }
+
+    /** No backend response body or token is included in authentication diagnostics. */
+    static final class AuthenticationException extends IOException
+    {
+        private static final long serialVersionUID = 1L;
+
+        AuthenticationException(String message)
+        {
+            super(message);
+        }
+    }
+
+    String authenticationError()
+    {
+        int status = authentication.get().failureStatus();
+        return status == 0 ? null : authenticationError(status);
+    }
+
+    private String authenticationError(int status)
+    {
+        return "EDT backend :" + port + " rejected authentication (HTTP " + status
+            + "). Check backend." + port + ".token or backend." + port
+            + ".tokenEnv and restart the proxy after changing credentials.";
+    }
+
+    private <T> HttpResponse<T> sendMcpRequest(HttpRequest request, HttpResponse.BodyHandler<T> handler)
+        throws IOException, InterruptedException
+    {
+        long sequence = authenticationRequestSequence.incrementAndGet();
+        HttpResponse<T> response = client.send(request, handler);
+        checkAuthentication(response, sequence);
+        return response;
+    }
+
+    private void checkAuthentication(HttpResponse<?> response, long sequence) throws AuthenticationException
+    {
+        if (response.statusCode() == 401 || response.statusCode() == 403)
+        {
+            recordAuthentication(sequence, response.statusCode());
+            if (response.body() instanceof InputStream body)
+            {
+                closeQuietly(body);
+            }
+            throw new AuthenticationException(authenticationError(response.statusCode()));
+        }
+        if (response.statusCode() >= 200 && response.statusCode() < 300)
+        {
+            recordAuthentication(sequence, 0);
+        }
+    }
+
+    private void recordAuthentication(long sequence, int failureStatus)
+    {
+        // Atomic ordering covers both late successes and late failures. Health probes never
+        // participate: a public 200 from /health proves nothing about the backend credential.
+        authentication.updateAndGet(previous -> sequence > previous.sequence()
+            ? new AuthenticationObservation(sequence, failureStatus) : previous);
+    }
+
+    /**
+     * Calls one tool on the backend and returns the inner JSON-RPC response string, using the
+     * backend's own configured per-call timeout. Equivalent to
+     * {@code callToolBlocking(toolName, arguments, -1)}.
+     *
+     * @param toolName the tool to call
+     * @param arguments the tool arguments; {@code null} means no arguments
+     * @return the JSON-RPC response as a compact JSON string
+     * @throws IOException when the HTTP call fails
+     * @throws InterruptedException when the calling thread is interrupted mid-call
+     */
+    public String callToolBlocking(String toolName, JsonObject arguments) throws IOException, InterruptedException
+    {
+        return callToolBlocking(toolName, arguments, -1);
+    }
+
+    /**
+     * Calls one tool on the backend and returns the inner JSON-RPC response string.
+     * <p>
+     * Builds a {@code tools/call} JSON-RPC request, forwards it (default {@code Accept}, see
+     * the class javadoc) bounded by {@code timeoutSecondsOverride} instead of the backend's own
+     * configured timeout, reads the whole response body, and strips the SSE framing (the
+     * {@code "data: "} payload of the message event) so the caller gets the plain JSON-RPC
+     * response. A plain-JSON (non-SSE) body is returned unchanged. Used by the registry
+     * ({@code list_projects} during a scan, bounded by the SHORT discovery timeout so one
+     * hung backend cannot stall a whole scan) and by the fan-out path (the normal end-user
+     * timeout, no override).
+     *
+     * @param toolName the tool to call
+     * @param arguments the tool arguments; {@code null} means no arguments
+     * @param timeoutSecondsOverride the per-call timeout in seconds; {@code <= 0} means "use
+     *            this backend's own configured timeout" (no override)
+     * @return the JSON-RPC response as a compact JSON string
+     * @throws IOException when the HTTP call fails
+     * @throws InterruptedException when the calling thread is interrupted mid-call
+     */
+    public String callToolBlocking(String toolName, JsonObject arguments, int timeoutSecondsOverride)
+        throws IOException, InterruptedException
+    {
+        return callToolBlocking(toolName, arguments, timeoutSecondsOverride, null);
+    }
+
+    String callToolBlocking(String toolName, JsonObject arguments, int timeoutSecondsOverride, String workspacePath)
+        throws IOException, InterruptedException
+    {
+        JsonObject params = new JsonObject();
+        params.addProperty("name", toolName); //$NON-NLS-1$
+        params.add("arguments", arguments == null ? new JsonObject() : arguments); //$NON-NLS-1$
+
+        int effectiveTimeoutSeconds = timeoutSecondsOverride > 0 ? timeoutSecondsOverride : timeoutSeconds;
+        HttpResponse<InputStream> response =
+            sendWithStaleSessionRetry(buildJsonRpcRequest("tools/call", params), null, effectiveTimeoutSeconds, //$NON-NLS-1$
+                workspacePath);
+        return readToolResponse(response, toolName);
+    }
+
+    private String readToolResponse(HttpResponse<InputStream> response, String toolName) throws IOException
+    {
+        String body;
+        try (InputStream in = response.body())
+        {
+            // Bounded by the same cap the proxy applies everywhere else it buffers a body
+            // (McpProxyHandler.MAX_BODY_BYTES): this response is held whole in memory to strip
+            // its SSE framing, and it arrives on a discovery/fan-out worker where an
+            // unterminated or huge body would grow unopposed.
+            byte[] bytes = in.readNBytes(McpProxyHandler.MAX_BODY_BYTES + 1);
+            if (bytes.length > McpProxyHandler.MAX_BODY_BYTES)
+            {
+                throw new IOException("Response to '" + toolName + "' from backend port " + port //$NON-NLS-1$ //$NON-NLS-2$
+                    + " exceeds the " + McpProxyHandler.MAX_BODY_BYTES //$NON-NLS-1$
+                    + "-byte limit the proxy can buffer; call that backend directly for a result " //$NON-NLS-1$
+                    + "this large."); //$NON-NLS-1$
+            }
+            body = new String(bytes, StandardCharsets.UTF_8);
+        }
+        return stripSseFraming(body);
+    }
+
+    /**
+     * Extracts the JSON-RPC payload from a Streamable-HTTP response body: a bare JSON
+     * object is returned trimmed; an SSE body ({@code event:}/{@code id:}/{@code data:}
+     * lines) yields the data payload of the LAST event, mirroring the e2e harness client.
+     * Package-private for direct unit testing.
+     *
+     * @param body the raw HTTP response body
+     * @return the inner JSON-RPC message, or the trimmed body when no SSE frame is present
+     */
+    static String stripSseFraming(String body)
+    {
+        String trimmed = body == null ? "" : body.trim(); //$NON-NLS-1$
+        if (trimmed.startsWith("{")) //$NON-NLS-1$
+        {
+            return trimmed;
+        }
+        List<String> events = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String line : trimmed.split("\r?\n", -1)) //$NON-NLS-1$
+        {
+            if (line.startsWith("data:")) //$NON-NLS-1$
+            {
+                if (current.length() > 0)
+                {
+                    current.append('\n');
+                }
+                current.append(line.substring(5).stripLeading());
+            }
+            else if (line.isBlank() && current.length() > 0)
+            {
+                events.add(current.toString());
+                current.setLength(0);
+            }
+        }
+        if (current.length() > 0)
+        {
+            events.add(current.toString());
+        }
+        if (events.isEmpty())
+        {
+            return trimmed;
+        }
+        return events.get(events.size() - 1);
+    }
+
+    private String buildJsonRpcRequest(String method, JsonObject params)
+    {
+        JsonObject request = new JsonObject();
+        request.addProperty("jsonrpc", "2.0"); //$NON-NLS-1$ //$NON-NLS-2$
+        request.addProperty("id", requestId.incrementAndGet()); //$NON-NLS-1$
+        request.addProperty("method", method); //$NON-NLS-1$
+        request.add("params", params); //$NON-NLS-1$
+        return Json.compact(request);
+    }
+
+    /** Builds a POST request with the default {@code Accept} header (the session handshake). */
+    private HttpRequest newPostRequest(String body, String session, int requestTimeoutSeconds)
+    {
+        return newPostRequest(body, session, requestTimeoutSeconds, ACCEPT_JSON_AND_SSE);
+    }
+
+    /** Builds a POST request with an explicit {@code Accept} header (the routed pass-through). */
+    private HttpRequest newPostRequest(String body, String session, int requestTimeoutSeconds, String acceptHeader)
+    {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(mcpUri)
+            .timeout(Duration.ofSeconds(requestTimeoutSeconds))
+            .header("Content-Type", CONTENT_TYPE_JSON) //$NON-NLS-1$
+            .header("Accept", acceptHeader) //$NON-NLS-1$
+            .header(HEADER_PROTOCOL_VERSION, PROTOCOL_VERSION)
+            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        if (session != null)
+        {
+            builder.header(HEADER_SESSION_ID, session);
+        }
+        return BearerAuthentication.addHeader(builder, authToken).build();
+    }
+
+    private static void closeQuietly(InputStream in)
+    {
+        try
+        {
+            in.close();
+        }
+        catch (IOException ignored)
+        {
+            // the stale-session body is irrelevant; only the retry matters
+        }
+    }
+}
