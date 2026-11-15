@@ -97,33 +97,22 @@ jobs:
           cd mcp/repositories/fm.giper.edt.mcp.server.repository/target/repository
           zip -r "$GITHUB_WORKSPACE/MCP-EDT.v${{ steps.version.outputs.version }}.zip" .
 
-      - name: Prepare approved v1.0.15 release notes
+      - name: Prepare approved v1.0.16 release notes
         id: release_notes
-        if: github.ref_name == 'v1.0.15'
+        if: github.ref_name == 'v1.0.16'
         run: |
           body_path="$RUNNER_TEMP/giper-release-notes.md"
           cat > "$body_path" <<'RELEASE_NOTES'
-          Giper-EDT-MCP 1.0.15 переносит профили инструментов на актуальную базу EDT-MCP для 1С:EDT 2026.2. Релиз проверен на 1С:EDT 2026.2.2.21.
+          Исправлена обработка `list_projects` в прокси. Если профиль запрещает вызов, прокси передаёт причину отказа от EDT в MCP-ответе с `isError=true`.
 
-          ### Что изменилось
-
-          - В настройках **Сервер MCP → Инструменты** можно создавать и дублировать профили, настраивать доступные инструменты, копировать адрес подключения и импортировать или экспортировать профиль в JSON. Изменения вступают в силу после «Применить» или «ОК».
-          - Именованные профили доступны по `/mcp/profiles/<id>`. Для явного подключения к профилю `default` используйте `/mcp/profiles/default`. Прежний адрес `/mcp` сохраняет совместимость с существующими настройками подключения.
-          - HTTP-сессия привязана к маршруту профиля. Изменения списка разрешённых инструментов действуют со следующего запроса. Клиенты с открытым SSE-потоком получают уведомление об изменении списка инструментов для своего маршрута.
-          - `edt-mcp-proxy` поддерживает профильные маршруты и учитывает совместимость подключённых серверов EDT при выборе адресата вызова.
-          - `get_server_status` показывает запрошенный и фактический профили. Параметр `includeProfiles` добавляет список доступных профилей, а `includeProfileTools` — их списки инструментов.
-          - Проверка обновлений обращается к GitHub Releases форка и включена в релизной сборке.
-
-          На стенде проверены импорт и экспорт через интерфейс EDT, сохранение профиля после перезапуска и разные права профилей при вызове через прокси.
+          На стенде с 1С:EDT 2026.2.2.21 проверены оба сценария. Профиль `ui-test` вернул отказ `Tool 'list_projects' is not allowed by profile 'ui-test'`. Профиль `default` вернул `TestConfiguration` со статусом `ready`.
 
           ### Файлы релиза
 
-          - `MCP-EDT.v1.0.15.zip` — архив для установки плагина в EDT.
-          - `edt-mcp-proxy-v1.0.15.jar` — отдельный прокси для работы с несколькими экземплярами EDT.
-
-          Для установок на EDT 2025.2.5 сохранена ветка `giper-2025.2`.
+          - `MCP-EDT.v1.0.16.zip` — архив для установки плагина в EDT.
+          - `edt-mcp-proxy-v1.0.16.jar` — прокси для работы с несколькими экземплярами EDT.
           RELEASE_NOTES
-          printf '%s\n' 'title=Giper-EDT-MCP 1.0.15 для 1С:EDT 2026.2' "body_path=$body_path" >> "$GITHUB_OUTPUT"
+          printf '%s\n' 'title=Giper-EDT-MCP 1.0.16 для 1С:EDT 2026.2' "body_path=$body_path" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release draft
         uses: softprops/action-gh-release@v3
