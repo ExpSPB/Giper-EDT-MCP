@@ -9,7 +9,16 @@ instance, point it at **one** endpoint — the proxy on port **8764** — and th
 every `tools/call` to the EDT instance that owns the requested project.
 
 The proxy is a plain Java process (no Eclipse, no OSGi). It talks to EDT-MCP servers
-over their normal `/mcp` endpoint using the same MCP Streamable HTTP wire contract.
+over `/mcp` and `/mcp/profiles/<id>` using the same MCP Streamable HTTP wire contract.
+`/mcp` remains the legacy compatibility channel, using the backend's legacy tool settings
+and supporting older plugins. `/mcp/profiles/<id>` is a separate, fixed allowlist channel;
+each backend profile must be enabled in **Window → Preferences → MCP Server → Tools**.
+The explicit default profile URL is `/mcp/profiles/default`. Unknown or disabled IDs fall
+back to default during initialization, and the proxy reports that fallback in initialize
+instructions and `get_server_status.activeProfile`. It groups profile backends by effective
+profile ID, fallback state and tool-list fingerprint, then routes only within a confirmed
+compatible group. A backend that cannot confirm the profile contract is not used for that
+profile channel.
 Current plugins report their workspace identity in `list_projects(format=json)`;
 older plugins remain routable by unique project names.
 
@@ -42,8 +51,44 @@ edt-mcp-proxy listening on :8764, scanning 8765-8774
 ```
 
 Then connect your MCP client (Claude, Copilot, Cursor, ...) to
-`http://127.0.0.1:8764/mcp` — exactly as you would connect it to a single EDT-MCP
-server, just a different port.
+`http://127.0.0.1:8764/mcp` — or choose an explicit profile channel such as
+`http://127.0.0.1:8764/mcp/profiles/review` — exactly as you would connect it to a
+single EDT-MCP server, just a different port.
+
+### Profile endpoints, sessions and events
+
+Keep `/mcp` for clients using the legacy tool configuration. Use
+`/mcp/profiles/<id>` for a named, enabled profile; `/mcp/profiles/default` selects the
+saved default profile explicitly. Each path has its own proxy session. A session ID
+initialized on one endpoint cannot be replayed on another; initialize again after changing
+the URL. Unknown or disabled IDs can still initialize, but receive the backend's default
+surface. Check `get_server_status.activeProfile.id`, `requestedProfileId`, and
+`fallbackApplied` before relying on the requested ID. If the effective profile identity
+changes, the proxy expires sessions and SSE streams on that endpoint; reconnect and
+initialize a fresh session. An allowlist-only update keeps the session and sends the
+matching `notifications/tools/list_changed` advisory to subscribed clients.
+
+For explicit profiles, the proxy exposes tools only after it confirms a compatible backend group.
+`get_server_status.activeProfile.endpoint` is rewritten to the proxy URL for the current
+request path. With `includeProfiles: true`, `availableProfiles` contains only profile URLs
+the proxy can route consistently across its current live backends, with each endpoint
+rewritten to the proxy host and port. A backend that lacks the profile status contract is
+still available through legacy `/mcp`, but is excluded from explicit profile channels.
+
+Profile SSE subscriptions use a GET on the same explicit endpoint as the session, with
+`Accept: text/event-stream`, that session's `Mcp-Session-Id`, and the proxy Authorization
+header when authentication is configured. For example:
+
+```http
+GET /mcp/profiles/review HTTP/1.1
+Accept: text/event-stream
+Mcp-Session-Id: <session-id>
+Authorization: Bearer <proxy-token>
+```
+
+The proxy sends `notifications/tools/list_changed` only to streams for the matching profile
+path. `GET /mcp` is not an SSE subscription and returns `405`; use an explicit profile path.
+The proxy currently acknowledges client `notifications/*` POSTs with `202`.
 
 ## CLI subcommands
 
@@ -182,9 +227,10 @@ automatically a valid proxy token; presenting it to the proxy returns `401` when
 the configured credentials differ. Restart or reconnect the client after saving
 its settings so existing sessions use the new endpoint and header.
 
-All clients holding that token can access all discovered EDT tools. This is a shared
-credential, not per-client accounts or project ACLs. Backend tokens are never sent
-to clients. The client's Authorization header is never forwarded to an EDT; only
+All clients holding that token can access the tools exposed by the proxy endpoint they
+use, across compatible backends. This is a shared credential, not per-client accounts
+or project ACLs; profile allowlists still apply to explicit profile endpoints. Backend
+tokens are never sent to clients. The client's Authorization header is never forwarded to an EDT; only
 that port's configured token is used for discovery, handshake, retries and calls.
 Unconfigured ports receive no token. `/health` probes receive no token either.
 
@@ -214,27 +260,30 @@ listener otherwise. Configuring any backend token also requires client authentic
 even on loopback, so protected EDT tools cannot be exposed through an unauthenticated
 local proxy. A token-free loopback proxy remains compatible with token-free EDTs.
 
-Authentication is checked before reading a request body or looking up its session,
-on every `/mcp` method. Missing, wrong or duplicate Authorization headers return
-`401` with a Bearer challenge. Token digests are compared in constant time. The
+Authentication is checked before parsing an MCP endpoint, reading a request body or
+looking up its session, on every `/mcp` and `/mcp/profiles/<id>` method. Missing, wrong
+or duplicate Authorization headers return `401` with a Bearer challenge. Token digests
+are compared in constant time. The
 public `/health` endpoint reports only liveness, the proxy role and backend count.
 
 **Bearer authentication does not encrypt HTTP.** For network traffic, use a TLS
 reverse proxy or VPN, restrict the firewall to intended clients, and keep EDT ports
 bound to loopback. When using a TLS reverse proxy, forward Authorization unchanged
-and restrict the direct HTTP listener to that reverse proxy. **Allow only the exact
-`/mcp` path (and optionally `/health`) through the reverse proxy. Do not forward
-`/admin/` or any other path; do not proxy `/` as a catch-all.** The TCP peer seen by
+and restrict the direct HTTP listener to that reverse proxy. **Allow only `/mcp`, the
+intended `/mcp/profiles/<id>` paths, and optionally `/health` through the reverse
+proxy. Do not forward `/admin/` or any other path; do not proxy `/` as a catch-all.**
+The TCP peer seen by
 this service is the reverse proxy, so a loopback upstream does not prove that the
 original client is local. Native TLS and OAuth are not provided by this module.
 
 Two further limits guard against resource exhaustion regardless of the bind address:
 
-- **Request body cap** - a `POST /mcp` body over 4 MiB is rejected with `413` before it is
-  fully read, so an oversized or unbounded request cannot exhaust heap.
+- **Request body cap** - a `POST /mcp` or `POST /mcp/profiles/<id>` body over 4 MiB is
+  rejected with `413` before it is fully read, so an oversized or unbounded request
+  cannot exhaust heap.
 - **Session cap** - the proxy tracks at most 10,000 concurrently open client sessions;
   `initialize` past that cap is refused with a JSON-RPC error asking idle sessions to be closed
-  (`DELETE /mcp`) first.
+  (`DELETE` the matching endpoint) first.
 - **Admin endpoint checks the immediate TCP peer** - `POST /admin/shutdown` (the `stop`
   subcommand's target) requires a loopback peer and the proxy token when configured.
   Direct non-loopback callers get `403`, and other HTTP methods get `405`.
@@ -339,8 +388,9 @@ Two extra tools are injected into `tools/list` (both take no parameters):
 | Endpoint               | Behaviour                                                            |
 |------------------------|-----------------------------------------------------------------------------|
 | `GET /health`          | `200` with `{"status":"ok","role":"proxy","backends":<live count>}`  |
-| `POST /mcp`            | Requires the proxy token when configured; MCP Streamable HTTP with SSE `data:` frames and `Mcp-Session-Id` |
-| `DELETE /mcp`          | Requires the same authentication as POST; closes the client's session **on the proxy**; backend sessions are untouched |
+| `POST /mcp` and `POST /mcp/profiles/<id>` | Requires the proxy token when configured; MCP Streamable HTTP with SSE `data:` frames and `Mcp-Session-Id`; each path is a distinct client session/channel |
+| `GET /mcp/profiles/<id>` | Requires the proxy token when configured and a session bound to that path; opens the SSE event stream |
+| `DELETE /mcp` and `DELETE /mcp/profiles/<id>` | Requires the same authentication as POST; closes the client's session **on the proxy**; backend sessions are untouched |
 | `POST /admin/shutdown` | Requires the proxy token when configured and an immediate loopback TCP peer: `200 {"status":"stopping"}` then graceful shutdown; authenticated non-loopback peers get `403`; other authenticated HTTP methods get `405`. Reverse proxies must never forward this path. This is the `stop` subcommand's target. |
 
 ## Zero-backend behaviour

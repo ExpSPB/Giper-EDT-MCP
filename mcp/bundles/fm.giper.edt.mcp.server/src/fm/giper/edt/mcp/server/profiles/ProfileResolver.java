@@ -39,21 +39,21 @@ public final class ProfileResolver
         if (ToolProfile.DEFAULT_ID.equals(requested))
         {
             return new ProfileResolution(requested, fallback, null, legacyEndpoint,
-                document.getDocumentRevision());
+                document);
         }
 
         ToolProfile requestedProfile = document.get(requested);
         if (requestedProfile == null)
         {
             return new ProfileResolution(requested, fallback, FallbackReason.UNKNOWN_PROFILE, legacyEndpoint,
-                document.getDocumentRevision());
+                document);
         }
         if (!requestedProfile.isEnabled())
         {
             return new ProfileResolution(requested, fallback, FallbackReason.DISABLED_PROFILE, legacyEndpoint,
-                document.getDocumentRevision());
+                document);
         }
         return new ProfileResolution(requested, requestedProfile, null, legacyEndpoint,
-            document.getDocumentRevision());
+            document);
     }
 }

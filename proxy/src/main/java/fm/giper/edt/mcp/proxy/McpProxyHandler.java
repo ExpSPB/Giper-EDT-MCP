@@ -14,11 +14,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.sun.net.httpserver.HttpExchange;
@@ -77,6 +83,7 @@ public final class McpProxyHandler implements HttpHandler
 
     private static final String HTTP_METHOD_POST = "POST"; //$NON-NLS-1$
     private static final String HTTP_METHOD_DELETE = "DELETE"; //$NON-NLS-1$
+    private static final String HTTP_METHOD_GET = "GET"; //$NON-NLS-1$
 
     private static final String METHOD_INITIALIZE = "initialize"; //$NON-NLS-1$
     private static final String METHOD_PING = "ping"; //$NON-NLS-1$
@@ -145,6 +152,13 @@ public final class McpProxyHandler implements HttpHandler
      * has no queue to protect.
      */
     private volatile ThreadPoolExecutor workerPool;
+    private final ThreadPoolExecutor ssePool = new ThreadPoolExecutor(0, 64, 60L,
+        TimeUnit.SECONDS, new SynchronousQueue<>(), runnable -> {
+            Thread thread = new Thread(runnable, "edt-mcp-proxy-client-sse"); //$NON-NLS-1$
+            thread.setDaemon(true);
+            return thread;
+        });
+    private final Set<HttpExchange> sseExchanges = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates the handler.
@@ -160,6 +174,7 @@ public final class McpProxyHandler implements HttpHandler
         this.router = new ProjectRouter(registry);
         this.authentication = new BearerAuthentication(cfg.credentials.clientToken());
         RouterTools.configure(cfg);
+        registry.sseHub().setSessionCloser(sessions::closeByCanonicalPath);
     }
 
     /**
@@ -209,10 +224,21 @@ public final class McpProxyHandler implements HttpHandler
     @Override
     public void handle(HttpExchange exchange) throws IOException
     {
+        boolean handedOff = false;
         try
         {
             if (!authentication.authorize(exchange))
             {
+                return;
+            }
+            ProfileEndpoint endpoint;
+            try
+            {
+                endpoint = ProfileEndpointResolver.resolve(exchange.getRequestURI().getRawPath());
+            }
+            catch (InvalidProfileEndpointException e)
+            {
+                sendPlain(exchange, 400, buildJsonRpcError(ERROR_INVALID_REQUEST, e.getMessage(), null));
                 return;
             }
             // Admission control before any work: shed with a retryable 503 rather than let the
@@ -226,13 +252,20 @@ public final class McpProxyHandler implements HttpHandler
             }
 
             String method = exchange.getRequestMethod();
-            if (HTTP_METHOD_DELETE.equals(method))
+            if (HTTP_METHOD_GET.equals(method))
             {
-                handleDelete(exchange);
+                if (endpoint.isLegacy())
+                    sendPlain(exchange, 405, buildSimpleError("Method not allowed")); //$NON-NLS-1$
+                else
+                    handedOff = handleSseGet(exchange, endpoint);
+            }
+            else if (HTTP_METHOD_DELETE.equals(method))
+            {
+                handleDelete(exchange, endpoint);
             }
             else if (HTTP_METHOD_POST.equals(method))
             {
-                handlePost(exchange);
+                handlePost(exchange, endpoint);
             }
             else
             {
@@ -254,7 +287,84 @@ public final class McpProxyHandler implements HttpHandler
         }
         finally
         {
+            if (!handedOff) exchange.close();
+        }
+    }
+
+    void stopSseStreams()
+    {
+        ssePool.shutdownNow();
+        for (HttpExchange exchange : sseExchanges) exchange.close();
+        sseExchanges.clear();
+    }
+
+    private boolean handleSseGet(HttpExchange exchange, ProfileEndpoint endpoint) throws IOException
+    {
+        String sessionId = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
+        if (sessionId == null || sessionId.isBlank())
+        {
+            sendPlain(exchange, 400, buildJsonRpcError(ERROR_INVALID_REQUEST,
+                "Missing " + HEADER_SESSION_ID + " header - call initialize first.", null)); //$NON-NLS-1$ //$NON-NLS-2$
+            return false;
+        }
+        if (!sessions.isValid(sessionId) || !sessions.isBoundTo(sessionId, endpoint.canonicalPath()))
+        {
+            sendPlain(exchange, 404, buildJsonRpcError(ERROR_INVALID_REQUEST,
+                "Unknown, expired, or endpoint-mismatched MCP session - initialize again.", null)); //$NON-NLS-1$
+            return false;
+        }
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        for (Backend backend : group.getCompatible())
+            backend.channel(endpoint).ensureNotificationListener(registry.sseHub());
+        sseExchanges.add(exchange);
+        try
+        {
+            ssePool.execute(() -> serveSse(exchange, endpoint));
+            return true;
+        }
+        catch (RejectedExecutionException e)
+        {
+            sseExchanges.remove(exchange);
+            exchange.getResponseHeaders().add("Retry-After", "2"); //$NON-NLS-1$ //$NON-NLS-2$
+            sendPlain(exchange, 503, buildSimpleError("Proxy SSE capacity exhausted, retry later")); //$NON-NLS-1$
+            return false;
+        }
+    }
+
+    private void serveSse(HttpExchange exchange, ProfileEndpoint endpoint)
+    {
+        OutputStream out = null;
+        try
+        {
+            exchange.getResponseHeaders().set(HEADER_CONTENT_TYPE, VALUE_TEXT_EVENT_STREAM);
+            exchange.getResponseHeaders().set(HEADER_CACHE_CONTROL, VALUE_NO_CACHE);
+            exchange.getResponseHeaders().set(HEADER_CONNECTION, VALUE_KEEP_ALIVE);
+            exchange.sendResponseHeaders(200, 0);
+            out = exchange.getResponseBody();
+            registry.sseHub().registerClient(endpoint.canonicalPath(), out);
+            while (!Thread.currentThread().isInterrupted())
+            {
+                synchronized (out)
+                {
+                    out.write(": keep-alive\n\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+                    out.flush();
+                }
+                Thread.sleep(5000L);
+            }
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
+        catch (IOException ignored)
+        {
+            // Client disconnected or its profile stream was invalidated.
+        }
+        finally
+        {
+            if (out != null) registry.sseHub().unregisterClient(endpoint.canonicalPath(), out);
             exchange.close();
+            sseExchanges.remove(exchange);
         }
     }
 
@@ -262,9 +372,15 @@ public final class McpProxyHandler implements HttpHandler
      * Closes the caller's proxy-issued session (idempotent - an unknown or absent session
      * id is simply ignored) and answers {@code 200}. Backend sessions are untouched.
      */
-    private void handleDelete(HttpExchange exchange) throws IOException
+    private void handleDelete(HttpExchange exchange, ProfileEndpoint endpoint) throws IOException
     {
         String sessionId = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
+        if (sessions.isValid(sessionId) && !sessions.isBoundTo(sessionId, endpoint.canonicalPath()))
+        {
+            sendPlain(exchange, 400, buildJsonRpcError(ERROR_INVALID_REQUEST,
+                "MCP session is bound to a different endpoint.", null)); //$NON-NLS-1$
+            return;
+        }
         sessions.close(sessionId);
         sendPlain(exchange, 200, ""); //$NON-NLS-1$
     }
@@ -277,7 +393,7 @@ public final class McpProxyHandler implements HttpHandler
      * delegated to their dedicated handlers. A body over {@link #MAX_BODY_BYTES} is rejected
      * with {@code 413} before any further processing (see {@link #readBody}).
      */
-    private void handlePost(HttpExchange exchange) throws IOException
+    private void handlePost(HttpExchange exchange, ProfileEndpoint endpoint) throws IOException
     {
         String rawBody = readBody(exchange);
         if (rawBody == null)
@@ -309,8 +425,32 @@ public final class McpProxyHandler implements HttpHandler
 
         if (isInitialize)
         {
-            handleInitialize(exchange, requestJson, requestId);
+            handleInitialize(exchange, requestJson, requestId, endpoint);
             return;
+        }
+        String clientSessionId = exchange.getRequestHeaders().getFirst(HEADER_SESSION_ID);
+        if (!sessions.isBoundTo(clientSessionId, endpoint.canonicalPath()))
+        {
+            sendPlain(exchange, 400, buildJsonRpcError(ERROR_INVALID_REQUEST,
+                "MCP session is bound to a different endpoint; initialize again on " + endpoint.canonicalPath(), requestId));
+            return;
+        }
+        if (!endpoint.isLegacy())
+        {
+            ProfileGroupSnapshot currentGroup = registry.groupFor(endpoint);
+            if (currentGroup.getDonor() != null)
+            {
+                String currentIdentity = currentGroup.routeIdentity();
+                String sessionIdentity = sessions.profileIdentity(clientSessionId);
+                if (sessionIdentity != null && !sessionIdentity.equals(currentIdentity))
+                {
+                    sessions.close(clientSessionId);
+                    sendPlain(exchange, 404, buildJsonRpcError(ERROR_INVALID_REQUEST,
+                        "The effective profile for this endpoint changed; initialize again.", requestId)); //$NON-NLS-1$
+                    return;
+                }
+                sessions.bindProfileIdentity(clientSessionId, currentIdentity);
+            }
         }
         if (jsonRpcMethod != null && jsonRpcMethod.startsWith(NOTIFICATION_PREFIX))
         {
@@ -324,11 +464,17 @@ public final class McpProxyHandler implements HttpHandler
         }
         if (METHOD_TOOLS_LIST.equals(jsonRpcMethod))
         {
-            handleToolsList(exchange, rawBody, requestId);
+            handleToolsList(exchange, rawBody, requestId, endpoint);
+            return;
+        }
+        if (METHOD_TOOLS_CALL.equals(jsonRpcMethod)
+            && "get_server_status".equals(Json.str(Json.obj(requestJson, KEY_PARAMS), KEY_NAME))) //$NON-NLS-1$
+        {
+            handleGetServerStatus(exchange, requestJson, requestId, !Boolean.FALSE.equals(sessionCapability), endpoint);
             return;
         }
         handleRouted(exchange, jsonRpcMethod, rawBody, requestJson, requestId,
-            !Boolean.FALSE.equals(sessionCapability));
+            !Boolean.FALSE.equals(sessionCapability), endpoint);
     }
 
     /**
@@ -368,7 +514,8 @@ public final class McpProxyHandler implements HttpHandler
      * cap, in which case {@link SessionManager#create()} returns {@code null} and this answers
      * a JSON-RPC error instead of a session (no {@code Mcp-Session-Id} header is issued).
      */
-    private void handleInitialize(HttpExchange exchange, JsonObject requestJson, Object requestId) throws IOException
+    private void handleInitialize(HttpExchange exchange, JsonObject requestJson, Object requestId,
+        ProfileEndpoint endpoint) throws IOException
     {
         String clientProtocolVersion = Json.str(Json.obj(requestJson, KEY_PARAMS), KEY_PROTOCOL_VERSION);
         String protocolVersion = clientProtocolVersion != null ? clientProtocolVersion : Backend.PROTOCOL_VERSION;
@@ -385,9 +532,32 @@ public final class McpProxyHandler implements HttpHandler
         result.add(KEY_CAPABILITIES, capabilities);
         result.add(KEY_SERVER_INFO, serverInfo);
 
+        if (!endpoint.isLegacy())
+        {
+            ProfileGroupSnapshot group = registry.groupFor(endpoint);
+            if (group.getFallbackReason() != null)
+            {
+                result.addProperty("instructions", "Requested profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$
+                    + "' is unavailable (" + group.getFallbackReason() //$NON-NLS-1$
+                    + "). Connected to profile '" + group.getEffectiveProfileId() //$NON-NLS-1$
+                    + "' instead. Call get_server_status to confirm."); //$NON-NLS-1$
+            }
+            else if (group.getDonor() == null)
+            {
+                result.addProperty("instructions", "Profile endpoint is not yet confirmed; call router_status before routing."); //$NON-NLS-1$
+            }
+        }
+
         // The session remembers ITS client's structuredContent capability: the proxy terminates the
         // handshake, so no backend ever sees it, and several clients can share one proxy.
-        String sessionId = sessions.create(readStructuredContentCapability(requestJson));
+        String profileIdentity = null;
+        if (!endpoint.isLegacy())
+        {
+            ProfileGroupSnapshot group = registry.groupFor(endpoint);
+            if (group.getDonor() != null) profileIdentity = group.routeIdentity();
+        }
+        String sessionId = sessions.create(readStructuredContentCapability(requestJson), endpoint.canonicalPath(),
+            profileIdentity);
         if (sessionId == null)
         {
             sendMcpResponse(exchange, 200, buildJsonRpcError(ERROR_INTERNAL,
@@ -411,15 +581,27 @@ public final class McpProxyHandler implements HttpHandler
      * then the cached descriptors. With no cache, authentication failures stay explicit; a
      * proxy with no live backends exposes only its router tools.
      */
-    private void handleToolsList(HttpExchange exchange, String rawBody, Object requestId) throws IOException
+    private void handleToolsList(HttpExchange exchange, String rawBody, Object requestId,
+        ProfileEndpoint endpoint) throws IOException
     {
         String authenticationFailure = null;
         Integer unreachablePort = null;
-        for (Backend backend : registry.toolsListDonors())
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        String cachedForGroup = registry.cachedToolsListResponse(group);
+        if (cachedForGroup != null && !endpoint.isLegacy())
+        {
+            sendMcpResponse(exchange, 200, rewriteId(cachedForGroup, requestId), null);
+            return;
+        }
+        List<Backend> donors = endpoint.isLegacy() ? registry.toolsListDonors() : group.getCompatible();
+        for (Backend backend : donors)
         {
             try
             {
-                HttpResponse<InputStream> response = backend.forward(rawBody);
+                HttpResponse<InputStream> response = endpoint.isLegacy()
+                    ? backend.forward(rawBody, exchange.getRequestHeaders().getFirst(HEADER_ACCEPT))
+                    : backend.channel(endpoint).forward(rawBody,
+                        exchange.getRequestHeaders().getFirst(HEADER_ACCEPT), null, group.compatibilityKey());
                 String raw;
                 try (InputStream in = response.body())
                 {
@@ -439,8 +621,10 @@ public final class McpProxyHandler implements HttpHandler
                     }
                     raw = new String(bytes, StandardCharsets.UTF_8);
                 }
-                String injected = RouterTools.injectIntoToolsList(Backend.stripSseFraming(raw));
-                registry.cacheToolsListResponse(injected);
+                String normalized = Backend.stripSseFraming(raw);
+                if (!endpoint.isLegacy()) validateToolsListForGroup(group, normalized);
+                String injected = RouterTools.injectIntoToolsList(normalized);
+                registry.cacheToolsListResponse(group, injected);
                 sendMcpResponse(exchange, 200, rewriteId(injected, requestId), null);
                 return;
             }
@@ -464,7 +648,7 @@ public final class McpProxyHandler implements HttpHandler
         {
             registry.refresh();
         }
-        String cached = registry.cachedToolsListResponse();
+        String cached = registry.cachedToolsListResponse(group);
         if (cached != null)
         {
             sendMcpResponse(exchange, 200, rewriteId(cached, requestId), null);
@@ -487,6 +671,15 @@ public final class McpProxyHandler implements HttpHandler
         sendMcpResponse(exchange, 200, body, null);
     }
 
+    static void validateToolsListForGroup(ProfileGroupSnapshot group, String raw)
+    {
+        if (group == null || group.getDonor() == null)
+            throw new IllegalArgumentException("tools/list has no confirmed profile donor"); //$NON-NLS-1$
+        String fingerprint = BackendProfileChannel.fingerprintToolsList(raw);
+        if (!fingerprint.equals(group.getFingerprint()))
+            throw new IllegalArgumentException("tools/list changed after profile resolution"); //$NON-NLS-1$
+    }
+
     /**
      * Handles {@code tools/call} and any other JSON-RPC method through {@link ProjectRouter}:
      * a {@code BACKEND} decision is forwarded and streamed back byte-for-byte, {@code
@@ -496,10 +689,10 @@ public final class McpProxyHandler implements HttpHandler
      * error for any other method.
      */
     private void handleRouted(HttpExchange exchange, String jsonRpcMethod, String rawBody, JsonObject requestJson,
-        Object requestId, boolean allowStructuredContent) throws IOException
+        Object requestId, boolean allowStructuredContent, ProfileEndpoint endpoint) throws IOException
     {
         boolean isToolCall = METHOD_TOOLS_CALL.equals(jsonRpcMethod);
-        ProjectRouter.RouteResult route = router.route(jsonRpcMethod, requestJson);
+        ProjectRouter.RouteResult route = router.route(jsonRpcMethod, requestJson, endpoint);
         switch (route.kind)
         {
             case BACKEND:
@@ -507,14 +700,14 @@ public final class McpProxyHandler implements HttpHandler
                     isToolCall ? WorkspaceRouting.backendRequest(rawBody, requestJson) : rawBody,
                     isToolCall ? WorkspaceRouting.workspacePath(WorkspaceRouting.arguments(requestJson)) : null,
                     isToolCall, requestId,
-                    allowStructuredContent);
+                    allowStructuredContent, endpoint, route.expectedProfileCompatibilityKey);
                 break;
             case FAN_OUT_LIST_PROJECTS:
                 handleFanOut(exchange, requestId, wantsJsonFormat(requestJson), allowStructuredContent,
-                    WorkspaceRouting.workspacePath(WorkspaceRouting.arguments(requestJson)));
+                    WorkspaceRouting.workspacePath(WorkspaceRouting.arguments(requestJson)), endpoint);
                 break;
             case PROXY_SELF:
-                handleProxySelf(exchange, requestJson, requestId, allowStructuredContent);
+                handleProxySelf(exchange, requestJson, requestId, allowStructuredContent, endpoint);
                 break;
             case ERROR:
             default:
@@ -539,12 +732,18 @@ public final class McpProxyHandler implements HttpHandler
      */
     private void forwardToBackend(HttpExchange exchange, Backend backend, String rawBody, String workspacePath,
         boolean isToolCall,
-        Object requestId, boolean allowStructuredContent) throws IOException
+        Object requestId, boolean allowStructuredContent, ProfileEndpoint endpoint,
+        String expectedProfileCompatibilityKey) throws IOException
     {
         try
         {
             String clientAccept = exchange.getRequestHeaders().getFirst(HEADER_ACCEPT);
-            HttpResponse<InputStream> response = backend.forward(rawBody, clientAccept, workspacePath);
+            String forwardedBody = isToolCall && workspacePath != null
+                ? WorkspaceRouting.backendRequest(rawBody, Json.parseObject(rawBody)) : rawBody;
+            HttpResponse<InputStream> response = endpoint.isLegacy()
+                ? backend.forward(forwardedBody, clientAccept, workspacePath)
+                : backend.channel(endpoint).forward(forwardedBody, clientAccept, workspacePath,
+                    expectedProfileCompatibilityKey);
             if (isToolCall && !allowStructuredContent)
             {
                 // The backends share ONE handshake, made by the proxy with its own capabilities, so a
@@ -639,9 +838,21 @@ public final class McpProxyHandler implements HttpHandler
      * itself, so the backends never saw the capability and the gate has to be applied here.
      */
     private void handleFanOut(HttpExchange exchange, Object requestId, boolean jsonFormat,
-        boolean allowStructuredContent, String workspacePath) throws IOException
+        boolean allowStructuredContent, String workspacePath, ProfileEndpoint endpoint) throws IOException
     {
-        List<Backend> live = registry.backendViews().stream()
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        if (!endpoint.isLegacy() && (group.getDonor() == null || group.getCompatible().isEmpty()))
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(
+                "No backend is confirmed for profile endpoint " + endpoint.canonicalPath(), requestId,
+                allowStructuredContent), null);
+            return;
+        }
+        List<Backend> live = group.getCompatible().stream()
+            .map(backend -> registry.backendViews().stream()
+                .filter(view -> view.backend().getPort() == backend.getPort())
+                .findFirst().orElse(null))
+            .filter(java.util.Objects::nonNull)
             .filter(view -> workspacePath == null || workspacePath.equals(view.workspacePath()))
             .map(BackendRegistry.BackendView::backend).toList();
         List<String> responses = new ArrayList<>(live.size());
@@ -657,7 +868,10 @@ public final class McpProxyHandler implements HttpHandler
                 // nothing - the registry reports it as an unsupported plugin version.
                 JsonObject arguments = new JsonObject();
                 arguments.addProperty(ARG_FORMAT, FORMAT_JSON);
-                responses.add(backend.callToolBlocking(ProjectRouter.TOOL_LIST_PROJECTS, arguments, -1, workspacePath));
+                responses.add(endpoint.isLegacy()
+                    ? backend.callToolBlocking(ProjectRouter.TOOL_LIST_PROJECTS, arguments, -1, workspacePath)
+                    : backend.channel(endpoint).callToolBlocking(ProjectRouter.TOOL_LIST_PROJECTS, arguments,
+                        -1, group.compatibilityKey()));
             }
             catch (Backend.AuthenticationException e)
             {
@@ -684,13 +898,165 @@ public final class McpProxyHandler implements HttpHandler
     }
 
     /** Answers {@code router_status} / {@code router_refresh} itself via {@link RouterTools}. */
+    private void handleGetServerStatus(HttpExchange exchange, JsonObject request, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint) throws IOException
+    {
+        JsonObject params = Json.obj(request, KEY_PARAMS);
+        JsonObject arguments = Json.obj(params, KEY_ARGUMENTS);
+        if (arguments == null) arguments = new JsonObject();
+        boolean includeProfiles = jsonBoolean(arguments, "includeProfiles"); //$NON-NLS-1$
+        boolean includeProfileTools = jsonBoolean(arguments, "includeProfileTools"); //$NON-NLS-1$
+        if (includeProfileTools && !includeProfiles)
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(
+                "includeProfileTools=true requires includeProfiles=true.", requestId, allowStructuredContent), null);
+            return;
+        }
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        Backend donor = group.getDonor();
+        if (donor == null)
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(
+                "Profile endpoint " + endpoint.canonicalPath() + " is not confirmed; call router_status.",
+                requestId, allowStructuredContent), null);
+            return;
+        }
+        try
+        {
+            String raw = endpoint.isLegacy()
+                ? donor.callToolBlocking("get_server_status", arguments, 10) //$NON-NLS-1$
+                : donor.channel(endpoint).callToolBlocking("get_server_status", arguments, 10, //$NON-NLS-1$
+                    group.compatibilityKey());
+            JsonObject envelope = Json.parseObject(raw);
+            JsonObject result = Json.obj(envelope, KEY_RESULT);
+            JsonObject payload = Json.obj(result, KEY_STRUCTURED_CONTENT);
+            if (payload == null) payload = statusFromContentText(result);
+            if (payload != null)
+            {
+                rewriteStatusPayload(payload, includeProfiles, endpoint, exchange.getLocalAddress().getPort(),
+                    group.getGeneration());
+                if (Json.obj(result, KEY_STRUCTURED_CONTENT) != null) result.add(KEY_STRUCTURED_CONTENT, payload);
+                replaceContentText(result, Json.compact(payload));
+            }
+            if (envelope == null)
+            {
+                sendMcpResponse(exchange, 200, raw, null);
+                return;
+            }
+            FanOut.writeId(envelope, requestId);
+            String reply = Json.compact(envelope);
+            sendMcpResponse(exchange, 200,
+                allowStructuredContent ? reply : withoutStructuredContent(reply), null);
+        }
+        catch (Backend.AuthenticationException e)
+        {
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(e.getMessage(), requestId,
+                allowStructuredContent), null);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            sendMcpResponse(exchange, 500, buildJsonRpcError(ERROR_INTERNAL,
+                "Interrupted while reading get_server_status", requestId), null);
+        }
+        catch (IOException e)
+        {
+            registry.refresh();
+            sendMcpResponse(exchange, 200, RouterTools.toolCallError(e.getMessage(), requestId,
+                allowStructuredContent), null);
+        }
+    }
+
+    private void rewriteStatusPayload(JsonObject payload, boolean includeProfiles, ProfileEndpoint endpoint,
+        int proxyPort, long generation)
+    {
+        JsonObject active = Json.obj(payload, "activeProfile"); //$NON-NLS-1$
+        if (active != null) active.addProperty("endpoint", proxyEndpoint(proxyPort, endpoint)); //$NON-NLS-1$
+        if (!includeProfiles)
+        {
+            payload.remove("availableProfiles"); //$NON-NLS-1$
+            return;
+        }
+        JsonElement entries = payload.get("availableProfiles"); //$NON-NLS-1$
+        if (entries == null || !entries.isJsonArray()) return;
+        List<ProfileEndpoint> paths = new ArrayList<>();
+        for (JsonElement item : entries.getAsJsonArray())
+        {
+            if (item.isJsonObject())
+            {
+                String id = Json.str(item.getAsJsonObject(), "id"); //$NON-NLS-1$
+                if (id != null && ProfileEndpoint.ID_PATTERN.matcher(id).matches())
+                    paths.add(new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false));
+            }
+        }
+        java.util.Map<String, ProfileGroupSnapshot> groups = registry.groupsForGeneration(generation, paths);
+        JsonArray rewritten = new JsonArray();
+        if (groups == null)
+        {
+            payload.add("availableProfiles", rewritten); //$NON-NLS-1$
+            return;
+        }
+        for (JsonElement item : entries.getAsJsonArray())
+        {
+            if (!item.isJsonObject()) continue;
+            JsonObject copy = item.getAsJsonObject().deepCopy();
+            String id = Json.str(copy, "id"); //$NON-NLS-1$
+            if (id == null) continue;
+            ProfileEndpoint path = new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false);
+            ProfileGroupSnapshot candidate = groups.get(path.canonicalPath());
+            if (candidate == null || candidate.getDonor() == null || !candidate.getIncompatible().isEmpty()) continue;
+            copy.addProperty("endpoint", proxyEndpoint(proxyPort, path)); //$NON-NLS-1$
+            rewritten.add(copy);
+        }
+        payload.add("availableProfiles", rewritten); //$NON-NLS-1$
+    }
+
+    private static String proxyEndpoint(int proxyPort, ProfileEndpoint endpoint)
+    {
+        int port = proxyPort > 0 ? proxyPort : 0;
+        return "http://127.0.0.1:" + port + endpoint.canonicalPath(); //$NON-NLS-1$
+    }
+
+    private static JsonObject statusFromContentText(JsonObject result)
+    {
+        JsonElement content = result == null ? null : result.get(KEY_CONTENT);
+        if (content == null || !content.isJsonArray()) return null;
+        for (JsonElement item : content.getAsJsonArray())
+        {
+            if (item.isJsonObject())
+            {
+                JsonObject parsed = Json.parseObject(Json.str(item.getAsJsonObject(), "text")); //$NON-NLS-1$
+                if (parsed != null) return parsed;
+            }
+        }
+        return null;
+    }
+
+    private static void replaceContentText(JsonObject result, String text)
+    {
+        JsonElement content = result == null ? null : result.get(KEY_CONTENT);
+        if (content != null && content.isJsonArray() && !content.getAsJsonArray().isEmpty())
+        {
+            JsonElement first = content.getAsJsonArray().get(0);
+            if (first.isJsonObject()) first.getAsJsonObject().addProperty("text", text); //$NON-NLS-1$
+        }
+    }
+
+    private static boolean jsonBoolean(JsonObject object, String key)
+    {
+        JsonElement value = object.get(key);
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()
+            && value.getAsBoolean();
+    }
+
+    /** Answers {@code router_status} / {@code router_refresh} itself via {@link RouterTools}. */
     private void handleProxySelf(HttpExchange exchange, JsonObject requestJson, Object requestId,
-        boolean allowStructuredContent) throws IOException
+        boolean allowStructuredContent, ProfileEndpoint endpoint) throws IOException
     {
         String toolName = Json.str(Json.obj(requestJson, KEY_PARAMS), KEY_NAME);
         String body = ProjectRouter.TOOL_ROUTER_REFRESH.equals(toolName)
-            ? RouterTools.routerRefresh(registry, requestId, allowStructuredContent)
-            : RouterTools.routerStatus(registry, requestId, allowStructuredContent);
+            ? RouterTools.routerRefresh(registry, requestId, allowStructuredContent, endpoint)
+            : RouterTools.routerStatus(registry, requestId, allowStructuredContent, endpoint);
         sendMcpResponse(exchange, 200, body, null);
     }
 

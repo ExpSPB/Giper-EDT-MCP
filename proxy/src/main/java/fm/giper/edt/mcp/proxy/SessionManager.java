@@ -41,6 +41,8 @@ public final class SessionManager
 
     /** Session id -> whether that client accepts {@code structuredContent}. */
     private final Map<String, Boolean> sessions = new ConcurrentHashMap<>();
+    private final Map<String, String> endpointPaths = new ConcurrentHashMap<>();
+    private final Map<String, String> profileIdentities = new ConcurrentHashMap<>();
 
     /**
      * Creates a new client session, unless the proxy already holds {@value #MAX_SESSIONS} open
@@ -64,13 +66,32 @@ public final class SessionManager
      */
     public String create(boolean allowsStructuredContent)
     {
+        return create(allowsStructuredContent, null);
+    }
+
+    public String create(boolean allowsStructuredContent, String canonicalPath)
+    {
+        return create(allowsStructuredContent, canonicalPath, null);
+    }
+
+    public String create(boolean allowsStructuredContent, String canonicalPath, String profileIdentity)
+    {
         if (sessions.size() >= MAX_SESSIONS)
         {
             return null;
         }
         String sessionId = UUID.randomUUID().toString();
         sessions.put(sessionId, Boolean.valueOf(allowsStructuredContent));
+        if (canonicalPath != null) endpointPaths.put(sessionId, canonicalPath);
+        if (profileIdentity != null) profileIdentities.put(sessionId, profileIdentity);
         return sessionId;
+    }
+
+    public String profileIdentity(String sessionId) { return profileIdentities.get(sessionId); }
+
+    public void bindProfileIdentity(String sessionId, String profileIdentity)
+    {
+        if (sessionId != null && profileIdentity != null) profileIdentities.putIfAbsent(sessionId, profileIdentity);
     }
 
     /**
@@ -124,7 +145,22 @@ public final class SessionManager
         if (sessionId != null)
         {
             sessions.remove(sessionId);
+            endpointPaths.remove(sessionId);
+            profileIdentities.remove(sessionId);
         }
+    }
+
+    public boolean isBoundTo(String sessionId, String canonicalPath)
+    {
+        String bound = endpointPaths.get(sessionId);
+        return bound == null || bound.equals(canonicalPath);
+    }
+
+    public void closeByCanonicalPath(String canonicalPath)
+    {
+        endpointPaths.forEach((id, path) -> {
+            if (canonicalPath.equals(path)) close(id);
+        });
     }
 
     /**

@@ -7,6 +7,8 @@
 package fm.giper.edt.mcp.server.protocol;
 
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -125,6 +127,36 @@ public final class McpSessionRegistry
     public boolean close(String sessionId)
     {
         return sessionId != null && sessions.remove(sessionId) != null;
+    }
+
+    /** Endpoint paths represented by active sessions. */
+    public Set<String> activeRequestedPaths()
+    {
+        Set<String> paths = new LinkedHashSet<>();
+        for (Session session : sessions.values())
+        {
+            paths.add(session.endpointPath());
+        }
+        return Set.copyOf(paths);
+    }
+
+    /** Closes sessions issued for exactly this endpoint path. */
+    public int closeByRequestedPath(String requestedPath)
+    {
+        if (requestedPath == null || requestedPath.isBlank())
+        {
+            return 0;
+        }
+        int closed = 0;
+        for (Map.Entry<String, Session> entry : sessions.entrySet())
+        {
+            if (requestedPath.equals(entry.getValue().endpointPath())
+                && sessions.remove(entry.getKey(), entry.getValue()))
+            {
+                closed++;
+            }
+        }
+        return closed;
     }
 
     /**

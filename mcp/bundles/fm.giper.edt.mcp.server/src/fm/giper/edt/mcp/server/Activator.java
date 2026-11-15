@@ -42,6 +42,7 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
 import com._1c.g5.v8.dt.rights.IRightInfosService;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
 import fm.giper.edt.mcp.server.profiles.PreferenceToolProfileRepository;
+import fm.giper.edt.mcp.server.profiles.ProfileNotificationService;
 import fm.giper.edt.mcp.server.profiles.ToolProfileMigration;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
@@ -74,6 +75,7 @@ public class Activator extends AbstractUIPlugin
     /** MCP Server instance */
     private McpServer mcpServer;
     private PreferenceToolProfileRepository toolProfiles;
+    private final ProfileNotificationService profileNotificationService = new ProfileNotificationService();
 
     private volatile HeadlessLifetime headlessLifetime;
 
@@ -165,8 +167,10 @@ public class Activator extends AbstractUIPlugin
     /** Runs after tool registration. Migration is idempotent and preserves existing profiles. */
     public void initializeToolProfiles()
     {
+        PreferenceToolProfileRepository repository = getToolProfileRepository();
+        repository.addListener(profileNotificationService);
         var names = McpToolRegistry.getInstance().getAllTools().stream().map(IMcpTool::getName).toList();
-        ToolProfileMigration.migrateIfNeeded(getToolProfileRepository(), names, getPreferenceStore());
+        ToolProfileMigration.migrateIfNeeded(repository, names, getPreferenceStore());
     }
 
     public HeadlessLifetime getHeadlessLifetime() { return headlessLifetime; }

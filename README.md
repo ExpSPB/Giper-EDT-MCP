@@ -293,6 +293,53 @@ disclosure still narrows the enabled preset's tools; set `EDT_MCP_PROGRESSIVE_DI
 when checking its full `tools/list` catalogue. See
 [the preset wire checks](tests/TESTING.md#launch-preset-wire-checks) for the e2e launch recipe.
 
+### Named tool profiles
+
+The Tools tab can keep several independent tool allowlists. The existing `/mcp` URL
+continues to use the saved legacy tool configuration. A profile must be enabled in
+**Window → Preferences → MCP Server → Tools** before it has its own endpoint:
+
+| URL | Tool surface |
+|-----|--------------|
+| `http://127.0.0.1:8765/mcp` | Legacy configuration, unchanged for existing clients |
+| `http://127.0.0.1:8765/mcp/profiles/<id>` | The enabled profile with that ID |
+| `http://127.0.0.1:8765/mcp/profiles/default` | The saved default profile explicitly |
+
+Create, edit, enable or disable profiles in the Tools tab, then copy the endpoint shown
+there into the intended client's MCP configuration. Profile IDs are routing names, not
+credentials. Export profile… and Import profile… exchange the selected profile as JSON;
+import changes the draft until Apply/OK, and leaves its ID and other profiles unchanged.
+Existing profile settings are migrated when read after upgrade. The launch preset
+`EDT_MCP_TOOL_PRESET` acts as a restriction on saved profile allowlists: it cannot add
+tools that the saved profile disabled. The legacy `/mcp` endpoint retains its existing
+launch-preset override behavior.
+
+Unknown or disabled IDs on an explicit profile endpoint fall back to the default profile
+during `initialize`; the connection is not rejected. Check the effective profile details
+returned by initialization rather than assuming the URL's ID was accepted. A profile
+allowlist update takes effect on the existing session for that endpoint. If the session's
+effective profile ID changes (for example after disabling its requested profile and falling
+back to default), the client must initialize a new session. `get_server_status` remains
+available on every profile; `includeProfiles` requests the enabled profile list, and
+`includeProfileTools` adds each profile's sorted allowlist and requires `includeProfiles`.
+The status response's `activeProfile` reports `requestedProfileId`, effective `id`,
+`displayName`, `description`, `revision`, `endpoint`, `allowedToolCount`, and
+`fallbackApplied`, with `fallbackReason` and `warning` when applicable.
+
+The explicit endpoints have fixed allowlists; `enable_toolset` does not expand them.
+The legacy `/mcp` endpoint keeps its progressive-disclosure compatibility behavior.
+The first `initialize` response identifies fallback when an ID is unknown or disabled;
+verify `activeProfile.id` and `fallbackApplied` with `get_server_status`. Tool allowlist
+edits update rights on the existing session. A changed effective profile ID expires that
+plugin session, so initialize again when the profile identity changes. For live tool-list
+updates, open `GET /mcp/profiles/<id>` with `Accept: text/event-stream` and the session's
+`Mcp-Session-Id`; the stream reports `notifications/tools/list_changed` for that endpoint.
+
+When using the proxy, keep the same endpoint suffix after its port. It validates and then
+rewrites `get_server_status.activeProfile.endpoint` and compatible `availableProfiles`
+URLs to proxy URLs. See the [proxy profile transport notes](proxy/README.md#profile-endpoints-sessions-and-events)
+and the [profile endpoint wire checks](tests/TESTING.md#profile-endpoint-wire-checks).
+
 ### Per-Tool Parameter Defaults
 
 Some tools have configurable default values for parameters like result limits. These defaults are used when the AI client doesn't specify the parameter explicitly:
@@ -476,7 +523,7 @@ with `python docs/generate_tool_docs.py`.
 | [`get_metadata_details`](docs/tools/get_metadata_details.md) | Inspect `objectFqns` in a project; `full=false` gives compact details and `assignable=true` discovers writable properties and allowed values. Forms use canonical structure headings, roles support `roleObjectOffset`, and per-object failures appear in a dedicated `## Errors` table. |
 | [`get_metadata_objects`](docs/tools/get_metadata_objects.md) | List project metadata with `metadataType` (default all), optional `nameFilter` or `textFilter` (mutually exclusive), and synonym `language`. Names are programmatic identifiers; `textFilter` also searches the selected synonym; the factory `limit` is 100, maximum 1000. |
 | [`get_module_structure`](docs/tools/get_module_structure.md) | Inspect one `modulePath` for methods, regions and execution contexts. `responseFormat` defaults to concise; choose detailed for full signatures, and opt into `includeVariables` or `includeComments` (both false by default). |
-| [`get_server_status`](docs/tools/get_server_status.md) | Return a JSON snapshot of server configuration, capabilities and environment diagnostics, including form-render support. Takes no parameters; use it to diagnose the running EDT instance. |
+| [`get_server_status`](docs/tools/get_server_status.md) | Return server, transport, form-render and active-profile diagnostics. Use `includeProfiles` and `includeProfileTools` to discover profile endpoints and their effective tool lists. |
 | [`get_tool_guide`](docs/tools/get_tool_guide.md) | Read instructions for `toolName`: full by default, `mode=summary` for parameters/headings, or a focused `section` or literal `query`. Choose only one selector; section names and anchors are accepted, and query needs at least two characters. |
 | [`list_modules`](docs/tools/list_modules.md) | Discover project BSL module paths, optionally narrowed by `metadataType`, `objectName` or path `nameFilter`. `metadataType` defaults to all; `limit` defaults to 200, maximum 1000. |
 | [`list_projects`](docs/tools/list_projects.md) | List workspace projects with paths, open state and readiness/reason. `format=md` is the default; `format=json` returns structured `projects` rows for polling readiness. |

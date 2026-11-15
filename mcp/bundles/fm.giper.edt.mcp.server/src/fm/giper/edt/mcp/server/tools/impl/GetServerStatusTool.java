@@ -6,9 +6,10 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
-import fm.giper.edt.mcp.server.HostKind;
-
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
@@ -17,9 +18,17 @@ import java.util.function.Supplier;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import fm.giper.edt.mcp.server.Activator;
+import fm.giper.edt.mcp.server.HostKind;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
+import fm.giper.edt.mcp.server.profiles.DefaultToolProfileFactory;
+import fm.giper.edt.mcp.server.profiles.ProfileResolution;
+import fm.giper.edt.mcp.server.profiles.ProfileResolver;
+import fm.giper.edt.mcp.server.profiles.ProfileToolPolicy;
+import fm.giper.edt.mcp.server.profiles.ToolProfile;
+import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
+import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.McpConstants;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
@@ -40,7 +49,7 @@ import fm.giper.edt.mcp.server.utils.NativeRenderModeProbe.NativeRenderMode;
  * enabled/total tool counts, the {@code plainTextMode} and {@code checksFolder}
  * preference flags, the startup modes and requested properties of the two form-render modes
  * ({@code -DnativeFormBufferedLayoutRender} / {@code -DnativeFormLayoutRender}),
- * and whether authentication is enabled.
+ * whether authentication is enabled, and the request's effective tool profile.
  * <p>
  * SECURITY: the auth token value is never emitted — only the {@code authEnabled}
  * boolean derived from whether {@link PreferenceConstants#PREF_AUTH_TOKEN} is
@@ -75,6 +84,8 @@ public class GetServerStatusTool implements IMcpTool
 
     /** Output key: whether the MCP server is currently running. */
     private static final String KEY_RUNNING = "running"; //$NON-NLS-1$
+    private static final String PARAM_INCLUDE_PROFILES = "includeProfiles"; //$NON-NLS-1$
+    private static final String PARAM_INCLUDE_PROFILE_TOOLS = "includeProfileTools"; //$NON-NLS-1$
 
     @Override
     public String getName()
@@ -85,7 +96,7 @@ public class GetServerStatusTool implements IMcpTool
     @Override
     public String getDescription()
     {
-        return "Diagnose the EDT MCP server and its feature configuration. Parameters and examples: " //$NON-NLS-1$
+        return "Diagnose the EDT MCP server, its feature configuration, and the active tool profile. Parameters and examples: " //$NON-NLS-1$
             + "get_tool_guide('get_server_status')."; //$NON-NLS-1$
     }
 
@@ -98,7 +109,10 @@ public class GetServerStatusTool implements IMcpTool
     @Override
     public String getInputSchema()
     {
-        return JsonSchemaBuilder.object().build();
+        return JsonSchemaBuilder.object()
+            .booleanProperty(PARAM_INCLUDE_PROFILES, "List enabled profiles with their HTTP endpoints. Default: false.") //$NON-NLS-1$
+            .booleanProperty(PARAM_INCLUDE_PROFILE_TOOLS, "Include the effective tool names per listed profile. Requires includeProfiles. Default: false.") //$NON-NLS-1$
+            .build();
     }
 
     @Override
@@ -125,21 +139,33 @@ public class GetServerStatusTool implements IMcpTool
                 "atStartup is the mode when this plugin activated; requested is the current " //$NON-NLS-1$
                     + "system property. EDT binds these modes at class initialization; changing them " //$NON-NLS-1$
                     + "requires an EDT restart") //$NON-NLS-1$
+            .objectProperty("activeProfile", "Profile serving this request, with its revision, endpoint, tool count and fallback status") //$NON-NLS-1$ //$NON-NLS-2$
+            .objectArrayProperty("availableProfiles", "Enabled profiles and their explicit HTTP endpoints when includeProfiles is true") //$NON-NLS-1$ //$NON-NLS-2$
             .build();
     }
 
     @Override
     public String execute(Map<String, String> params)
     {
+        return execute(params, null);
+    }
+
+    /** Uses the same profile snapshot and authorization policy as the request dispatcher. */
+    public String execute(Map<String, String> params, ProfileToolPolicy policy)
+    {
         try
         {
+            boolean includeProfiles = JsonUtils.extractBooleanArgument(params, PARAM_INCLUDE_PROFILES, false);
+            boolean includeProfileTools = JsonUtils.extractBooleanArgument(params, PARAM_INCLUDE_PROFILE_TOOLS, false);
+            if (includeProfileTools && !includeProfiles)
+            {
+                return ToolResult.error("includeProfileTools=true requires includeProfiles=true.").toJson(); //$NON-NLS-1$
+            }
             Activator activator = Activator.getDefault();
 
-            // Tool counts come from the singleton registry; getEnabledTools()
-            // applies the per-tool enablement preference, getToolCount() is the total.
             McpToolRegistry registry = McpToolRegistry.getInstance();
             int totalTools = registry.getToolCount();
-            int enabledTools = registry.getEnabledTools().size();
+            int enabledTools = policy == null ? registry.getEnabledTools().size() : policy.effectiveToolNames().size();
 
             ToolResult result = ToolResult.success();
 
@@ -148,7 +174,8 @@ public class GetServerStatusTool implements IMcpTool
             TransportStatus transports = TransportStatus.read(server, ipcRunning);
             boolean http = transports.http();
             boolean ipc = transports.ipc();
-            result.put("port", server == null ? PreferenceConstants.DEFAULT_PORT : server.getPort()); //$NON-NLS-1$
+            int port = server == null ? PreferenceConstants.DEFAULT_PORT : server.getPort();
+            result.put("port", port); //$NON-NLS-1$
             result.put(KEY_RUNNING, transports.running());
             result.put("transports", Map.of("http", http, "ipc", ipc));
 
@@ -165,12 +192,18 @@ public class GetServerStatusTool implements IMcpTool
             boolean plainTextMode = PreferenceConstants.DEFAULT_PLAIN_TEXT_MODE;
             boolean checksFolderConfigured = false;
             boolean authEnabled = false;
+            int advertisedPort = http ? port : PreferenceConstants.DEFAULT_PORT;
             if (activator != null)
             {
                 IPreferenceStore store = activator.getPreferenceStore();
                 if (store != null)
                 {
                     plainTextMode = store.getBoolean(PreferenceConstants.PREF_PLAIN_TEXT_MODE);
+                    int configuredPort = store.getInt(PreferenceConstants.PREF_PORT);
+                    if (!http && configuredPort > 0)
+                    {
+                        advertisedPort = configuredPort;
+                    }
 
                     // Only whether a checks folder is configured, never the path. Since #31 the
                     // descriptions SHIP with the plugin, so this reports an OVERRIDE being in
@@ -200,6 +233,16 @@ public class GetServerStatusTool implements IMcpTool
                     System.getProperty(FLAG_BUFFERED_LAYOUT_RENDER)));
             result.put("formRenderFlags", formRenderFlags); //$NON-NLS-1$
 
+            ProfileResolution active = policy == null ? ProfileResolver.resolveDefault(workspaceSnapshot(activator))
+                : policy.getResolution();
+            int activeToolCount = policy == null ? registry.getVisibleTools().size() : policy.effectiveToolNames().size();
+            result.put("activeProfile", activeProfile(active, advertisedPort, activeToolCount)); //$NON-NLS-1$
+            if (includeProfiles)
+            {
+                result.put("availableProfiles", availableProfiles(active.getSnapshot(), registry.getAllTools(),
+                    advertisedPort, includeProfileTools)); //$NON-NLS-1$
+            }
+
             return result.toJson();
         }
         catch (Exception e)
@@ -207,6 +250,58 @@ public class GetServerStatusTool implements IMcpTool
             Activator.logError("Error in get_server_status", e); //$NON-NLS-1$
             return ToolResult.error(e.getMessage()).toJson();
         }
+    }
+
+    private static ToolProfileSnapshot workspaceSnapshot(Activator activator)
+    {
+        var repository = activator == null ? null : activator.getToolProfileRepository();
+        return repository == null ? DefaultToolProfileFactory.createSafeSnapshot() : repository.refreshSnapshot();
+    }
+
+    private static Map<String, Object> activeProfile(ProfileResolution resolution, int port, int count)
+    {
+        Map<String, Object> entry = describeProfile(resolution.getEffectiveProfile(), port, resolution.isLegacyEndpoint(), count);
+        entry.put("requestedProfileId", resolution.getRequestedProfileId()); //$NON-NLS-1$
+        entry.put("fallbackApplied", resolution.isFallbackApplied()); //$NON-NLS-1$
+        if (resolution.isFallbackApplied())
+        {
+            var reason = resolution.getFallbackReason();
+            entry.put("fallbackReason", reason.name()); //$NON-NLS-1$
+            entry.put("warning", "Requested profile '" + resolution.getRequestedProfileId() //$NON-NLS-1$ //$NON-NLS-2$
+                + "' is unavailable (" + reason + "). Connected to profile 'default' instead."); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return entry;
+    }
+
+    private static List<Map<String, Object>> availableProfiles(ToolProfileSnapshot snapshot,
+        Collection<IMcpTool> catalog, int port, boolean includeTools)
+    {
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (ToolProfile profile : snapshot.enabledProfiles())
+        {
+            var resolution = ProfileResolver.resolve(profile.getId(), false, snapshot);
+            var allowed = new ProfileToolPolicy(resolution, catalog).effectiveToolNames();
+            Map<String, Object> entry = describeProfile(profile, port, false, allowed.size());
+            if (includeTools)
+            {
+                entry.put("allowedTools", allowed.stream().sorted().toList()); //$NON-NLS-1$
+            }
+            entries.add(entry);
+        }
+        return entries;
+    }
+
+    private static Map<String, Object> describeProfile(ToolProfile profile, int port, boolean legacy, int count)
+    {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("id", profile.getId()); //$NON-NLS-1$
+        entry.put("displayName", profile.getDisplayName()); //$NON-NLS-1$
+        entry.put("description", profile.getDescription()); //$NON-NLS-1$
+        entry.put("revision", profile.getRevision()); //$NON-NLS-1$
+        entry.put("endpoint", "http://127.0.0.1:" + port //$NON-NLS-1$ //$NON-NLS-2$
+            + (legacy ? "/mcp" : "/mcp/profiles/" + profile.getId())); //$NON-NLS-1$ //$NON-NLS-2$
+        entry.put("allowedToolCount", count); //$NON-NLS-1$
+        return entry;
     }
 
     /**

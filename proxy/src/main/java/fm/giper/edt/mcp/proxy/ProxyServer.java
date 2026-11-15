@@ -180,6 +180,7 @@ public final class ProxyServer
      */
     public synchronized void stop()
     {
+        handler.stopSseStreams();
         if (httpServer != null)
         {
             httpServer.stop(0);

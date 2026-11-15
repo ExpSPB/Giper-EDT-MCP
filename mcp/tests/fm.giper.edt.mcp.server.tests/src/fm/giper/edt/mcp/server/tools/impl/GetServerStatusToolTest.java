@@ -21,7 +21,7 @@ import com.google.gson.JsonParser;
 /**
  * Tests for {@link GetServerStatusTool}.
  * <p>
- * The tool takes no parameters and reads its snapshot from the registry,
+ * The tool reads its snapshot from the registry,
  * preferences and system properties. The headless surface is the static
  * contract plus the null-safe {@code execute()}: with no {@link
  * fm.giper.edt.mcp.server.Activator} and no running server it must still
@@ -93,13 +93,23 @@ public class GetServerStatusToolTest
     }
 
     @Test
-    public void testSchemaIsEmptyObject()
+    public void testDiscoveryArgumentsAreOptionalBooleans()
     {
-        String schema = new GetServerStatusTool().getInputSchema();
-        assertNotNull(schema);
-        assertTrue(schema.contains("object")); //$NON-NLS-1$
-        // No parameters: the tool reads nothing from params.
-        assertFalse(schema.contains("\"properties\":{\"")); //$NON-NLS-1$
+        JsonObject schema = JsonParser.parseString(new GetServerStatusTool().getInputSchema()).getAsJsonObject();
+        JsonObject props = schema.getAsJsonObject("properties");
+        assertEquals("boolean", props.getAsJsonObject("includeProfiles").get("type").getAsString());
+        assertEquals("boolean", props.getAsJsonObject("includeProfileTools").get("type").getAsString());
+        assertTrue(schema.getAsJsonArray("required").isEmpty());
+    }
+
+    @Test
+    public void testToolDiscoveryRequiresProfileDiscovery()
+    {
+        String refusal = new GetServerStatusTool().execute(java.util.Map.of("includeProfileTools", "true"));
+        assertTrue(refusal, refusal.contains("requires includeProfiles=true"));
+        JsonObject status = JsonParser.parseString(new GetServerStatusTool().execute(java.util.Map.of())).getAsJsonObject();
+        assertEquals("default", status.getAsJsonObject("activeProfile").get("id").getAsString());
+        assertFalse(status.has("availableProfiles"));
     }
 
     @Test
@@ -160,6 +170,8 @@ public class GetServerStatusToolTest
         assertTrue(schema.contains("\"checksFolderConfigured\"")); //$NON-NLS-1$
         assertTrue(schema.contains("\"authEnabled\"")); //$NON-NLS-1$
         assertTrue(schema.contains("\"formRenderFlags\"")); //$NON-NLS-1$
+        assertTrue(schema.contains("\"activeProfile\"")); //$NON-NLS-1$
+        assertTrue(schema.contains("\"availableProfiles\"")); //$NON-NLS-1$
     }
 
     @Test

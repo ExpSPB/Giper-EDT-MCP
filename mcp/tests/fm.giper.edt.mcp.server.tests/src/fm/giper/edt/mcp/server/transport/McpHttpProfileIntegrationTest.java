@@ -41,6 +41,7 @@ import fm.giper.edt.mcp.server.protocol.McpConstants;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
+import fm.giper.edt.mcp.server.tools.impl.GetServerStatusTool;
 import fm.giper.edt.mcp.server.tools.impl.GetToolGuideTool;
 
 /** Exercises profile path routing and session binding through a real loopback HTTP socket. */
@@ -71,6 +72,7 @@ public class McpHttpProfileIntegrationTest
         registry.register(new FakeTool(TOOL_B, "B", "", deniedToolExecuted)); //$NON-NLS-1$
         registry.register(new FakeTool(GUIDE_TOOL, "Guide", GUIDE_TEXT, null)); //$NON-NLS-1$
         registry.register(new GetToolGuideTool());
+        registry.register(new GetServerStatusTool());
 
         profiles = new AtomicReference<>(snapshot(
             profile("default", Set.of(TOOL_A, TOOL_B, GUIDE_TOOL, GetToolGuideTool.NAME), true), //$NON-NLS-1$
@@ -214,6 +216,43 @@ public class McpHttpProfileIntegrationTest
                 + "\"uri\":\"guide://" + GUIDE_TOOL + "\"}}", session); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue(resourceRead.body(), JsonParser.parseString(resourceRead.body()).getAsJsonObject()
             .get("error").getAsJsonObject().get("message").getAsString().contains("Unknown guide resource")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void statusReportsTheSessionPolicyAndAdvertisesExplicitEndpoints() throws Exception
+    {
+        String path = "/mcp/profiles/alpha";
+        String session = post(path, initialize()).headers().firstValue(McpConstants.HEADER_SESSION_ID).orElseThrow();
+        String body = post(path, toolCall(GetServerStatusTool.NAME,
+            "{\"includeProfiles\":true,\"includeProfileTools\":true}"), session).body();
+        JsonObject status = JsonParser.parseString(body).getAsJsonObject().getAsJsonObject("result")
+            .getAsJsonObject("structuredContent");
+        JsonObject active = status.getAsJsonObject("activeProfile");
+        assertEquals("alpha", active.get("requestedProfileId").getAsString());
+        assertEquals("alpha", active.get("id").getAsString());
+        assertFalse(active.get("fallbackApplied").getAsBoolean());
+        assertTrue(active.get("endpoint").getAsString().endsWith(path));
+        assertEquals(3, active.get("allowedToolCount").getAsInt());
+
+        JsonArray profiles = status.getAsJsonArray("availableProfiles");
+        assertEquals(List.of("alpha", "beta", "default"), profiles.asList().stream()
+            .map(entry -> entry.getAsJsonObject().get("id").getAsString()).toList());
+        assertEquals(JsonParser.parseString("[\"get_server_status\",\"get_tool_guide\",\"" + TOOL_A + "\"]"),
+            profiles.get(0).getAsJsonObject().get("allowedTools"));
+        assertTrue(profiles.get(2).getAsJsonObject().get("endpoint").getAsString().endsWith("/mcp/profiles/default"));
+
+        String fallbackPath = "/mcp/profiles/disabled";
+        String fallbackSession = post(fallbackPath, initialize()).headers()
+            .firstValue(McpConstants.HEADER_SESSION_ID).orElseThrow();
+        String fallbackBody = post(fallbackPath, toolCall(GetServerStatusTool.NAME, "{}"), fallbackSession).body();
+        JsonObject fallbackStatus = JsonParser.parseString(fallbackBody).getAsJsonObject().getAsJsonObject("result")
+            .getAsJsonObject("structuredContent");
+        JsonObject fallback = fallbackStatus.getAsJsonObject("activeProfile");
+        assertEquals("disabled", fallback.get("requestedProfileId").getAsString());
+        assertEquals("default", fallback.get("id").getAsString());
+        assertTrue(fallback.get("fallbackApplied").getAsBoolean());
+        assertEquals("DISABLED_PROFILE", fallback.get("fallbackReason").getAsString());
+        assertFalse(fallbackStatus.has("availableProfiles"));
     }
 
     private HttpResponse<String> post(String path, String body) throws Exception

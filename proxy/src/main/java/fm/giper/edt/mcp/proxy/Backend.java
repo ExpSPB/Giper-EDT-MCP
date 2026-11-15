@@ -17,6 +17,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -62,6 +64,7 @@ public final class Backend
     private final AtomicLong authenticationRequestSequence = new AtomicLong();
     private final AtomicReference<AuthenticationObservation> authentication =
         new AtomicReference<>(new AuthenticationObservation(0, 0));
+    private final Map<String, BackendProfileChannel> profileChannels = new ConcurrentHashMap<>();
 
     private record AuthenticationObservation(long sequence, int failureStatus)
     {
@@ -105,6 +108,63 @@ public final class Backend
     public int getPort()
     {
         return port;
+    }
+
+    BackendProfileChannel channel(ProfileEndpoint endpoint)
+    {
+        ProfileEndpoint key = endpoint == null ? ProfileEndpoint.legacyDefault() : endpoint;
+        return profileChannels.computeIfAbsent(key.canonicalPath(),
+            ignored -> new BackendProfileChannel(this, key, client, timeoutSeconds));
+    }
+
+    String configuredAuthToken()
+    {
+        return authToken;
+    }
+
+    <T> HttpResponse<T> sendProfileMcpRequest(HttpRequest request, HttpResponse.BodyHandler<T> handler)
+        throws IOException, InterruptedException
+    {
+        return sendMcpRequest(request, handler);
+    }
+
+    public void invalidateProfile(String requestedProfileId)
+    {
+        if (requestedProfileId == null) return;
+        for (BackendProfileChannel channel : profileChannels.values())
+        {
+            if (requestedProfileId.equals(channel.getEndpoint().getRequestedProfileId()))
+                channel.invalidateSession();
+        }
+    }
+
+    void ensureNotificationListeners(SseNotificationHub hub)
+    {
+        BackendProfileChannel discovery = channel(ProfileEndpoint.legacyDefault());
+        discovery.ensureNotificationListener(hub);
+        try
+        {
+            ChannelResolution resolution = discovery.getResolution();
+            if (resolution == null) resolution = discovery.refreshResolution();
+            if (resolution.getAvailableProfiles() == null) return;
+            for (com.google.gson.JsonElement item : resolution.getAvailableProfiles())
+            {
+                if (!item.isJsonObject()) continue;
+                String id = Json.str(item.getAsJsonObject(), "id"); //$NON-NLS-1$
+                if (id == null || id.isBlank() || ProfileEndpoint.DEFAULT_PROFILE_ID.equals(id)) continue;
+                channel(new ProfileEndpoint(ProfileEndpoint.PROFILES_PREFIX + id, id, false))
+                    .ensureNotificationListener(hub);
+            }
+        }
+        catch (IOException | InterruptedException | RuntimeException e)
+        {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+        }
+    }
+
+    void stopNotificationListeners()
+    {
+        for (BackendProfileChannel channel : profileChannels.values()) channel.stopNotificationListener();
     }
 
     /**
@@ -362,6 +422,14 @@ public final class Backend
                 + expected + "' (reported: " + actual + "). Call router_refresh and select the workspace again."); //$NON-NLS-1$ //$NON-NLS-2$
         }
         return true;
+    }
+
+    void verifyWorkspaceSelection(String expected) throws IOException, InterruptedException
+    {
+        String session = ensureSession();
+        if (!verifyWorkspace(session, expected))
+            throw new WorkspaceMismatchException("Backend :" + port + " changed session while verifying workspacePath '"
+                + expected + "'; call router_refresh and retry.");
     }
 
     static final class WorkspaceMismatchException extends IOException

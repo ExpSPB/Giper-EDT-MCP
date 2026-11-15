@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import fm.giper.edt.mcp.server.preferences.PreferenceConstants;
 import fm.giper.edt.mcp.server.protocol.McpProtocolHandler;
+import fm.giper.edt.mcp.server.protocol.McpSessionRegistry;
 import fm.giper.edt.mcp.server.tools.BuiltInToolRegistrar;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.transport.HealthHandler;
@@ -67,6 +68,7 @@ public class McpServer
 
     /** Dedicated thread pool for long-lived SSE connections (isolated from main request pool) */
     private ExecutorService sseExecutor;
+    private volatile McpHttpHandler httpHandler;
 
     /**
      * Starts the MCP server on the specified port.
@@ -140,8 +142,8 @@ public class McpServer
         // request instead would race its own shutdown: a request admitted through the remote
         // listener could read "loopback" while stop() is closing the socket, and with the token
         // erased that answer authorizes it.
-        server.createContext("/mcp", //$NON-NLS-1$
-            new McpHttpHandler(this, protocolHandler, interruptibleExecutor, allowRemote));
+        httpHandler = new McpHttpHandler(this, protocolHandler, interruptibleExecutor, allowRemote);
+        server.createContext("/mcp", httpHandler); //$NON-NLS-1$
         // The same snapshot the handler got, kept so the preferences page can tell whether the
         // endpoint it advertises is one this listener would still serve.
         boundRemotely = allowRemote;
@@ -272,6 +274,7 @@ public class McpServer
         {
             server.stop(1);
             server = null;
+            httpHandler = null;
             running = false;
             // Nothing is bound any more, so nothing is bound remotely. Leaving it set would have
             // the preferences page warn about a listener that no longer exists.
@@ -323,6 +326,13 @@ public class McpServer
     public boolean isRunning()
     {
         return running;
+    }
+
+    /** Current HTTP-issued session registry, or {@code null} while stopped. */
+    public McpSessionRegistry getSessionRegistry()
+    {
+        McpHttpHandler current = httpHandler;
+        return current == null ? null : current.getSessions();
     }
 
 

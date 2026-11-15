@@ -162,17 +162,12 @@ def test_returns_live_server_snapshot_and_does_not_mutate():
 # ──────────────────────────────────────────────────────────────────────────────
 # Negative / robustness matrix
 #
-# The tool has NO parameters (no required/enum/path/XOR), so there is no
-# client-reachable VALIDATION error to assert error-quality on. The matrix below
-# is therefore robustness coverage (graceful handling of an unexpected arg),
-# which IS client-reachable and would catch a real regression.
+# Unknown extra arguments remain tolerated when profile discovery is optional.
 # ──────────────────────────────────────────────────────────────────────────────
 
 @e2e_test(tool="get_server_status", kind="read")
 def test_ignores_unexpected_argument_gracefully():
-    # The tool declares no params and reads none. An unknown extra argument must
-    # be IGNORED, not cause a failure. A tool that rejected/crashed on an unknown
-    # key would be a robustness regression -> this test would then fail.
+    # An unknown extra argument must leave the default snapshot unchanged.
     r = call("get_server_status", {"bogusUnknownArg_e2e": "x"})
     assert_ok(r, "unexpected extra arg must be ignored, not error")
 

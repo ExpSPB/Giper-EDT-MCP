@@ -169,6 +169,12 @@ public final class RouterTools
     public static String routerStatus(BackendRegistry registry, Object requestId,
         boolean allowStructuredContent)
     {
+        return routerStatus(registry, requestId, allowStructuredContent, ProfileEndpoint.legacyDefault());
+    }
+
+    public static String routerStatus(BackendRegistry registry, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint)
+    {
         Map<String, List<Integer>> duplicates = registry.duplicateProjects();
         JsonArray backends = new JsonArray();
         for (BackendRegistry.BackendView view : registry.backendViews())
@@ -230,6 +236,24 @@ public final class RouterTools
         structured.addProperty("lastRefreshMs", registry.lastRefreshMillis()); //$NON-NLS-1$
         structured.addProperty("scanRange", //$NON-NLS-1$
             cfg != null ? cfg.scanFrom + "-" + cfg.scanTo : ""); //$NON-NLS-1$ //$NON-NLS-2$
+        if (!endpoint.isLegacy())
+        {
+            ProfileGroupSnapshot group = registry.groupFor(endpoint);
+            JsonArray incompatible = new JsonArray();
+            for (ProfileGroupSnapshot.IncompatibleBackend item : group.getIncompatible())
+            {
+                JsonObject row = new JsonObject();
+                row.addProperty("port", item.port);
+                row.addProperty("reason", item.reason);
+                incompatible.add(row);
+            }
+            structured.add("incompatibleBackends", incompatible);
+            if (group.getEffectiveProfileId() != null)
+                structured.addProperty("effectiveProfileId", group.getEffectiveProfileId());
+            if (group.getFallbackReason() != null)
+                structured.addProperty("fallbackReason", group.getFallbackReason());
+            structured.add("availableProfiles", registry.availableProfilesForProxy(cfg != null ? cfg.port : 0));
+        }
 
         return toolCallSuccess(structured, "OK - backends: " + backends.size(), requestId, //$NON-NLS-1$
             allowStructuredContent);
@@ -260,8 +284,14 @@ public final class RouterTools
     public static String routerRefresh(BackendRegistry registry, Object requestId,
         boolean allowStructuredContent)
     {
+        return routerRefresh(registry, requestId, allowStructuredContent, ProfileEndpoint.legacyDefault());
+    }
+
+    public static String routerRefresh(BackendRegistry registry, Object requestId,
+        boolean allowStructuredContent, ProfileEndpoint endpoint)
+    {
         registry.refresh();
-        return routerStatus(registry, requestId, allowStructuredContent);
+        return routerStatus(registry, requestId, allowStructuredContent, endpoint);
     }
 
     /**

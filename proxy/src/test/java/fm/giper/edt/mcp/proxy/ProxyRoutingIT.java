@@ -697,7 +697,12 @@ public class ProxyRoutingIT
 
         McpTestClient(int proxyPort, String authToken)
         {
-            mcpUri = URI.create("http://127.0.0.1:" + proxyPort + "/mcp"); //$NON-NLS-1$ //$NON-NLS-2$
+            this(proxyPort, authToken, "/mcp"); //$NON-NLS-1$
+        }
+
+        McpTestClient(int proxyPort, String authToken, String path)
+        {
+            mcpUri = URI.create("http://127.0.0.1:" + proxyPort + path); //$NON-NLS-1$
             this.authToken = authToken;
         }
 
@@ -755,6 +760,28 @@ public class ProxyRoutingIT
             HttpResponse<String> response = post(jsonRpcRequest(method, params).toString());
             assertEquals("HTTP status for " + method, 200, response.statusCode()); //$NON-NLS-1$
             return parseSseData(response);
+        }
+
+        HttpResponse<String> requestRaw(String path, String method) throws IOException, InterruptedException
+        {
+            JsonObject request = new JsonObject();
+            request.addProperty("jsonrpc", "2.0"); //$NON-NLS-1$ //$NON-NLS-2$
+            request.addProperty("id", 99); //$NON-NLS-1$
+            request.addProperty("method", method); //$NON-NLS-1$
+            request.add("params", new JsonObject()); //$NON-NLS-1$
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(mcpUri.getScheme() + "://"
+                + mcpUri.getAuthority() + path)).timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/json") //$NON-NLS-1$ //$NON-NLS-2$
+                .header("Accept", ACCEPT_BOTH) //$NON-NLS-1$
+                .header(SESSION_HEADER, sessionId)
+                .POST(HttpRequest.BodyPublishers.ofString(request.toString()));
+            if (authToken != null) builder.header("Authorization", "Bearer " + authToken); //$NON-NLS-1$
+            return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        }
+
+        String sessionId()
+        {
+            return sessionId;
         }
 
         /**

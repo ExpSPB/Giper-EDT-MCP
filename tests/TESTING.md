@@ -38,6 +38,44 @@ Unit tests run automatically during the build (see **0. Build**). Results are in
 mcp/tests/fm.giper.edt.mcp.server.tests/target/surefire-reports/
 ```
 
+### Profile endpoint wire checks
+
+The loopback HTTP integration test `McpHttpProfileIntegrationTest` covers the transport
+contract without a running EDT: `/mcp` retains its legacy surface, explicit
+`/mcp/profiles/<id>` endpoints resolve enabled profiles, unknown/disabled IDs fall back
+to default during initialization, and sessions remain bound to their endpoint and
+effective profile. It also checks allowlist enforcement for tools/resources and malformed
+profile paths. Run it with the Maven unit-test suite from `mcp` (`mvn clean verify`);
+the test is in `fm.giper.edt.mcp.server.tests`. To target this HTTP contract alone, run
+from `mcp` with the Tycho test selector:
+
+```bash
+mvn -Dtest=McpHttpProfileIntegrationTest verify
+```
+
+`GetServerStatusToolTest` checks the diagnostic fields and discovery flags.
+`ProfileNotificationServiceTest` and `SseProfileNotificationTest` cover profile-scoped
+list-change notifications and session/stream behavior. Run the complete plugin suite with
+`mvn clean verify` from `mcp`; a specific class can be selected with
+`mvn -Dtest=ProfileNotificationServiceTest verify`.
+
+Profile settings and migration are covered by `ToolProfileMigrationTest` and
+`ToolsTabProfilesTest`; JSON import/export behavior is covered by
+`ToolProfileExchangeControllerTest`, `ToolProfileCodecTest`, and
+`ToolProfileFileServiceTest`. These tests verify the profile editor and exchange
+controller contracts. `ToolsTabProfilesTest` drives the SWT profile controls; the
+exchange tests exercise the file chooser and confirmation outcomes through injected test
+seams rather than opening native chooser dialogs.
+Proxy profile routing and profile SSE are covered by `ProfileParityIT`, an in-process
+integration test using a fake EDT backend. Run it from the repository root with:
+
+```bash
+mvn -f proxy/pom.xml -Dtest=ProfileParityIT verify
+```
+
+The complete proxy suite is `mvn -f proxy/pom.xml clean verify`; it includes unit tests
+and the live HTTP proxy integration tests, with no EDT installation required.
+
 ### 2. E2E Tests (Python HTTP client)
 
 Located in `tests/e2e/` — a modular black-box suite: `harness.py` (HTTP/SSE client +

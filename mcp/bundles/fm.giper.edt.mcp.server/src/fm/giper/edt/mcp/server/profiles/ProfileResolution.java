@@ -18,16 +18,16 @@ public final class ProfileResolution
     private final ToolProfile effectiveProfile;
     private final FallbackReason fallbackReason;
     private final boolean legacyEndpoint;
-    private final long documentRevision;
+    private final ToolProfileSnapshot snapshot;
 
-    public ProfileResolution(String requestedProfileId, ToolProfile effectiveProfile,
-        FallbackReason fallbackReason, boolean legacyEndpoint, long documentRevision)
+    ProfileResolution(String requestedProfileId, ToolProfile effectiveProfile,
+        FallbackReason fallbackReason, boolean legacyEndpoint, ToolProfileSnapshot snapshot)
     {
         this.requestedProfileId = requestedProfileId;
         this.effectiveProfile = Objects.requireNonNull(effectiveProfile, "effectiveProfile"); //$NON-NLS-1$
         this.fallbackReason = fallbackReason;
         this.legacyEndpoint = legacyEndpoint;
-        this.documentRevision = documentRevision;
+        this.snapshot = Objects.requireNonNull(snapshot, "snapshot"); //$NON-NLS-1$
     }
 
     public String getRequestedProfileId()
@@ -67,6 +67,11 @@ public final class ProfileResolution
 
     public long getDocumentRevision()
     {
-        return documentRevision;
+        return snapshot.getDocumentRevision();
+    }
+
+    public ToolProfileSnapshot getSnapshot()
+    {
+        return snapshot;
     }
 }

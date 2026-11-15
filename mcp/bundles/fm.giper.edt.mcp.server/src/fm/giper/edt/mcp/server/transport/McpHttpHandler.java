@@ -165,7 +165,7 @@ public class McpHttpHandler implements HttpHandler
      *
      * @return the session registry
      */
-    McpSessionRegistry getSessions()
+    public McpSessionRegistry getSessions()
     {
         return sessions;
     }
@@ -628,7 +628,7 @@ public class McpHttpHandler implements HttpHandler
         // comments. Both heartbeat and broadcast writes go through the registered
         // SseStream, which serializes them so frames never interleave.
         java.io.OutputStream os = exchange.getResponseBody();
-        SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(os);
+        SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(os, endpoint.path());
         try
         {
             while (!Thread.currentThread().isInterrupted()

@@ -1,6 +1,7 @@
 /**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
+ * Modified by ExpSPB in 2026 (https://github.com/ExpSPB)
  * Licensed under AGPL-3.0-or-later
  */
 
@@ -13,7 +14,7 @@ import com.google.gson.JsonObject;
 
 /**
  * Decides where one {@code tools/call} request goes: a specific backend (scoped by the
- * {@code projectName}/{@code project} and optional {@code workspacePath}), the {@code list_projects} fan-out, the
+ * {@code projectName}/{@code project} argument), the {@code list_projects} fan-out, the
  * proxy's own router tools, or an actionable error.
  * <p>
  * The hot-plug path lives here: a project MISS triggers ONE synchronous registry rescan
@@ -100,13 +101,22 @@ public final class ProjectRouter
      */
     public RouteResult route(String method, JsonObject requestJson)
     {
+        return route(method, requestJson, ProfileEndpoint.legacyDefault());
+    }
+
+    /**
+     * As {@link #route(String, JsonObject)}, but only backends in the profile compatibility
+     * group for {@code endpoint} may receive routed or unscoped calls.
+     *
+     * @param endpoint the client MCP path
+     * @return the routing decision
+     */
+    public RouteResult route(String method, JsonObject requestJson, ProfileEndpoint endpoint)
+    {
         if (METHOD_TOOLS_CALL.equals(method))
         {
             String selectorError = WorkspaceRouting.argumentError(requestJson);
-            if (selectorError != null)
-            {
-                return RouteResult.error(selectorError);
-            }
+            if (selectorError != null) return RouteResult.error(selectorError);
             String workspace = WorkspaceRouting.workspacePath(WorkspaceRouting.arguments(requestJson));
             JsonObject params = requestJson == null ? null : Json.obj(requestJson, "params"); //$NON-NLS-1$
             String toolName = params == null ? null : Json.str(params, "name"); //$NON-NLS-1$
@@ -116,31 +126,36 @@ public final class ProjectRouter
             }
             if (TOOL_LIST_PROJECTS.equals(toolName))
             {
-                if (workspace != null)
-                {
-                    RouteResult selected = routeScoped(null, workspace);
-                    if (selected.kind == RouteResult.Kind.ERROR)
-                    {
-                        return selected;
-                    }
-                }
+                if (workspace != null && matchingWorkspaceBackends(workspace).size() != 1)
+                    return RouteResult.error("workspacePath '" + workspace + "' does not identify exactly one live EDT instance.");
                 return RouteResult.fanOut();
             }
             String project = extractProjectArg(requestJson);
-            if (project != null || workspace != null)
+            if (project != null)
             {
-                return routeScoped(project, workspace);
+                return routeScoped(project, endpoint, workspace);
             }
+            if (workspace != null) return routeWorkspace(workspace, endpoint);
         }
-        return routeUnscoped();
+        return routeUnscoped(endpoint);
     }
 
     /**
      * Routes a project-scoped call, rescanning ONCE on a miss (the hot-plug path).
      */
-    private RouteResult routeScoped(String project, String workspace)
+    private RouteResult routeScoped(String project)
     {
-        RouteResult known = lookup(project, workspace);
+        return routeScoped(project, ProfileEndpoint.legacyDefault());
+    }
+
+    private RouteResult routeScoped(String project, ProfileEndpoint endpoint)
+    {
+        return routeScoped(project, endpoint, null);
+    }
+
+    private RouteResult routeScoped(String project, ProfileEndpoint endpoint, String workspace)
+    {
+        RouteResult known = workspace == null ? lookup(project, endpoint) : lookup(project, endpoint, workspace);
         if (known != null)
         {
             return known;
@@ -148,19 +163,20 @@ public final class ProjectRouter
         // On-miss rescan: the AI agent may have just started the EDT instance that
         // serves this project — notice it NOW instead of waiting for the periodic refresh.
         registry.refresh();
-        RouteResult rescanned = lookup(project, workspace);
+        RouteResult rescanned = workspace == null ? lookup(project, endpoint) : lookup(project, endpoint, workspace);
         if (rescanned != null)
         {
             return rescanned;
         }
-        return RouteResult.error((project == null ? "No running EDT instance matches" //$NON-NLS-1$
-            : "No running EDT instance serves project '" + project + "'") //$NON-NLS-1$ //$NON-NLS-2$
-            + (workspace == null ? "" : " in workspacePath '" + workspace + "'") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        String authNote = registry.live().stream().map(Backend::authenticationError)
+            .filter(java.util.Objects::nonNull).findFirst()
+            .map(error -> ". Authentication blocked at " + error + "; correct backend.<port>.token and retry." ) //$NON-NLS-1$
+            .orElse(""); //$NON-NLS-1$
+        String selectorNote = workspace == null ? "" : " for workspacePath '" + workspace + "'"; //$NON-NLS-1$ //$NON-NLS-2$
+        return RouteResult.error("No running EDT instance serves project '" + project + "'" + selectorNote //$NON-NLS-1$
             + ". Live backends: " + describeLiveBackends() //$NON-NLS-1$
             + describeUnsupportedBackends()
-            + describeAuthenticationFailures()
-            + (workspace == null ? "" : ". Copy workspacePath exactly from list_projects or router_status; " //$NON-NLS-1$ //$NON-NLS-2$
-                + "update plugins that do not report workspacePath") //$NON-NLS-1$
+            + authNote
             + ". If you just started EDT it may still be initializing - retry in ~30 s, or call router_refresh."); //$NON-NLS-1$
     }
 
@@ -195,44 +211,83 @@ public final class ProjectRouter
         return note.toString();
     }
 
-    private String describeAuthenticationFailures()
-    {
-        StringBuilder note = new StringBuilder();
-        for (Backend backend : registry.live())
-        {
-            String error = backend.authenticationError();
-            if (error != null)
-            {
-                note.append(". ").append(error);
-            }
-        }
-        return note.toString();
-    }
-
     /**
      * Looks the project up in the current snapshot: the duplicate error wins over the
      * owner route (a duplicated project is "known" too, but must not be routed silently).
      *
      * @return the decision, or {@code null} when the project is unknown
      */
-    private RouteResult lookup(String project, String workspace)
+    private RouteResult lookup(String project)
     {
-        List<BackendRegistry.BackendView> candidates = registry.backendViews().stream()
-            .filter(view -> project == null || view.projects().contains(project))
-            .filter(view -> workspace == null || workspace.equals(view.workspacePath()))
-            .toList();
-        if (candidates.size() > 1)
+        return lookup(project, ProfileEndpoint.legacyDefault());
+    }
+
+    private RouteResult lookup(String project, ProfileEndpoint endpoint)
+    {
+        BackendRegistry.RoutingView view = registry.routingView(endpoint);
+        List<Integer> dupPorts = view.duplicatePorts(project);
+        if (dupPorts != null)
         {
-            return RouteResult.error("Project/workspace '" + (project == null ? workspace : project) //$NON-NLS-1$
-                + "' is served by more than one EDT instance (ports " //$NON-NLS-1$
-                + joinPorts(candidates.stream().map(view -> view.backend().getPort()).toList())
-                + "). Routing is ambiguous. Set workspacePath using list_projects or router_status: " //$NON-NLS-1$
-                + candidates.stream().map(view -> ":" + view.backend().getPort() + " workspacePath=" //$NON-NLS-1$ //$NON-NLS-2$
-                    + (view.workspacePath() == null ? "<unavailable; update this EDT-MCP plugin>" //$NON-NLS-1$
-                        : view.workspacePath())).toList()
-                + ". If copies share a workspacePath, close the duplicate EDT and call router_refresh."); //$NON-NLS-1$
+            StringBuilder workspaces = new StringBuilder();
+            for (BackendRegistry.BackendView backend : registry.backendViews())
+            {
+                if (backend.projects().contains(project) && backend.workspacePath() != null)
+                {
+                    if (workspaces.length() > 0) workspaces.append(", ");
+                    workspaces.append(backend.workspacePath());
+                }
+            }
+            return RouteResult.error("Project '" + project + "' is served by more than one EDT instance (ports " //$NON-NLS-1$ //$NON-NLS-2$
+                + joinPorts(dupPorts)
+                + "). Routing is ambiguous" + (workspaces.length() == 0 ? "" : "; select workspacePath from " + workspaces) //$NON-NLS-1$ //$NON-NLS-2$
+                + "; update the EDT-MCP plugin to report workspacePath when these are separate workspaces" //$NON-NLS-1$
+                + " - close the project in the duplicate EDT instance, then call router_refresh."); //$NON-NLS-1$
         }
-        return candidates.isEmpty() ? null : RouteResult.backend(candidates.get(0).backend());
+        Backend owner = view.owner(project);
+        if (owner == null)
+        {
+            return null;
+        }
+        ProfileGroupSnapshot group = view.group();
+        if (group.getDonor() == null)
+        {
+            return RouteResult.error("Project '" + project + "' cannot be routed: the profile group for " //$NON-NLS-1$ //$NON-NLS-2$
+                + endpoint.canonicalPath() + " is not resolved. " + describeIncompatible(group)); //$NON-NLS-1$
+        }
+        if (!group.contains(owner))
+        {
+            return RouteResult.error("Project '" + project + "' is on backend :" + owner.getPort() //$NON-NLS-1$ //$NON-NLS-2$
+                + " which is not in the compatible profile group for " + endpoint.canonicalPath() //$NON-NLS-1$
+                + ". " + describeIncompatible(group)); //$NON-NLS-1$
+        }
+        return RouteResult.backend(owner, group.compatibilityKey());
+    }
+
+    private RouteResult lookup(String project, ProfileEndpoint endpoint, String workspace)
+    {
+        List<BackendRegistry.BackendView> matches = matchingWorkspaceBackends(workspace).stream()
+            .filter(view -> project == null || view.projects().contains(project)).toList();
+        if (matches.size() > 1)
+            return RouteResult.error("Project '" + project + "' is present in more than one backend for workspacePath '" + workspace + "'.");
+        if (matches.isEmpty()) return null;
+        Backend owner = matches.get(0).backend();
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        if (group.getDonor() == null || !group.contains(owner))
+            return RouteResult.error("The selected backend is not compatible with profile endpoint " + endpoint.canonicalPath() + ".");
+        return RouteResult.backend(owner, group.compatibilityKey());
+    }
+
+    private RouteResult routeWorkspace(String workspace, ProfileEndpoint endpoint)
+    {
+        List<BackendRegistry.BackendView> matches = matchingWorkspaceBackends(workspace);
+        if (matches.size() != 1)
+            return RouteResult.error("workspacePath '" + workspace + "' does not identify exactly one live EDT instance.");
+        return lookup(null, endpoint, workspace);
+    }
+
+    private List<BackendRegistry.BackendView> matchingWorkspaceBackends(String workspace)
+    {
+        return registry.backendViews().stream().filter(view -> workspace.equals(view.workspacePath())).toList();
     }
 
     /**
@@ -241,10 +296,22 @@ public final class ProjectRouter
      */
     private RouteResult routeUnscoped()
     {
+        return routeUnscoped(ProfileEndpoint.legacyDefault());
+    }
+
+    private RouteResult routeUnscoped(ProfileEndpoint endpoint)
+    {
+        ProfileGroupSnapshot group = registry.groupFor(endpoint);
+        if (group.getDonor() != null)
+        {
+            return RouteResult.backend(group.getDonor(), group.compatibilityKey());
+        }
         List<Backend> live = registry.live();
         if (!live.isEmpty())
         {
-            return RouteResult.backend(live.get(0));
+            return RouteResult.error("Profile '" + endpoint.getRequestedProfileId() //$NON-NLS-1$
+                + "' is not resolved: live backends have no donor for " //$NON-NLS-1$
+                + endpoint.canonicalPath() + ". " + describeIncompatible(group)); //$NON-NLS-1$
         }
         ProxyConfig cfg = registry.getConfig();
         return RouteResult.error("No running EDT backends. Scanned ports " + cfg.scanFrom + "-" + cfg.scanTo //$NON-NLS-1$ //$NON-NLS-2$
@@ -272,6 +339,20 @@ public final class ProjectRouter
             sb.append(':').append(entry.getKey()).append(" (projects: "); //$NON-NLS-1$
             sb.append(entry.getValue().isEmpty() ? "none" : String.join(", ", entry.getValue())); //$NON-NLS-1$ //$NON-NLS-2$
             sb.append(')');
+        }
+        return sb.toString();
+    }
+
+    private static String describeIncompatible(ProfileGroupSnapshot group)
+    {
+        if (group.getIncompatible().isEmpty())
+        {
+            return "Call router_status for the mismatch details."; //$NON-NLS-1$
+        }
+        StringBuilder sb = new StringBuilder("Incompatible backends: "); //$NON-NLS-1$
+        for (ProfileGroupSnapshot.IncompatibleBackend item : group.getIncompatible())
+        {
+            sb.append(':').append(item.port).append(" (").append(item.reason).append("); "); //$NON-NLS-1$ //$NON-NLS-2$
         }
         return sb.toString();
     }
@@ -317,11 +398,14 @@ public final class ProjectRouter
         /** The actionable error text; non-{@code null} only for {@link Kind#ERROR}. */
         public final String errorMessage;
 
-        private RouteResult(Kind kind, Backend backend, String errorMessage)
+        public final String expectedProfileCompatibilityKey;
+
+        private RouteResult(Kind kind, Backend backend, String errorMessage, String expectedProfileCompatibilityKey)
         {
             this.kind = kind;
             this.backend = backend;
             this.errorMessage = errorMessage;
+            this.expectedProfileCompatibilityKey = expectedProfileCompatibilityKey;
         }
 
         /**
@@ -332,7 +416,12 @@ public final class ProjectRouter
          */
         public static RouteResult backend(Backend b)
         {
-            return new RouteResult(Kind.BACKEND, b, null);
+            return backend(b, null);
+        }
+
+        public static RouteResult backend(Backend b, String compatibilityKey)
+        {
+            return new RouteResult(Kind.BACKEND, b, null, compatibilityKey);
         }
 
         /**
@@ -342,7 +431,7 @@ public final class ProjectRouter
          */
         public static RouteResult fanOut()
         {
-            return new RouteResult(Kind.FAN_OUT_LIST_PROJECTS, null, null);
+            return new RouteResult(Kind.FAN_OUT_LIST_PROJECTS, null, null, null);
         }
 
         /**
@@ -352,7 +441,7 @@ public final class ProjectRouter
          */
         public static RouteResult self()
         {
-            return new RouteResult(Kind.PROXY_SELF, null, null);
+            return new RouteResult(Kind.PROXY_SELF, null, null, null);
         }
 
         /**
@@ -363,7 +452,7 @@ public final class ProjectRouter
          */
         public static RouteResult error(String msg)
         {
-            return new RouteResult(Kind.ERROR, null, msg);
+            return new RouteResult(Kind.ERROR, null, msg, null);
         }
     }
 }

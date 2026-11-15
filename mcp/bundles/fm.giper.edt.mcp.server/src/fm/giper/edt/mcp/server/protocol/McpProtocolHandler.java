@@ -31,6 +31,7 @@ import fm.giper.edt.mcp.server.protocol.jsonrpc.ToolsListResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
 import fm.giper.edt.mcp.server.tools.Toolsets;
+import fm.giper.edt.mcp.server.tools.impl.GetServerStatusTool;
 import fm.giper.edt.mcp.server.tools.impl.GetToolGuideTool;
 import fm.giper.edt.mcp.server.utils.DcsXmlCodec;
 import fm.giper.edt.mcp.server.utils.GuideRenderer;
@@ -566,7 +567,7 @@ public class McpProtocolHandler
         }
         
         // Execute the tool (timed + logged + status-bar cleared in one place).
-        String result = executeToolTimed(tool, params, server);
+        String result = executeToolTimed(tool, params, server, policy);
 
         // PII redaction (#242): the single wire-serialization choke point.
         // A no-op unless redaction is enabled AND the tool is flagged returnsInfobaseData -
@@ -598,10 +599,11 @@ public class McpProtocolHandler
      * @param tool the resolved tool to run
      * @param params the extracted tool params
      * @param server the MCP server (may be {@code null} during a shutdown race)
+     * @param policy the policy used to admit the request, if it arrived on an explicit profile route
      * @return the raw tool result payload (may be {@code null} only if {@code execute} returned
      *         {@code null})
      */
-    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server)
+    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server, ProfileToolPolicy policy)
     {
         String result = null;
         long startNanos = System.nanoTime();
@@ -634,7 +636,7 @@ public class McpProtocolHandler
         try (var lease = lifetime == null ? null : lifetime.tool())
         {
             if (lifetime != null && lease == null) { return ToolResult.error("Headless EDT is shutting down; reconnect and retry a read.").toJson(); }
-            result = tool.execute(params);
+            result = tool instanceof GetServerStatusTool status ? status.execute(params, policy) : tool.execute(params);
             threw = false;
             return result;
         }
