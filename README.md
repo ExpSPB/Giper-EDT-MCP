@@ -98,6 +98,52 @@ set VER_EDT=2026.2.2+21
 	-profileProperties org.eclipse.update.reconcile=true
 ```
 
+### Upgrade from 1.0.15 to 1.0.16 on Windows
+
+This procedure was verified on EDT 2026.2.2.21 with Giper-EDT-MCP 1.0.15 already installed.
+
+1. Close the EDT instance you want to upgrade. Download
+   [`MCP-EDT.v1.0.16.zip`](https://github.com/ExpSPB/Giper-EDT-MCP/releases/download/v1.0.16/MCP-EDT.v1.0.16.zip)
+   and extract it to a directory. Use the extracted p2 repository root, which contains `plugins/`
+   and `features/`.
+2. In Command Prompt, set `EDT_DIR` to the installation that has 1.0.15 and `P2_REPO` to the
+   file URI of the extracted repository. Run both IU changes in one p2 Director invocation.
+   Installing 1.0.16 alone can conflict with the feature JAR required by 1.0.15.
+
+   ```cmd
+   set "EDT_DIR=C:\path\to\1c-edt-2026.2.2+21-x86_64"
+   set "P2_REPO=file:///D:/downloads/edt-mcp-1.0.16"
+   set "MCP_IU=fm.giper.edt.mcp.server.feature.feature.group"
+
+   cd /d "%EDT_DIR%"
+   start "" /wait "%EDT_DIR%\1cedt.exe" -nosplash -consoleLog ^
+       -application org.eclipse.equinox.p2.director ^
+       -destination "%EDT_DIR%" -profile DefaultProfile ^
+       -repository "%P2_REPO%" ^
+       -uninstallIU "%MCP_IU%/1.0.15" -installIU "%MCP_IU%/1.0.16" ^
+       -profileProperties org.eclipse.update.install.features=true ^
+       -p2.os win32 -p2.ws win32 -p2.arch x86_64
+   ```
+
+3. After p2 reports success, reopen the **same workspace**. For a scripted start,
+   use `1cedt.exe -data "<existing-workspace>"` and let EDT select its own configuration
+   directory. The tool profiles are stored in the workspace. Verify them in
+   **Window → Preferences → MCP Server → Tools**, and check `pluginVersion` in `get_server_status`.
+
+On the test stand, both profiles retained their settings. Through the published 1.0.16 proxy JAR,
+`ui-test` returned the reason for denying `list_projects`, and `default` returned
+`TestConfiguration` with state `ready`.
+
+**Windows `-configuration` pitfall.** In the test that failed, the explicit `-configuration`
+argument caused Equinox to see the installation's configuration directory as two file URLs
+with different drive-letter case (`file:/D:/...` and `file:/d:/...`). In this cascaded configuration
+mode, p2 recorded a surrogate profile with 38 installable units. The full profile had 1,554.
+The surrogate lacked `com._1c.g5.v8.dt.platform_v8.3.12`, so Director could not resolve the EDT
+License Feature from the plugin repository alone. Starting EDT without `-configuration` kept the
+full p2 profile on the test stand. If the installed copy already reports the missing platform
+dependency, start with a complete EDT installation, install 1.0.15 there, and then run the upgrade
+above with the existing workspace.
+
 ### Installation Result
 
 <details>
