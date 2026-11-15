@@ -144,6 +144,13 @@ full p2 profile on the test stand. If the installed copy already reports the mis
 dependency, start with a complete EDT installation, install 1.0.15 there, and then run the upgrade
 above with the existing workspace.
 
+**p2 exit code 13 in the Codex sandbox.** Java's `Files.isWritable` can return `false` for
+the target EDT directory even when the process can create a temporary file there. p2 Director
+then reports the directory as read-only, and the EDT launcher shows
+`Java was started but returned exit code=13`. On a separate copy of the same EDT build,
+installing 1.0.15 from its release ZIP succeeded from a regular `cmd.exe` outside the sandbox
+with exit code `0` and without Windows administrator elevation.
+
 ### Installation Result
 
 <details>
