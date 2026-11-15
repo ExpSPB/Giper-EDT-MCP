@@ -79,10 +79,9 @@ public final class FanOut
      * <p>The {@code result.structuredContent.projects} arrays are concatenated in the order
      * the responses are given. The first usable response donates the envelope (content
      * digest, structuredContent shape); its {@code id} is rewritten to {@code requestId}.
-     * Unparseable responses, JSON-RPC error responses, and tool-level errors
-     * ({@code result.isError == true}) are skipped. When not a single usable response
-     * remains, a JSON-RPC error response (code {@link #ERROR_NO_BACKENDS}, message
-     * {@value #MSG_NO_BACKENDS}) is returned.</p>
+     * Only usable responses contribute projects. If no usable response remains, the first
+     * tool-level error with a message is returned to the caller. Without such an error, the
+     * fallback is {@link #ERROR_NO_BACKENDS} ({@value #MSG_NO_BACKENDS}).</p>
      *
      * @param backendResponses raw JSON-RPC response strings, one per backend (may be {@code null})
      * @param requestId the client's request id to echo (String, Number, or {@code null})
@@ -139,6 +138,7 @@ public final class FanOut
     {
         JsonArray mergedProjects = new JsonArray();
         JsonObject firstEnvelope = null;
+        String firstToolError = null;
         int supportedBackends = 0;
         int answeringBackends = 0;
         int truncatedBackends = 0;
@@ -148,8 +148,17 @@ public final class FanOut
             for (String raw : backendResponses)
             {
                 JsonObject envelope = Json.parseObject(raw);
-                if (!isUsable(envelope))
+                JsonObject envelopeResult = Json.obj(envelope, KEY_RESULT);
+                if (envelopeResult == null || envelope.has(KEY_ERROR))
                 {
+                    continue;
+                }
+                if (isToolError(envelopeResult))
+                {
+                    if (firstToolError == null)
+                    {
+                        firstToolError = toolErrorMessage(envelopeResult);
+                    }
                     continue;
                 }
                 answeringBackends++;
@@ -162,7 +171,6 @@ public final class FanOut
                 // too old to support it. Such a backend contributes nothing here and is reported as
                 // an unsupported version by the registry - the proxy deliberately does NOT scrape the
                 // human Markdown as a fallback.
-                JsonObject envelopeResult = Json.obj(envelope, KEY_RESULT);
                 if (appendStructuredProjects(envelopeResult, mergedProjects))
                 {
                     supportedBackends++;
@@ -178,9 +186,15 @@ public final class FanOut
         {
             if (!warnings.isEmpty())
             {
-                return RouterTools.toolCallError("No requested EDT backend returned a usable project list. "
-                    + String.join(" ", warnings) + " Use router_status to inspect each backend.",
+                String reason = firstToolError == null
+                    ? "No requested EDT backend returned a usable project list." : firstToolError;
+                return RouterTools.toolCallError(reason + " " + String.join(" ", warnings)
+                    + " Use router_status to inspect each backend.",
                     requestId, allowStructuredContent);
+            }
+            if (firstToolError != null)
+            {
+                return RouterTools.toolCallError(firstToolError, requestId, allowStructuredContent);
             }
             return jsonRpcError(ERROR_NO_BACKENDS, MSG_NO_BACKENDS, requestId);
         }
@@ -486,25 +500,21 @@ public final class FanOut
         return content;
     }
 
-    /**
-     * A response is usable when it parses to a JSON object, is not a JSON-RPC error response,
-     * carries a {@code result} object, and that result is not a tool-level error
-     * ({@code isError == true}).
-     */
-    private static boolean isUsable(JsonObject envelope)
+    private static boolean isToolError(JsonObject result)
     {
-        if (envelope == null || envelope.has(KEY_ERROR))
-        {
-            return false;
-        }
-        JsonObject result = Json.obj(envelope, KEY_RESULT);
-        if (result == null)
-        {
-            return false;
-        }
         JsonElement isError = result.get(KEY_IS_ERROR);
-        return isError == null || !isError.isJsonPrimitive() || !isError.getAsJsonPrimitive().isBoolean()
-            || !isError.getAsBoolean();
+        return isError != null && isError.isJsonPrimitive() && isError.getAsJsonPrimitive().isBoolean()
+            && isError.getAsBoolean();
+    }
+
+    private static String toolErrorMessage(JsonObject result)
+    {
+        String message = Json.str(Json.obj(result, KEY_STRUCTURED_CONTENT), KEY_ERROR);
+        if (message == null || message.isBlank())
+        {
+            message = Json.str(firstContentItem(result), KEY_TEXT);
+        }
+        return message == null || message.isBlank() ? null : message;
     }
 
     /**

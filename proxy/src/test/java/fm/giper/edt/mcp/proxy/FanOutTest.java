@@ -25,8 +25,8 @@ import com.google.gson.JsonObject;
 /**
  * Unit tests for {@link FanOut#mergeListProjects}: merging usable {@code list_projects}
  * responses in the given order, rewriting the {@code id} to the caller's request id,
- * skipping unusable responses (unparseable body, JSON-RPC error, tool-level error), and the
- * zero-usable-responses JSON-RPC error.
+ * skipping unusable responses when projects can be merged, and reporting backend tool errors
+ * when no usable response remains.
  */
 public class FanOutTest
 {
@@ -615,16 +615,27 @@ public class FanOutTest
     public void testMergeSkipsAToolLevelErrorResponse()
     {
         String good = listProjectsResponse(1, "ProjectA"); //$NON-NLS-1$
-        JsonObject result = new JsonObject();
-        result.addProperty("isError", true); //$NON-NLS-1$
-        JsonObject toolError = new JsonObject();
-        toolError.addProperty("jsonrpc", "2.0"); //$NON-NLS-1$ //$NON-NLS-2$
-        toolError.addProperty("id", 2); //$NON-NLS-1$
-        toolError.add("result", result); //$NON-NLS-1$
-
-        String merged = FanOut.mergeListProjects(Arrays.asList(good, Json.compact(toolError)), 1, true);
+        String toolError = RouterTools.toolCallError("Tool is not allowed by this profile", 2, false);
+        String merged = FanOut.mergeListProjects(List.of(toolError, good), 1, true);
 
         assertEquals(List.of("ProjectA"), projectNamesOf(Json.parseObject(merged))); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testBackendToolErrorReasonSurvivesWhenNoBackendSucceeds()
+    {
+        String reason = "Tool 'list_projects' is not allowed by profile 'ui-test'.";
+        String backend = RouterTools.toolCallError(reason, 2, false);
+        for (boolean allowStructured : new boolean[] {true, false})
+        {
+            JsonObject response = Json.parseObject(FanOut.mergeListProjects(
+                List.of("unparseable", backend), "client-id", true, allowStructured));
+            assertEquals("client-id", response.get("id").getAsString());
+            JsonObject result = response.getAsJsonObject("result");
+            assertTrue(result.get("isError").getAsBoolean());
+            assertEquals(reason, contentTextOf(response));
+            assertEquals(allowStructured, result.has("structuredContent"));
+        }
     }
 
     // ---- zero usable responses -> the -32000 "No running EDT backends" error ----
