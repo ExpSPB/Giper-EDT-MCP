@@ -53,7 +53,7 @@ public class ToolDocsRatchetTest
 
     private static final String INDEX_START = "<!-- TOOLS-INDEX:START -->";
     private static final String INDEX_END = "<!-- TOOLS-INDEX:END -->";
-    // The folder index puts its period inside the bold count; the root index does not.
+    // The folder index puts its period inside the bold count; the user guide index does not.
     private static final Pattern TOOL_COUNT = Pattern.compile("^\\*\\*(\\d+) tools\\.?\\*\\*", Pattern.MULTILINE);
 
     private McpToolRegistry registry;
@@ -127,16 +127,16 @@ public class ToolDocsRatchetTest
         checkIndex("docs/tools/README.md", Files.readString(root.resolve("docs/tools/README.md"),
             StandardCharsets.UTF_8), "", problems);
 
-        String readme = normalizeLf(Files.readString(root.resolve("README.md"), StandardCharsets.UTF_8));
-        int start = readme.indexOf(INDEX_START);
-        int end = readme.indexOf(INDEX_END);
+        String userGuide = normalizeLf(Files.readString(root.resolve("EDT-MCP.md"), StandardCharsets.UTF_8));
+        int start = userGuide.indexOf(INDEX_START);
+        int end = userGuide.indexOf(INDEX_END);
         if (start < 0 || end <= start)
         {
-            problems.add("README.md: missing or misordered TOOLS-INDEX markers");
+            problems.add("EDT-MCP.md: missing or misordered TOOLS-INDEX markers");
         }
         else
         {
-            checkIndex("README.md TOOLS-INDEX", readme.substring(start + INDEX_START.length(), end),
+            checkIndex("EDT-MCP.md TOOLS-INDEX", userGuide.substring(start + INDEX_START.length(), end),
                 "docs/tools/", problems);
         }
         assertEquals(REGENERATE + "\n" + String.join("\n", problems), 0, problems.size());

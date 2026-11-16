@@ -15,7 +15,7 @@ generator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(generator)
 
 
-class ReadmeRegenerationTest(unittest.TestCase):
+class UserGuideRegenerationTest(unittest.TestCase):
     def regenerate(self, root, tools, members):
         docs = root / "docs"
         docs.mkdir(exist_ok=True)
@@ -30,7 +30,7 @@ class ReadmeRegenerationTest(unittest.TestCase):
                 patch("sys.argv", ["generate_tool_docs.py"]), \
                 contextlib.redirect_stdout(io.StringIO()):
             generator.main()
-        return (root / "README.md").read_text(encoding="utf-8")
+        return (root / "EDT-MCP.md").read_text(encoding="utf-8")
 
     def test_preserves_full_overview_while_refreshing_membership_and_tool_pages(self):
         overview = ("Read the saved source using `projectName` and `modulePath`; "
@@ -38,7 +38,9 @@ class ReadmeRegenerationTest(unittest.TestCase):
                     "even for a limited range, and preserve a literal \\| in this table cell.")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "README.md").write_text(
+            readme = root / "README.md"
+            readme.write_text("Fork overview.\n", encoding="utf-8")
+            (root / "EDT-MCP.md").write_text(
                 "Introduction.\n<!-- TOOLS-INDEX:START -->\n"
                 "| [`existing`](docs/tools/existing.md) | " + overview + " |\n"
                 "| [`removed`](docs/tools/removed.md) | Obsolete entry. |\n"
@@ -47,6 +49,7 @@ class ReadmeRegenerationTest(unittest.TestCase):
                 {"name": "existing", "description": "Fresh advertised description."},
                 {"name": "added", "description": "Describe a newly registered tool."}],
                 ["existing", "added"])
+            self.assertEqual("Fork overview.\n", readme.read_text(encoding="utf-8"))
             self.assertIn(overview, text)
             self.assertIn("Describe a newly registered tool.", text)
             self.assertNotIn("removed.md", text)
@@ -63,7 +66,7 @@ class ReadmeRegenerationTest(unittest.TestCase):
     def test_repeated_generation_keeps_one_disabled_annotation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "README.md").write_text(
+            (root / "EDT-MCP.md").write_text(
                 "<!-- TOOLS-INDEX:START -->\n"
                 "| [`hidden`](docs/tools/hidden.md) | Maintained overview."
                 " *(not enabled by default)* |\n<!-- TOOLS-INDEX:END -->\n",
