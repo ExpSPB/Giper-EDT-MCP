@@ -89,7 +89,8 @@ public class GetModuleStructureToolTest
         assertTrue(BslMethodRecovery.isParseUnverified(module.eResource()));
         var diagnostic = BslMethodRecovery.firstSyntaxIssue(module.eResource());
         assertEquals(9, diagnostic.line());
-        assertTrue(diagnostic.message(), diagnostic.message().contains("#EndRegion"));
+        assertTrue(diagnostic.message(), diagnostic.message().contains("#EndRegion")
+            || diagnostic.message().contains("#КонецОбласти"));
 
         String result = new GetModuleStructureTool().formatStructure("Module.bsl", module, source, false, false, false);
         assertTrue(result, result.contains("EDT model methods: 4. Saved text declarations: 6."));

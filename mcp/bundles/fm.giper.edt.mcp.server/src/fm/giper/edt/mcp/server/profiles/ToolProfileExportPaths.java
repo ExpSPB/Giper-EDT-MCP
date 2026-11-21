@@ -10,6 +10,7 @@ package fm.giper.edt.mcp.server.profiles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 
 /**
  * Resolves export paths chosen in a file dialog (.json suffix) and decides
@@ -58,6 +59,6 @@ public final class ToolProfileExportPaths
 
     private static boolean hasJsonSuffix(String path)
     {
-        return path.toLowerCase().endsWith(JSON_SUFFIX);
+        return path.toLowerCase(Locale.ROOT).endsWith(JSON_SUFFIX);
     }
 }
