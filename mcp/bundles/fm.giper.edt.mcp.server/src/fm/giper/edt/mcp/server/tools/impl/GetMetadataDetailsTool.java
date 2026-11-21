@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MCP Server for EDT
  * Copyright (C) 2025 DitriX (https://github.com/DitriXNew)
  * Licensed under AGPL-3.0-or-later
@@ -6,20 +6,26 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.emf.ecore.EStructuralFeature;
 
 import com._1c.g5.v8.bm.core.IBmObject;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.dcs.model.schema.DataCompositionSchema;
 import com._1c.g5.v8.dt.metadata.mdclass.AbstractRoleDescription;
+import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicTemplate;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.ChartOfAccounts;
@@ -44,14 +50,17 @@ import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.metadata.MetadataFormatterRegistry;
+import fm.giper.edt.mcp.server.utils.AdoptedTypeCell;
 import fm.giper.edt.mcp.server.utils.BmTransactions;
 import fm.giper.edt.mcp.server.utils.ReadToolExecution;
 import fm.giper.edt.mcp.server.utils.Refusals;
 import fm.giper.edt.mcp.server.utils.CommandInterfaceAddress;
 import fm.giper.edt.mcp.server.utils.CommandInterfaceSupport;
 import fm.giper.edt.mcp.server.utils.ConfigurationRoot;
+import fm.giper.edt.mcp.server.utils.ControlledMetadataProperties;
 import fm.giper.edt.mcp.server.utils.DcsStructureReader;
 import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils;
+import fm.giper.edt.mcp.server.utils.ExtensionServices;
 import fm.giper.edt.mcp.server.utils.ExcludedCommandsSupport;
 import fm.giper.edt.mcp.server.utils.FieldListSupport;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
@@ -62,9 +71,11 @@ import fm.giper.edt.mcp.server.utils.MetadataLanguageUtils;
 import fm.giper.edt.mcp.server.utils.MetadataNodeResolver;
 import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
+import fm.giper.edt.mcp.server.utils.OwnedFormMetadata;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
 import fm.giper.edt.mcp.server.utils.ReferencedTopObjects;
 import fm.giper.edt.mcp.server.utils.Pagination;
+import fm.giper.edt.mcp.server.utils.PersistedContents;
 import fm.giper.edt.mcp.server.utils.PredefinedWriter;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.RoleRightsReader;
@@ -153,6 +164,10 @@ public class GetMetadataDetailsTool implements IMcpTool
                 "owner each belongs to).") //$NON-NLS-1$
             .stringProperty("language", //$NON-NLS-1$
                 "Synonym language code, e.g. 'en'/'ru' (default: configuration default)") //$NON-NLS-1$
+            .booleanProperty("controlledMismatches",
+                "Compare adopted objects and nested members with the base project (extension only, excludes full and assignable).")
+            .integerProperty(McpKeys.LIMIT, "Rows per controlledMismatches page (default 100, max 1000).")
+            .integerProperty("offset", "Zero-based row offset for controlledMismatches (default 0).")
             .build();
     }
 
@@ -168,7 +183,7 @@ public class GetMetadataDetailsTool implements IMcpTool
         String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
         if (projectName != null && !projectName.isEmpty())
         {
-            return "metadata-details-" + projectName.toLowerCase() + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
+            return "metadata-details-" + projectName.toLowerCase(Locale.ROOT) + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
         }
         return "metadata-details.md"; //$NON-NLS-1$
     }
@@ -178,12 +193,14 @@ public class GetMetadataDetailsTool implements IMcpTool
     {
         String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
         List<String> objectFqns = JsonUtils.extractArrayArgument(params, "objectFqns"); //$NON-NLS-1$
-        String fullStr = JsonUtils.extractStringArgument(params, "full"); //$NON-NLS-1$
         boolean assignable = JsonUtils.extractBooleanArgument(params, "assignable", false); //$NON-NLS-1$
         String language = JsonUtils.extractStringArgument(params, "language"); //$NON-NLS-1$
         // Role-matrix pagination offset (0-based objects). Only the ROLE branch consumes it; a negative
         // request is clamped to 0 downstream. Ignored in full mode.
         int roleObjectOffset = JsonUtils.extractIntArgument(params, "roleObjectOffset", 0); //$NON-NLS-1$
+        boolean controlledMismatches = JsonUtils.extractBooleanArgument(params, "controlledMismatches", false);
+        int limit = JsonUtils.extractIntArgument(params, McpKeys.LIMIT, Pagination.DEFAULT_LIMIT);
+        int offset = JsonUtils.extractIntArgument(params, "offset", 0);
 
         // Validate required parameters
         String err = JsonUtils.requireArgument(params, McpKeys.PROJECT_NAME);
@@ -197,7 +214,13 @@ public class GetMetadataDetailsTool implements IMcpTool
             return ToolResult.error("objectFqns is required (array of FQNs like 'Catalog.Products')").toJson(); //$NON-NLS-1$
         }
 
-        boolean full = "true".equalsIgnoreCase(fullStr); //$NON-NLS-1$
+        boolean full = JsonUtils.extractBooleanArgument(params, "full", false); //$NON-NLS-1$
+        if (controlledMismatches && (full || assignable))
+        {
+            return ToolResult.error("controlledMismatches:true requires full and assignable to be false or omitted.").toJson();
+        }
+        MismatchPage page = controlledMismatches
+            ? new MismatchPage(Pagination.clampLimit(limit, Pagination.MAX_LIMIT), Math.max(0, offset)) : null;
 
         // Preserve windowed dispatch; headless reads stay on the calling thread.
         AtomicReference<String> resultRef = new AtomicReference<>();
@@ -211,7 +234,7 @@ public class GetMetadataDetailsTool implements IMcpTool
             try
             {
                 String result =
-                    getMetadataDetailsInternal(projectName, fqns, fullMode, assignableMode, lang, roleOffset);
+                    getMetadataDetailsInternal(projectName, fqns, fullMode, assignableMode, lang, roleOffset, page);
                 resultRef.set(result);
             }
             catch (Exception e)
@@ -229,7 +252,7 @@ public class GetMetadataDetailsTool implements IMcpTool
      */
     private String getMetadataDetailsInternal(String projectName, List<String> objectFqns,
                                                boolean full, boolean assignable, String language,
-                                               int roleObjectOffset)
+                                               int roleObjectOffset, MismatchPage page)
     {
         ProjectContext project = ProjectContext.of(projectName);
         if (!project.exists())
@@ -240,6 +263,19 @@ public class GetMetadataDetailsTool implements IMcpTool
             model -> prepareRead(projectName, full, assignable, language, roleObjectOffset, model));
         if (setup.error() != null) { return setup.error(); }
         RenderContext ctx = setup.context();
+        if (page != null)
+        {
+            if (!ctx.isExtensionProject)
+            {
+                return ToolResult.error("controlledMismatches:true requires an extension project. '"
+                    + projectName + "' is not an extension; select one with list_projects.").toJson();
+            }
+            return BmTransactions.read(ctx.bmModel, NAME, (tx, monitor) -> {
+                var version = ProjectContext.platformVersion(ctx.project);
+                return renderControlledMismatches(ctx.scope, objectFqns, page,
+                    object -> ControlledMetadataProperties.differences(ctx.project, object, version));
+            });
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("# Metadata Details: ").append(projectName).append("\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
         List<String[]> failures = new ArrayList<>();
@@ -256,6 +292,67 @@ public class GetMetadataDetailsTool implements IMcpTool
         }
 
         return sb.toString();
+    }
+
+    record MismatchPage(int limit, int offset) { }
+
+    private record ControlledRow(String fqn, ControlledMetadataProperties.Row comparison) { }
+
+    static String renderControlledMismatches(MetadataScope scope, List<String> fqns, MismatchPage page,
+        Function<MdObject, List<ControlledMetadataProperties.Row>> compare)
+    {
+        Set<MdObject> visited = new LinkedHashSet<>();
+        List<ControlledRow> rows = new ArrayList<>();
+        for (String fqn : fqns)
+        {
+            MdObject target = MetadataNodeResolver.resolveAddress(scope, fqn, true);
+            if (target == null || target instanceof Configuration)
+            {
+                return ToolResult.error("Cannot check controlled properties for '" + fqn
+                    + "'. Use get_metadata_objects to list valid extension object FQNs.").toJson();
+            }
+            collectControlledRows(target, compare, visited, rows);
+            for (EObject child : PersistedContents.descendants(target))
+            {
+                if (child instanceof MdObject member)
+                {
+                    collectControlledRows(member, compare, visited, rows);
+                }
+            }
+        }
+        int start = Math.min(page.offset(), rows.size());
+        int end = Math.min(start + page.limit(), rows.size());
+        long mismatches = rows.stream().filter(row -> row.comparison.status()
+            == ControlledMetadataProperties.Status.MISMATCH).count();
+        StringBuilder result = new StringBuilder("## Controlled property mismatches\n\n")
+            .append("**Mismatches:** ").append(mismatches)
+            .append(" · **Unavailable:** ").append(rows.size() - mismatches)
+            .append(" · **Adopted objects scanned:** ").append(visited.size())
+            .append(start == end && !rows.isEmpty() ? " (no rows at offset " + page.offset() + ")"
+                : Pagination.pageNotice(start, end - start, rows.size())).append("\n\n");
+        if (start < end)
+        {
+            result.append(MarkdownUtils.tableHeader("Object", "Property", "Controlled", "Base", "Status"));
+            for (ControlledRow row : rows.subList(start, end))
+            {
+                var comparison = row.comparison;
+                result.append(MarkdownUtils.tableRow(row.fqn, comparison.property(), comparison.controlled(),
+                    comparison.base(), comparison.status().toString()));
+            }
+        }
+        return result.toString();
+    }
+
+    private static void collectControlledRows(MdObject object,
+        Function<MdObject, List<ControlledMetadataProperties.Row>> compare, Set<MdObject> visited, List<ControlledRow> rows)
+    {
+        if (ExtensionServices.isAdopted(object) && visited.add(object))
+        {
+            for (var row : compare.apply(object))
+            {
+                rows.add(new ControlledRow(MetadataNodeResolver.addressOf(object), row));
+            }
+        }
     }
 
     private record ReadSetup(RenderContext context, String error) { }
@@ -446,6 +543,12 @@ public class GetMetadataDetailsTool implements IMcpTool
             && ReferencedTopObjects.isReferencedTopCollection(referenced.feature);
         if (nestedChain == null && !referencedTop && normalizedFqn.split("\\.", -1).length > 2) //$NON-NLS-1$
         {
+            if (referenced != null && referenced.object instanceof BasicFeature
+                && ExtensionServices.isAdopted(referenced.object))
+            {
+                sb.append(MetadataFormatterRegistry.format(referenced.object, ctx.full, ctx.effectiveLanguage, ctx.project));
+                return;
+            }
             failures.add(new String[] { fqn, memberAddressReason(ctx.scope, normalizedFqn) });
             return;
         }
@@ -468,7 +571,8 @@ public class GetMetadataDetailsTool implements IMcpTool
             return;
         }
 
-        sb.append(MetadataFormatterRegistry.format(mdObject, ctx.full, ctx.effectiveLanguage));
+        sb.append(MetadataFormatterRegistry.format(mdObject, ctx.full, ctx.effectiveLanguage,
+            ctx.isExtensionProject ? ctx.project : null));
         // Type-specific properties the universal reflective formatter's default view omits
         // (issue #288): ScheduledJob / CommonModule / an InformationRegister's dimension Indexing.
         sb.append(formatTypeSpecificProperties(mdObject, ctx.full));
@@ -552,9 +656,9 @@ public class GetMetadataDetailsTool implements IMcpTool
     }
 
     /**
-     * Renders the ASSIGNABLE-property view for one FQN of the request: an owned-form root or form
-     * member is routed through the form resolver (issues #549 / #235), while a common form first
-     * takes the shared mdclass resolver and then adds its content-root table.
+     * Renders the ASSIGNABLE-property view for one FQN of the request: a form member is routed
+     * through the form resolver (issues #549 / #235); an owned form and a common form render their
+     * metadata object's table and then their content root's table (issue #995).
      * Appends the table to {@code sb}, or records a {@code {fqn, reason}} row in {@code failures}
      * when the node cannot be resolved.
      */
@@ -575,28 +679,35 @@ public class GetMetadataDetailsTool implements IMcpTool
             return;
         }
         String normFqn = MetadataTypeUtils.normalizeFqn(fqn);
-        // A four-part owned-form ROOT has no mdclass node at that address. Resolve it through the
-        // form seams before the mdclass resolver and render the editable form:Form object's own
-        // assignable features inside readEditableForm's BM READ transaction. A two-part
-        // CommonForm.Name is deliberately deferred: it needs the mdclass table plus an additive
-        // content-root section below.
+        // A four-part owned-form FQN names the form's metadata object (a BasicForm in its owner's
+        // forms, which the mdclass resolver's grammar has no step to) and the form's content root, and
+        // modify_metadata writes either by property name (issue #995). Both tables are rendered, the
+        // layout CommonForm.Name has below: the metadata object's first, then the editable form:Form
+        // object's own assignable features (inside readEditableForm's BM READ transaction) under their
+        // own heading.
         String formRootPath = FormElementWriter.parseFormPath(normFqn);
         if (FormElementWriter.parseFormObjectCreate(normFqn) != null)
         {
-            if (resolveFormRootForAssignable(ctx.scope, normFqn) == null)
+            MdObject mdForm = resolveFormRootForAssignable(ctx.scope, normFqn);
+            if (mdForm == null)
             {
                 failures.add(new String[] { fqn, formRootNotFoundReason(formRootPath) });
                 return;
             }
+            // Only what modify_metadata writes on this FQN: the owned-form rule the write's refusal follows.
+            sb.append(formatAssignableSection("## Assignable properties: ", normFqn, mdForm, ctx.project, //$NON-NLS-1$
+                OwnedFormMetadata::isSettable));
             String rootAssignable = ctx.bmModel == null ? null
-                : renderFormRootAssignable(ctx.project, ctx.scope, formRootPath, normFqn, false);
+                : renderFormRootAssignable(ctx.project, ctx.scope, formRootPath, normFqn);
             if (rootAssignable == null)
             {
                 failures.add(new String[] { fqn, "the managed form root has no editable content " //$NON-NLS-1$
                     + "model (the project may still be building, or the form may be empty/legacy)" }); //$NON-NLS-1$
-                return;
             }
-            sb.append(rootAssignable);
+            else
+            {
+                sb.append('\n').append(rootAssignable);
+            }
             sb.append(SECTION_SEPARATOR);
             return;
         }
@@ -662,12 +773,12 @@ public class GetMetadataDetailsTool implements IMcpTool
         // CommonForm.Name is BOTH a first-class mdclass top object and a form root. Keep the mdclass
         // assignable table byte-for-byte first, then add the content root under an unmistakable
         // heading. Every other mdclass FQN remains the single-table path.
-        sb.append(formatAssignable(normFqn, node.object));
+        sb.append(formatAssignableSection("## Assignable properties: ", normFqn, node.object, ctx.project));
         if (node.object instanceof CommonForm)
         {
             formRootPath = FormElementWriter.parseFormPath(normFqn);
             String rootAssignable = formRootPath == null || ctx.bmModel == null ? null
-                : renderFormRootAssignable(ctx.project, ctx.scope, formRootPath, normFqn, true);
+                : renderFormRootAssignable(ctx.project, ctx.scope, formRootPath, normFqn);
             if (rootAssignable == null)
             {
                 failures.add(new String[] { fqn, "the common form's content root has no editable " //$NON-NLS-1$
@@ -958,6 +1069,21 @@ public class GetMetadataDetailsTool implements IMcpTool
     /** Shared table body; callers supply the heading that identifies the represented surface. */
     private static String formatAssignableSection(String heading, String fqn, EObject obj)
     {
+        return formatAssignableSection(heading, fqn, obj, null);
+    }
+
+    private static String formatAssignableSection(String heading, String fqn, EObject obj, IProject project)
+    {
+        return formatAssignableSection(heading, fqn, obj, project, null);
+    }
+
+    /**
+     * The shared table, listing only the properties {@code admit} accepts when it is given - for a plain object
+     * (no extInfo, not the configuration root); {@code null} lists every assignable property.
+     */
+    private static String formatAssignableSection(String heading, String fqn, EObject obj, IProject project,
+        java.util.function.Predicate<String> admit)
+    {
         StringBuilder sb = new StringBuilder();
         sb.append(heading).append(fqn).append("\n\n"); //$NON-NLS-1$
         sb.append("Set these with `modify_metadata`. For an ENUM property the value must be one of " //$NON-NLS-1$
@@ -996,10 +1122,17 @@ public class GetMetadataDetailsTool implements IMcpTool
         }
         else
         {
-            props = MetadataPropertyIntrospector.introspect(obj);
+            props = admit == null ? MetadataPropertyIntrospector.introspect(obj)
+                : MetadataPropertyIntrospector.introspectOnly(obj, admit);
         }
+        List<String> atDefault = new ArrayList<>();
         for (MetadataPropertyIntrospector.PropertyInfo p : props)
         {
+            if (p.currentValue != null && !p.currentValue.isBlank()
+                && !isSet(p.onExtInfo ? (liveMatches ? liveExtInfo : null) : obj, p.feature))
+            {
+                atDefault.add(p.name);
+            }
             // A field list offers every lockable field of the object for data locking - several KB on an
             // ERP-size document - so its Allowed cell is bounded (issue #740), as are form commands.
             String allowed = p.allowedValues.isEmpty() ? null
@@ -1008,9 +1141,46 @@ public class GetMetadataDetailsTool implements IMcpTool
                     : p.valueKind == MetadataPropertyIntrospector.ValueKind.EXCLUDED_COMMANDS
                         ? Pagination.boundedListing(p.allowedValues, ExcludedCommandsSupport.MAX_LISTED)
                         : String.join(", ", p.allowedValues); //$NON-NLS-1$
-            sb.append(MarkdownUtils.tableRow(p.name, p.valueKind.toString(), p.currentValue, allowed));
+            String current = p.feature == MdClassPackage.Literals.BASIC_FEATURE__TYPE
+                ? AdoptedTypeCell.render(obj, p.feature, p.currentValue, project) : p.currentValue;
+            sb.append(MarkdownUtils.tableRow(p.name, p.valueKind.toString(), current, allowed));
+        }
+        if (!atDefault.isEmpty())
+        {
+            // Kept out of the Current cell: Current is sent back to modify_metadata as it is.
+            sb.append("\nAt the model default (not written to the source file): ") //$NON-NLS-1$
+                .append(String.join(", ", atDefault)).append(".\n"); //$NON-NLS-1$ //$NON-NLS-2$
         }
         return sb.toString();
+    }
+
+    /**
+     * Whether {@code holder} holds a value of its own for a single-valued {@code feature}; a list, an
+     * unknown holder or a check that throws counts as set, so nothing is called a default by guess.
+     */
+    static boolean isSet(EObject holder, EStructuralFeature feature)
+    {
+        if (holder == null || feature == null || feature.isMany())
+        {
+            return true;
+        }
+        try
+        {
+            if (holder.eIsSet(feature))
+            {
+                return true;
+            }
+            // From 8.5.1 EDT reads some form elements into a twin feature and writes it back
+            // under the old element name, so the old feature stays unset although the file has it.
+            EStructuralFeature twin = holder.eClass().getEStructuralFeature(
+                "windowOpeningMode".equals(feature.getName()) ? "onFormWindowOpenLockMode" //$NON-NLS-1$ //$NON-NLS-2$
+                    : feature.getName() + "851"); //$NON-NLS-1$
+            return twin != null && holder.eIsSet(twin);
+        }
+        catch (RuntimeException e)
+        {
+            return true;
+        }
     }
 
     /**
@@ -1406,7 +1576,7 @@ public class GetMetadataDetailsTool implements IMcpTool
      * {@link FormElementWriter#readEditableForm}, so no transaction-bound model object escapes.
      */
     private static String renderFormRootAssignable(IProject project, MetadataScope scope,
-        String formRootPath, String normFqn, boolean commonFormSection)
+        String formRootPath, String normFqn)
     {
         if (project == null)
         {
@@ -1417,9 +1587,7 @@ public class GetMetadataDetailsTool implements IMcpTool
             FormElementWriter.FormEditContext fctx = FormElementWriter.resolveForEdit(project, scope,
                 formRootPath, formRootNotFoundReason(formRootPath));
             return FormElementWriter.readEditableForm(fctx, "GetMetadataDetailsFormRoot", //$NON-NLS-1$
-                (formModel, tx) -> commonFormSection
-                    ? formatFormContentRootAssignable(normFqn, formModel)
-                    : formatAssignable(normFqn, formModel));
+                (formModel, tx) -> formatFormContentRootAssignable(normFqn, formModel));
         }
         catch (RuntimeException e)
         {

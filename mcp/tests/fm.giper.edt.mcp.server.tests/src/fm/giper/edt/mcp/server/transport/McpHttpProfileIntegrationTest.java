@@ -146,6 +146,14 @@ public class McpHttpProfileIntegrationTest
         assertEquals(404, otherPath.statusCode());
         HttpResponse<String> differentProfile = post("/mcp/profiles/beta", toolsList(), session); //$NON-NLS-1$
         assertEquals(404, differentProfile.statusCode());
+        assertEquals(404, post("/mcp/plaintext", toolsList(), session).statusCode()); //$NON-NLS-1$
+
+        HttpResponse<String> plain = post("/mcp/plaintext", initialize()); //$NON-NLS-1$
+        assertEquals(200, plain.statusCode());
+        String plainSession = plain.headers().firstValue(McpConstants.HEADER_SESSION_ID).orElseThrow();
+        assertEquals(404, post("/mcp", toolsList(), plainSession).statusCode()); //$NON-NLS-1$
+        assertEquals(404, post("/mcp/profiles/alpha", toolsList(), plainSession).statusCode()); //$NON-NLS-1$
+        assertEquals(200, post("/mcp/plaintext", toolsList(), plainSession).statusCode()); //$NON-NLS-1$
 
         profiles.set(snapshot(
             profile("default", Set.of(TOOL_A, TOOL_B, GUIDE_TOOL, GetToolGuideTool.NAME), true), //$NON-NLS-1$

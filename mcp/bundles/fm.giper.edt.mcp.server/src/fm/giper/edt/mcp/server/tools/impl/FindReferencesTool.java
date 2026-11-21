@@ -6,10 +6,12 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import org.eclipse.swt.widgets.Display;
 
 import fm.giper.edt.mcp.server.utils.ReadToolExecution;
@@ -20,6 +22,8 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.reference.MetadataReferenceService;
+import fm.giper.edt.mcp.server.tools.reference.ReferenceSearchBound;
+import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
 import fm.giper.edt.mcp.server.utils.ProjectStateChecker.SearchDependenciesResult;
 
@@ -45,10 +49,19 @@ public class FindReferencesTool implements IMcpTool
         SearchDependenciesResult settle(String projectName, long budgetMs);
     }
 
+    /** The bounded reference search itself; production is {@link MetadataReferenceService#findReferences}. */
+    interface ReferenceSearch
+    {
+        String find(String projectName, String objectFqn, ReferenceSearchBound bound);
+    }
+
     private final SearchScopeSettler searchScopeSettler;
     private final Consumer<Runnable> uiRunner;
     /** Whether the calling thread is the SWT UI thread; there the settle must not sleep. */
     private final BooleanSupplier onUiThread;
+    private final ReferenceSearch referenceSearch;
+    /** Monotonic clock the time budget is measured on. */
+    private final LongSupplier nanoClock;
 
     public FindReferencesTool()
     {
@@ -59,9 +72,20 @@ public class FindReferencesTool implements IMcpTool
     FindReferencesTool(SearchScopeSettler searchScopeSettler, Consumer<Runnable> uiRunner,
         BooleanSupplier onUiThread)
     {
+        this(searchScopeSettler, uiRunner, onUiThread,
+            (projectName, objectFqn, bound) -> new MetadataReferenceService().findReferences(projectName,
+                objectFqn, bound),
+            System::nanoTime);
+    }
+
+    FindReferencesTool(SearchScopeSettler searchScopeSettler, Consumer<Runnable> uiRunner,
+        BooleanSupplier onUiThread, ReferenceSearch referenceSearch, LongSupplier nanoClock)
+    {
         this.searchScopeSettler = searchScopeSettler;
         this.uiRunner = uiRunner;
         this.onUiThread = onUiThread;
+        this.referenceSearch = referenceSearch;
+        this.nanoClock = nanoClock;
     }
 
     /** Package-visible so a headless test can prove what the public constructor wired. */
@@ -102,8 +126,8 @@ public class FindReferencesTool implements IMcpTool
                 "FQN of the object to search for, e.g. 'Catalog.Products' " + //$NON-NLS-1$
                 "(type token may be English or Russian) (required)", true) //$NON-NLS-1$
             .integerProperty("limit", //$NON-NLS-1$
-                "Result-size hint (default 100, max 500); caps the overall reference count " //$NON-NLS-1$
-                + "(at limit*10), not per category.") //$NON-NLS-1$
+                "Max references to collect (default 100, max 500), overall, not per category; " //$NON-NLS-1$
+                + "the search itself stops one past it and says that more exist.") //$NON-NLS-1$
             .build();
     }
 
@@ -119,7 +143,7 @@ public class FindReferencesTool implements IMcpTool
         String objectFqn = JsonUtils.extractStringArgument(params, KEY_OBJECT_FQN);
         if (objectFqn != null && !objectFqn.isEmpty())
         {
-            String safeName = objectFqn.replace(".", "-").toLowerCase(); //$NON-NLS-1$ //$NON-NLS-2$
+            String safeName = objectFqn.replace(".", "-").toLowerCase(Locale.ROOT); //$NON-NLS-1$ //$NON-NLS-2$
             return "references-" + safeName + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
         }
         return "references.md"; //$NON-NLS-1$
@@ -144,9 +168,15 @@ public class FindReferencesTool implements IMcpTool
         String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
         String objectFqn = JsonUtils.extractStringArgument(params, KEY_OBJECT_FQN);
 
-        // Shared typed accessor (handles the "42.0" form and invalid/missing -> default),
-        // replacing the inline Double.parseDouble. Default 100, upper clamp 500 preserved.
-        int limit = Math.min(JsonUtils.extractIntArgument(params, "limit", 100), 500); //$NON-NLS-1$
+        // Shared typed accessor (handles the "42.0" form and invalid/missing -> default), clamped to
+        // [1, 500]. The limit bounds the search itself (issue #931): the scan stops one reference past
+        // it, and the time budget - counted from here, so the readiness wait below is paid out of it -
+        // stops it with a labelled partial answer before the client's transport timeout.
+        int limit = Pagination.clampLimit(
+            JsonUtils.extractIntArgument(params, "limit", ReferenceSearchBound.DEFAULT_LIMIT), //$NON-NLS-1$
+            ReferenceSearchBound.MAX_LIMIT);
+        ReferenceSearchBound bound =
+            ReferenceSearchBound.of(limit, ReferenceSearchBound.TIME_BUDGET_MS, nanoClock);
 
         // EDT can need the UI thread while settling, so the wait runs only off it. The in-process
         // bridge dispatches on its caller's thread, which can be the UI thread: sleeping there would
@@ -159,15 +189,14 @@ public class FindReferencesTool implements IMcpTool
 
         // Execute on UI thread
         AtomicReference<String> resultRef = new AtomicReference<>();
-        final int maxResults = limit;
 
         uiRunner.accept(() -> {
             try
             {
                 String result = fm.giper.edt.mcp.server.HostKind.current() == fm.giper.edt.mcp.server.HostKind.HEADLESS
                     ? ReadToolExecution.read(projectName, NAME,
-                        () -> new MetadataReferenceService().findReferences(projectName, objectFqn, maxResults))
-                    : new MetadataReferenceService().findReferences(projectName, objectFqn, maxResults);
+                        () -> referenceSearch.find(projectName, objectFqn, bound))
+                    : referenceSearch.find(projectName, objectFqn, bound);
                 resultRef.set(result);
             }
             catch (Exception e)

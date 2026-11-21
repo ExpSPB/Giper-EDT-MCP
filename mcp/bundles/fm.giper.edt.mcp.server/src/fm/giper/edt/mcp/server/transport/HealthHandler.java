@@ -13,7 +13,7 @@ import java.util.Map;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
-import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
+import fm.giper.edt.mcp.server.utils.EdtVersion;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
@@ -66,7 +66,7 @@ public class HealthHandler implements HttpHandler
             activator != null ? activator.getServicesOrchestrator() : null);
 
         String response =
-            JsonUtils.buildHealthResponse(GetEdtVersionTool.getEdtVersion(), running, coreServices);
+            JsonUtils.buildHealthResponse(EdtVersion.getEdtVersion(), running, coreServices);
         exchange.getResponseHeaders().add("Content-Type", "application/json"); //$NON-NLS-1$ //$NON-NLS-2$
         HttpTransport.sendResponse(exchange, 200, response);
     }

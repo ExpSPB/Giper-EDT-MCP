@@ -19,11 +19,11 @@ Two distinct error channels exist and are tested separately:
     regression that promoted a per-object miss to a whole-call failure (or that
     silently dropped the failures table) must make these tests FAIL.
 
-The tool has no XOR / conditional / enum parameters: `projectName` and
-`objectFqns` are both unconditionally required, `full` is an optional boolean,
-and an unknown `language` is silently tolerated (MetadataLanguageUtils falls back
-to any non-empty synonym) -- so there is no invalid enum/combination to test.
+`projectName` and `objectFqns` are required. The controlled-mismatch view excludes
+`full` and `assignable` and requires an extension project.
 """
+
+import xml.etree.ElementTree as ET
 
 from harness import (
     call,
@@ -33,13 +33,97 @@ from harness import (
     assert_contains,
     assert_not_contains,
     assert_no_diff,
+    assert_no_diff_rel,
+    calls_aborted,
     poll_disk_contains_all,
     poll_disk_count,
     read_disk,
+    read_fixture_file,
+    restore_extension_fixture,
     wait_for_project_ready,
     e2e_test,
     PROJECT,
+    TESTS_PROJECT,
+    TESTS_PROJECT_REL,
 )
+
+
+@e2e_test(tool="get_metadata_details", kind="read")
+def test_full_details_show_generated_type_ids_of_owner_and_tabular_section():
+    document = ET.fromstring(read_disk("src/Documents/QueryOrder/QueryOrder.mdo"))
+    section = document.find("tabularSections")
+    for address in ("Document.QueryOrder", "Документ.QueryOrder"):
+        full = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [address], "full": True})
+        assert_ok(full)
+        assert_contains(full.text, "| Object | Type | typeId | valueTypeId |")
+        for fqn, element in (("Document.QueryOrder", document),
+                             ("Document.QueryOrder.TabularSection.Items", section)):
+            for produced in element.find("producedTypes"):
+                assert_contains(full.text, "| %s | %s | %s | %s |" %
+                                (fqn, produced.tag, produced.attrib["typeId"], produced.attrib["valueTypeId"]))
+        compact = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [address]})
+        assert_ok(compact)
+        assert_not_contains(compact.text, "| typeId | valueTypeId |")
+    assert_no_diff()
+
+
+@e2e_test(tool="get_metadata_details", kind="read")
+def test_controlled_mismatches_requires_extension_and_its_own_view():
+    args = {"projectName": PROJECT, "objectFqns": ["Catalog.Catalog"], "controlledMismatches": True}
+    result = call("get_metadata_details", args)
+    assert_error_quality(assert_error(result), names=[PROJECT], suggests=["list_projects"])
+    for flag in ("full", "assignable"):
+        result = call("get_metadata_details", {**args, flag: True})
+        assert_error_quality(assert_error(result), names=["controlledMismatches", flag], suggests=["false", "omitted"])
+    assert_no_diff()
+
+
+@e2e_test(tool="get_metadata_details", kind="write-metadata")
+def test_adopted_type_cells_and_mismatch_report_use_current_base_qualifiers():
+    fqn = "Catalog.Catalog.Attribute.Attribute"
+    mdo = "src/Catalogs/Catalog/Catalog.mdo"
+
+    def update_base(precision):
+        assert_ok(call("modify_metadata", {"projectName": PROJECT, "fqn": fqn,
+            "properties": [{"name": "type", "value": {"types": [
+                {"kind": "Number", "precision": precision, "scale": 2}]}}]}))
+        root = ET.fromstring(read_disk(mdo))
+        assert root.findtext("attributes/type/numberQualifiers/precision") == str(precision)
+
+    try:
+        update_base(10)
+        assert_ok(call("adopt_metadata_object", {"projectName": PROJECT, "fqn": fqn,
+                                                "extensionProjectName": TESTS_PROJECT}))
+        before = read_fixture_file(TESTS_PROJECT_REL, mdo)
+        adopted = ET.fromstring(before).find("attributes")
+        assert adopted.findtext("extension/typeExtension/numberQualifiers/precision") == "10"
+        update_base(15)
+
+        for address in (fqn, "Справочник.Catalog.Реквизит.Attribute"):
+            for mode in ({"assignable": True}, {"full": True}):
+                details = call("get_metadata_details", {"projectName": TESTS_PROJECT, "objectFqns": [address], **mode})
+                assert_ok(details)
+                assert_contains(details.text, "Number(10, 2, Signed) (Checked)")
+                assert_contains(details.text, "Base: Number(15, 2, Signed) [MISMATCH]")
+        owner = call("get_metadata_details", {"projectName": TESTS_PROJECT, "objectFqns": ["Catalog.Catalog"]})
+        assert_ok(owner)
+        assert_contains(owner.text, "Base: Number(15, 2, Signed) [MISMATCH]")
+
+        args = {"projectName": TESTS_PROJECT, "objectFqns": ["Справочник.Catalog"], "controlledMismatches": True}
+        report = call("get_metadata_details", args)
+        assert_ok(report)
+        row = next(line for line in report.text.splitlines() if line.startswith("| " + fqn + " | type |"))
+        assert_contains(row, "Number(10, 2, Signed) (Checked)")
+        assert_contains(row, "| Number(15, 2, Signed) | MISMATCH |")
+        later = call("get_metadata_details", {**args, "objectFqns": [fqn], "offset": 1, "limit": 1})
+        assert_ok(later)
+        assert_contains(later.text, "no rows at offset 1")
+        assert_not_contains(later.text, "| " + fqn + " | type |")
+        assert read_fixture_file(TESTS_PROJECT_REL, mdo) == before, "comparison must leave the adopted model export alone"
+    finally:
+        if not calls_aborted():
+            restore_extension_fixture("adopted type comparison")
+            assert_no_diff_rel(TESTS_PROJECT_REL)
 
 
 @e2e_test(tool="get_metadata_details", kind="write-metadata")
@@ -348,6 +432,34 @@ def test_assignable_on_form_root_lists_root_properties():
                           "saveDataInSettings", "autoSaveDataInSettings"):
         assert_contains(r.text, "| %s |" % property_name,
                         "the form root must expose %s" % property_name)
+    assert_no_diff("reading a form root's assignable schema must not touch Form.form")
+
+
+@e2e_test(tool="get_metadata_details", kind="read")
+def test_assignable_names_the_form_root_properties_at_the_model_default():
+    """Below the table, the properties whose Current is only the model default are named: they are
+    not written to Form.form. A property the file does write is never named, and the Current cell
+    keeps the bare value, since it is sent back to modify_metadata as it is."""
+    fqn = "Catalog.Catalog.Form.ItemForm"
+    r = call("get_metadata_details", {"projectName": PROJECT, "objectFqns": [fqn], "assignable": True})
+    assert_ok(r, "assignable schema for the managed-form model root")
+    marker = "At the model default (not written to the source file): "
+    # The form's metadata object has its own table first (issue #995); this test reads the content root's.
+    content_heading = "## Form content root assignable properties: " + fqn
+    assert_contains(r.text, content_heading, "the content root's table has its own heading")
+    root_section = r.text[r.text.index(content_heading):]
+    lines = [l for l in root_section.splitlines() if l.startswith(marker)]
+    assert len(lines) == 1, "the form root must name its defaulted properties once: %s" % r.text[:1500]
+    named = [n.strip() for n in lines[0][len(marker):].rstrip(".").split(",") if n.strip()]
+    assert named, "the fixture form leaves properties at their default: %r" % lines[0]
+    written = {child.tag for child in ET.fromstring(read_disk(
+        "src/Catalogs/Catalog/Forms/ItemForm/Form.form"))}
+    assert "autoTitle" in written and "windowOpeningMode" in written, written
+    # On 8.5.1+ EDT reads the <showTitle> element into showTitle851, leaving the boolean unset.
+    written.discard("showTitle")
+    wrongly = [n for n in named if n in written]
+    assert not wrongly, "a property written to Form.form is not a default: %r" % (wrongly,)
+    assert_not_contains(r.text, "(default)", "the Current cell must keep the bare value")
     assert_no_diff("reading a form root's assignable schema must not touch Form.form")
 
 
@@ -966,3 +1078,55 @@ def test_assignable_input_choice_lists_use_the_form_path_grammar888():
         assert_contains(result.text, '| choiceParameterLinks | FORM_CHOICE_VALUES | [] |')
         assert_contains(result.text, 'name,dataPath,changeMode:')
         assert_no_diff("reading input-field lists must leave the fixture clean")
+
+
+@e2e_test(tool="get_metadata_details", kind="write-metadata")
+def test_type_qualifiers915_in_assignable_and_owner_tables():
+    owner = "InformationRegister.Квалификаторы915"
+    assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": owner}))
+    mdo = "src/InformationRegisters/Квалификаторы915/Квалификаторы915.mdo"
+    assert_contains(read_disk(mdo), "<name>Квалификаторы915</name>")
+    members = (
+        ("Dimension.Строка", [{"kind": "String", "length": 400}],
+         "String(400, Variable)", ("<length>400</length>",)),
+        ("Resource.Сумма", [{"kind": "Number", "precision": 15, "scale": 2, "nonNegative": True}],
+         "Number(15, 2, Nonnegative)", ("<precision>15</precision>", "<scale>2</scale>",
+                                       "<nonNegative>true</nonNegative>")),
+        ("Attribute.Составной", [{"kind": "String", "length": 12, "fixed": True},
+                                 {"kind": "Number", "precision": 9, "scale": 3},
+                                 {"kind": "Date", "fractions": "Time"}],
+         "String(12, Fixed), Number(9, 3, Signed), Date(Time)",
+         ("<length>12</length>", "<fixed>true</fixed>", "<precision>9</precision>",
+          "<scale>3</scale>", "<dateFractions>Time</dateFractions>")),
+        ("Attribute.БезОграничения", [{"kind": "String", "length": 0}],
+         "String(unlimited)", ("<name>БезОграничения</name>",)),
+    )
+    for member, types, expected, disk_values in members:
+        fqn = owner + "." + member
+        assert_ok(call("create_metadata", {"projectName": PROJECT, "fqn": fqn}), "seed " + fqn)
+        assert_contains(read_disk(mdo), "<name>" + member.split(".")[1] + "</name>")
+        assert_ok(call("modify_metadata", {"projectName": PROJECT, "fqn": fqn,
+                  "properties": [{"name": "type", "value": {"types": types}}]}), "set qualifiers on " + fqn)
+        disk = read_disk(mdo)
+        for value in disk_values:
+            assert_contains(disk, value, "qualifiers persisted before model read-back: " + fqn)
+        for address in (fqn, fqn.replace("InformationRegister", "РегистрСведений")
+                       .replace(".Dimension.", ".Измерение.").replace(".Resource.", ".Ресурс.")
+                       .replace(".Attribute.", ".Реквизит.")):
+            result = call("get_metadata_details", {"projectName": PROJECT,
+                          "objectFqns": [address], "assignable": True})
+            assert_ok(result)
+            assert_not_contains(result.text, "## Errors", "Russian names and type tokens must resolve")
+            assert_contains(result.text, "| type | TYPE_DESCRIPTION | " + expected + " |",
+                            "assignable current value retains qualifiers: " + address)
+    for address in (owner, owner.replace("InformationRegister", "РегистрСведений")):
+        for full in (False, True):
+            result = call("get_metadata_details", {"projectName": PROJECT,
+                          "objectFqns": [address], "full": full})
+            assert_ok(result)
+            assert_not_contains(result.text, "## Errors")
+            for member, types, expected, disk_values in members:
+                row = next((line for line in result.text.splitlines()
+                            if line.startswith("| " + member.split(".")[1] + " |")), None)
+                assert row is not None, "owner table must list " + member + ": " + result.text
+                assert_contains(row, expected, "owner table retains the member's qualifiers")

@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: %pluginName
 Bundle-Vendor: %providerName
-Bundle-Version: 1.0.16.qualifier
+Bundle-Version: 1.0.17.qualifier
 Bundle-SymbolicName: fm.giper.edt.mcp.server;singleton:=true
 Bundle-Activator: fm.giper.edt.mcp.server.Activator
 Bundle-ActivationPolicy: lazy
@@ -26,7 +26,11 @@ Require-Bundle: org.eclipse.equinox.app,
  org.eclipse.egit.core;bundle-version="[6.8.0,8.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Automatic-Module-Name: fm.giper.edt.mcp.server
-Import-Package: org.eclipse.osgi.service.datalocation,
+Import-Package: com.sun.jna,
+ com.sun.jna.ptr,
+ com.sun.jna.win32,
+ com.sun.jna.platform.win32,
+ org.eclipse.osgi.service.datalocation,
  com._1c.g5.designer.ssh.client,
  com._1c.g5.designer.ssh.client.operation,
  com._1c.g5.modeling.xml,
@@ -68,7 +72,11 @@ Import-Package: org.eclipse.osgi.service.datalocation,
  com._1c.g5.v8.dt.core.resource,
  com._1c.g5.v8.dt.core.platform;version="12.0.0",
  com._1c.g5.v8.dt.debug.core.model,
+ com._1c.g5.v8.dt.debug.core.launchconfigurations,
  com._1c.g5.v8.dt.debug.model.base.data,
+ com._1c.g5.v8.dt.debug.model.measure,
+ com._1c.g5.v8.dt.profiling.core;version="[5.0.0,6.0.0)",
+ com._1c.g5.v8.dt.profiling.core.compare;version="[2.0.0,3.0.0)",
  com._1c.g5.v8.dt.diagram.framework.model,
  com._1c.g5.v8.dt.export,
  com._1c.g5.v8.dt.form.pictures,
@@ -122,8 +130,10 @@ Import-Package: org.eclipse.osgi.service.datalocation,
  com._1c.g5.v8.dt.platform.services.core.infobases.sync,
  com._1c.g5.v8.dt.platform.services.core.infobases.sync.v2,
  com._1c.g5.v8.dt.platform.services.core.operations,
+ com._1c.g5.v8.dt.platform.services.core.runtimes,
  com._1c.g5.v8.dt.platform.services.core.runtimes.environments,
  com._1c.g5.v8.dt.platform.services.core.runtimes.execution,
+ com._1c.g5.v8.dt.platform.services.core.runtimes.execution.impl,
  com._1c.g5.v8.dt.platform.services.model,
  com._1c.g5.v8.dt.platform.version,
  com._1c.g5.v8.dt.md.refactoring.core,
@@ -163,6 +173,7 @@ Import-Package: org.eclipse.osgi.service.datalocation,
  org.eclipse.emf.ecore,
  org.eclipse.emf.ecore.resource,
  org.eclipse.emf.ecore.util,
+ org.eclipse.emf.ecore.xmi,
  org.eclipse.equinox.security.storage,
  org.eclipse.equinox.security.storage.provider,
  org.eclipse.ui.navigator,
@@ -182,6 +193,8 @@ Import-Package: org.eclipse.osgi.service.datalocation,
  com._1c.g5.v8.dt.dcs.typedvalue,
  com._1c.g5.v8.dt.md.typeinfo,
  com._1c.g5.v8.dt.dcs.model.core,
+ com._1c.g5.v8.dt.dcs.model.areaTemplate,
+ com._1c.g5.v8.dt.dcs.model.details,
  com._1c.g5.v8.dt.dcs.model.common,
  com._1c.g5.v8.dt.dcs.model.settings,
  com._1c.g5.v8.dt.dcs.parameters,

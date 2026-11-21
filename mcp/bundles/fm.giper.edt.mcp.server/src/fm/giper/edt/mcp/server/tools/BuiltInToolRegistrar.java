@@ -48,6 +48,8 @@ import fm.giper.edt.mcp.server.tools.impl.GetConfigurationPropertiesTool;
 import fm.giper.edt.mcp.server.tools.impl.GetContentAssistTool;
 import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
 import fm.giper.edt.mcp.server.tools.impl.GetEventLogTool;
+import fm.giper.edt.mcp.server.tools.impl.GetTechLogTool;
+import fm.giper.edt.mcp.server.tools.impl.ManageTechLogTool;
 import fm.giper.edt.mcp.server.tools.impl.GetFormLayoutSnapshotTool;
 import fm.giper.edt.mcp.server.tools.impl.GetFormScreenshotTool;
 import fm.giper.edt.mcp.server.tools.impl.GetJobStatusTool;
@@ -62,6 +64,7 @@ import fm.giper.edt.mcp.server.tools.impl.GetOutgoingStructuresTool;
 import fm.giper.edt.mcp.server.tools.impl.GetPlatformDocumentationTool;
 import fm.giper.edt.mcp.server.tools.impl.GetProblemSummaryTool;
 import fm.giper.edt.mcp.server.tools.impl.GetProfilingResultsTool;
+import fm.giper.edt.mcp.server.tools.impl.ManageProfilingResultsTool;
 import fm.giper.edt.mcp.server.tools.impl.GetProjectErrorsTool;
 import fm.giper.edt.mcp.server.tools.impl.GetServerStatusTool;
 import fm.giper.edt.mcp.server.tools.impl.GetSubsystemContentTool;
@@ -173,6 +176,8 @@ public final class BuiltInToolRegistrar
         catalogue.add(new GetProjectErrorsTool());
         catalogue.add(new GetMarkersTool());
         catalogue.add(new GetEventLogTool());
+        catalogue.add(new GetTechLogTool());
+        catalogue.add(new ManageTechLogTool());
         catalogue.add(new GetMcpHistoryTool());
         catalogue.add(new ListGitBranchesTool());
         catalogue.add(new SwitchGitBranchTool());
@@ -229,11 +234,12 @@ public final class BuiltInToolRegistrar
         catalogue.add(new ResumeTool());
         catalogue.add(new DebugPauseTool());
         catalogue.add(new EvaluateExpressionTool());
-        catalogue.add(new DebugYaxunitTestsTool()); // NOSONAR deprecated EDT API used intentionally (no non-deprecated equivalent here)
+        catalogue.add(new DebugYaxunitTestsTool()); // NOSONAR compatibility alias retained until release 2.27.0
         catalogue.add(new DebugStatusTool());
         catalogue.add(new StartProfilingTool());
         catalogue.add(new StopProfilingTool());
         catalogue.add(new GetProfilingResultsTool());
+        catalogue.add(new ManageProfilingResultsTool());
 
         // BSL code analysis tools
         catalogue.add(new ReadModuleSourceTool());

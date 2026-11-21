@@ -60,6 +60,7 @@ import fm.giper.edt.mcp.server.profiles.ToolProfile;
 import fm.giper.edt.mcp.server.profiles.ToolProfileSnapshot;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
+import fm.giper.edt.mcp.server.tools.Toolsets;
 import fm.giper.edt.mcp.server.utils.DestructiveConsentGate;
 
 /**
@@ -98,6 +99,7 @@ public class ToolsTab
 
     /** Local copy of destructive-allowed tools for editing (committed on performOk) */
     private final Set<String> destructiveAllowedTools;
+    private final Button progressiveDisclosureCheck;
 
     /** Flag to avoid recursion when updating check states (SWT is single-threaded) */
     private boolean updatingChecks = false;
@@ -170,6 +172,7 @@ public class ToolsTab
         createDetailPanel(sash);
 
         sash.setWeights(new int[]{40, 60});
+        progressiveDisclosureCheck = createProgressiveDisclosureControl(composite);
 
         // Full refresh only after tree / preset / count widgets exist.
         // createProfileBar() fills the profile fields earlier; calling refreshProfileUi()
@@ -908,6 +911,22 @@ public class ToolsTab
         updateCountLabel();
     }
 
+    private static Button createProgressiveDisclosureControl(Composite parent)
+    {
+        Button check = new Button(parent, SWT.CHECK);
+        check.setText(Messages.ToolsTab_ProgressiveDisclosure);
+        check.setToolTipText(Messages.ToolsTab_ProgressiveDisclosure_Tooltip);
+        check.setSelection(ToolSettingsService.getInstance().getStoredProgressiveDisclosure());
+        check.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        if (Toolsets.hasProgressiveDisclosureOverride())
+        {
+            Label note = new Label(parent, SWT.WRAP);
+            note.setText(Messages.ToolsTab_ProgressiveDisclosure_EnvOverride);
+            note.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+        }
+        return check;
+    }
+
     private void createDetailPanel(Composite parent)
     {
         detailPanel = new Composite(parent, SWT.NONE);
@@ -1273,12 +1292,13 @@ public class ToolsTab
     }
 
     /**
-     * Saves global parameter values and destructive-consent allow-set only.
+     * Saves global settings for parameters, destructive consent and progressive disclosure.
      */
     public void performOk()
     {
         savePendingSpinnerValues();
         ConsentSettingsService.getInstance().setAllowedTools(destructiveAllowedTools);
+        ToolSettingsService.getInstance().setProgressiveDisclosure(progressiveDisclosureCheck.getSelection());
         for (Map.Entry<String, Integer> entry : pendingValues.entrySet())
         {
             String key = entry.getKey();
@@ -1291,11 +1311,11 @@ public class ToolsTab
     }
 
     /**
-     * Resets only the selected profile allowlist after confirmation. Other profiles
-     * and global consent/parameter settings stay unchanged.
+     * Resets progressive disclosure and asks whether to restore the selected profile's allowlist.
      */
     public void performDefaults()
     {
+        progressiveDisclosureCheck.setSelection(PreferenceConstants.DEFAULT_PROGRESSIVE_DISCLOSURE);
         if (!MessageDialog.openQuestion(composite.getShell(),
             Messages.ToolsTab_RestoreDefaultsConfirmTitle, Messages.ToolsTab_RestoreDefaultsConfirm))
         {

@@ -51,6 +51,8 @@ import com.e1c.g5.dt.applications.IApplicationManager;
  */
 public final class ApplicationSupport
 {
+    public static final String MANAGER_UNAVAILABLE = "IApplicationManager service is not available"; //$NON-NLS-1$
+
     /**
      * Deadline for one application read on a caller that has no larger bounded phase of its own.
      *
@@ -91,7 +93,7 @@ public final class ApplicationSupport
         if (manager == null)
         {
             return new ManagerResult(project, null,
-                ToolResult.error("IApplicationManager service is not available").toJson()); //$NON-NLS-1$
+                ToolResult.error(ApplicationSupport.MANAGER_UNAVAILABLE).toJson()); //$NON-NLS-1$
         }
         return new ManagerResult(project, manager, null);
     }
@@ -142,6 +144,18 @@ public final class ApplicationSupport
                 + " Use get_applications to choose a standalone-server application.").toJson()); //$NON-NLS-1$
         }
         return ApplicationResolution.of(application.get());
+    }
+
+    /** Resolves an explicit id while preserving the caller's deadline and absence refusals. */
+    public static ApplicationResolution resolveApplication(IApplicationManager manager, IProject project,
+        String applicationId, long timeoutMs, java.util.function.Function<String, String> incompleteError,
+        String absentError)
+    {
+        BoundedRead<Optional<IApplication>> read = getApplicationBounded(manager, project, applicationId, timeoutMs);
+        if (!read.concluded()) { return ApplicationResolution.error(incompleteError.apply(read.deadlineFailure())); }
+        Optional<IApplication> application = read.valueOrRethrow();
+        return application.isEmpty() ? ApplicationResolution.error(absentError)
+            : ApplicationResolution.of(application.get());
     }
 
     /**
@@ -242,20 +256,20 @@ public final class ApplicationSupport
             IProject project, long timeoutMs)
     {
         var read = getDefaultApplicationBounded(manager, project, timeoutMs);
-        Optional<String> id = null;
-        Throwable failure = read.failure();
-        if (read.concluded() && failure == null)
+        if (!read.concluded() || read.failure() != null)
         {
-            try
-            {
-                id = read.valueOrRethrow().map(IApplication::getId);
-            }
-            catch (ApplicationException unavailable)
-            {
-                failure = unavailable;
-            }
+            // No answer to map: the deadline or the raised failure is the outcome, and
+            // valueOrRethrow() reports it instead of a value.
+            return BoundedRead.withoutValue(read.failure(), read.outcome(), read.deadlineFailure());
         }
-        return new BoundedRead<>(id, failure, read.outcome(), read.deadlineFailure());
+        try
+        {
+            return new BoundedRead<>(read.valueOrRethrow().map(IApplication::getId), null, read.outcome(), null);
+        }
+        catch (ApplicationException unavailable)
+        {
+            return BoundedRead.withoutValue(unavailable, read.outcome(), null);
+        }
     }
 
     /** Read the stored explicit choice; EDT's effective-default getter can clear it or infer a sole app. */
@@ -604,6 +618,16 @@ public final class ApplicationSupport
             this.failure = failure;
             this.outcome = outcome;
             this.deadlineFailure = deadlineFailure;
+        }
+
+        /**
+         * A read that produced no value: it raised {@code failure}, or the caller's deadline
+         * ({@code deadlineFailure}) came first. {@link #valueOrRethrow()} never hands out a value
+         * for it, so the empty slot is unreachable rather than a stand-in for "absent".
+         */
+        static <T> BoundedRead<T> withoutValue(Throwable failure, BoundedJob.Outcome outcome, String deadlineFailure)
+        {
+            return new BoundedRead<>(null, failure, outcome, deadlineFailure);
         }
 
         /** @return {@code true} when the read returned or raised before the deadline. */

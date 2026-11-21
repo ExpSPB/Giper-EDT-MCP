@@ -8,6 +8,7 @@ package fm.giper.edt.mcp.server.tools.metadata;
 
 import java.util.Collection;
 
+import org.eclipse.core.resources.IProject;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
@@ -18,6 +19,8 @@ import com._1c.g5.v8.bm.core.BmUriUtil;
 import com._1c.g5.v8.dt.metadata.mdclass.AutoRegistrationChanges;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicCommand;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicFeature;
+import com._1c.g5.v8.dt.metadata.mdclass.DbObjectTabularSection;
+import com._1c.g5.v8.dt.metadata.mdclass.HierarchicalDbObjectTabularSection;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicForm;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicTabularSection;
 import com._1c.g5.v8.dt.metadata.mdclass.BasicTemplate;
@@ -29,15 +32,19 @@ import com._1c.g5.v8.dt.mcore.ColorValue;
 import com._1c.g5.v8.dt.mcore.FontValue;
 import com._1c.g5.v8.dt.mcore.Value;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
 import com._1c.g5.v8.dt.metadata.mdclass.PaletteColor;
 import com._1c.g5.v8.dt.metadata.mdclass.StandardAttribute;
 import com._1c.g5.v8.dt.metadata.mdclass.StyleItem;
 import com._1c.g5.v8.dt.metadata.mdclass.TemplateType;
+import com._1c.g5.v8.dt.metadata.mdtype.AbstractMdType;
+import com._1c.g5.v8.dt.metadata.mdclass.util.MdClassUtil;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.utils.ExtensionOriginUtils;
 import fm.giper.edt.mcp.server.utils.MetadataNodeResolver;
 import fm.giper.edt.mcp.server.utils.MetadataPropertyIntrospector;
+import fm.giper.edt.mcp.server.utils.PersistedContents;
 import fm.giper.edt.mcp.server.utils.StyleValueBuilder;
 
 /**
@@ -47,9 +54,26 @@ import fm.giper.edt.mcp.server.utils.StyleValueBuilder;
  * This replaces all individual type-specific formatters (CatalogFormatter,
  * DocumentFormatter, etc.) with a single universal implementation.
  */
-public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
+public class UniversalMetadataFormatter extends AbstractMetadataFormatter
 {
     private static final UniversalMetadataFormatter INSTANCE = new UniversalMetadataFormatter();
+    private final IProject project;
+
+    public UniversalMetadataFormatter()
+    {
+        this(null);
+    }
+
+    UniversalMetadataFormatter(IProject project)
+    {
+        this.project = project;
+    }
+
+    @Override
+    protected String typeFeatureCell(EObject owner, EStructuralFeature feature)
+    {
+        return typeFeatureCell(owner, feature, project);
+    }
 
     /** Table column / property label for a value cell. */
     private static final String VALUE_TOKEN = "Value"; //$NON-NLS-1$
@@ -85,13 +109,24 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
         return mdObject != null;
     }
     
+    public record Outcome(String text, String error) { }
+
+    public Outcome formatOutcome(MdObject mdObject, boolean full, String language)
+    {
+        return mdObject == null ? new Outcome(null, "MdObject is null")
+            : new Outcome(formatValue(mdObject, full, language), null);
+    }
+
     @Override
     public String format(MdObject mdObject, boolean full, String language)
     {
-        if (mdObject == null)
-        {
-            return "Error: MdObject is null"; //$NON-NLS-1$
-        }
+        Outcome result = formatOutcome(mdObject, full, language);
+        if (result.error() != null) throw new IllegalArgumentException(result.error());
+        return result.text();
+    }
+
+    private String formatValue(MdObject mdObject, boolean full, String language)
+    {
         
         StringBuilder sb = new StringBuilder();
         
@@ -134,8 +169,49 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
 
         // Format containment collections (attributes, tabular sections, forms, commands, etc.)
         formatContainmentCollections(sb, mdObject, full, language);
+        if (full)
+        {
+            formatProducedTypes(sb, mdObject);
+        }
 
         return sb.toString();
+    }
+
+    private void formatProducedTypes(StringBuilder sb, MdObject root)
+    {
+        StringBuilder rows = new StringBuilder();
+        appendProducedTypes(rows, root);
+        for (EObject child : PersistedContents.descendants(root))
+        {
+            if (child instanceof MdObject member)
+            {
+                appendProducedTypes(rows, member);
+            }
+        }
+        if (rows.length() > 0)
+        {
+            addSectionHeader(sb, "Produced Types");
+            startTable(sb, "Object", "Type", "typeId", "valueTypeId");
+            sb.append(rows);
+        }
+    }
+
+    private void appendProducedTypes(StringBuilder rows, MdObject owner)
+    {
+        EObject types = MdClassUtil.getProducedTypes(owner);
+        if (types == null)
+        {
+            return;
+        }
+        for (EObject child : PersistedContents.of(types))
+        {
+            if (child instanceof AbstractMdType type)
+            {
+                addTableRow(rows, MetadataNodeResolver.addressOf(owner), child.eContainingFeature().getName(),
+                    type.getTypeId() == null ? DASH : type.getTypeId().toString(),
+                    type.getValueTypeId() == null ? DASH : type.getValueTypeId().toString());
+            }
+        }
     }
 
     /**
@@ -552,8 +628,8 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
                     indexing = formatEnum(((DbObjectAttribute) attr).getIndexing());
                 }
 
-                String passwordMode = formatReflectiveBoolean(attr, "isPasswordMode"); //$NON-NLS-1$
-                String multiLine = formatReflectiveBoolean(attr, "isMultiLine"); //$NON-NLS-1$
+                String passwordMode = formatBoolean(attr.isPasswordMode()); //$NON-NLS-1$
+                String multiLine = formatBoolean(attr.isMultiLine()); //$NON-NLS-1$
 
                 // Get fullTextSearch if it's DbObjectAttribute
                 String fullTextSearch = DASH;
@@ -565,7 +641,7 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
                 java.util.List<String> cells = new java.util.ArrayList<>(java.util.Arrays.asList(
                     attr.getName(),
                     getSynonym(attr.getSynonym(), language),
-                    formatType(attr.getType()),
+                    typeFeatureCell(attr, MdClassPackage.Literals.BASIC_FEATURE__TYPE),
                     indexing,
                     formatEnum(attr.getFillChecking()),
                     fullTextSearch,
@@ -582,27 +658,7 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
         }
     }
 
-    /**
-     * Reads a boolean-returning method (e.g. {@code isPasswordMode} / {@code isMultiLine}) that lives
-     * in BasicFeature but not in the API interface, via reflection. Returns {@link #NO} when the
-     * method is absent or any error occurs, matching the original default. Never throws.
-     */
-    private String formatReflectiveBoolean(BasicFeature attr, String methodName)
-    {
-        try
-        {
-            java.lang.reflect.Method method = attr.getClass().getMethod(methodName);
-            Boolean flag = (Boolean) method.invoke(attr);
-            return formatBoolean(flag != null && flag);
-        }
-        catch (Exception e)
-        {
-            // Method doesn't exist or error - use default
-            return NO;
-        }
-    }
-
-    /**
+/**
      * Renders the compact (full=false) attribute table: Name, Synonym, Type (plus an Origin column
      * when {@code showOrigin}). Output matches the original inline code exactly.
      */
@@ -628,7 +684,7 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
                     addTableRow(sb,
                         attr.getName(),
                         getSynonym(attr.getSynonym(), language),
-                        formatType(attr.getType()),
+                        typeFeatureCell(attr, MdClassPackage.Literals.BASIC_FEATURE__TYPE),
                         originCell(attr));
                 }
                 else
@@ -636,7 +692,7 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
                     addTableRow(sb,
                         attr.getName(),
                         getSynonym(attr.getSynonym(), language),
-                        formatType(attr.getType()));
+                        typeFeatureCell(attr, MdClassPackage.Literals.BASIC_FEATURE__TYPE));
                 }
             }
         }
@@ -697,47 +753,21 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
         formatTabularSectionAttributes(sb, ts, full, language);
     }
 
-    /**
-     * Adds the "Use" row of a tabular section, read reflectively (available in
-     * HierarchicalDbObjectTabularSection). No-op when the getter is absent or returns {@code null}.
-     */
+    /** Renders the hierarchical tabular section use policy. */
     private void formatTabularSectionUse(StringBuilder sb, BasicTabularSection ts)
     {
-        // Use (via reflection, available in HierarchicalDbObjectTabularSection)
-        try
+        if (ts instanceof HierarchicalDbObjectTabularSection section && section.getUse() != null)
         {
-            java.lang.reflect.Method method = ts.getClass().getMethod("getUse");
-            Object use = method.invoke(ts);
-            if (use != null)
-            {
-                addPropertyRow(sb, "Use", formatEnum(use));
-            }
-        }
-        catch (Exception e)
-        {
-            // Method doesn't exist - skip
+            addPropertyRow(sb, "Use", formatEnum(section.getUse()));
         }
     }
 
-    /**
-     * Adds the "Line Number Length" row of a tabular section, read reflectively. No-op when the getter
-     * is absent or returns {@code null}.
-     */
+    /** Renders the database tabular section line number length. */
     private void formatTabularSectionLineNumberLength(StringBuilder sb, BasicTabularSection ts)
     {
-        // LineNumberLength (via reflection)
-        try
+        if (ts instanceof DbObjectTabularSection section)
         {
-            java.lang.reflect.Method method = ts.getClass().getMethod("getLineNumberLength");
-            Object lineNumLen = method.invoke(ts);
-            if (lineNumLen != null)
-            {
-                addPropertyRow(sb, "Line Number Length", lineNumLen.toString());
-            }
-        }
-        catch (Exception e)
-        {
-            // Method doesn't exist - skip
+            addPropertyRow(sb, "Line Number Length", Integer.toString(section.getLineNumberLength()));
         }
     }
 
@@ -957,7 +987,7 @@ public class UniversalMetadataFormatter extends AbstractMetadataFormatter // NOS
             Object typeValue = mdObj.eGet(typeFeature);
             if (typeValue instanceof com._1c.g5.v8.dt.mcore.TypeDescription)
             {
-                return formatType((com._1c.g5.v8.dt.mcore.TypeDescription) typeValue);
+                return typeFeatureCell(mdObj, typeFeature);
             }
         }
         return DASH;

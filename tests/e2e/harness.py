@@ -858,6 +858,7 @@ def _confirmed(args):
 # the Java side and is missing here fails the suite. Hand-maintained membership silently rots -
 # apply_quick_fix landed on master mutating the model, and this set did not know about it.
 MODEL_MUTATION_TOOLS = frozenset({
+    "manage_tech_log",  # Writes only config/capture/export files; never the fixture model.
     # A conflict-dialog Import press can rewrite project sources through EDT.
     "edt_dialog",
     "sort_metadata", "create_metadata", "modify_metadata", "write_module_source",
@@ -883,6 +884,7 @@ MODEL_MUTATION_TOOLS = frozenset({
 # therefore require kind="write-metadata". The exclusions are deliberate and kept one-per-line:
 # Tools that never move the FIXTURE's model, whatever arguments they are given.
 NON_FIXTURE_MODEL_MUTATION_TOOLS = frozenset({
+    "manage_tech_log",  # User-profile configuration and independent log files only.
     "clean_project",    # Restores the in-memory model FROM the fixture on disk.
     "create_project",   # Changes workspace composition, not the fixture's model.
     "import_project_from_file",  # Adds a NEW project; the fixture model is only read.
@@ -900,6 +902,8 @@ READ_ONLY_MODEL_ACTIONS = {
 
 
 def _is_read_only_model_action(tool, args):
+    if tool == "manage_tech_log":
+        return isinstance(args, dict) and args.get("mode", "preview") in {"preview", "status"}
     if tool == "sort_metadata":
         return isinstance(args, dict) and args.get("mode") == "list"
     return (isinstance(args, dict) and isinstance(args.get("action"), str)
@@ -988,12 +992,13 @@ _CONFIRMED_MUTATION_TOOLS = set()
 _MUTATIONS_UNRESOLVED = 0
 
 # Only arguments whose schema says they NAME a project participate in target inference. Across the
-# fixture-model writers these are projectName and adopt_metadata_object's extensionProjectName;
+# fixture-model writers these are projectName, adopt_metadata_object's extensionProjectName and
+# clone_metadata_object's targetProjectName (the project a cross-project clone writes);
 # fixture-looking text in source, fqn, or any other value is unrelated. The one exception is
 # `_implicit_extension_targets` below: an adoption whose omitted or empty extensionProjectName makes
 # the server select the single extension. An unresolved outcome widens evidence only for these
 # candidate projects, because this branch already treats "outcome unknown" as "assume it moved".
-_PROJECT_ARGUMENT_KEYS = frozenset({"projectName", "extensionProjectName"})
+_PROJECT_ARGUMENT_KEYS = frozenset({"projectName", "extensionProjectName", "targetProjectName"})
 
 
 def _fixture_projects_named_in(args):

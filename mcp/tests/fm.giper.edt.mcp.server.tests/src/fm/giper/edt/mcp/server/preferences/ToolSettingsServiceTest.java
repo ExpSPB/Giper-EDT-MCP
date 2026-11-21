@@ -755,7 +755,7 @@ public class ToolSettingsServiceTest
         ToolSettingsService.ensureMigratedForTest(store);
 
         assertEquals(Set.of("owner_disabled", "write_module_source", "open_editor", "clone_metadata_object",
-            "sort_metadata", "edt_dialog", "standalone_server"), disabledTools(store));
+            "sort_metadata", "edt_dialog", "standalone_server", "manage_profiling_results", "manage_tech_log"), disabledTools(store));
         assertEquals(ToolPreset.ANALYSIS_ONLY.getId(), store.getString(PreferenceConstants.PREF_TOOL_PRESET_ID));
         assertEquals(PreferenceConstants.TOOL_PREFS_MIGRATION_VERSION,
             store.getInt(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION));
@@ -776,13 +776,31 @@ public class ToolSettingsServiceTest
             ToolSettingsService.ensureMigratedForTest(store);
 
             Set<String> expected = ToolPreset.CODE_REVIEW.getId().equals(presetId)
-                ? Set.of("owner_disabled", "clone_metadata_object", "sort_metadata", "edt_dialog", "standalone_server")
+                ? Set.of("owner_disabled", "clone_metadata_object", "sort_metadata", "edt_dialog", "standalone_server", "manage_profiling_results", "manage_tech_log")
                 : Set.of("owner_disabled");
             assertEquals("Profile " + presetId, expected, disabledTools(store));
             assertEquals(PreferenceConstants.TOOL_PREFS_MIGRATION_VERSION,
                 store.getInt(PreferenceConstants.PREF_TOOL_PREFS_MIGRATION));
             assertEquals(presetId == null ? "" : presetId,
                 store.getString(PreferenceConstants.PREF_TOOL_PRESET_ID));
+        }
+    }
+
+    @Test
+    public void testVersion24DisablesCaptureOnlyForStoredReadOnlyPromiseAndRunsOnce()
+    {
+        for (String preset : new String[] {"analysis-only", "code-review", "custom", "development", "all-tools"})
+        {
+            PreferenceStore store = storedDisabledTools(Set.of("owner_disabled"), 23);
+            store.setValue(PreferenceConstants.PREF_TOOL_PRESET_ID, preset);
+            ToolSettingsService.ensureMigratedForTest(store);
+            Set<String> expected = preset.equals("analysis-only") || preset.equals("code-review")
+                ? Set.of("owner_disabled", "manage_profiling_results", "manage_tech_log") : Set.of("owner_disabled");
+            assertEquals(preset, expected, disabledTools(store));
+            assertEquals(preset, store.getString(PreferenceConstants.PREF_TOOL_PRESET_ID));
+            store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, "owner_disabled");
+            ToolSettingsService.ensureMigratedForTest(store);
+            assertEquals("A deliberate re-enable after migration must survive", Set.of("owner_disabled"), disabledTools(store));
         }
     }
 
@@ -867,6 +885,38 @@ public class ToolSettingsServiceTest
 
         assertEquals("re-applying the same set must stay silent", //$NON-NLS-1$
             "", applyAndCapture(store, Set.of("ask_workmate", "git"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+    }
+
+    /** Disclosure decides what tools/list shows, so turning it on or off must tell the clients. */
+    @Test
+    public void testTogglingProgressiveDisclosureNotifiesClientsOnlyOnAChange()
+    {
+        PreferenceStore store = new PreferenceStore();
+        store.setDefault(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE,
+            PreferenceConstants.DEFAULT_PROGRESSIVE_DISCLOSURE);
+
+        assertTrue(disclosureAndCapture(store, true).contains("notifications/tools/list_changed")); //$NON-NLS-1$
+        assertTrue(store.getBoolean(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE));
+        assertEquals("re-applying the same value must stay silent", "", disclosureAndCapture(store, true)); //$NON-NLS-1$ //$NON-NLS-2$
+        assertTrue(disclosureAndCapture(store, false).contains("notifications/tools/list_changed")); //$NON-NLS-1$
+        assertFalse(store.getBoolean(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE));
+    }
+
+    private static String disclosureAndCapture(PreferenceStore store, boolean enabled)
+    {
+        ByteArrayOutputStream sink = new ByteArrayOutputStream();
+        SseStreamRegistry.SseStream stream = SseStreamRegistry.getInstance().register(sink);
+        try
+        {
+            boolean changed = ToolSettingsService.getInstance().applyProgressiveDisclosure(store, enabled);
+            String received = sink.toString(StandardCharsets.UTF_8);
+            assertEquals(changed, received.contains("notifications/tools/list_changed")); //$NON-NLS-1$
+            return received;
+        }
+        finally
+        {
+            SseStreamRegistry.getInstance().unregister(stream);
+        }
     }
 
     @Test

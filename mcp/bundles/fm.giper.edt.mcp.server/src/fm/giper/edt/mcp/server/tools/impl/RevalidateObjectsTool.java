@@ -24,6 +24,7 @@ import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.core.platform.IDtProjectManager;
+import fm.giper.edt.mcp.server.utils.BmModelResolver;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
@@ -163,7 +164,7 @@ public class RevalidateObjectsTool implements IMcpTool
 
                 // Action result: revalidation status only, no round-trip ID or
                 // machine-structured payload, so MARKDOWN is the right format (see the
-                // "Response format policy" in README / edt-mcp-tool-conventions).
+                // "Response format policy" in docs/output-formats.md / edt-mcp-tool-conventions).
                 return FrontMatter.create()
                     .put("tool", NAME) //$NON-NLS-1$
                     .put("status", "success") //$NON-NLS-1$ //$NON-NLS-2$
@@ -245,7 +246,7 @@ public class RevalidateObjectsTool implements IMcpTool
 
         // Action result: counts + per-object outcome lists. No round-trip ID or
         // machine-structured payload, so MARKDOWN is the right format (see the
-        // "Response format policy" in README / edt-mcp-tool-conventions). FQNs are
+        // "Response format policy" in docs/output-formats.md / edt-mcp-tool-conventions). FQNs are
         // user-supplied and may contain '|', so they go through the shared
         // MarkdownUtils table builder, which escapes every cell.
         FrontMatter fm = FrontMatter.create()
@@ -310,7 +311,7 @@ public class RevalidateObjectsTool implements IMcpTool
         }
 
         // Get BM model
-        IBmModel bmModel = bmModelManager.getModel(dtProject);
+        IBmModel bmModel = BmModelResolver.resolve(project, bmModelManager).getModel();
         if (bmModel == null)
         {
             services.error = ToolResult.error("BM model not available for project: " + projectName).toJson(); //$NON-NLS-1$

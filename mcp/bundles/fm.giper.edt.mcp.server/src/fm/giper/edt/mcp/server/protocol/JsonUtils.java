@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.protocol;
 
+import java.util.Locale;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -57,7 +58,7 @@ public final class JsonUtils
 
     /** A JSON number (RFC 8259) with a fraction or exponent: the only non-plain shape a transport renders. */
     private static final Pattern JSON_DECIMAL_NUMBER =
-        Pattern.compile("-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"); //$NON-NLS-1$
+        Pattern.compile("-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?"); //$NON-NLS-1$
 
     /**
      * Whether a serialized JSON-RPC response reports failure.
@@ -514,7 +515,7 @@ public final class JsonUtils
             return defaultValue;
         }
         
-        value = value.trim().toLowerCase();
+        value = value.trim().toLowerCase(Locale.ROOT);
         if ("true".equals(value) || "1".equals(value) || "yes".equals(value)) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         {
             return true;
@@ -683,6 +684,24 @@ public final class JsonUtils
         {
             return defaultValue;
         }
+    }
+
+    /** Reads an optional exact integer; invalid supplied values never use the default. */
+    public static int extractStrictInt(Map<String, String> params, String name,
+        int defaultValue, int min, int max)
+    {
+        if (params == null || !params.containsKey(name))
+        {
+            return defaultValue;
+        }
+        String raw = params.get(name);
+        Integer value = parseIntegralInt(raw);
+        if (value == null || value < min || value > max)
+        {
+            throw new IllegalArgumentException(name + "='" + raw + "' must be an integer in "
+                + min + ".." + max + "; retry with a valid value");
+        }
+        return value;
     }
 
     /**

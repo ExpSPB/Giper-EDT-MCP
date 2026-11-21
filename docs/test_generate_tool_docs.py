@@ -15,7 +15,7 @@ generator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(generator)
 
 
-class UserGuideRegenerationTest(unittest.TestCase):
+class ToolOverviewRegenerationTest(unittest.TestCase):
     def regenerate(self, root, tools, members):
         docs = root / "docs"
         docs.mkdir(exist_ok=True)
@@ -30,7 +30,7 @@ class UserGuideRegenerationTest(unittest.TestCase):
                 patch("sys.argv", ["generate_tool_docs.py"]), \
                 contextlib.redirect_stdout(io.StringIO()):
             generator.main()
-        return (root / "EDT-MCP.md").read_text(encoding="utf-8")
+        return (docs / "tool-overviews.md").read_text(encoding="utf-8")
 
     def test_preserves_full_overview_while_refreshing_membership_and_tool_pages(self):
         overview = ("Read the saved source using `projectName` and `modulePath`; "
@@ -38,24 +38,27 @@ class UserGuideRegenerationTest(unittest.TestCase):
                     "even for a limited range, and preserve a literal \\| in this table cell.")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            readme = root / "README.md"
-            readme.write_text("Fork overview.\n", encoding="utf-8")
-            (root / "EDT-MCP.md").write_text(
+            (root / "docs").mkdir()
+            landing = "Landing page. [Full tool reference](docs/tools/README.md).\n"
+            (root / "README.md").write_text(landing, encoding="utf-8")
+            (root / "docs/tool-overviews.md").write_text(
                 "Introduction.\n<!-- TOOLS-INDEX:START -->\n"
-                "| [`existing`](docs/tools/existing.md) | " + overview + " |\n"
-                "| [`removed`](docs/tools/removed.md) | Obsolete entry. |\n"
+                "| [`existing`](tools/existing.md) | " + overview + " |\n"
+                "| [`removed`](tools/removed.md) | Obsolete entry. |\n"
                 "<!-- TOOLS-INDEX:END -->\nAfterword.\n", encoding="utf-8")
             text = self.regenerate(root, [
                 {"name": "existing", "description": "Fresh advertised description."},
                 {"name": "added", "description": "Describe a newly registered tool."}],
                 ["existing", "added"])
-            self.assertEqual("Fork overview.\n", readme.read_text(encoding="utf-8"))
             self.assertIn(overview, text)
             self.assertIn("Describe a newly registered tool.", text)
             self.assertNotIn("removed.md", text)
             self.assertIn("**2 tools**", text)
             self.assertTrue(text.startswith("Introduction.\n"))
             self.assertTrue(text.endswith("Afterword.\n"))
+            self.assertEqual(landing, (root / "README.md").read_text(encoding="utf-8"))
+            self.assertIn("](tools/added.md)", text)
+            self.assertIn("## Core\n", text)
             index = (root / "docs/tools/README.md").read_text(encoding="utf-8")
             self.assertIn("Fresh advertised description.", index)
             self.assertNotIn(overview, index)
@@ -66,9 +69,10 @@ class UserGuideRegenerationTest(unittest.TestCase):
     def test_repeated_generation_keeps_one_disabled_annotation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "EDT-MCP.md").write_text(
+            (root / "docs").mkdir()
+            (root / "docs/tool-overviews.md").write_text(
                 "<!-- TOOLS-INDEX:START -->\n"
-                "| [`hidden`](docs/tools/hidden.md) | Maintained overview."
+                "| [`hidden`](tools/hidden.md) | Maintained overview."
                 " *(not enabled by default)* |\n<!-- TOOLS-INDEX:END -->\n",
                 encoding="utf-8")
             tools = [{"name": "visible", "description": "Visible tool."}]

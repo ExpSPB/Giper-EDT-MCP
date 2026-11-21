@@ -12,9 +12,19 @@
 
 MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, GitHub Copilot, Cursor, and others) talk to the EDT workspace through this plugin.
 
-**Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. The current release was verified on **1C:EDT 2026.2.2.21**. Releases for EDT 2025.2.5 are documented on the [archived branch](https://github.com/ExpSPB/Giper-EDT-MCP/blob/giper-2025.2/README.md).
+**Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. Version 1.0.16 was verified on **1C:EDT 2026.2.2.21**. Releases for EDT 2025.2.5 are documented on the [archived branch](https://github.com/ExpSPB/Giper-EDT-MCP/blob/giper-2025.2/README.md).
 
 <details open>
+<summary><strong>1.0.17</strong> (unreleased)</summary>
+
+- Git can initialize and clone repositories, and metadata writes wait for EDT to reload the model after a branch switch.
+- Metadata tools support cloning across projects, renaming more member types, and editing DCS layouts. BSL edits can replace whole words and copy or remove methods.
+- Profiling and technological log tools have more ways to capture and analyze results. `get_server_status` shows active calls and background jobs.
+- The server validates tool arguments against their schemas. The confirmation dialog wait is configurable and defaults to 45 seconds.
+
+</details>
+
+<details>
 <summary><strong>1.0.16</strong></summary>
 
 The proxy now returns the reason why a profile denied `list_projects` in an MCP response with `isError=true`. Verified on EDT 2026.2.2.21 with the published ZIP and proxy JAR. The `ui-test` profile returned the denial reason, and `default` returned `TestConfiguration` in `ready`. Both profiles retained their settings when updated from 1.0.15 through p2. [Release v1.0.16](https://github.com/ExpSPB/Giper-EDT-MCP/releases/tag/v1.0.16)
@@ -109,14 +119,34 @@ then reports the directory as read-only, and the EDT launcher shows
 installing 1.0.15 from its release ZIP succeeded from a regular `cmd.exe` outside the sandbox
 with exit code `0` and without Windows administrator elevation.
 
+## Tools
+
+The generated [full tool reference](docs/tools/README.md) lists every tool, parameter and guide, grouped by toolset.
+See [tool management](docs/tool-management.md) for profiles, presets and progressive disclosure.
+
+| Toolset | Purpose | Reference |
+|---|---|---|
+| `core` | Project/module navigation, source reads and tool discovery | [Core](docs/tools/README.md#core) |
+| `metadata` | Discover, create, edit and refactor metadata and DCS. Check extension properties with `get_metadata_details(controlledMismatches: true)`. | [Metadata](docs/tools/README.md#metadata) |
+| `code` | Read/write methods, navigate symbols and inspect calls | [Code](docs/tools/README.md#code) |
+| `debug` | Breakpoints, stepping, variables and expressions | [Debug](docs/tools/README.md#debug) |
+| `testing` | Run and debug YAXUnit tests | [Testing](docs/tools/README.md#testing) |
+| `profiling` | Capture, compare and exchange performance profiles; capture and analyze technological logs | [Profiling](docs/tools/README.md#profiling) |
+| `forms` | Inspect form layouts, screenshots and templates | [Forms](docs/tools/README.md#forms) |
+| `tags` | Read and filter metadata tags | [Tags](docs/tools/README.md#tags) |
+| `translation` | Generate and synchronize translation strings | [Translation](docs/tools/README.md#translation) |
+| `project` | Diagnostics, applications, infobases and database updates | [Project](docs/tools/README.md#project) |
+| `comparison` | Three-way configuration comparison and merge rules | [Comparison](docs/tools/README.md#comparison) |
+| `git` | Git commands and branch/infobase bindings | [Git](docs/tools/README.md#git) |
+
 ## Full product documentation
 
 The [EDT-MCP user guide](EDT-MCP.md) covers installation, client configuration, tools and building from source.
 
 - [Connecting AI assistants](EDT-MCP.md#connecting-ai-assistants)
 - [Tool Management](EDT-MCP.md#tool-management)
-- [Available Tools](EDT-MCP.md#available-tools)
-- [Building from source](EDT-MCP.md#building-from-source)
+- [Tool usage overviews](docs/tool-overviews.md)
+- [Building from source](docs/building.md)
 - [Proxy configuration](proxy/README.md)
 
 ## License

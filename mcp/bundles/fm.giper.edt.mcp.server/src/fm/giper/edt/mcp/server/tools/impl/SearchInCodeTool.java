@@ -89,7 +89,7 @@ public class SearchInCodeTool implements IMcpTool
             .integerProperty(KEY_CONTEXT_LINES,
                 "Lines of context before/after each match. Default: 2, max: 5") //$NON-NLS-1$
             .stringProperty("fileMask", //$NON-NLS-1$
-                "Filter by module path substring (e.g. 'CommonModules' or 'Documents/SalesOrder')") //$NON-NLS-1$
+                "Filter by module path substring, or a glob with * ? ** (e.g. 'Documents/SalesOrder', '*SalesOrder*')") //$NON-NLS-1$
             .stringProperty("metadataType", //$NON-NLS-1$
                 "Filter by metadata type (e.g. 'documents', 'catalogs', 'commonModules'); " + //$NON-NLS-1$
                 "more precise than fileMask. See guide for the full list.") //$NON-NLS-1$
@@ -113,7 +113,7 @@ public class SearchInCodeTool implements IMcpTool
         if (query != null && !query.isEmpty())
         {
             String safeName = query.replaceAll("[^a-zA-Z0-9\\u0400-\\u04FF]", "-") //$NON-NLS-1$ //$NON-NLS-2$
-                .toLowerCase();
+                .toLowerCase(Locale.ROOT);
             if (safeName.length() > 40)
             {
                 safeName = safeName.substring(0, 40);
@@ -246,7 +246,7 @@ public class SearchInCodeTool implements IMcpTool
         {
             return null;
         }
-        switch (metadataType.toLowerCase())
+        switch (metadataType.toLowerCase(Locale.ROOT))
         {
             case "documents": //$NON-NLS-1$
                 return "Documents/"; //$NON-NLS-1$

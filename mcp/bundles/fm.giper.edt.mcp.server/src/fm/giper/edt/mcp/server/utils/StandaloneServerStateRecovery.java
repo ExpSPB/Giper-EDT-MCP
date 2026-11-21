@@ -150,8 +150,12 @@ public final class StandaloneServerStateRecovery
     static volatile long explicitStartGuardCapMs =
         StandaloneServerSupport.INCONCLUSIVE_START_GUARD_CAP_MS;
 
-    /** Test seam for a UI thread that never answers the bounded shell probe. */
-    static volatile LongFunction<LaunchLifecycleUtils.ShellProbe> stopShellProbe =
+    /**
+     * Test seam for a UI thread that never answers the bounded shell probe. A plain field: production never
+     * writes it, and a test sets it before it starts the stop, whose job scheduling publishes the value to
+     * the job thread that reads it.
+     */
+    static LongFunction<LaunchLifecycleUtils.ShellProbe> stopShellProbe =
         LaunchLifecycleUtils::grabActiveShellWithin;
 
     /**
@@ -319,6 +323,17 @@ public final class StandaloneServerStateRecovery
     public static ILaunch launchWithRecovery(ILaunchConfiguration config, String mode,
         IProgressMonitor monitor, Supplier<String> abandonedMessage) throws CoreException
     {
+        return launchWithRecovery(config, mode, monitor, abandonedMessage, null);
+    }
+
+    /**
+     * Same, handing every launch the delegate returns to {@code onLaunched} before it is classified, so a
+     * caller can still reach a started client when the call then throws.
+     */
+    public static ILaunch launchWithRecovery(ILaunchConfiguration config, String mode,
+        IProgressMonitor monitor, Supplier<String> abandonedMessage,
+        java.util.function.Consumer<ILaunch> onLaunched) throws CoreException
+    {
         Target target = resolveTarget(config);
         beginOperation();
         try
@@ -335,7 +350,7 @@ public final class StandaloneServerStateRecovery
             }
             try
             {
-                return launchOnce(config, mode, monitor, abandonedMessage);
+                return launchOnce(config, mode, monitor, abandonedMessage, onLaunched);
             }
             catch (CoreException | RuntimeException e)
             {
@@ -348,7 +363,7 @@ public final class StandaloneServerStateRecovery
                 {
                     throw e;
                 }
-                return relaunchAfterStop(config, mode, monitor, abandonedMessage, e, refusal,
+                return relaunchAfterStop(config, mode, monitor, abandonedMessage, onLaunched, e, refusal,
                     target);
             }
         }
@@ -379,10 +394,15 @@ public final class StandaloneServerStateRecovery
 
     /** Runs one synchronous delegate call and rejects only a cancellation attributable to it. */
     private static ILaunch launchOnce(ILaunchConfiguration config, String mode,
-        IProgressMonitor monitor, Supplier<String> abandonedMessage) throws CoreException
+        IProgressMonitor monitor, Supplier<String> abandonedMessage,
+        java.util.function.Consumer<ILaunch> onLaunched) throws CoreException
     {
         AttributableCancel attributable = new AttributableCancel(monitor);
         ILaunch launch = config.launch(mode, attributable);
+        if (onLaunched != null)
+        {
+            onLaunched.accept(launch);
+        }
         if (attributable.wasCanceledByLaunchingThread())
         {
             String message = abandonedMessage == null ? null : abandonedMessage.get();
@@ -410,7 +430,8 @@ public final class StandaloneServerStateRecovery
      * @throws CoreException when the server could not be stopped or the retry failed too
      */
     private static ILaunch relaunchAfterStop(ILaunchConfiguration config, String mode,
-        IProgressMonitor monitor, Supplier<String> abandonedMessage, Exception failure,
+        IProgressMonitor monitor, Supplier<String> abandonedMessage,
+        java.util.function.Consumer<ILaunch> onLaunched, Exception failure,
         String refusal, Target target)
         throws CoreException
     {
@@ -436,7 +457,7 @@ public final class StandaloneServerStateRecovery
         }
         try
         {
-            return launchOnce(config, mode, monitor, abandonedMessage);
+            return launchOnce(config, mode, monitor, abandonedMessage, onLaunched);
         }
         catch (CoreException | RuntimeException retry)
         {
@@ -3003,21 +3024,7 @@ public final class StandaloneServerStateRecovery
         {
             Activator.logError("Standalone server: the pre-flight state check failed for " //$NON-NLS-1$
                 + applicationId, e);
-            return;
         }
-    }
-
-    /**
-     * The pre-flight for a caller that names no application: EDT prepares the project's DEFAULT
-     * application (that is what the external-object dump does), so that is the server whose state
-     * has to be settled.
-     *
-     * @param project the project whose default application will be prepared (may be {@code null} —
-     *     no-op)
-     */
-    public static void ensureDefaultApplicationStartable(IProject project)
-    {
-        ensureDefaultApplicationStartableThen(project, 0L, null, null, null);
     }
 
     /**
@@ -3027,8 +3034,8 @@ public final class StandaloneServerStateRecovery
      * stop takes first. Without it a confirmed stop could land between the pre-flight and the
      * prepare, and the work would start the server the stop just held.
      *
-     * <p>When the default application cannot be resolved, the pre-flight is skipped exactly as
-     * {@link #ensureDefaultApplicationStartable} always did (logged) and {@code work} runs unlocked:
+     * <p>When the default application cannot be resolved, the failure is logged and
+     * {@code work} runs unlocked:
      * there is no application id to lock, and EDT's own prepare then fails on its own terms.
      *
      * @param project the project whose default application the work prepares (may be {@code null})

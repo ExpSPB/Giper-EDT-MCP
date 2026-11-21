@@ -51,7 +51,9 @@ class GenerateToolDocsTest(unittest.TestCase):
             root = Path(directory)
             docs = root / "docs"
             docs.mkdir()
-            (root / "EDT-MCP.md").write_text(
+            landing = "Landing page. [Tools](docs/tools/README.md).\n"
+            (root / "README.md").write_text(landing, encoding="utf-8")
+            (docs / "tool-overviews.md").write_text(
                 "Before\n<!-- TOOLS-INDEX:START -->\nold\n<!-- TOOLS-INDEX:END -->\nAfter\n",
                 encoding="utf-8",
             )
@@ -65,12 +67,13 @@ class GenerateToolDocsTest(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
                 GENERATOR.main()
             pages = {p.name: p.read_bytes().decode("utf-8") for p in output.glob("*.md")}
-            user_guide = (root / "EDT-MCP.md").read_text(encoding="utf-8")
-        return pages, user_guide, requests, errors.getvalue()
+            self.assertEqual(landing, (root / "README.md").read_text(encoding="utf-8"))
+            overviews = (docs / "tool-overviews.md").read_text(encoding="utf-8")
+        return pages, overviews, requests, errors.getvalue()
 
     def test_oversized_guides_use_uncapped_resources(self):
         guide = "# large_tool\n\nLarge guide.\n\n" + "Full guide body.\n" * 8_000 + "END OF GUIDE"
-        pages, _user_guide, requests, errors = self.generate({"large_tool": guide})
+        pages, _overviews, requests, errors = self.generate({"large_tool": guide})
 
         self.assertTrue("END OF GUIDE" in pages["large_tool.md"], "The oversized guide lost its final line")
         self.assertNotIn("[OUTPUT TRUNCATED]", pages["large_tool.md"])
@@ -84,18 +87,18 @@ class GenerateToolDocsTest(unittest.TestCase):
             "large_tool": "# large_tool\n\nLarge guide.",
             "hidden_tool": "# hidden_tool\n\nHidden description.\n\n" + "Hidden body.\n" * 10_000 + "HIDDEN END",
         }
-        pages, user_guide, requests, _errors = self.generate(guides)
+        pages, overviews, requests, _errors = self.generate(guides)
 
         self.assertTrue("HIDDEN END" in pages["hidden_tool.md"], "The hidden tool's oversized guide was truncated")
         self.assertIn(("resources/read", {"uri": "guide://hidden_tool"}), requests)
         self.assertIn("](hidden_tool.md)", pages["README.md"])
-        self.assertIn("](docs/tools/hidden_tool.md)", user_guide)
+        self.assertIn("](tools/hidden_tool.md)", overviews)
         self.assertIn("**2 tools.**", pages["README.md"])
-        self.assertIn("**2 tools**", user_guide)
+        self.assertIn("**2 tools**", overviews)
 
     def test_legacy_server_falls_back_to_embedded_resource_with_a_notice(self):
         guide = "# large_tool\n\nLegacy guide."
-        pages, _user_guide, requests, errors = self.generate(
+        pages, _overviews, requests, errors = self.generate(
             {"large_tool": guide}, resource_error=RuntimeError("Method not found"))
 
         self.assertTrue(pages["large_tool.md"].startswith(guide))
@@ -105,7 +108,7 @@ class GenerateToolDocsTest(unittest.TestCase):
         self.assertIn("[OUTPUT TRUNCATED]", errors)
 
     def test_empty_resource_response_falls_back_instead_of_writing_an_empty_page(self):
-        pages, _user_guide, _requests, errors = self.generate(
+        pages, _overviews, _requests, errors = self.generate(
             {"large_tool": "# large_tool\n\nFallback guide."}, resource_contents=[])
 
         self.assertIn("Fallback guide.", pages["large_tool.md"])

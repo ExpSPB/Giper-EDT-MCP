@@ -6,8 +6,8 @@
 package fm.giper.edt.mcp.server.tools.base;
 
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.ResourcesPlugin;
 
+import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.utils.BuildUtils;
 import fm.giper.edt.mcp.server.utils.BuildUtils.DiskExportState;
@@ -25,8 +25,8 @@ public final class WriteExportBarrier
     }
 
     public static final Environment PLATFORM = (projectName, timeoutMs) -> {
-        IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
-        return project.exists() ? BuildUtils.waitForDiskExport(project, timeoutMs)
+        IProject project = ProjectContext.of(projectName).project();
+        return project != null && project.exists() ? BuildUtils.waitForDiskExport(project, timeoutMs)
             : DiskExportState.UNOBSERVABLE;
     };
 

@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
@@ -111,10 +112,6 @@ import fm.giper.edt.mcp.server.utils.WorkspacePaths;
  *       no compile dependency).</li>
  * </ol>
  *
- * <p>{@code autoSortTopObjects} is accepted in the schema for API stability but is NOT applied
- * in this release because the exact enable-key in {@code com.e1c.v8codestyle.autosort.prefs}
- * could not be confirmed without running against a live wizard-created project; see the
- * {@code codestyle.autoSortNote} field in the response.
  */
 public class CreateProjectTool implements IMcpTool
 {
@@ -287,24 +284,18 @@ public class CreateProjectTool implements IMcpTool
                     + "Default: extension -> '<baseProjectName>.<name>'; " //$NON-NLS-1$
                     + "configuration/externalObjects -> 'name'.") //$NON-NLS-1$
             .stringProperty(KEY_VERSION,
-                "Platform version string, e.g. '8.3.27' (configuration and externalObjects only; " //$NON-NLS-1$
-                    + "for extension: REJECTED — version is always inherited from the base configuration). " //$NON-NLS-1$
-                    + "Default: base runtime when bound, otherwise Version.LATEST; must match the base.") //$NON-NLS-1$
+                "Platform version, e.g. '8.3.27'; default: the base runtime when bound, else the latest; " //$NON-NLS-1$
+                + "must match the base. REJECTED for an extension (inherited from the base).") //$NON-NLS-1$
             .stringProperty(KEY_EXTERNAL_OBJECT,
-                "Optional root to seed for projectKind=externalObjects: " //$NON-NLS-1$
-                    + "'ExternalDataProcessor.<Name>' or 'ExternalReport.<Name>'; the TYPE token may be " //$NON-NLS-1$
-                    + "English or Russian and is not normalized; Name is a programmatic identifier whose " //$NON-NLS-1$
-                    + "'ё'/'Ё' is normalized by default according to normalizeYo. Omit for an empty project; " //$NON-NLS-1$
-                    + "REJECTED for other project kinds.") //$NON-NLS-1$
+                "externalObjects only (REJECTED otherwise): the root to seed, " //$NON-NLS-1$
+                + "'ExternalDataProcessor.<Name>' or 'ExternalReport.<Name>' (type token English or " //$NON-NLS-1$
+                + "Russian); omit for an empty project.") //$NON-NLS-1$
             .booleanProperty(KEY_NORMALIZE_YO,
-                "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in the seeded externalObject root " //$NON-NLS-1$
-                    + "NAME (default true). 'ё' in a Name is flagged by the 1C standard " //$NON-NLS-1$
-                    + "mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. " //$NON-NLS-1$
-                    + "Set false to keep 'ё' exactly as supplied. The TYPE token is never normalized.") //$NON-NLS-1$
+                "Default true: stores 'ё' / 'Ё' as 'е' / 'Е' in the seeded externalObject root Name " //$NON-NLS-1$
+                + "(never in the type token); false keeps 'ё'.") //$NON-NLS-1$
             .stringProperty("baseProjectName", //$NON-NLS-1$
-                "Name of the BASE configuration EDT project (required for extension; " //$NON-NLS-1$
-                    + "optional for externalObjects; REJECTED for configuration). " //$NON-NLS-1$
-                    + "Must be an existing, open V8 configuration project. Use list_projects to find it.") //$NON-NLS-1$
+                "The open BASE configuration project (see list_projects): required for extension, " //$NON-NLS-1$
+                + "optional for externalObjects, REJECTED for configuration.") //$NON-NLS-1$
             .stringProperty(KEY_PREFIX,
                 "NamePrefix for the extension (extension only; REJECTED for other kinds). " //$NON-NLS-1$
                     + "Default: empty string. The wizard generates a value like 'Ext1_'; " //$NON-NLS-1$
@@ -326,10 +317,9 @@ public class CreateProjectTool implements IMcpTool
                 "Optional free-text comment set on the Configuration " //$NON-NLS-1$
                     + "(configuration and extension only; REJECTED for externalObjects).") //$NON-NLS-1$
             .enumProperty(KEY_SCRIPT_VARIANT,
-                "Script variant (Russian or English). " //$NON-NLS-1$
-                    + "configuration: sets the Configuration scriptVariant and default Language code (default Russian). " //$NON-NLS-1$
-                    + "externalObjects: applied post-create via setScriptVariant (non-fatal on failure). " //$NON-NLS-1$
-                    + "extension: REJECTED — scriptVariant is always inherited from the base configuration.", //$NON-NLS-1$
+                "configuration: the script variant and default language (default Russian); " //$NON-NLS-1$
+                + "externalObjects: applied after creation (a failure there does not fail the create); " //$NON-NLS-1$
+                + "extension: REJECTED (inherited from the base).", //$NON-NLS-1$
                 SCRIPT_RUSSIAN, SCRIPT_ENGLISH)
             .booleanProperty(PREF_STANDARD_CHECKS,
                 "Enable 1C:Standards BSL checks for the new project (default true). " //$NON-NLS-1$
@@ -337,9 +327,6 @@ public class CreateProjectTool implements IMcpTool
             .booleanProperty(PREF_COMMON_CHECKS,
                 "Enable common (project-level) BSL checks for the new project (default true). " //$NON-NLS-1$
                     + "Applied to all kinds only when com.e1c.v8codestyle is installed; ignored otherwise.") //$NON-NLS-1$
-            .booleanProperty("autoSortTopObjects", //$NON-NLS-1$
-                "Reserved for future use: auto-sort top-level metadata objects. " //$NON-NLS-1$
-                    + "Accepted but not yet applied in this release (see codestyle.autoSortNote in the response).") //$NON-NLS-1$
             .build();
     }
 
@@ -377,7 +364,7 @@ public class CreateProjectTool implements IMcpTool
                     + "on disk), 'created' otherwise, or " //$NON-NLS-1$
                     + "'rootConfirmed'/'rootUnconfirmed' when a slow seeded create requires verification") //$NON-NLS-1$
             .objectProperty(KEY_CODESTYLE,
-                "v8codestyle preference application result: {applied: bool, note: string, autoSortNote: string}") //$NON-NLS-1$
+                "v8codestyle preference application result: {applied: bool, note: string}") //$NON-NLS-1$
             .stringProperty(KEY_SYNONYM_NOTE,
                 "Present only when the synonym could not be applied (no resolvable language code).") //$NON-NLS-1$
             .stringProperty(KEY_SCRIPT_VARIANT_NOTE,
@@ -417,8 +404,6 @@ public class CreateProjectTool implements IMcpTool
         boolean normalizeYo = JsonUtils.extractBooleanArgument(params, KEY_NORMALIZE_YO, true);
         boolean standardChecks = JsonUtils.extractBooleanArgument(params, PREF_STANDARD_CHECKS, true);
         boolean commonChecks = JsonUtils.extractBooleanArgument(params, PREF_COMMON_CHECKS, true);
-        // autoSortTopObjects is read to satisfy schema parity; not yet applied (see class-level doc)
-        JsonUtils.extractBooleanArgument(params, "autoSortTopObjects", true); //$NON-NLS-1$
 
         // 2. Validate projectKind
         boolean isConfiguration = KIND_CONFIGURATION.equals(projectKind);
@@ -2541,17 +2526,17 @@ public class CreateProjectTool implements IMcpTool
      */
     private static CompatibilityMode matchCompatibilityModeByNormalizedName(String compatModeStr)
     {
-        String normalizedInput = compatModeStr.replaceAll(RE_NON_ALNUM, "").toLowerCase(); //$NON-NLS-1$
+        String normalizedInput = compatModeStr.replaceAll(RE_NON_ALNUM, "").toLowerCase(Locale.ROOT); //$NON-NLS-1$
         for (CompatibilityMode candidate : CompatibilityMode.VALUES)
         {
             String normalizedCandidate = candidate.getLiteral()
-                .replaceAll(RE_NON_ALNUM, "").toLowerCase(); //$NON-NLS-1$
+                .replaceAll(RE_NON_ALNUM, "").toLowerCase(Locale.ROOT); //$NON-NLS-1$
             if (normalizedInput.equals(normalizedCandidate))
             {
                 return candidate;
             }
             String normalizedName = candidate.getName()
-                .replaceAll(RE_NON_ALNUM, "").toLowerCase(); //$NON-NLS-1$
+                .replaceAll(RE_NON_ALNUM, "").toLowerCase(Locale.ROOT); //$NON-NLS-1$
             if (normalizedInput.equals(normalizedName))
             {
                 return candidate;
@@ -2935,8 +2920,6 @@ public class CreateProjectTool implements IMcpTool
         map.put("applied", false); //$NON-NLS-1$
         map.put("note", //$NON-NLS-1$
             "Not applied: creation exceeded the wait window; set the project preferences manually if needed."); //$NON-NLS-1$
-        map.put("autoSortNote", //$NON-NLS-1$
-            "autoSortTopObjects is reserved for a future release and was not applied (enable-key unconfirmed)."); //$NON-NLS-1$
         return map;
     }
 
@@ -3029,13 +3012,9 @@ public class CreateProjectTool implements IMcpTool
             codestyleNote = "com.e1c.v8codestyle is not installed; standardChecks/commonChecks were not applied."; //$NON-NLS-1$
         }
 
-        String autoSortNote = "autoSortTopObjects is reserved for a future release " //$NON-NLS-1$
-            + "and was not applied (enable-key unconfirmed)."; //$NON-NLS-1$
-
         Map<String, Object> codestyleMap = new LinkedHashMap<>();
         codestyleMap.put("applied", codestyleApplied); //$NON-NLS-1$
         codestyleMap.put("note", codestyleNote); //$NON-NLS-1$
-        codestyleMap.put("autoSortNote", autoSortNote); //$NON-NLS-1$
         return codestyleMap;
     }
 

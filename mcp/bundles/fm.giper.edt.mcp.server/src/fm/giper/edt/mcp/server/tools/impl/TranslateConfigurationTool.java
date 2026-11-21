@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import fm.giper.edt.mcp.server.utils.BmModelResolver;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -139,7 +140,8 @@ public class TranslateConfigurationTool implements IMcpTool
 
             // The project is resolved and open above; refuse only the transient
             // BUILDING state here (a missing/closed name was already named above).
-            String building = ProjectStateChecker.buildingErrorOrNull(project);
+            // A project this server just switched still holds the previous branch's model (#922).
+            String building = ProjectStateChecker.strictWriteErrorOrNull(project);
             if (building != null)
             {
                 return ToolResult.error(building).toJson();
@@ -223,7 +225,7 @@ public class TranslateConfigurationTool implements IMcpTool
         }
         Activator activator = project == null ? null : Activator.getDefault();
         IBmModelManager manager = activator == null ? null : activator.getBmModelManager();
-        IBmModel model = manager == null ? null : manager.getModel(project);
+        IBmModel model = BmModelResolver.resolve(project, manager).getModel();
         if (model == null)
         {
             return declaredIn(configuration, targetLanguages);

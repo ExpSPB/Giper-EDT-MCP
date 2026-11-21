@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.utils;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -524,7 +525,7 @@ public final class DcsWriter
             error = resolveCommonMembers(item.members, item.resolved,
                 current == null ? null : current.getValueType(),
                 current == null ? null : current.getAppearance(), typeResolver, languages, version,
-                namedColors, KEY_CALCULATED_FIELDS + "[" + i + "]", true); //$NON-NLS-1$ //$NON-NLS-2$
+                namedColors, KEY_CALCULATED_FIELDS + "[" + i + "]"); //$NON-NLS-1$ //$NON-NLS-2$
             if (error != null) return error;
             UseRestrictionResult restriction = parseUseRestrictionMember(item.members,
                 KEY_USE_RESTRICTION, KEY_CALCULATED_FIELDS + "[" + i + "]", //$NON-NLS-1$ //$NON-NLS-2$
@@ -543,7 +544,7 @@ public final class DcsWriter
             item.resolved = new ResolvedMembers();
             error = resolveCommonMembers(item.members, item.resolved,
                 current == null ? null : current.getValueType(), null, typeResolver, languages,
-                version, namedColors, KEY_PARAMETERS + "[" + i + "]", false); //$NON-NLS-1$ //$NON-NLS-2$
+                version, namedColors, KEY_PARAMETERS + "[" + i + "]"); //$NON-NLS-1$ //$NON-NLS-2$
             if (error != null) return error;
             TypeDescription effectiveType = item.members.has(KEY_VALUE_TYPE)
                 ? item.resolved.valueType : current == null ? null : current.getValueType();
@@ -579,7 +580,7 @@ public final class DcsWriter
                 String error = resolveCommonMembers(item.members, item.resolved,
                     current == null ? null : current.getValueType(),
                     current == null ? null : current.getAppearance(), typeResolver, languages,
-                    version, namedColors, itemPath, false);
+                    version, namedColors, itemPath);
                 if (error != null) return error;
                 UseRestrictionResult restriction = parseUseRestrictionMember(item.members,
                     KEY_ATTRIBUTE_USE_RESTRICTION, itemPath,
@@ -621,7 +622,7 @@ public final class DcsWriter
     private static String resolveCommonMembers(JsonObject members, ResolvedMembers resolved,
         TypeDescription currentType, DataCompositionAppearance currentAppearance,
         TypeResolver typeResolver, DcsPresentationParser.LanguageContext languages, Version version,
-        StyleValueBuilder.NamedColorResolver namedColors, String path, boolean calculated)
+        StyleValueBuilder.NamedColorResolver namedColors, String path)
     {
         if (members.has(KEY_VALUE_TYPE) && !members.get(KEY_VALUE_TYPE).isJsonNull())
         {
@@ -2313,7 +2314,7 @@ public final class DcsWriter
             if (child.error != null) return child;
             items.add(child.plan);
         }
-        return DataSetParseResult.ok(new DataSetPlan(name, type.toLowerCase(), query, dataSource,
+        return DataSetParseResult.ok(new DataSetPlan(name, type.toLowerCase(Locale.ROOT), query, dataSource,
             objectName, autoFill, fields, items));
     }
 
@@ -2927,7 +2928,7 @@ public final class DcsWriter
         {
             return Boolean.valueOf(primitive.getAsBoolean());
         }
-        String s = primitive.getAsString().trim().toLowerCase();
+        String s = primitive.getAsString().trim().toLowerCase(Locale.ROOT);
         if ("true".equals(s) || "1".equals(s) || "yes".equals(s)) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         {
             return Boolean.TRUE;

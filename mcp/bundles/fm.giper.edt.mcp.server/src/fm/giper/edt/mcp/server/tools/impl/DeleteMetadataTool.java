@@ -1217,7 +1217,7 @@ public class DeleteMetadataTool extends AbstractMetadataWriteTool
                 + ". Nothing was deleted. Use get_metadata_details to verify the target, then retry.").toJson(); //$NON-NLS-1$
         }
 
-        return DeleteMetadataTool.<java.util.function.Supplier<String>>readPreparation(project, () -> {
+        return AbstractMetadataWriteTool.<java.util.function.Supplier<String>>readPreparation(project, () -> {
             if (!confirm)
             {
                 String preview = buildPreview(normFqn, refactoring, descendants);
@@ -1274,7 +1274,6 @@ public class DeleteMetadataTool extends AbstractMetadataWriteTool
     private String performDelete(IProject project, String fqn, String registrationFqn, String containerFqn,
         IRefactoring refactoring, boolean force, List<String> descendants, RefactoringProblems problems)
     {
-        String projectName = project.getName();
         // EDT's own problem check: genuine incoming references and platform prohibitions are both
         // blocking conditions, but they remain distinct in the response. 'confirm' is the preview
         // gate; 'force' overrides either block - except a vendor-support lock, which it never does.
@@ -1623,6 +1622,11 @@ public class DeleteMetadataTool extends AbstractMetadataWriteTool
     private static String deletedDirectoryError(String projectName, String fqn)
     {
         if (fqn == null || fqn.split("\\.").length != 2) return null; //$NON-NLS-1$
+        String featureName = MetadataTypeUtils.getConfigReferenceName(fqn.substring(0, fqn.indexOf('.')));
+        EStructuralFeature feature = featureName == null ? null
+            : MdClassPackage.Literals.CONFIGURATION.getEStructuralFeature(featureName);
+        // Contained configuration entries have no directory; their removal is verified in Configuration.mdo.
+        if (feature instanceof EReference && ((EReference)feature).isContainment()) return null;
         String file = registeringFilePath(MetadataTypeUtils.toCanonicalEnglishFqn(fqn));
         var context = fm.giper.edt.mcp.server.utils.ProjectContext.of(projectName);
         var location = file != null && context.exists() ? context.project().getFile(file).getLocation() : null;
@@ -1653,18 +1657,6 @@ public class DeleteMetadataTool extends AbstractMetadataWriteTool
         if ("Configuration".equals(containerFqn)) //$NON-NLS-1$
         {
             return "src/Configuration/Configuration.mdo"; //$NON-NLS-1$
-        }
-        // Subsystem has no entry in the general directory map, and each nested level has its
-        // own folder. Parse before the generic path mapper; these are separate top objects.
-        String[] chain = SubsystemUtils.parseSubsystemPath(containerFqn);
-        if (chain != null)
-        {
-            StringBuilder path = new StringBuilder("src"); //$NON-NLS-1$
-            for (String name : chain)
-            {
-                path.append("/Subsystems/").append(name); //$NON-NLS-1$
-            }
-            return path.append('/').append(chain[chain.length - 1]).append(".mdo").toString(); //$NON-NLS-1$
         }
         String referencedPath = ReferencedTopObjects.mdoPath(containerFqn);
         return referencedPath != null ? referencedPath : MetadataPathResolver.resolveTopObjectMdoPath(containerFqn);
@@ -2179,9 +2171,7 @@ public class DeleteMetadataTool extends AbstractMetadataWriteTool
     /** The project's platform version, or {@code null} when it cannot be resolved. */
     private static Version platformVersionOf(ProjectContext ctx)
     {
-        IV8ProjectManager manager = Activator.getDefault().getV8ProjectManager();
-        IV8Project project = manager != null ? manager.getProject(ctx.project) : null;
-        return project != null ? project.getVersion() : null;
+        return fm.giper.edt.mcp.server.utils.ProjectContext.platformVersion(ctx.project);
     }
 
     /** Preflights the supported batch and authorizes its single form write through the existing gate. */

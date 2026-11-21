@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import fm.giper.edt.mcp.server.ActiveToolCall;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.McpServer;
 import fm.giper.edt.mcp.server.UserSignal;
@@ -64,9 +65,6 @@ public class McpProtocolHandler
 
     /** MIME type for Markdown resource bodies. */
     private static final String MIME_TEXT_MARKDOWN = "text/markdown"; //$NON-NLS-1$
-
-    /** JSON key flagging a structured success/failure outcome. */
-    private static final String KEY_SUCCESS = "success"; //$NON-NLS-1$
 
     /** Maximum user-authored signal text retained in a tool result, including the ellipsis. */
     public static final int MAX_USER_SIGNAL_MESSAGE_CHARS = 512;
@@ -529,7 +527,8 @@ public class McpProtocolHandler
         if (!HostToolCapabilities.availableOnCurrentHost(tool.getName()))
         {
             String payload = ToolResult.error(HostToolCapabilities.refusal(tool.getName())).toJson();
-            return buildToolCallResponse(tool, payload, null, isPlainTextMode(), requestId, extractToolParams(request), capabilities);
+            return buildToolCallResponse(tool, payload, null, capabilities.plainTextModeOr(isPlainTextMode()),
+                requestId, extractToolParams(request), capabilities);
         }
 
         // Check if tool is enabled. The refusal is flagged isError: nothing ran, so a success
@@ -544,8 +543,18 @@ public class McpProtocolHandler
             return GsonProvider.toJson(JsonRpcResponse.success(requestId, ToolCallResult.refusal(msg)));
         }
         
+        // A value a tool's reader would silently drop or replace is refused before anything runs.
+        String invalid = ToolArgumentValidator.validate(tool.getName(), tool.getInputSchema(),
+            request.getArguments());
+        if (invalid != null)
+        {
+            Activator.logInfo("Refused tools/call " + tool.getName() + ": invalid arguments"); //$NON-NLS-1$ //$NON-NLS-2$
+            return buildToolCallResponse(tool, ToolResult.error(invalid).toJson(), null,
+                capabilities.plainTextModeOr(isPlainTextMode()), requestId, extractToolParams(request), capabilities);
+        }
+
         Activator.logInfo("Processing tools/call: " + tool.getName()); //$NON-NLS-1$
-        
+
         // Extract parameters from request arguments
         Map<String, String> params = extractToolParams(request);
         
@@ -559,15 +568,11 @@ public class McpProtocolHandler
             }
         }
 
-        // Set current tool name for status bar display
         McpServer server = Activator.getDefault() != null ? Activator.getDefault().getMcpServer() : null;
-        if (server != null)
-        {
-            server.setCurrentToolName(tool.getName());
-        }
-        
+        ActiveToolCall call = server != null ? server.getExecutingToolCall() : null;
+
         // Execute the tool (timed + logged + status-bar cleared in one place).
-        String result = executeToolTimed(tool, params, server, policy);
+        String result = executeToolTimed(tool, params, server, policy, call, projectNameArgument(request));
 
         // PII redaction (#242): the single wire-serialization choke point.
         // A no-op unless redaction is enabled AND the tool is flagged returnsInfobaseData -
@@ -578,14 +583,26 @@ public class McpProtocolHandler
         UserSignal signal = null;
         if (server != null)
         {
-            signal = server.consumeUserSignal();
+            signal = call != null ? call.consumeUserSignal() : null;
         }
         
         // Check if plain text mode is enabled (Cursor compatibility).
-        boolean plainTextMode = isPlainTextMode();
+        boolean plainTextMode = capabilities.plainTextModeOr(isPlainTextMode());
 
         // Return response based on tool's declared response type
         return buildToolCallResponse(tool, result, signal, plainTextMode, requestId, params, capabilities);
+    }
+
+    /**
+     * The call's {@code projectName} as the client sent it, for the in-flight listing - only when it
+     * is a JSON string. A tool that does not declare the parameter accepts any value under that key,
+     * and the flattened params would carry an object or array re-serialized as text.
+     */
+    private static String projectNameArgument(JsonRpcRequest request)
+    {
+        Map<String, Object> arguments = request != null ? request.getArguments() : null;
+        Object value = arguments != null ? arguments.get(McpKeys.PROJECT_NAME) : null;
+        return value instanceof String text ? text : null;
     }
 
     /**
@@ -599,11 +616,15 @@ public class McpProtocolHandler
      * @param tool the resolved tool to run
      * @param params the extracted tool params
      * @param server the MCP server (may be {@code null} during a shutdown race)
-     * @param policy the policy used to admit the request, if it arrived on an explicit profile route
+     * @param policy the policy used to admit the request, or {@code null} on the legacy surface
+     * @param call the transport invocation bound to this thread, or {@code null}
+     * @param projectName the call's string {@code projectName} argument for the in-flight listing, or
+     *            {@code null}
      * @return the raw tool result payload (may be {@code null} only if {@code execute} returned
      *         {@code null})
      */
-    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server, ProfileToolPolicy policy)
+    private String executeToolTimed(IMcpTool tool, Map<String, String> params, McpServer server,
+        ProfileToolPolicy policy, ActiveToolCall call, String projectName)
     {
         String result = null;
         long startNanos = System.nanoTime();
@@ -633,15 +654,25 @@ public class McpProtocolHandler
         }
         HeadlessLifetime lifetime = Activator.getDefault() == null
             ? null : Activator.getDefault().getHeadlessLifetime();
+        // Listed by get_server_status while the tool runs (#993). Registered only once the headless
+        // lease is granted - a call refused here never ran - and removed first in the finally, so
+        // every exit after it - a result, a throw, an interruption - removes it; begin() cannot
+        // throw, so it can never disturb the call.
+        InFlightToolCalls.Handle inFlight = null;
         try (var lease = lifetime == null ? null : lifetime.tool())
         {
             if (lifetime != null && lease == null) { return ToolResult.error("Headless EDT is shutting down; reconnect and retry a read.").toJson(); }
+            inFlight = InFlightToolCalls.begin(tool.getName(), projectName, call);
             result = tool instanceof GetServerStatusTool status ? status.execute(params, policy) : tool.execute(params);
             threw = false;
             return result;
         }
         finally
         {
+            if (inFlight != null)
+            {
+                inFlight.close();
+            }
             if (connectsToInfobase)
             {
                 InfobaseAuthDialogSuppressor.markActivityEnd();
@@ -649,7 +680,7 @@ public class McpProtocolHandler
             // Clear current tool name after execution
             if (server != null)
             {
-                server.setCurrentToolName(null);
+                server.clearActiveToolCall(call);
             }
 
             long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;

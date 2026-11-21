@@ -133,12 +133,12 @@ public class GitToolTest
     @Test
     public void testParseRejectsNonWhitelistedSubcommand()
     {
-        // config = arbitrary exec (core.sshCommand / aliases); clean/reset = data loss; init/clone out of
-        // scope; rebase omitted because its --exec/-x runs a command per step.
+        // config = arbitrary exec (core.sshCommand / aliases); clean/reset = data loss; init and clone
+        // are accepted with their own grammars (GitToolInitTest, GitToolCloneTest); rebase omitted
+        // because its --exec/-x runs a command per step.
         assertRejected("config core.sshCommand=evil"); //$NON-NLS-1$
         assertRejected("clean -fdx"); //$NON-NLS-1$
         assertRejected("reset --hard HEAD~5"); //$NON-NLS-1$
-        assertRejected("clone https://evil/x.git"); //$NON-NLS-1$
         assertRejected("rebase -x /bin/sh"); //$NON-NLS-1$
         assertRejected("gc"); //$NON-NLS-1$
     }
@@ -2066,6 +2066,37 @@ public class GitToolTest
         {
             assertFalse("'" + staying + "' does not move the checked-out branch", //$NON-NLS-1$ //$NON-NLS-2$
                 GitTool.changesBranch(GitTool.parseCommand(staying)));
+        }
+    }
+
+    /** #922 round 6: the projects a switch did not register (nested repositories) are refreshed outside it, in order. */
+    @Test
+    public void testTheProjectsOutsideTheChangeAreTheUnregisteredOnes()
+    {
+        org.eclipse.core.resources.IProject outer = org.mockito.Mockito.mock(org.eclipse.core.resources.IProject.class);
+        org.mockito.Mockito.when(outer.getName()).thenReturn("Outer"); //$NON-NLS-1$
+        org.eclipse.core.resources.IProject nested = org.mockito.Mockito.mock(org.eclipse.core.resources.IProject.class);
+        org.mockito.Mockito.when(nested.getName()).thenReturn("Nested"); //$NON-NLS-1$
+
+        assertEquals(List.of(nested), GitTool.outsideTheChange(List.of(outer, nested), List.of(outer)));
+        assertTrue(GitTool.outsideTheChange(List.of(outer), List.of(outer)).isEmpty());
+    }
+
+    /** #922: the commands that switch the work tree to another branch - the ones registered as a model reload. */
+    @Test
+    public void testOnlyTheCommandsThatSwitchTheWorkTreeAreRegisteredAsAReload() throws Exception
+    {
+        for (String switching : new String[] {"checkout feature/x", "switch -c x", "pull --rebase", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "stash branch from-stash"}) //$NON-NLS-1$
+        {
+            assertTrue("'" + switching + "' switches the work tree", //$NON-NLS-1$ //$NON-NLS-2$
+                GitTool.switchesWorkTree(GitTool.parseCommand(switching)));
+        }
+        for (String other : new String[] {"branch -m renamed", "branch -f x HEAD~1", "merge feature/x", "stash pop", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            "status", "fetch origin"}) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            assertFalse("'" + other + "' is not a branch switch of the work tree", //$NON-NLS-1$ //$NON-NLS-2$
+                GitTool.switchesWorkTree(GitTool.parseCommand(other)));
         }
     }
 

@@ -15,6 +15,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.jface.preference.PreferenceStore;
 import org.eclipse.swt.SWT;
@@ -133,6 +134,24 @@ public class GeneralTabTest
         assertFalse(((GridData)field("httpGroup", Group.class).getLayoutData()).exclude);
         assertEquals(Messages.GeneralTab_CopyConfig, field("copyConfigButton", Button.class).getText());
         assertFalse(store.getBoolean(PreferenceConstants.PREF_HTTP_ENABLED));
+    }
+
+    /** Issue #997: the confirmation wait is a bounded spinner that Apply saves and Restore Defaults resets. */
+    @Test
+    public void confirmationWaitIsBoundedSavedAndRestored() throws Exception
+    {
+        Spinner wait = field("consentWaitSpinner", Spinner.class);
+        assertEquals(45, wait.getSelection());
+        assertEquals(15, wait.getMinimum());
+        assertEquals(600, wait.getMaximum());
+        assertEquals(Messages.GeneralTab_ConsentWait_Tooltip, wait.getToolTipText());
+        wait.setSelection(90);
+        tab.performOk();
+        assertEquals(90, ConsentSettingsService.getInstance().getPromptWaitSeconds());
+        tab.performDefaults();
+        assertEquals(45, wait.getSelection());
+        assertEquals("Restore Defaults alone does not save", 90, store.getInt( //$NON-NLS-1$
+            PreferenceConstants.PREF_DESTRUCTIVE_CONSENT_WAIT_SECONDS));
     }
 
     @Test
@@ -316,12 +335,13 @@ public class GeneralTabTest
         PrivatePaths.directory(temporary.getRoot().toPath());
         EndpointRegistry registry = new EndpointRegistry(PrivatePaths.directory(temporary.newFolder().toPath()),
             temporary.newFolder().toPath());
-        Field listenerField = StdioPluginSupport.class.getDeclaredField("listener");
+        Field listenerField = StdioPluginSupport.class.getDeclaredField("LISTENER");
         listenerField.setAccessible(true);
-        Object previous = listenerField.get(null);
+        AtomicReference<IpcListener> slot = (AtomicReference<IpcListener>) listenerField.get(null);
+        IpcListener previous = slot.get();
         try (IpcListener listener = new IpcListener(registry, "test"))
         {
-            listenerField.set(null, listener);
+            slot.set(listener);
             when(server.isRunning()).thenReturn(true);
             selectHttp(false);
             tab.performOk();
@@ -332,7 +352,7 @@ public class GeneralTabTest
             tab.refreshServerState();
             assertEquals(Messages.GeneralTab_StdioUnavailable, field("stdioStatusLabel", Label.class).getText());
         }
-        finally { listenerField.set(null, previous); }
+        finally { slot.set(previous); }
     }
 
     private void prepareEnable() throws Exception

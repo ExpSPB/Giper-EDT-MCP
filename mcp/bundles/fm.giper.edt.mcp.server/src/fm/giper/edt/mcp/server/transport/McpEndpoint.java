@@ -11,12 +11,14 @@ import java.net.URI;
 
 import fm.giper.edt.mcp.server.profiles.ToolProfile;
 
-/** Parses the two MCP routes and gives each a canonical session key. */
+/** Parses MCP routes and gives each a canonical session key. */
 record McpEndpoint(String path, String profileId)
 {
     static final String LEGACY_PATH = "/mcp"; //$NON-NLS-1$
+    private static final String PLAIN_TEXT_PATH = LEGACY_PATH + "/plaintext"; //$NON-NLS-1$
     private static final String PROFILES_PREFIX = LEGACY_PATH + "/profiles/"; //$NON-NLS-1$
     private static final McpEndpoint LEGACY = new McpEndpoint(LEGACY_PATH, null);
+    private static final McpEndpoint PLAIN_TEXT = new McpEndpoint(PLAIN_TEXT_PATH, null);
 
     static McpEndpoint from(URI uri)
     {
@@ -24,6 +26,10 @@ record McpEndpoint(String path, String profileId)
         if (LEGACY_PATH.equals(rawPath))
         {
             return LEGACY;
+        }
+        if (PLAIN_TEXT_PATH.equals(rawPath))
+        {
+            return PLAIN_TEXT;
         }
         if (rawPath != null && rawPath.startsWith(PROFILES_PREFIX))
         {
@@ -35,6 +41,11 @@ record McpEndpoint(String path, String profileId)
             }
         }
         return null;
+    }
+
+    Boolean plainTextMode()
+    {
+        return PLAIN_TEXT_PATH.equals(path) ? Boolean.TRUE : null;
     }
 
     boolean isLegacy()

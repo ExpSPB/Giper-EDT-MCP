@@ -41,10 +41,13 @@ import com._1c.g5.v8.dt.metadata.mdclass.Indexing;
 import com._1c.g5.v8.dt.metadata.mdclass.InformationRegister;
 import com._1c.g5.v8.dt.metadata.mdclass.InformationRegisterDimension;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
+import com._1c.g5.v8.dt.metadata.mdclass.ObjectBelonging;
 import com._1c.g5.v8.dt.metadata.mdclass.ReturnValuesReuse;
 import com._1c.g5.v8.dt.metadata.mdclass.ScheduledJob;
 import com._1c.g5.v8.dt.metadata.mdclass.Subsystem;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
+import fm.giper.edt.mcp.server.utils.ControlledMetadataProperties.Row;
+import fm.giper.edt.mcp.server.utils.ControlledMetadataProperties.Status;
 import fm.giper.edt.mcp.server.utils.FormElementWriter;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
 import fm.giper.edt.mcp.server.utils.MetadataScopeTestFixtures;
@@ -158,9 +161,68 @@ public class GetMetadataDetailsToolTest
         assertTrue(schema.contains("\"full\"")); //$NON-NLS-1$
         assertTrue(schema.contains("\"assignable\"")); //$NON-NLS-1$
         assertTrue(schema.contains("\"language\"")); //$NON-NLS-1$
+        assertTrue(schema.contains("\"controlledMismatches\""));
+        assertTrue(schema.contains("\"limit\""));
+        assertTrue(schema.contains("\"offset\""));
         assertTrue("assignable mode should advertise managed-form root addresses", //$NON-NLS-1$
             schema.contains("Catalog.Products.Form.ItemForm") //$NON-NLS-1$
                 && schema.contains("CommonForm.Main")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testControlledMismatchAuditExcludesTheOtherViews()
+    {
+        for (String flag : List.of("full", "assignable"))
+        {
+            String result = new GetMetadataDetailsTool().execute(Map.of("projectName", "Extension",
+                "objectFqns", "[\"Catalog.Goods\"]", "controlledMismatches", "true", flag, "true"));
+            assertTrue(result, result.contains("controlledMismatches:true requires full and assignable to be false"));
+        }
+    }
+
+    @Test
+    public void testControlledAuditResolvesAndPagesNestedMembersInBothLanguages()
+    {
+        var factory = MdClassFactory.eINSTANCE;
+        var config = factory.createConfiguration();
+        var catalog = factory.createCatalog();
+        catalog.setName("\u0422\u043e\u0432\u0430\u0440\u044b");
+        config.getCatalogs().add(catalog);
+        var tabular = factory.createCatalogTabularSection();
+        tabular.setName("Lines");
+        catalog.getTabularSections().add(tabular);
+        var adopted = factory.createTabularSectionAttribute();
+        adopted.setName("\u0412\u0435\u0441");
+        adopted.setObjectBelonging(ObjectBelonging.ADOPTED);
+        tabular.getAttributes().add(adopted);
+        var nativeMember = factory.createTabularSectionAttribute();
+        nativeMember.setName("Native");
+        tabular.getAttributes().add(nativeMember);
+        var scope = MetadataScope.ofConfiguration(config);
+        java.util.function.Function<com._1c.g5.v8.dt.metadata.mdclass.MdObject, List<Row>> compare = object ->
+        {
+            assertEquals(adopted, object);
+            return List.of(new Row("type", "String(10, Variable)", "String(15, Variable)", Status.MISMATCH, true),
+                new Row("checkedProperty", "old", "base unavailable", Status.UNAVAILABLE, false));
+        };
+        String canonical = "Catalog." + catalog.getName() + ".TabularSection.Lines.Attribute." + adopted.getName();
+        for (String top : List.of("Catalog." + catalog.getName(), "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a." + catalog.getName()))
+        {
+            var fqns = List.of(top, canonical);
+            String first = GetMetadataDetailsTool.renderControlledMismatches(scope, fqns,
+                new GetMetadataDetailsTool.MismatchPage(1, 0), compare);
+            assertTrue(first, first.contains("**Mismatches:** 1 · **Unavailable:** 1 · **Adopted objects scanned:** 1"));
+            assertTrue(first, first.contains("next page: offset=1"));
+            assertTrue(first, first.contains("| " + canonical + " | type | String(10, Variable) | String(15, Variable) | MISMATCH |"));
+            assertFalse(first, first.contains("| checkedProperty |"));
+            String second = GetMetadataDetailsTool.renderControlledMismatches(scope, fqns,
+                new GetMetadataDetailsTool.MismatchPage(1, 1), compare);
+            assertTrue(second, second.contains("| " + canonical + " | checkedProperty | old | base unavailable | UNAVAILABLE |"));
+            assertFalse(second, second.contains("| type |"));
+        }
+        String missing = GetMetadataDetailsTool.renderControlledMismatches(scope, List.of(canonical + "Missing"),
+            new GetMetadataDetailsTool.MismatchPage(1, 0), compare);
+        assertTrue(missing, missing.contains("Missing") && missing.contains("get_metadata_objects"));
     }
 
     /**
@@ -474,6 +536,53 @@ public class GetMetadataDetailsToolTest
         assertTrue(md.contains("| autoTitle | BOOLEAN | false |")); //$NON-NLS-1$
         assertTrue(md.contains("| windowOpeningMode | ENUM | LockOwner |")); //$NON-NLS-1$
         assertTrue(md.contains("| saveDataInSettings | BOOLEAN | true |")); //$NON-NLS-1$
+    }
+
+    /**
+     * The properties whose Current is the model default are named below the table - not in the Current
+     * cell, which is sent back to modify_metadata as it is. A property holding a value of its own, and one
+     * with nothing to show, are not named.
+     */
+    @Test
+    public void testAssignableNamesThePropertiesAtTheModelDefaultBelowTheTable()
+    {
+        String md = GetMetadataDetailsTool.formatAssignable("Catalog.X.Form.Y", syntheticFormRoot()); //$NON-NLS-1$
+
+        String marker = "\nAt the model default (not written to the source file): "; //$NON-NLS-1$
+        int at = md.indexOf(marker);
+        assertTrue(md, at > md.lastIndexOf("| saveDataInSettings |")); //$NON-NLS-1$
+        String line = md.substring(at + marker.length(), md.indexOf('\n', at + 1));
+        assertEquals(md, "autoTitle, windowOpeningMode.", line); //$NON-NLS-1$
+        assertTrue("the Current cell keeps the bare value: " + md, //$NON-NLS-1$
+            md.contains("| autoTitle | BOOLEAN | false |")); //$NON-NLS-1$
+        assertTrue(md, md.contains("| windowOpeningMode | ENUM | LockOwner |")); //$NON-NLS-1$
+    }
+
+    @Test
+    public void testAPropertyIsCalledADefaultOnlyWhenItsHolderSaysSo()
+    {
+        EObject root = syntheticFormRoot();
+        EStructuralFeature saveData = root.eClass().getEStructuralFeature("saveDataInSettings"); //$NON-NLS-1$
+        assertTrue(GetMetadataDetailsTool.isSet(root, saveData));
+        assertFalse(GetMetadataDetailsTool.isSet(root, root.eClass().getEStructuralFeature("autoTitle"))); //$NON-NLS-1$
+        assertTrue("no holder: never guessed to be a default", GetMetadataDetailsTool.isSet(null, saveData)); //$NON-NLS-1$
+        assertTrue("no feature: never guessed to be a default", GetMetadataDetailsTool.isSet(root, null)); //$NON-NLS-1$
+    }
+
+    /** From 8.5.1 the file's windowOpeningMode / showTitle live in a twin feature; a set twin is not a default. */
+    @Test
+    public void testAPropertyHeldByItsVersionTwinIsNotADefault()
+    {
+        com._1c.g5.v8.dt.form.model.Form form = com._1c.g5.v8.dt.form.model.FormFactory.eINSTANCE.createForm();
+        EStructuralFeature opening = com._1c.g5.v8.dt.form.model.FormPackage.Literals.FORM__WINDOW_OPENING_MODE;
+        EStructuralFeature title = com._1c.g5.v8.dt.form.model.FormPackage.Literals.FORM__SHOW_TITLE;
+        EStructuralFeature title851 = com._1c.g5.v8.dt.form.model.FormPackage.Literals.FORM__SHOW_TITLE851;
+        assertFalse(GetMetadataDetailsTool.isSet(form, opening));
+        assertFalse(GetMetadataDetailsTool.isSet(form, title));
+        form.setOnFormWindowOpenLockMode(com._1c.g5.v8.dt.form.model.OnFormWindowOpenLockMode.LOCK_OWNER);
+        form.eSet(title851, ((org.eclipse.emf.ecore.EEnum)title851.getEType()).getELiterals().get(1).getInstance());
+        assertTrue("the file writes the twin under windowOpeningMode", GetMetadataDetailsTool.isSet(form, opening)); //$NON-NLS-1$
+        assertTrue("the file writes the twin under showTitle", GetMetadataDetailsTool.isSet(form, title)); //$NON-NLS-1$
     }
 
     @Test

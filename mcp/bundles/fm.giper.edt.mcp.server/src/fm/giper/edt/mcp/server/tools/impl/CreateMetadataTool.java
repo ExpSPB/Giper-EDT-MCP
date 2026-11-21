@@ -6,6 +6,9 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
+import fm.giper.edt.mcp.server.utils.MetadataPropertyApplier;
+
 import fm.giper.edt.mcp.server.HostKind;
 
 import fm.giper.edt.mcp.server.utils.MetadataRegistration;
@@ -67,6 +70,7 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.base.AbstractMetadataWriteTool;
 import fm.giper.edt.mcp.server.tools.base.WriteScope;
 import fm.giper.edt.mcp.server.utils.BmTransactions;
+import fm.giper.edt.mcp.server.utils.MetadataWriteServices;
 import fm.giper.edt.mcp.server.utils.BmModelResolver;
 import fm.giper.edt.mcp.server.utils.MetadataOrdering;
 import fm.giper.edt.mcp.server.utils.MetadataAutoSort;
@@ -117,9 +121,6 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
 
     /** Canonical English singular type name for the XDTOPackage object. */
     private static final String TYPE_XDTO_PACKAGE = "XDTOPackage"; //$NON-NLS-1$
-
-    /** Quoted, comma-separated list of CommonModule kinds for schema hints. */
-    private static final String COMMON_MODULE_KINDS = CommonModuleKind.quotedList();
 
     /** Schema / param key: extension event call type. */
     private static final String KEY_CALL_TYPE = "callType"; //$NON-NLS-1$
@@ -221,45 +222,36 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                 + "'Subsystem.<Parent>.Subsystem.<Child>', repeatable to any depth - the parent " //$NON-NLS-1$
                 + "chain must already exist. The trailing Name is the new node's " //$NON-NLS-1$
                 + "programmatic Name; type / kind tokens may be English or Russian.", true) //$NON-NLS-1$
-            .integerProperty("insertPosition", "Optional 1-based position in the destination metadata collection. "
-                + "1 is first; omit to append. Refuses values outside 1..size+1 before creation. "
-                + "Not applicable to form/XDTO content, predefined data or standalone external roots.")
-            .objectArrayProperty("properties", //$NON-NLS-1$
-                "Optional properties to apply at creation, as [{name, value, language?}]. For most " //$NON-NLS-1$
-                + "kinds this applies 'synonym' (with optional 'language' code) and 'comment'; other " //$NON-NLS-1$
-                + "property names are rejected (set them via modify_metadata). A Subsystem (top-level or " //$NON-NLS-1$
-                + "nested) also takes what modify_metadata sets on it, e.g. includeInCommandInterface. Templates also accept " //$NON-NLS-1$
-                + "'templateType': TextDocument, SpreadsheetDocument or DataCompositionSchema (English or Russian). A FORM CONTENT member " //$NON-NLS-1$
-                + "('...Form.<F>.<Kind>.<Name>') takes a DIFFERENT vocabulary: 'title' (with optional " //$NON-NLS-1$
-                + "'language'), 'parent' (the group to nest a visual item under), 'dataPath' / " //$NON-NLS-1$
-                + "'attribute' (the bound attribute of a Field / Table), 'command' (a Button's " //$NON-NLS-1$
-                + "command) and 'type' (a Group's kind). XDTO PACKAGE MEMBERS " //$NON-NLS-1$
-                + "('XDTOPackage.<Package>.ObjectType.<Name>' / '...Property.<Name>' / " //$NON-NLS-1$
-                + "'...ObjectType.<Type>.Property.<Name>') use a DIFFERENT vocabulary instead: an " //$NON-NLS-1$
-                + "ObjectType takes the optional boolean flags 'open' / 'abstract' / 'mixed' / " //$NON-NLS-1$
-                + "'ordered' / 'sequenced'; a Property REQUIRES 'type' (a built-in XSD type name like " //$NON-NLS-1$
-                + "'string', the EXACT name of an ObjectType already in the same package for a " //$NON-NLS-1$
-                + "same-package reference, or an object {nsUri, name}) plus the optional 'lowerBound' / " //$NON-NLS-1$
-                + "'upperBound' (integers, ObjectType-nested properties only), 'nillable' / 'fixed' " //$NON-NLS-1$
-                + "(booleans, 'fixed'=true needs a 'default') and 'default' (string). A PREDEFINED " //$NON-NLS-1$
-            + "item ('...Predefined.<Item>') uses yet another vocabulary: 'description' / 'code' " //$NON-NLS-1$
-                + "on every owner, 'isFolder' / 'parent' on a Catalog / ChartOfCharacteristicTypes (a " //$NON-NLS-1$
-                + "ChartOfAccounts nests through 'parent' too; a ChartOfCalculationTypes takes neither), " //$NON-NLS-1$
-                + "plus owner-specific properties - 'valueType' (alias " //$NON-NLS-1$
-                + "'type'; same {types:[...]} shape as an mdclass attribute's 'type') on a " //$NON-NLS-1$
-                + "ChartOfCharacteristicTypes item; 'accountType' / 'offBalance' / 'order' / " //$NON-NLS-1$
-                + "'accountingFlags' / 'extDimensionTypes' on a ChartOfAccounts item; 'base' / " //$NON-NLS-1$
-                + "'displaced' / 'leading' / 'actionPeriodIsBase' on a ChartOfCalculationTypes item " //$NON-NLS-1$
-                + "(see the guide for which apply to each owner).") //$NON-NLS-1$
+            .integerProperty("insertPosition",
+                "1-based position in the destination collection (1 = first); omit to append; values " //$NON-NLS-1$
+                + "outside 1..size+1 are refused. Not for form / XDTO content, predefined data or " //$NON-NLS-1$
+                + "standalone external roots.") //$NON-NLS-1$
+            .property("properties", //$NON-NLS-1$
+                "Properties to apply at creation, as [{name, value, language?}]. Most kinds: only " //$NON-NLS-1$
+                + "'synonym' (with a 'language' code) and 'comment'; other names are rejected (use " //$NON-NLS-1$
+                + "modify_metadata). A Subsystem also takes what modify_metadata sets on it, e.g. " //$NON-NLS-1$
+                + "includeInCommandInterface. A Template: 'templateType' = TextDocument / " //$NON-NLS-1$
+                + "SpreadsheetDocument / DataCompositionSchema (English or Russian). A form content member " //$NON-NLS-1$
+                + "('...Form.<F>.<Kind>.<Name>'): 'title' (+ 'language'), 'parent' (the group to nest " //$NON-NLS-1$
+                + "under), 'dataPath' / 'attribute' (a Field's / Table's bound attribute), 'command' (a " //$NON-NLS-1$
+                + "Button's), 'type' (a Group's kind). An XDTO ObjectType: boolean 'open' / 'abstract' / " //$NON-NLS-1$
+                + "'mixed' / 'ordered' / 'sequenced'. An XDTO Property REQUIRES 'type' (an XSD type like " //$NON-NLS-1$
+                + "'string', the exact name of an ObjectType in the same package, or {nsUri, name}), " //$NON-NLS-1$
+                + "optional 'lowerBound' / 'upperBound' (integers, ObjectType-nested properties only), " //$NON-NLS-1$
+                + "'nillable', 'fixed' (true needs 'default'), 'default' (string). A predefined item " //$NON-NLS-1$
+                + "('...Predefined.<Item>'): 'description' / 'code'; 'isFolder' / 'parent' on a Catalog or " //$NON-NLS-1$
+                + "ChartOfCharacteristicTypes ('parent' also on a ChartOfAccounts); 'valueType' (alias " //$NON-NLS-1$
+                + "'type', {types:[...]} like an attribute's 'type') on a ChartOfCharacteristicTypes; " //$NON-NLS-1$
+                + "'accountType' / 'offBalance' / 'order' / 'accountingFlags' / 'extDimensionTypes' on a " //$NON-NLS-1$
+                + "ChartOfAccounts; 'base' / 'displaced' / 'leading' / 'actionPeriodIsBase' on a " //$NON-NLS-1$
+                + "ChartOfCalculationTypes.", MetadataPropertyApplier.PROPERTY_ENTRIES_SCHEMA) //$NON-NLS-1$
             .booleanProperty(KEY_EXPECTED_NOT_EXISTS,
                 "Optional stale-intent guard (default false): assert the node does not yet exist for " //$NON-NLS-1$
                 + "a sharper precondition error. A real duplicate is always rejected anyway.") //$NON-NLS-1$
             .booleanProperty("normalizeYo", //$NON-NLS-1$
-                "Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in the new node's NAME (the trailing " //$NON-NLS-1$
-                + "FQN segment) and in any synonym / comment / predefined-item description value " //$NON-NLS-1$
-                + "(default true). 'ё' in a Name is " //$NON-NLS-1$
-                + "flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input " //$NON-NLS-1$
-                + "stores a compliant name. Set false to keep 'ё' exactly as supplied.") //$NON-NLS-1$
+                "Default true: stores 'ё' / 'Ё' as 'е' / 'Е' in the new Name (last FQN segment) and in " //$NON-NLS-1$
+                + "any synonym, comment or predefined-item description, so 'Всё' becomes 'Все'; false keeps " //$NON-NLS-1$
+                + "'ё'.") //$NON-NLS-1$
             .booleanProperty(KEY_SET_AS_DEFAULT,
                 "Default false. Form OBJECT create (FQN 'Type.Object.Form.FormName'): registers the new " //$NON-NLS-1$
                 + "form as the owner's default for formType. Report / ExternalReport template create " //$NON-NLS-1$
@@ -292,26 +284,22 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                 + "base configuration or a non-handler FQN.", //$NON-NLS-1$
                 "Before", "After", "Instead") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             .enumProperty(KEY_COMMON_MODULE_KIND,
-                "CommonModule top-object only. Selects a standards-compliant flag combination the " //$NON-NLS-1$
-                + "common-module-type validator accepts (no warning), instead of a bare module: " //$NON-NLS-1$
-                + COMMON_MODULE_KINDS + ". Defaults to 'Server'. Ignored for other types. Combine " //$NON-NLS-1$
-                + "with 'serverCall' / 'privileged' / 'returnValuesReuse'. These are create-time-only " //$NON-NLS-1$
-                + "(the flag set cannot be re-derived post-hoc).", //$NON-NLS-1$
+                "CommonModule only, create-time only: the module's flag set, one the common-module-type " //$NON-NLS-1$
+                + "check accepts; default 'Server'. Combine with serverCall / privileged / " //$NON-NLS-1$
+                + "returnValuesReuse.", //$NON-NLS-1$
                 CommonModuleKind.SERVER.token(), CommonModuleKind.SERVER_CALL.token(),
                 CommonModuleKind.CLIENT_MANAGED.token(), CommonModuleKind.CLIENT_ORDINARY.token(),
                 CommonModuleKind.CLIENT_SERVER.token(), CommonModuleKind.GLOBAL.token())
             .booleanProperty("serverCall", //$NON-NLS-1$
-                "CommonModule top-object only. When true, the server module is callable from the " //$NON-NLS-1$
-                + "client (server call). Valid only with a server kind and incompatible with " //$NON-NLS-1$
-                + "'Global'. Ignored for other types.") //$NON-NLS-1$
+                "CommonModule only: true makes a server module callable from the client. Only with the " //$NON-NLS-1$
+                + "'Server', 'ServerCall' or 'ClientServer' kind; not with privileged.") //$NON-NLS-1$
             .booleanProperty("privileged", //$NON-NLS-1$
-                "CommonModule top-object only. When true, the module runs with full (privileged) " //$NON-NLS-1$
-                + "access. Valid only with the 'Server' kind (not a server call). Ignored for other " //$NON-NLS-1$
-                + "types.") //$NON-NLS-1$
+                "CommonModule only: true runs the module with full rights. 'Server' kind only, not with " //$NON-NLS-1$
+                + "serverCall or returnValuesReuse.") //$NON-NLS-1$
             .enumProperty("returnValuesReuse", //$NON-NLS-1$
-                "CommonModule top-object only. Reuse of return values: 'DontUse' (default), " //$NON-NLS-1$
-                + "'DuringRequest' or 'DuringSession'. 'DuringSession' yields a cached module accepted " //$NON-NLS-1$
-                + "by the common-module-type validator. Ignored for other types.", //$NON-NLS-1$
+                "CommonModule only: default 'DontUse'; 'DuringSession' (a cached module) only with the " //$NON-NLS-1$
+                + "'Server', 'ServerCall', 'ClientManaged' or 'ClientOrdinary' kind; 'DuringRequest' is " //$NON-NLS-1$
+                + "refused.", //$NON-NLS-1$
                 "DontUse", "DuringRequest", "DuringSession") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             .stringProperty(KEY_TARGET_NAMESPACE,
                 "XDTOPackage top-object only. URI namespace for the new package; a non-empty " //$NON-NLS-1$
@@ -573,6 +561,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
         // The owned-form branch above already consumed setAsDefault; here it means "make the new report
         // template the main data composition schema" (issue #919) and stays ignored for other kinds.
         props.setAsDefault = JsonUtils.extractBooleanArgument(params, KEY_SET_AS_DEFAULT, false);
+        props.templateTarget = isTemplateFqn(normFqn);
         // A subsystem - top-level or nested, either language - takes modify_metadata's properties at
         // creation (issue #930); every other kind refuses them by name.
         String propErr = parseProperties(properties, props, normReport,
@@ -931,7 +920,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
             {
                 return () -> ToolResult.error(ERR_SERVICES_UNAVAILABLE).toJson();
             }
-            IBmModel bmModel = bmModelManager.getModel(ctx.project);
+            IBmModel bmModel = BmModelResolver.resolve(ctx.project, bmModelManager).getModel();
             if (bmModel == null)
             {
                 return () -> ToolResult.error(ERR_NO_BM_MODEL + projectName).toJson();
@@ -1456,7 +1445,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                     factory.fillDefaultReferences(newObject);
                     // A subsystem's properties beyond synonym / comment, by modify_metadata's own writer,
                     // after the factory defaults they replace (issue #930); empty for every other kind.
-                    ModifyMetadataTool.applyChanges(newObject, req.props.writerChanges, tx, req.normFqn);
+                    MetadataPropertyApplier.applyChanges(newObject, req.props.writerChanges, tx, req.normFqn);
                     if (newObject instanceof BasicTemplate)
                     {
                         templateContentFqnHolder[0] = templates.initialize((BasicTemplate)newObject,
@@ -1700,7 +1689,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                     factory.fillDefaultReferences(newObject);
                     // The properties beyond synonym / comment, by modify_metadata's own writer, after the
                     // factory defaults they replace (issue #930).
-                    ModifyMetadataTool.applyChanges(newObject, props.writerChanges, tx, childFqn);
+                    MetadataPropertyApplier.applyChanges(newObject, props.writerChanges, tx, childFqn);
                     parentFqnHolder[0] = ownerFqn;
                     createdFqnHolder[0] = childFqn;
                     return null;
@@ -2287,7 +2276,6 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
             return ctx.error;
         }
         IProject project = ctx.project;
-        Configuration config = ctx.config;
         MetadataScope scope = ctx.scope;
 
         final FormElementWriter.Kind fKind = kind;
@@ -2883,7 +2871,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                     + "{types:[...]} vocabulary an attribute takes), 'keyParameter' or 'comment' " //$NON-NLS-1$
                     + "with modify_metadata. A parameter has no title and no parent.").toJson(); //$NON-NLS-1$
             }
-            switch (pName.toLowerCase())
+            switch (pName.toLowerCase(Locale.ROOT))
             {
                 case "title": //$NON-NLS-1$
                     out.titleVal = normReport.apply("title", asString(prop.get(KEY_VALUE))); //$NON-NLS-1$
@@ -3137,12 +3125,10 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
     private static FormObjectServices resolveFormObjectServices(IProject project, String projectName)
     {
         FormObjectServices svc = new FormObjectServices();
-        IV8ProjectManager v8ProjectManager = Activator.getDefault().getV8ProjectManager();
-        svc.mdFactory = Activator.getDefault().getModelObjectFactory();
+        MetadataWriteServices shared = MetadataWriteServices.resolve(project);
         svc.formFactory = Activator.getDefault().getFormModelObjectFactory();
         svc.fqnGenerator = Activator.getDefault().getTopObjectFqnGenerator();
-        IBmModelManager bmModelManager = Activator.getDefault().getBmModelManager();
-        if (v8ProjectManager == null || svc.mdFactory == null || bmModelManager == null)
+        if (shared.failure == MetadataWriteServices.Failure.SERVICES_UNAVAILABLE)
         {
             svc.error = ToolResult.error(ERR_SERVICES_UNAVAILABLE).toJson();
             return svc;
@@ -3152,20 +3138,16 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
             svc.error = ToolResult.error(ERR_NO_FQN_GENERATOR).toJson();
             return svc;
         }
-        IV8Project v8Project = v8ProjectManager.getProject(project);
-        if (v8Project == null)
+        if (shared.error != null)
         {
-            svc.error = ToolResult.error(ERR_NO_V8_PROJECT + projectName).toJson();
+            svc.error = ToolResult.error((shared.failure == MetadataWriteServices.Failure.PROJECT_UNAVAILABLE
+                ? ERR_NO_V8_PROJECT : ERR_NO_BM_MODEL) + projectName).toJson();
             return svc;
         }
-        svc.version = v8Project.getVersion();
-        svc.v8Project = v8Project;
-        svc.bmModel = bmModelManager.getModel(project);
-        if (svc.bmModel == null)
-        {
-            svc.error = ToolResult.error(ERR_NO_BM_MODEL + projectName).toJson();
-            return svc;
-        }
+        svc.mdFactory = shared.factory;
+        svc.version = shared.version;
+        svc.v8Project = shared.v8Project;
+        svc.bmModel = shared.model;
         return svc;
     }
 
@@ -3407,7 +3389,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
             {
                 return ToolResult.error(ERR_PROPERTY_NEEDS_NAME).toJson();
             }
-            switch (pName.toLowerCase())
+            switch (pName.toLowerCase(Locale.ROOT))
             {
                 case "procedure": //$NON-NLS-1$
                 case "handler": //$NON-NLS-1$
@@ -3675,28 +3657,21 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
     private static BmContext resolveBmContext(IProject project, String projectName)
     {
         BmContext ctx = new BmContext();
-        IV8ProjectManager v8ProjectManager = Activator.getDefault().getV8ProjectManager();
-        ctx.factory = Activator.getDefault().getModelObjectFactory();
-        IBmModelManager bmModelManager = Activator.getDefault().getBmModelManager();
-        if (v8ProjectManager == null || ctx.factory == null || bmModelManager == null)
+        MetadataWriteServices shared = MetadataWriteServices.resolve(project);
+        if (shared.error != null)
         {
-            ctx.error = ToolResult.error(ERR_SERVICES_UNAVAILABLE).toJson();
+            ctx.error = ToolResult.error(switch (shared.failure)
+            {
+                case SERVICES_UNAVAILABLE -> ERR_SERVICES_UNAVAILABLE;
+                case PROJECT_UNAVAILABLE -> ERR_NO_V8_PROJECT + projectName;
+                case MODEL_UNAVAILABLE -> ERR_NO_BM_MODEL + projectName;
+            }).toJson();
             return ctx;
         }
-        IV8Project v8Project = v8ProjectManager.getProject(project);
-        if (v8Project == null)
-        {
-            ctx.error = ToolResult.error(ERR_NO_V8_PROJECT + projectName).toJson();
-            return ctx;
-        }
-        ctx.v8Project = v8Project;
-        ctx.version = v8Project.getVersion();
-        ctx.bmModel = bmModelManager.getModel(project);
-        if (ctx.bmModel == null)
-        {
-            ctx.error = ToolResult.error(ERR_NO_BM_MODEL + projectName).toJson();
-            return ctx;
-        }
+        ctx.factory = shared.factory;
+        ctx.version = shared.version;
+        ctx.v8Project = shared.v8Project;
+        ctx.bmModel = shared.model;
         return ctx;
     }
 
@@ -3710,13 +3685,15 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
         Integer insertPosition;
         /** A new Report / ExternalReport template becomes the report's main data composition schema. */
         boolean setAsDefault;
+        /** The create targets a template, so a refused 'type' points at 'templateType'. */
+        boolean templateTarget;
         /**
          * The properties of a SUBSYSTEM create beyond synonym / comment, set by modify_metadata's own rules
          * at creation (issue #930); empty for every other kind, which refuses them by name.
          */
         final List<JsonObject> writerProperties = new ArrayList<>();
         /** {@link #writerProperties} as modify_metadata prepared them, applied in the creating transaction. */
-        final List<ModifyMetadataTool.PreparedChange> writerChanges = new ArrayList<>();
+        final List<MetadataPropertyApplier.PreparedChange> writerChanges = new ArrayList<>();
     }
 
     /**
@@ -3784,7 +3761,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
             }
         }
         MdObject prototype = (MdObject)MdClassFactory.eINSTANCE.create(eClass);
-        String error = ModifyMetadataTool.prepareForCreate(project, scope, config, version, prototype,
+        String error = MetadataPropertyApplier.prepareForCreate(project, scope, config, version, prototype,
             props.writerProperties, props.writerChanges, normReport, isExtensionProject);
         if (error != null)
         {
@@ -3837,9 +3814,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
     /** The project's platform version best-effort, or {@code null} when EDT cannot tell yet. */
     private static Version projectVersion(IProject project)
     {
-        IV8ProjectManager manager = Activator.getDefault() == null ? null : Activator.getDefault().getV8ProjectManager();
-        IV8Project v8Project = manager == null ? null : manager.getProject(project);
-        return v8Project == null ? null : v8Project.getVersion();
+        return fm.giper.edt.mcp.server.utils.ProjectContext.platformVersion(project);
     }
 
     /**
@@ -3869,7 +3844,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                 return ToolResult.error(ERR_PROPERTY_NEEDS_NAME).toJson();
             }
             String value = asString(prop.get(KEY_VALUE));
-            String lower = name.toLowerCase();
+            String lower = name.toLowerCase(Locale.ROOT);
             if ((KEY_SYNONYM.equals(lower) || "comment".equals(lower)) && value == null) //$NON-NLS-1$
             {
                 // An absent, null, object or array value reads as no text at all, and the object was created
@@ -3903,7 +3878,8 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
                     }
                     return ToolResult.error(ERR_PROPERTY_PREFIX + name + "' is not supported yet in " //$NON-NLS-1$
                         + "create_metadata. This version applies synonym, comment, and templateType on templates. Set other " //$NON-NLS-1$
-                        + "properties (including type) via modify_metadata." + templateTypeHint(name)).toJson(); //$NON-NLS-1$
+                        + "properties (including type) via modify_metadata." //$NON-NLS-1$
+                        + (out.templateTarget ? templateTypeHint(name) : "")).toJson(); //$NON-NLS-1$
             }
         }
         return null;
@@ -3913,6 +3889,18 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
      * For a refused 'type': a TEMPLATE's content type is not set afterwards but at creation, through
      * 'templateType' (issue #919: following "set type via modify_metadata" cost a second call).
      */
+    static boolean isTemplateFqn(String fqn)
+    {
+        String canonical = MetadataTypeUtils.toCanonicalEnglishFqn(fqn);
+        if (canonical == null)
+        {
+            return false;
+        }
+        String[] parts = canonical.split("\\."); //$NON-NLS-1$
+        return parts.length >= 2 && ("CommonTemplate".equals(parts[0]) //$NON-NLS-1$
+            || "Template".equals(parts[parts.length - 2])); //$NON-NLS-1$
+    }
+
     static String templateTypeHint(String refusedName)
     {
         return "type".equalsIgnoreCase(refusedName) //$NON-NLS-1$
@@ -4072,7 +4060,7 @@ public class CreateMetadataTool extends AbstractMetadataWriteTool
     static String writerNote(Props props)
     {
         List<String> names = new ArrayList<>();
-        for (ModifyMetadataTool.PreparedChange change : props.writerChanges)
+        for (MetadataPropertyApplier.PreparedChange change : props.writerChanges)
         {
             String name = change.feature().getName();
             if (!names.contains(name))

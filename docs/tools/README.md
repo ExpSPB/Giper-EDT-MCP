@@ -1,8 +1,10 @@
 # EDT MCP Server — Tool Reference
 
+This reference provides generated descriptions, parameters and guides; [tool overviews](../tool-overviews.md) keeps maintained usage summaries.
+
 One page per tool: what it does, every parameter, and how it works. Generated from the live server by `docs/generate_tool_docs.py` (re-run to refresh; the source of truth is each tool's Java).
 
-**108 tools.**
+**111 tools.**
 
 ## Core
 
@@ -16,7 +18,7 @@ One page per tool: what it does, every parameter, and how it works. Generated fr
 | [`get_metadata_details`](get_metadata_details.md) | Inspect metadata objects and members, including managed-form root properties and structure, and a section's command interface. Parameters and examples: get_t… |
 | [`get_metadata_objects`](get_metadata_objects.md) | Discover metadata objects available in a 1C configuration. Parameters and examples: get_tool_guide('get_metadata_objects'). |
 | [`get_module_structure`](get_module_structure.md) | Discover procedures, functions, regions, and execution contexts in a BSL module. Parameters and examples: get_tool_guide('get_module_structure'). |
-| [`get_server_status`](get_server_status.md) | Diagnose the EDT MCP server, its feature configuration, and the active tool profile. Parameters and examples: get_tool_guide('get_server_status'). |
+| [`get_server_status`](get_server_status.md) | Diagnose the EDT MCP server, including its configuration, active tool profile, running calls, and background jobs. Parameters and examples: get_tool_guide('get_server_status'). |
 | [`get_tool_guide`](get_tool_guide.md) | Retrieve detailed instructions for an MCP tool. mode=summary lists sections; section=<heading\|#anchor>; query=<text>. |
 | [`list_modules`](list_modules.md) | Discover BSL modules available in an EDT project. Parameters and examples: get_tool_guide('list_modules'). |
 | [`list_projects`](list_projects.md) | Discover projects available in the EDT workspace. Parameters and examples: get_tool_guide('list_projects'). |
@@ -102,11 +104,14 @@ One page per tool: what it does, every parameter, and how it works. Generated fr
 
 ## Profiling
 
-> Performance profiling: start/stop a measurement and read the results.
+> Performance profiling and 1C technological logs: capture, inspect, compare and exchange.
 
 | Tool | Description |
 |------|-------------|
-| [`get_profiling_results`](get_profiling_results.md) | Identify performance hotspots in executed BSL code. Returns the MOST RECENT measurement session GLOBALLY - applicationId only changes the reported active-sta… |
+| [`get_tech_log`](get_tech_log.md) | Analyze 1C JSON technological logs: problems first, then details and correlated chains; describe explains events and capture profiles. Absent events do not prove absence of a problem. Full parameters and examples: call get_tool_guide('get_tech_log'). |
+| [`manage_tech_log`](manage_tech_log.md) | Preview and manage 1C JSON technological-log capture, or export CSV. Preview before start; start, stop and export require consent and refuse read-only mode. Stop after a short reproduction to restore logcfg.xml. Full parameters and examples: call get_tool_guide('manage_tech_log'). |
+| [`get_profiling_results`](get_profiling_results.md) | Read-only Markdown summary (default), measurement list, paged lines and comparison. Select a UUID with `measurementId`; `applicationId` only scopes the active flag. |
+| [`manage_profiling_results`](manage_profiling_results.md) | Export complete CSV/EDT measurements or import native EDT folders with `mode`. Requires separate write permission, consent, a writable preset and absolute host paths; never overwrites. |
 | [`start_profiling`](start_profiling.md) | Measure execution time and coverage of BSL code in a debug session. Parameters and examples: get_tool_guide('start_profiling'). |
 | [`stop_profiling`](stop_profiling.md) | Finish measuring BSL performance in a debug session. Parameters and examples: get_tool_guide('stop_profiling'). |
 
@@ -169,7 +174,7 @@ One page per tool: what it does, every parameter, and how it works. Generated fr
 | [`infobase_sessions`](infobase_sessions.md) | List or terminate sessions on a running standalone-server infobase. DESTRUCTIVE for terminate: pass confirm=true; bulk termination skips Designer, while its… |
 | [`list_git_branches`](list_git_branches.md) | Inspect available Git branches and their EDT infobase bindings. Parameters and examples: get_tool_guide('list_git_branches'). |
 | [`project_checks`](project_checks.md) | List or change EDT validation checks; switch, create, copy or delete check-settings profiles. Writes ask for consent; profile deletion is destructive. Parame… |
-| [`resync_to_disk`](resync_to_disk.md) | Write the in-memory model back out to the on-disk src/ .mdo files and report model-to-disk desync; fixes 'object file does not exist' failures and dangling C… |
+| [`resync_to_disk`](resync_to_disk.md) | Write the in-memory model back out to the on-disk src/ files and report model-to-disk desync; fixes 'object file does not exist' failures and dangling Config… |
 | [`revalidate_objects`](revalidate_objects.md) | Revalidate a project or a named list of objects, picking up .mdo edits made outside EDT. Targeted, lightweight alternative to clean_project - no full rebuild… |
 | [`set_branch_infobase`](set_branch_infobase.md) | Associate an existing infobase with a Git branch of an EDT project. Parameters and examples: get_tool_guide('set_branch_infobase'). |
 | [`set_infobase_credentials`](set_infobase_credentials.md) | STORE infobase credentials (user/password) in EDT settings so update_database and launch can authenticate. The secret PERSISTS beyond this call, and addressi… |

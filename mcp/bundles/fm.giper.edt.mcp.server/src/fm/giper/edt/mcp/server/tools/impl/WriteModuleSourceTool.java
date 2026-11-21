@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -14,6 +15,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -27,20 +29,27 @@ import org.eclipse.core.runtime.ICoreRunnable;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.preferences.IScopeContext;
 import org.eclipse.core.runtime.preferences.InstanceScope;
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EReference;
 
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassPackage;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.AdoptedModuleState;
+import fm.giper.edt.mcp.server.utils.BslDuplicateMethods;
+import fm.giper.edt.mcp.server.utils.BslMethodTransfer;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
 import fm.giper.edt.mcp.server.utils.BslSyntaxChecker;
+import fm.giper.edt.mcp.server.utils.BslWholeWordReplace;
 import fm.giper.edt.mcp.server.utils.ContentHash;
 import fm.giper.edt.mcp.server.utils.FrontMatter;
 import fm.giper.edt.mcp.server.utils.InvalidFileCharacters;
 import fm.giper.edt.mcp.server.utils.MetadataScope;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
+import fm.giper.edt.mcp.server.utils.ProjectStateChecker;
 import fm.giper.edt.mcp.server.utils.Refusals;
 import fm.giper.edt.mcp.server.utils.VendorSupportGuard;
 
@@ -60,9 +69,18 @@ public class WriteModuleSourceTool implements IMcpTool
     private static final String MODE_REPLACE_METHOD = "replaceMethod"; //$NON-NLS-1$
     private static final String MODE_INSERT_BEFORE = "insertBefore"; //$NON-NLS-1$
     private static final String MODE_INSERT_AFTER = "insertAfter"; //$NON-NLS-1$
+    /** Deletes the methods named in {@code methodNames} (#978). */
+    private static final String MODE_DELETE_METHODS = "deleteMethods"; //$NON-NLS-1$
+    /** Replaces every whole-word occurrence of {@code oldSource} with {@code source} (#996). */
+    private static final String MODE_REPLACE_ALL = "replaceAll"; //$NON-NLS-1$
 
     private static final String PROJECT_NAME = "projectName"; //$NON-NLS-1$
     private static final String MODULE_PATH = "modulePath"; //$NON-NLS-1$
+    /** The module of the same project the methods named in {@code methodNames} are copied from (#978). */
+    private static final String FROM_MODULE_PATH = "fromModulePath"; //$NON-NLS-1$
+    private static final String METHOD_NAMES = "methodNames"; //$NON-NLS-1$
+    /** The revision token read_module_source reports; a write answers it for the text it wrote (#978). */
+    private static final String CONTENT_HASH = "contentHash"; //$NON-NLS-1$
 
     private static final String MODULE_TYPE_MODULE = "Module"; //$NON-NLS-1$
     private static final String MODULE_TYPE_OBJECT_MODULE = "ObjectModule"; //$NON-NLS-1$
@@ -105,15 +123,22 @@ public class WriteModuleSourceTool implements IMcpTool
                 "Module type for objectName resolution (default ObjectModule).", //$NON-NLS-1$
                 MODULE_TYPE_OBJECT_MODULE, "ManagerModule", "FormModule", MODULE_TYPE_COMMAND_MODULE, "RecordSetModule", MODULE_TYPE_MODULE) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             .stringProperty("source", //$NON-NLS-1$
-                "BSL source to write (required): full file for replace, new fragment for " + //$NON-NLS-1$
+                "BSL source to write: full file for replace, new fragment for " + //$NON-NLS-1$
                 "searchReplace, text to add for append, or exactly one complete method for " + //$NON-NLS-1$
-                "a method-targeted mode.", true) //$NON-NLS-1$
+                "a method-targeted mode. Required unless fromModulePath or mode=deleteMethods.") //$NON-NLS-1$
+            .stringProperty(FROM_MODULE_PATH,
+                "Instead of source: copy the methodNames methods from this module of the same project " //$NON-NLS-1$
+                + "(modes append (default), insertBefore, insertAfter, replace of a new module).") //$NON-NLS-1$
+            .stringArrayProperty(METHOD_NAMES,
+                "Methods to copy (with fromModulePath) or delete (mode=deleteMethods), up to " //$NON-NLS-1$
+                + BslMethodTransfer.MAX_METHOD_NAMES + ".") //$NON-NLS-1$
             .stringProperty("oldSource", //$NON-NLS-1$
-                "Fragment to find and replace; required for searchReplace, must match exactly once.") //$NON-NLS-1$
+                "Fragment to find and replace; required for searchReplace (must match exactly once) and " //$NON-NLS-1$
+                + "replaceAll (every whole-word occurrence).") //$NON-NLS-1$
             .enumProperty("mode", //$NON-NLS-1$
                 "Write mode (default searchReplace).", //$NON-NLS-1$
                 MODE_SEARCH_REPLACE, MODE_REPLACE, MODE_APPEND,
-                MODE_REPLACE_METHOD, MODE_INSERT_BEFORE, MODE_INSERT_AFTER)
+                MODE_REPLACE_METHOD, MODE_INSERT_BEFORE, MODE_INSERT_AFTER, MODE_DELETE_METHODS, MODE_REPLACE_ALL)
             .stringProperty("methodName", //$NON-NLS-1$
                 "Existing anchor method; required for replaceMethod, insertBefore, and insertAfter.") //$NON-NLS-1$
             .stringProperty("formName", //$NON-NLS-1$
@@ -135,7 +160,8 @@ public class WriteModuleSourceTool implements IMcpTool
                 "Force mode=replace over an existing module without an expectedSource check (default false).") //$NON-NLS-1$
             .stringProperty("expectedHash", //$NON-NLS-1$
                 "Lost-update guard: the hash from the read that produced your edit. The write is " //$NON-NLS-1$
-                + "rejected if the module changed since; required for every method-targeted mode.") //$NON-NLS-1$
+                + "rejected if the module changed since; required for every method-targeted mode " //$NON-NLS-1$
+                + "and deleteMethods.") //$NON-NLS-1$
             .build();
     }
 
@@ -151,7 +177,7 @@ public class WriteModuleSourceTool implements IMcpTool
         String modulePath = JsonUtils.extractStringArgument(params, MODULE_PATH);
         if (modulePath != null && !modulePath.isEmpty())
         {
-            String safeName = modulePath.replace("/", "-").replace("\\", "-").toLowerCase(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            String safeName = modulePath.replace("/", "-").replace("\\", "-").toLowerCase(Locale.ROOT); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             return "write-" + safeName + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
         }
         return "write-module-source.md"; //$NON-NLS-1$
@@ -186,9 +212,18 @@ public class WriteModuleSourceTool implements IMcpTool
             return ToolResult.error(ProjectContext.notFoundMessage(req.projectName)).toJson();
         }
         IProject project = ctx.project();
+        // A project this server just switched still holds the previous branch's model; the write of an adopted
+        // module exports its owner's .mdo from that model over the checked-out file (#922).
+        String reload = ProjectStateChecker.checkoutReloadErrorOrNull(project);
+        if (reload != null)
+        {
+            return ToolResult.error(reload).toJson();
+        }
 
         AtomicBoolean mutationEntered = new AtomicBoolean();
         AtomicBoolean mutationCommitted = new AtomicBoolean();
+        // The contentHash of the text this call wrote, set together with mutationCommitted (#978).
+        AtomicReference<String> writtenHash = new AtomicReference<>();
         try
         {
             // 5. Get file
@@ -222,8 +257,19 @@ public class WriteModuleSourceTool implements IMcpTool
             {
                 return locked;
             }
+            // 7. A copy (#978): the methods' text is cut from the source module here, server-side; the source
+            // is only read, so it needs no vendor guard and no adopted-module step of its own.
+            if (req.isCopy())
+            {
+                String copyError = prepareCopy(req, project, file, fileExists);
+                if (copyError != null)
+                {
+                    return copyError;
+                }
+            }
 
-            return writeModule(req, file, fileExists, root.scope(), mutationEntered, mutationCommitted);
+            return writeModule(req, file, fileExists, root.scope(), mutationEntered, mutationCommitted,
+                writtenHash);
         }
         catch (Exception e)
         {
@@ -232,7 +278,7 @@ public class WriteModuleSourceTool implements IMcpTool
                 : (mutationEntered.get() ? "Failed to write file: " : "Failed to prepare module write: ") //$NON-NLS-1$ //$NON-NLS-2$
                     + e.getMessage();
             ToolResult error = mutationCommitted.get()
-                ? ToolResult.errorAfterMutation(message)
+                ? withWrittenHash(ToolResult.errorAfterMutation(message), writtenHash.get())
                 : mutationEntered.get()
                     ? ToolResult.errorWithUnknownMutationOutcome(message)
                     : ToolResult.error(message);
@@ -252,6 +298,16 @@ public class WriteModuleSourceTool implements IMcpTool
      */
     static String outsideProjectError(IProject project, IFile file, String modulePath)
     {
+        return outsideProjectError(project, file, modulePath, MODULE_PATH);
+    }
+
+    /**
+     * {@link #outsideProjectError(IProject, IFile, String)} for the module named by {@code parameter} - the
+     * target's {@code modulePath} or a copy's {@code fromModulePath} (#978), which must belong to the same
+     * project too.
+     */
+    private static String outsideProjectError(IProject project, IFile file, String modulePath, String parameter)
+    {
         if (file == null)
         {
             return ToolResult.error("File not found: " + modulePath //$NON-NLS-1$
@@ -259,9 +315,16 @@ public class WriteModuleSourceTool implements IMcpTool
                 + "', e.g. 'CommonModules/MyModule/Module.bsl'.").toJson(); //$NON-NLS-1$
         }
         IProject owner = file.getProject();
+        if ((owner == null || !owner.equals(project)) && FROM_MODULE_PATH.equals(parameter))
+        {
+            return ToolResult.error("fromModulePath '" + modulePath + "' is a file of project '" //$NON-NLS-1$ //$NON-NLS-2$
+                + (owner == null ? "?" : owner.getName()) + "', not of '" + project.getName() //$NON-NLS-1$ //$NON-NLS-2$
+                + "'. Nothing was written: methods are copied only between modules of one project; pass " //$NON-NLS-1$
+                + "a src/-relative fromModulePath of '" + project.getName() + "'.").toJson(); //$NON-NLS-1$ //$NON-NLS-2$
+        }
         if (owner == null || !owner.equals(project))
         {
-            return ToolResult.error("modulePath '" + modulePath + "' is a file of project '" //$NON-NLS-1$ //$NON-NLS-2$
+            return ToolResult.error(parameter + " '" + modulePath + "' is a file of project '" //$NON-NLS-1$ //$NON-NLS-2$
                 + (owner == null ? "?" : owner.getName()) + "', not of '" + project.getName() //$NON-NLS-1$ //$NON-NLS-2$
                 + "'. Nothing was changed. Pass projectName='" //$NON-NLS-1$
                 + (owner == null ? "?" : owner.getName()) //$NON-NLS-1$
@@ -285,6 +348,69 @@ public class WriteModuleSourceTool implements IMcpTool
     {
         String refusal = VendorSupportGuard.refusalForModuleFile(ctx.project(), root.scope(), file);
         return refusal == null ? null : ToolResult.error(refusal).toJson();
+    }
+
+    /**
+     * Resolves and reads the source module of a copy and cuts the named methods out of it (#978), setting
+     * {@link WriteRequest#copy}. The source path follows the target's rules ({@code ..} and non-{@code .bsl}
+     * refused, a file of the same project); it must exist and differ from the target. The text is decoded
+     * strictly - a malformed byte would otherwise be copied as a replacement character - and the token answered
+     * as {@code fromContentHash} is taken over that very text.
+     *
+     * @return the error JSON, or {@code null} when the copy is ready
+     */
+    private static String prepareCopy(WriteRequest req, IProject project, IFile target, boolean targetExists)
+        throws Exception
+    {
+        String from = req.fromModulePath;
+        if (from.contains("..")) //$NON-NLS-1$
+        {
+            return ToolResult.error("fromModulePath must not contain '..'").toJson(); //$NON-NLS-1$
+        }
+        if (!from.endsWith(".bsl")) //$NON-NLS-1$
+        {
+            return ToolResult.error("fromModulePath must name a .bsl module file").toJson(); //$NON-NLS-1$
+        }
+        if (MODE_REPLACE.equals(req.mode) && targetExists)
+        {
+            return ToolResult.error("fromModulePath with mode=replace creates a new module, but '" + req.modulePath //$NON-NLS-1$
+                + "' already exists. Nothing was written. Copy into it with mode=append, insertBefore or " //$NON-NLS-1$
+                + "insertAfter.").toJson(); //$NON-NLS-1$
+        }
+        IFile source = BslModuleUtils.resolveModuleFile(project, from);
+        String outside = outsideProjectError(project, source, from, FROM_MODULE_PATH);
+        if (outside != null)
+        {
+            return outside;
+        }
+        if (!source.exists())
+        {
+            return ToolResult.error("fromModulePath not found: src/" + from + ". Nothing was written.").toJson(); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        String sourcePath = BslModuleUtils.sourceRelativePath(source);
+        if (source.equals(target) || source.getFullPath().equals(target.getFullPath()))
+        {
+            return ToolResult.error("fromModulePath '" + sourcePath + "' is the target module itself. " //$NON-NLS-1$ //$NON-NLS-2$
+                + "Copy between two different modules.").toJson(); //$NON-NLS-1$
+        }
+        String text;
+        try
+        {
+            text = BslModuleUtils.readFileText(source, true);
+        }
+        catch (java.nio.charset.CharacterCodingException e)
+        {
+            return ToolResult.error("fromModulePath '" + sourcePath + "' is not valid text in its encoding, so " //$NON-NLS-1$ //$NON-NLS-2$
+                + "its methods cannot be copied byte for byte. Nothing was written.").toJson(); //$NON-NLS-1$
+        }
+        BslMethodTransfer.Result extracted =
+            BslMethodTransfer.extract(splitSourceLines(text), req.methodNames, sourcePath);
+        if (extracted.failed())
+        {
+            return ToolResult.error(extracted.error).toJson();
+        }
+        req.copy = new Copy(extracted.lines, extracted.methods, sourcePath, ContentHash.of(text));
+        return null;
     }
 
     /**
@@ -312,11 +438,20 @@ public class WriteModuleSourceTool implements IMcpTool
         final String expectedSource;
         final boolean overwrite;
         final String expectedHash;
+        /** The module the methods are copied from, or {@code null} (#978). */
+        final String fromModulePath;
+        /** The names sent in {@code methodNames}, trimmed (blank entries kept, to be refused), or {@code null}. */
+        final List<String> methodNames;
+        /** The copy (fromModulePath) of a validated request: the methods' lines, declared names and source token. */
+        Copy copy;
 
         private WriteRequest(Map<String, String> params)
         {
             this.projectName = JsonUtils.extractStringArgument(params, PROJECT_NAME);
             this.modulePath = JsonUtils.extractStringArgument(params, MODULE_PATH);
+            String from = JsonUtils.extractStringArgument(params, FROM_MODULE_PATH);
+            this.fromModulePath = from == null || from.isEmpty() ? null : from;
+            this.methodNames = trimmed(JsonUtils.extractArrayArgument(params, METHOD_NAMES));
             this.objectName = JsonUtils.extractStringArgument(params, "objectName"); //$NON-NLS-1$
             this.moduleType = JsonUtils.extractStringArgument(params, "moduleType"); //$NON-NLS-1$
             // Kept RAW here (NOT \r\n-normalized) so validateWriteArguments measures the
@@ -325,7 +460,9 @@ public class WriteModuleSourceTool implements IMcpTool
             this.source = JsonUtils.extractStringArgument(params, "source"); //$NON-NLS-1$
             this.oldSource = JsonUtils.extractStringArgument(params, "oldSource"); //$NON-NLS-1$
             String rawMode = JsonUtils.extractStringArgument(params, "mode"); //$NON-NLS-1$
-            this.mode = (rawMode == null || rawMode.isEmpty()) ? MODE_SEARCH_REPLACE : rawMode;
+            // A copy appends by default: its methods are not a fragment to search for.
+            String defaultMode = this.fromModulePath != null ? MODE_APPEND : MODE_SEARCH_REPLACE;
+            this.mode = (rawMode == null || rawMode.isEmpty()) ? defaultMode : rawMode;
             this.methodName = JsonUtils.extractStringArgument(params, "methodName"); //$NON-NLS-1$
             this.formName = JsonUtils.extractStringArgument(params, "formName"); //$NON-NLS-1$
             this.commandName = JsonUtils.extractStringArgument(params, "commandName"); //$NON-NLS-1$
@@ -340,6 +477,57 @@ public class WriteModuleSourceTool implements IMcpTool
         static WriteRequest from(Map<String, String> params)
         {
             return new WriteRequest(params);
+        }
+
+        private static List<String> trimmed(List<String> raw)
+        {
+            if (raw == null)
+            {
+                return null; // NOSONAR absent, not empty: methodNames was not sent
+            }
+            List<String> names = new ArrayList<>(raw.size());
+            for (String name : raw)
+            {
+                names.add(name == null ? "" : name.trim()); //$NON-NLS-1$
+            }
+            return names;
+        }
+
+        boolean isCopy()
+        {
+            return fromModulePath != null;
+        }
+
+        boolean isDelete()
+        {
+            return MODE_DELETE_METHODS.equals(mode);
+        }
+
+        boolean isReplaceAll()
+        {
+            return MODE_REPLACE_ALL.equals(mode);
+        }
+    }
+
+    /**
+     * What a copy (fromModulePath) takes from its source module (#978): the lines of the named methods, their
+     * names as declared, the source's resolved path and the {@code contentHash} of the very text the lines were
+     * cut from - the token a later {@code mode=deleteMethods} on the source carries as {@code expectedHash}, so
+     * it deletes exactly what was copied.
+     */
+    static final class Copy
+    {
+        final List<String> lines;
+        final List<String> methods;
+        final String fromModulePath;
+        final String fromContentHash;
+
+        Copy(List<String> lines, List<String> methods, String fromModulePath, String fromContentHash)
+        {
+            this.lines = lines;
+            this.methods = methods;
+            this.fromModulePath = fromModulePath;
+            this.fromContentHash = fromContentHash;
         }
     }
 
@@ -361,10 +549,17 @@ public class WriteModuleSourceTool implements IMcpTool
      *         {@link #finishWrite}
      */
     private String writeModule(WriteRequest req, IFile file, boolean fileExists, MetadataScope scope,
-        AtomicBoolean mutationEntered, AtomicBoolean mutationCommitted) throws Exception
+        AtomicBoolean mutationEntered, AtomicBoolean mutationCommitted, AtomicReference<String> writtenHash)
+        throws Exception
     {
         // Normalize source: \r\n -> \n (same point and order as the inline try block,
         // i.e. AFTER validateWriteArguments measured the raw length).
+        // A copy or a deletion (#978) carries no source: copied methods are existing code moved as it is, never
+        // normalized, so the deletion that finishes a move removes exactly the text that was copied.
+        if (req.source == null)
+        {
+            req.source = ""; //$NON-NLS-1$
+        }
         req.source = req.source.replace("\r\n", "\n"); //$NON-NLS-1$ //$NON-NLS-2$
 
         // Normalize the forbidden look-alike characters in the INCOMING source only (#161).
@@ -377,49 +572,12 @@ public class WriteModuleSourceTool implements IMcpTool
             : InvalidFileCharacters.unchanged(req.source);
         req.source = charFix.text();
 
-        // Read current content (if file exists)
-        List<String> originalLines;
-        boolean hasBom;
-        String lineDelimiter;
-        if (fileExists)
+        // Read the module, check the guards and compute the new lines. For a guarded write this is done once
+        // more under the file's modify rule below; this first pass answers every refusal before any lock is taken.
+        WritePlan plan = planWrite(req, file, fileExists);
+        if (plan.error != null)
         {
-            originalLines = BslModuleUtils.readFileLines(file);
-            hasBom = detectBom(file);
-            // Preserve the module's OWN line separator (issue #305): EDT writes BSL modules with CRLF,
-            // and the raw \n write flipped every line to LF, marking the whole module changed. Detect
-            // from the raw text (readFileText keeps the original separators; readFileLines strips them).
-            lineDelimiter = resolveLineDelimiter(file.getProject(), BslModuleUtils.readFileText(file));
-        }
-        else
-        {
-            originalLines = new ArrayList<>();
-            hasBom = true; // New BSL files should have BOM
-            lineDelimiter = resolveLineDelimiter(file.getProject(), null);
-        }
-
-        String hashError = checkExpectedHashGuard(req, file, fileExists);
-        if (hashError != null)
-        {
-            return hashError;
-        }
-
-        // Compute new content based on mode
-        int totalOriginal = originalLines.size();
-        NewLinesResult computed = computeNewLines(req, file, fileExists, originalLines);
-        if (computed.error != null)
-        {
-            return computed.error;
-        }
-        List<String> newLines = computed.newLines;
-
-        // BSL syntax check
-        if (!req.skipSyntaxCheck)
-        {
-            String syntaxError = runSyntaxCheck(newLines);
-            if (syntaxError != null)
-            {
-                return syntaxError;
-            }
+            return plan.error;
         }
 
         // Method-targeted writes always carry a hash and build a whole replacement module in
@@ -429,20 +587,41 @@ public class WriteModuleSourceTool implements IMcpTool
         // another workspace writer (an editor save, another tool) for the whole compare-and-write.
         // A process writing the file outside Eclipse is not covered - IFile.setContents(FORCE)
         // has no compare-and-swap - but it IS seen by the guard's own read.
-        if (isMethodTargetedMode(req.mode) && fileExists)
+        // A deletion (expectedHash required) and a copy into an existing module splice whole methods the same
+        // way, so they take the same compare-and-write (#978). Under the rule the module is READ AGAIN and the
+        // plan recomputed from that text: a copy without expectedHash then splices into what the file holds
+        // now - an edit saved after the first read is kept, and a name that appeared meanwhile refuses the copy -
+        // and for a hashed write it is the same compare the late hash check always made.
+        // The text modes (searchReplace, append, replace) take the same path for an existing module (#987): their
+        // plan - the replaced fragment, the appended text, the repeated-method-name verdict - is judged against the
+        // text the file holds under the rule, so an edit saved after the first read is neither overwritten nor
+        // left out of the duplicate check.
+        if (fileExists)
         {
-            String[] lateHashError = new String[1];
+            WritePlan[] locked = new WritePlan[1];
             Exception[] failure = new Exception[1];
             ICoreRunnable operation = monitor -> {
                 try
                 {
-                    lateHashError[0] = checkExpectedHashGuard(req, file, fileExists);
-                    if (lateHashError[0] != null)
+                    WritePlan current = planWrite(req, file, fileExists);
+                    locked[0] = current;
+                    if (current.error != null)
                     {
                         return;
                     }
+                    // A replaceAll edits the text its plan read: checked once more right before the write, so a save
+                    // from outside Eclipse (the modify rule does not exclude it) landing after that read is refused,
+                    // not overwritten (local review of #999). The window between this read and the write remains:
+                    // IFile has no compare-and-swap.
+                    if (current.snapshot != null && !current.snapshot.equals(BslModuleUtils.readFileText(file)))
+                    {
+                        locked[0] = WritePlan.refused(ToolResult.error("The module changed while replaceAll was " //$NON-NLS-1$
+                            + "planning its edit (saved from outside EDT). Nothing was written. Read it again with " //$NON-NLS-1$
+                            + "read_module_source and repeat the call.").toJson()); //$NON-NLS-1$
+                        return;
+                    }
                     mutationEntered.set(true);
-                    writeFile(file, newLines, hasBom, fileExists, lineDelimiter);
+                    writtenHash.set(writeFile(file, current.newLines, current.hasBom, fileExists, current.lineDelimiter));
                     mutationCommitted.set(true);
                 }
                 catch (Exception e)
@@ -459,30 +638,346 @@ public class WriteModuleSourceTool implements IMcpTool
             {
                 throw failure[0];
             }
-            if (lateHashError[0] != null)
+            if (locked[0].error != null)
             {
-                return lateHashError[0];
+                return locked[0].error;
             }
+            plan = locked[0];
         }
         else
         {
             // Write file (the mutating step — kept inline under the passed guards)
             mutationEntered.set(true);
-            writeFile(file, newLines, hasBom, fileExists, lineDelimiter);
+            writtenHash.set(writeFile(file, plan.newLines, plan.hasBom, fileExists, plan.lineDelimiter));
             // IFile.setContents/create has returned: any later exception is response work after the
             // workspace mutation, not a refusal that left the module untouched.
             mutationCommitted.set(true);
         }
+        List<String> newLines = plan.newLines;
+        int totalOriginal = plan.totalOriginal;
+        List<String> stillCalled = plan.stillCalled;
+        List<String> deletedMethods = plan.deletedMethods;
+        String duplicateWarning = plan.duplicateWarning;
+        // The facts of the plan the write ran on - the one computed under the modify rule for an existing module.
+        BslWholeWordReplace.Result replaceAll = plan.replaceAll;
 
         // The module of an object ADOPTED into an extension gets the state EDT's UI records in the owner's
         // .mdo when code is added to an adopted module - Extended - recorded at once (#711): EDT's own
         // listener sets it only in the model and never saves the .mdo. Every other module is untouched and
         // answers as before. A dry run (#465) must skip this step - it changes the model and exports the
         // owner's .mdo.
-        return finishWrite(
+        String contentHash = writtenHash.get();
+        return finishWrite(contentHash,
             () -> AdoptedModuleState.ensureExtended(file.getProject(), scope, file.getProjectRelativePath().toString()),
             moduleState -> buildSuccessResponse(req.projectName, req.modulePath, req.mode, req.skipSyntaxCheck,
-                newLines, fileExists, totalOriginal, charFix.summary(), moduleState));
+                newLines, fileExists, totalOriginal, contentHash, charFix.summary(), moduleState,
+                methodFacts(req, deletedMethods, stillCalled, duplicateWarning, replaceAll)));
+    }
+
+    /** What {@link #planWrite} found: a ready refusal, or the lines to write and how to write them. */
+    private static final class WritePlan
+    {
+        final String error;
+        final List<String> newLines;
+        final boolean hasBom;
+        final String lineDelimiter;
+        final int totalOriginal;
+        final List<String> stillCalled;
+        final List<String> deletedMethods;
+        /** What the write does to repeated method names that does not block it (#987), or {@code null}. */
+        private String duplicateWarning;
+        /** mode=replaceAll: the count, lines and other-case spellings of the text this plan rewrites (#996). */
+        private BslWholeWordReplace.Result replaceAll;
+        /** mode=replaceAll: the exact text this plan read and edited, checked again before the write; else null. */
+        private String snapshot;
+
+        WritePlan(String error, List<String> newLines, boolean hasBom, String lineDelimiter, int totalOriginal,
+            List<String> stillCalled, List<String> deletedMethods)
+        {
+            this.error = error;
+            this.newLines = newLines;
+            this.hasBom = hasBom;
+            this.lineDelimiter = lineDelimiter;
+            this.totalOriginal = totalOriginal;
+            this.stillCalled = stillCalled;
+            this.deletedMethods = deletedMethods;
+        }
+
+        /** Attaches the repeated-method-name warning of the write (#987) and returns this plan. */
+        WritePlan withDuplicateWarning(String warning)
+        {
+            this.duplicateWarning = warning;
+            return this;
+        }
+
+        /** Attaches what a replaceAll found in the text it rewrites (#996) and returns this plan. */
+        WritePlan withReplaceAll(BslWholeWordReplace.Result replaced)
+        {
+            this.replaceAll = replaced;
+            return this;
+        }
+
+        /** Attaches the text a replaceAll edited, to be checked again before the write, and returns this plan. */
+        WritePlan withSnapshot(String text)
+        {
+            this.snapshot = text;
+            return this;
+        }
+
+        static WritePlan refused(String error)
+        {
+            return new WritePlan(error, null, false, null, 0, null, null);
+        }
+    }
+
+    /**
+     * Reads the module as it is now, applies the {@code expectedHash} guard, computes the new lines for the
+     * request's mode and runs the BSL syntax check - everything a write decides before it writes, with no write.
+     * Called once before the locked write and once more under the file's modify rule (see {@link #writeModule}).
+     */
+    private WritePlan planWrite(WriteRequest req, IFile file, boolean fileExists) throws Exception
+    {
+        // Read current content (if file exists)
+        List<String> originalLines;
+        boolean hasBom;
+        String lineDelimiter;
+        String currentText = null;
+        if (fileExists)
+        {
+            originalLines = BslModuleUtils.readFileLines(file);
+            hasBom = detectBom(file);
+            // Preserve the module's OWN line separator (issue #305): EDT writes BSL modules with CRLF,
+            // and the raw \n write flipped every line to LF, marking the whole module changed. Detect
+            // from the raw text (readFileText keeps the original separators; readFileLines strips them).
+            currentText = BslModuleUtils.readFileText(file);
+            lineDelimiter = resolveLineDelimiter(file.getProject(), currentText);
+        }
+        else
+        {
+            originalLines = new ArrayList<>();
+            hasBom = true; // New BSL files should have BOM
+            lineDelimiter = resolveLineDelimiter(file.getProject(), null);
+        }
+
+        // A replaceAll edits the text this plan read, so its guard vouches for that very text; every other mode reads
+        // the module again for the guard, as before (local review of #999).
+        String hashError = checkExpectedHashGuard(req, file, fileExists, req.isReplaceAll() ? currentText : null);
+        if (hashError != null)
+        {
+            return WritePlan.refused(hashError);
+        }
+
+        // Compute new content based on mode
+        int totalOriginal = originalLines.size();
+        NewLinesResult computed = computeNewLines(req, file, fileExists, originalLines, currentText);
+        if (computed.error != null)
+        {
+            return WritePlan.refused(computed.error);
+        }
+        List<String> newLines = computed.newLines;
+        String tooLarge = replaceAllSizeRefusal(computed.replaceAll, newLines, lineDelimiter);
+        if (tooLarge != null)
+        {
+            return WritePlan.refused(tooLarge);
+        }
+        String unchanged = replaceAllNoChangeRefusal(computed.replaceAll, newLines, lineDelimiter, currentText);
+        if (unchanged != null)
+        {
+            return WritePlan.refused(unchanged);
+        }
+        List<String> stillCalled = computed.stillCalled;
+        List<String> deletedMethods = computed.deletedMethods;
+
+        // BSL syntax check
+        if (!req.skipSyntaxCheck)
+        {
+            String syntaxError = runSyntaxCheck(newLines);
+            if (syntaxError != null)
+            {
+                return WritePlan.refused(syntaxError);
+            }
+        }
+        // Method names (#987): the block-balance check cannot see a second procedure or function of one name,
+        // and the platform then refuses to load the whole module. Judged on the text this write produces
+        // against the text it replaces, in every mode - and again under the modify rule, with the rest of the plan.
+        DuplicateCheck duplicates = checkDuplicateMethods(originalLines, newLines, req.skipSyntaxCheck);
+        if (duplicates.error != null)
+        {
+            return WritePlan.refused(duplicates.error);
+        }
+        return new WritePlan(null, newLines, hasBom, lineDelimiter, totalOriginal, stillCalled, deletedMethods)
+            .withDuplicateWarning(duplicates.warning).withReplaceAll(computed.replaceAll)
+            .withSnapshot(computed.replaceAll == null ? null : currentText);
+    }
+
+    /**
+     * The bound of a replaceAll (#996) on the text it WRITES (#999 review): the rule measured the {@code \n}-normalized
+     * text, and a module written with {@code \r\n} is one character longer per line.
+     *
+     * @return the refusal JSON, or {@code null} when the request is not a replaceAll or the text fits
+     */
+    private static String replaceAllSizeRefusal(BslWholeWordReplace.Result replaceAll, List<String> newLines,
+        String lineDelimiter)
+    {
+        if (replaceAll == null)
+        {
+            return null;
+        }
+        long written = fileContentLength(newLines, lineDelimiter);
+        if (written <= BslWholeWordReplace.MAX_RESULT_LENGTH)
+        {
+            return null;
+        }
+        return ToolResult.error("replaceAll would write a module of " + written //$NON-NLS-1$
+            + " characters (its line delimiters included), more than the " + BslWholeWordReplace.MAX_RESULT_LENGTH //$NON-NLS-1$
+            + " allowed. Nothing was written.").toJson(); //$NON-NLS-1$
+    }
+
+    /**
+     * A replaceAll whose write would put back exactly the text the module holds (#999 review): the write re-applies
+     * the module's own line delimiter and final line break and drops a blank last line, so replacements that only
+     * touch those are erased by the write itself. Judged on the text the write produces against the text the module
+     * holds - the bytes that change - not on the request's strings or the line lists - and without building it.
+     *
+     * @return the refusal JSON, or {@code null} when the request is not a replaceAll or the write changes the module
+     */
+    private static String replaceAllNoChangeRefusal(BslWholeWordReplace.Result replaceAll, List<String> newLines,
+        String lineDelimiter, String currentText)
+    {
+        if (replaceAll == null || currentText == null || !writesExactly(newLines, lineDelimiter, currentText))
+        {
+            return null;
+        }
+        return ToolResult.error("replaceAll would write the module exactly as it is: the " //$NON-NLS-1$
+            + replaceAll.replacements() + " replacement(s) only touch line breaks the write puts back as they were " //$NON-NLS-1$
+            + "(the module's own line delimiter, its final line break). Nothing was written. Every write keeps them: " //$NON-NLS-1$
+            + "to change a line break, change the lines around it (join or split them).").toJson(); //$NON-NLS-1$
+    }
+
+    /** The outcome of {@link #checkDuplicateMethods}: a ready refusal, or a warning for the response, or neither. */
+    static final class DuplicateCheck
+    {
+        final String error;
+        final String warning;
+
+        DuplicateCheck(String error, String warning)
+        {
+            this.error = error;
+            this.warning = warning;
+        }
+    }
+
+    /**
+     * The repeated-method-name rule of a write (#987): a write that CREATES a certain duplicate - a name declared
+     * twice in one preprocessor context, or once more than before - is refused, nothing written; with the syntax
+     * check skipped it is written and the response warns instead. A possible duplicate (separate {@code #If}
+     * blocks, different compilation directives) and a duplicate the module already had are reported as a warning
+     * and never block, so a legacy module stays editable. Pure: no I/O. Package-visible for tests.
+     *
+     * @param originalLines the module before the write (empty for a new module)
+     * @param newLines the lines the write would produce
+     * @param skipSyntaxCheck whether the caller skipped the syntax check
+     * @return the refusal JSON or the warning text
+     */
+    static DuplicateCheck checkDuplicateMethods(List<String> originalLines, List<String> newLines,
+        boolean skipSyntaxCheck)
+    {
+        BslDuplicateMethods.WriteVerdict verdict = BslDuplicateMethods.judgeWrite(originalLines, newLines);
+        String refusal = verdict.refusal();
+        if (refusal != null && !skipSyntaxCheck)
+        {
+            return new DuplicateCheck(ToolResult.error("BSL duplicate method check failed. " + refusal).toJson(), //$NON-NLS-1$
+                null);
+        }
+        return new DuplicateCheck(null, verdict.warning(skipSyntaxCheck));
+    }
+
+    /**
+     * The facts a copy or a deletion (#978) and a repeated method name (#987) add to the success response, or
+     * {@code null} when there are none.
+     */
+    private static MethodFacts methodFacts(WriteRequest req, List<String> deletedMethods, List<String> stillCalled,
+        String duplicateWarning, BslWholeWordReplace.Result replaceAll)
+    {
+        MethodFacts facts = null;
+        if (req.copy != null)
+        {
+            facts = MethodFacts.copied(req.copy.methods, req.copy.fromModulePath, req.copy.fromContentHash);
+        }
+        else if (req.isDelete())
+        {
+            facts = MethodFacts.deleted(deletedMethods, stillCalled);
+        }
+        else if (replaceAll != null)
+        {
+            facts = MethodFacts.replacedAll(replaceAll);
+        }
+        if (duplicateWarning == null)
+        {
+            return facts;
+        }
+        return (facts == null ? MethodFacts.none() : facts).withDuplicateWarning(duplicateWarning);
+    }
+
+    /**
+     * What a copy ({@code copiedMethods}, {@code fromModulePath}, {@code fromContentHash}) or a deletion
+     * ({@code deletedMethods} and the calls left behind) reports in the success frontmatter (#978), and the
+     * repeated-method-name warning of the write (#987).
+     */
+    static final class MethodFacts
+    {
+        final List<String> copiedMethods;
+        final String fromModulePath;
+        final String fromContentHash;
+        final List<String> deletedMethods;
+        final List<String> stillCalled;
+        /** What the write does to repeated method names that does not block it (#987), or {@code null}. */
+        final String duplicateWarning;
+        /** mode=replaceAll: the occurrences replaced and the other-case spellings left (#996), or {@code null}. */
+        final BslWholeWordReplace.Result replaceAll;
+
+        private MethodFacts(List<String> copiedMethods, String fromModulePath, String fromContentHash,
+            List<String> deletedMethods, List<String> stillCalled, String duplicateWarning,
+            BslWholeWordReplace.Result replaceAll)
+        {
+            this.copiedMethods = copiedMethods;
+            this.fromModulePath = fromModulePath;
+            this.fromContentHash = fromContentHash;
+            this.deletedMethods = deletedMethods;
+            this.stillCalled = stillCalled;
+            this.duplicateWarning = duplicateWarning;
+            this.replaceAll = replaceAll;
+        }
+
+        static MethodFacts copied(List<String> methods, String fromModulePath, String fromContentHash)
+        {
+            return new MethodFacts(methods, fromModulePath, fromContentHash, null, List.of(), null, null);
+        }
+
+        static MethodFacts deleted(List<String> methods, List<String> stillCalled)
+        {
+            return new MethodFacts(null, null, null, methods, stillCalled == null ? List.of() : stillCalled, null,
+                null);
+        }
+
+        /** A replaceAll (#996): the count and lines of the replaced occurrences, the other-case spellings left. */
+        static MethodFacts replacedAll(BslWholeWordReplace.Result replaced)
+        {
+            return new MethodFacts(null, null, null, null, List.of(), null, replaced);
+        }
+
+        /** No copy and no deletion: only the warning a later {@link #withDuplicateWarning} attaches. */
+        static MethodFacts none()
+        {
+            return new MethodFacts(null, null, null, null, List.of(), null, null);
+        }
+
+        /** These facts plus the repeated-method-name warning of the write (#987). */
+        MethodFacts withDuplicateWarning(String warning)
+        {
+            return new MethodFacts(copiedMethods, fromModulePath, fromContentHash, deletedMethods, stillCalled,
+                warning, replaceAll);
+        }
     }
 
     /**
@@ -492,19 +987,35 @@ public class WriteModuleSourceTool implements IMcpTool
      * re-sends the edit. The step is run HERE, not handed in as a result, so a write cannot run it and
      * answer past its failure: leaving this call out leaves the step out with it. Package-visible for tests.
      *
+     * @param contentHash the {@code contentHash} of the text the write produced; the error carries it too, since
+     *     the text IS on disk (#978); {@code null} leaves it out
      * @param step the adopted-module step; run exactly once
      * @param successResponse builds the success response from the step's result; not called when it failed
      * @return the response
      */
-    static String finishWrite(Supplier<AdoptedModuleState.Result> step,
+    static String finishWrite(String contentHash, Supplier<AdoptedModuleState.Result> step,
         Function<AdoptedModuleState.Result, String> successResponse)
     {
         AdoptedModuleState.Result moduleState = step.get();
         if (moduleState.failed())
         {
-            return ToolResult.errorAfterMutation(moduleState.failureMessage()).toJson();
+            return withWrittenHash(ToolResult.errorAfterMutation(moduleState.failureMessage()), contentHash).toJson();
         }
         return successResponse.apply(moduleState);
+    }
+
+    /**
+     * Adds the {@code contentHash} of the written text to an error that follows a committed write (#978): the
+     * module holds exactly that text, so the token is as true as after a success, and a caller can chain its
+     * next guarded edit on it.
+     *
+     * @param error the {@code errorAfterMutation} result
+     * @param contentHash the token of the written text, or {@code null} when it is not known
+     * @return {@code error}
+     */
+    private static ToolResult withWrittenHash(ToolResult error, String contentHash)
+    {
+        return contentHash == null ? error : error.put(CONTENT_HASH, contentHash);
     }
 
     /**
@@ -517,12 +1028,14 @@ public class WriteModuleSourceTool implements IMcpTool
      * @return a ready {@link ToolResult#error} JSON payload to return verbatim, or {@code null}
      *         when the guard passes (or is disabled)
      */
-    private static String checkExpectedHashGuard(WriteRequest req, IFile file, boolean fileExists)
+    private static String checkExpectedHashGuard(WriteRequest req, IFile file, boolean fileExists, String currentText)
         throws Exception
     {
+        // The text the plan already read, when given (replaceAll, local review of #999): the guard then vouches for the
+        // very text that is edited, not for a later read another writer could have changed in between.
         String currentTextForHash =
             (req.expectedHash != null && !req.expectedHash.isEmpty() && fileExists)
-                ? BslModuleUtils.readFileText(file).replace("\r\n", "\n") //$NON-NLS-1$ //$NON-NLS-2$
+                ? (currentText != null ? currentText : BslModuleUtils.readFileText(file)).replace("\r\n", "\n") //$NON-NLS-1$ //$NON-NLS-2$
                 : null;
         return evaluateExpectedHash(currentTextForHash, req.expectedHash, fileExists);
     }
@@ -543,22 +1056,35 @@ public class WriteModuleSourceTool implements IMcpTool
         {
             return err;
         }
-        if (req.source == null)
+        String methodsError = validateMethodsArguments(req);
+        if (methodsError != null)
         {
-            return ToolResult.error("source is required").toJson(); //$NON-NLS-1$
+            return ToolResult.error(methodsError).toJson();
         }
-        if (req.source.length() > MAX_SOURCE_LENGTH)
+        if (req.source == null && !req.isCopy() && !req.isDelete())
+        {
+            return ToolResult.error("source is required (or fromModulePath + methodNames to copy methods, " //$NON-NLS-1$
+                + "or mode=deleteMethods + methodNames to delete them)").toJson(); //$NON-NLS-1$
+        }
+        if (req.source != null && req.source.length() > MAX_SOURCE_LENGTH)
         {
             return ToolResult.error("source exceeds maximum allowed length (" + MAX_SOURCE_LENGTH + " characters)").toJson(); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         // Validate mode
         if (!MODE_REPLACE.equals(req.mode) && !MODE_APPEND.equals(req.mode)
-            && !MODE_SEARCH_REPLACE.equals(req.mode) && !isMethodTargetedMode(req.mode))
+            && !MODE_SEARCH_REPLACE.equals(req.mode) && !isMethodTargetedMode(req.mode) && !req.isDelete()
+            && !req.isReplaceAll())
         {
             return ToolResult.error("invalid mode '" + req.mode + "'. " + //$NON-NLS-1$ //$NON-NLS-2$
                 "Allowed: searchReplace, replace, append, replaceMethod, insertBefore, " + //$NON-NLS-1$
-                "insertAfter").toJson(); //$NON-NLS-1$
+                "insertAfter, deleteMethods, replaceAll").toJson(); //$NON-NLS-1$
+        }
+        if (req.isDelete() && (req.expectedHash == null || req.expectedHash.trim().isEmpty()))
+        {
+            return ToolResult.error("expectedHash is required for mode=deleteMethods. Read the module with " //$NON-NLS-1$
+                + "read_module_source and pass its contentHash - or, to finish a move, the fromContentHash " //$NON-NLS-1$
+                + "the copy answered.").toJson(); //$NON-NLS-1$
         }
 
         // Validate oldSource for searchReplace mode
@@ -566,6 +1092,14 @@ public class WriteModuleSourceTool implements IMcpTool
             && (req.oldSource == null || req.oldSource.isEmpty()))
         {
             return ToolResult.error("oldSource is required for searchReplace mode").toJson(); //$NON-NLS-1$
+        }
+        if (req.isReplaceAll())
+        {
+            String replaceAllError = validateReplaceAllArguments(req);
+            if (replaceAllError != null)
+            {
+                return ToolResult.error(replaceAllError).toJson();
+            }
         }
         if (isMethodTargetedMode(req.mode))
         {
@@ -579,6 +1113,72 @@ public class WriteModuleSourceTool implements IMcpTool
                     ". Read the module with read_module_source or read_method_source and pass " + //$NON-NLS-1$
                     "its contentHash.").toJson(); //$NON-NLS-1$
             }
+        }
+        return null;
+    }
+
+    /**
+     * The argument rules of a copy ({@code fromModulePath}) and of {@code mode=deleteMethods} (#978): each takes
+     * {@code methodNames} and no {@code source}; a copy runs only in a mode that adds methods; and
+     * {@code methodNames} means nothing to any other call, so it is refused there rather than ignored.
+     *
+     * @param req the parsed request
+     * @return the refusal message, or {@code null}
+     */
+    private static String validateMethodsArguments(WriteRequest req)
+    {
+        if (req.isCopy() && req.source != null)
+        {
+            return "source and fromModulePath are alternatives: pass exactly one way to supply the methods."; //$NON-NLS-1$
+        }
+        if (req.isDelete() && req.source != null)
+        {
+            return "mode=deleteMethods takes no source: it deletes the methods named in methodNames."; //$NON-NLS-1$
+        }
+        if (req.isCopy() && !MODE_APPEND.equals(req.mode) && !MODE_INSERT_BEFORE.equals(req.mode)
+            && !MODE_INSERT_AFTER.equals(req.mode) && !MODE_REPLACE.equals(req.mode))
+        {
+            return "fromModulePath supports mode append (the default), insertBefore, insertAfter, or replace of " //$NON-NLS-1$
+                + "a module that does not exist yet; got '" + req.mode + "'."; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (!req.isCopy() && !req.isDelete())
+        {
+            return req.methodNames == null ? null
+                : "methodNames applies only with fromModulePath (to copy methods) or mode=deleteMethods; mode=" //$NON-NLS-1$
+                    + req.mode + " takes source."; //$NON-NLS-1$
+        }
+        return BslMethodTransfer.validateNames(req.methodNames);
+    }
+
+    /**
+     * The argument rules of {@code mode=replaceAll} (#996): it takes {@code oldSource} and {@code source} (an empty
+     * {@code source} deletes the occurrences) and none of the arguments that address a method or guard a whole-file
+     * replace - they would be silently ignored otherwise. {@code methodNames} and {@code fromModulePath} are refused
+     * by {@link #validateMethodsArguments} already.
+     *
+     * @param req the parsed request
+     * @return the refusal message, or {@code null}
+     */
+    private static String validateReplaceAllArguments(WriteRequest req)
+    {
+        if (req.oldSource == null || req.oldSource.isEmpty())
+        {
+            return "oldSource is required for replaceAll mode: the fragment whose every whole-word occurrence is " //$NON-NLS-1$
+                + "replaced with source."; //$NON-NLS-1$
+        }
+        if (req.methodName != null && !req.methodName.isEmpty())
+        {
+            return "methodName does not apply to mode=replaceAll: it replaces every whole-word occurrence of " //$NON-NLS-1$
+                + "oldSource in the whole module. Drop methodName, or use mode=replaceMethod for one method."; //$NON-NLS-1$
+        }
+        if (req.expectedSource != null || req.overwrite)
+        {
+            return "expectedSource and overwrite apply only to mode=replace; mode=replaceAll is guarded by " //$NON-NLS-1$
+                + "expectedHash (the contentHash of your last read)."; //$NON-NLS-1$
+        }
+        if (req.oldSource.replace("\r\n", "\n").equals(req.source.replace("\r\n", "\n"))) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        {
+            return "oldSource and source are the same text: nothing to replace. Nothing was written."; //$NON-NLS-1$
         }
         return null;
     }
@@ -680,11 +1280,36 @@ public class WriteModuleSourceTool implements IMcpTool
     {
         final String error;
         final List<String> newLines;
+        /** mode=deleteMethods: the deleted methods as declared, and those still called (#978). */
+        final List<String> deletedMethods;
+        final List<String> stillCalled;
+        /** mode=replaceAll: how many occurrences were replaced, where, and what was left (#996). */
+        final BslWholeWordReplace.Result replaceAll;
 
         private NewLinesResult(String error, List<String> newLines)
         {
+            this(error, newLines, null, null, null);
+        }
+
+        private NewLinesResult(String error, List<String> newLines, List<String> deletedMethods,
+            List<String> stillCalled)
+        {
+            this(error, newLines, deletedMethods, stillCalled, null);
+        }
+
+        private NewLinesResult(String error, List<String> newLines, List<String> deletedMethods,
+            List<String> stillCalled, BslWholeWordReplace.Result replaceAll)
+        {
             this.error = error;
             this.newLines = newLines;
+            this.deletedMethods = deletedMethods;
+            this.stillCalled = stillCalled;
+            this.replaceAll = replaceAll;
+        }
+
+        static NewLinesResult replacedAll(BslWholeWordReplace.Result replaced)
+        {
+            return new NewLinesResult(null, splitSourceLines(replaced.newContent()), null, null, replaced);
         }
     }
 
@@ -702,8 +1327,20 @@ public class WriteModuleSourceTool implements IMcpTool
      *         when the caller must return that JSON payload, otherwise the lines to write
      */
     private NewLinesResult computeNewLines(WriteRequest req, IFile file, boolean fileExists,
-        List<String> originalLines) throws Exception
+        List<String> originalLines, String currentText) throws Exception
     {
+        if (req.copy != null)
+        {
+            MethodEditResult copied = applyCopy(originalLines, req.mode, req.methodName, req.copy.lines,
+                req.copy.methods);
+            return new NewLinesResult(copied.error, copied.newLines);
+        }
+        if (req.isDelete())
+        {
+            BslMethodTransfer.Result removed = BslMethodTransfer.remove(originalLines, req.methodNames);
+            return removed.failed() ? new NewLinesResult(ToolResult.error(removed.error).toJson(), null)
+                : new NewLinesResult(null, removed.lines, removed.methods, removed.stillCalled);
+        }
         String source = req.source;
         switch (req.mode)
         {
@@ -764,6 +1401,32 @@ public class WriteModuleSourceTool implements IMcpTool
                 return new NewLinesResult(null, splitSourceLines(sr.newContent));
             }
 
+            case MODE_REPLACE_ALL:
+            {
+                // The text and normalization searchReplace matches against (#996), so the spelling search_in_code
+                // finds is the spelling replaced. Under the modify rule this runs on the text the file holds then,
+                // and the count it reports is the count of that text.
+                String oldText = req.oldSource.replace("\r\n", "\n"); //$NON-NLS-1$ //$NON-NLS-2$
+                // source is normalized by now (writeModule): an en dash sent for a hyphen is a hyphen again, and
+                // replacing a text with itself would report replacements and rewrite nothing (#999 review).
+                if (oldText.equals(source))
+                {
+                    return new NewLinesResult(ToolResult.error("source equals oldSource once " //$NON-NLS-1$
+                        + "normalizeInvalidCharacters replaced the forbidden characters in source (the dashes, the " //$NON-NLS-1$
+                        + "no-break space and the soft hyphen): nothing to replace. Nothing was written. Pass " //$NON-NLS-1$
+                        + "normalizeInvalidCharacters=false to write the characters as sent.").toJson(), null); //$NON-NLS-1$
+                }
+                // The text planWrite read (local review of #999): the match and the "nothing would change" verdict
+                // are judged on ONE read, never on two reads another writer could save between.
+                String currentContent = currentText.replace("\r\n", "\n"); //$NON-NLS-1$ //$NON-NLS-2$
+                BslWholeWordReplace.Result replaced = BslWholeWordReplace.replace(currentContent, oldText, source);
+                if (!replaced.replaced())
+                {
+                    return new NewLinesResult(ToolResult.error(replaced.failureMessage()).toJson(), null);
+                }
+                return NewLinesResult.replacedAll(replaced);
+            }
+
             case MODE_REPLACE_METHOD:
             case MODE_INSERT_BEFORE:
             case MODE_INSERT_AFTER:
@@ -805,6 +1468,77 @@ public class WriteModuleSourceTool implements IMcpTool
     static MethodEditResult applyMethodTargetedEdit(List<String> originalLines, String mode,
         String methodName, String source)
     {
+        Anchor anchor = findAnchor(originalLines, methodName);
+        if (anchor.error != null)
+        {
+            return new MethodEditResult(anchor.error, null);
+        }
+        return applyToAnchor(originalLines, mode, methodName, source, anchor.moduleSpans, anchor.target);
+    }
+
+    /**
+     * The splice of a copy (#978): the copied methods' lines go into the target as one block - at the end
+     * ({@code append}), next to an anchor ({@code insertBefore}/{@code insertAfter}, the anchor found by the
+     * rules of the method-targeted modes) or as the whole of a new module ({@code replace}) - with one blank
+     * line at each occupied junction. Refused when the target already declares a copied name.
+     *
+     * @param originalLines the target's lines (empty for a new module)
+     * @param mode the copy's mode
+     * @param methodName the anchor, for the insert modes
+     * @param methodLines the copied methods' lines
+     * @param methods the copied methods' declared names
+     * @return the new lines or the refusal
+     */
+    static MethodEditResult applyCopy(List<String> originalLines, String mode, String methodName,
+        List<String> methodLines, List<String> methods)
+    {
+        int insertionLine = originalLines.size();
+        if (MODE_INSERT_BEFORE.equals(mode) || MODE_INSERT_AFTER.equals(mode))
+        {
+            Anchor anchor = findAnchor(originalLines, methodName);
+            if (anchor.error != null)
+            {
+                return new MethodEditResult(anchor.error, null);
+            }
+            insertionLine = MODE_INSERT_BEFORE.equals(mode) ? anchor.target.startLine : anchor.target.endLine + 1;
+        }
+        String conflict = BslMethodTransfer.targetConflict(originalLines, methods);
+        if (conflict != null)
+        {
+            return methodEditError(conflict);
+        }
+        if (MODE_REPLACE.equals(mode))
+        {
+            return new MethodEditResult(null, new ArrayList<>(methodLines));
+        }
+        return new MethodEditResult(null, BslModuleUtils.insertMethodLines(originalLines, insertionLine, methodLines));
+    }
+
+    /** The anchor of a method-targeted write: the module's spans and the one span named by methodName. */
+    private static final class Anchor
+    {
+        final String error;
+        final List<BslModuleUtils.MethodSpan> moduleSpans;
+        final BslModuleUtils.MethodSpan target;
+
+        Anchor(String error, List<BslModuleUtils.MethodSpan> moduleSpans, BslModuleUtils.MethodSpan target)
+        {
+            this.error = error;
+            this.moduleSpans = moduleSpans;
+            this.target = target;
+        }
+    }
+
+    private static Anchor anchorError(String message)
+    {
+        return new Anchor(ToolResult.error(message).toJson(), null, null);
+    }
+
+    /**
+     * Finds the one complete declaration named {@code methodName} in an addressable module, or the refusal.
+     */
+    private static Anchor findAnchor(List<String> originalLines, String methodName)
+    {
         // A declaration this line scanner cannot ADDRESS - the keyword alone on its line, or the
         // keyword and a name with the parenthesis on the next - makes every answer below unsafe
         // rather than merely incomplete: the method is invisible, so a span can run straight
@@ -813,7 +1547,7 @@ public class WriteModuleSourceTool implements IMcpTool
         BslModuleUtils.Unaddressable hidden = BslModuleUtils.unaddressable(originalLines);
         if (hidden != null)
         {
-            return methodEditError("the module has " + hidden.what + " at line " //$NON-NLS-1$ //$NON-NLS-2$
+            return anchorError("the module has " + hidden.what + " at line " //$NON-NLS-1$ //$NON-NLS-2$
                 + (hidden.line + 1) + " ('" + originalLines.get(hidden.line).trim() //$NON-NLS-1$ //$NON-NLS-2$
                 + "'), which method-targeted modes cannot address: " + hidden.fix //$NON-NLS-1$
                 + ", or edit with mode 'searchReplace'."); //$NON-NLS-1$
@@ -824,7 +1558,7 @@ public class WriteModuleSourceTool implements IMcpTool
         int crowded = BslModuleUtils.secondDeclarationOnLine(originalLines);
         if (crowded >= 0)
         {
-            return methodEditError("the module declares two methods on line " + (crowded + 1) //$NON-NLS-1$
+            return anchorError("the module declares two methods on line " + (crowded + 1) //$NON-NLS-1$
                 + " ('" + originalLines.get(crowded).trim() //$NON-NLS-1$
                 + "'), which method-targeted modes cannot address: one declaration per line. " //$NON-NLS-1$
                 + "Split them, or edit with mode 'searchReplace'."); //$NON-NLS-1$
@@ -841,22 +1575,31 @@ public class WriteModuleSourceTool implements IMcpTool
         }
         if (targets.isEmpty())
         {
-            return methodEditError("methodName '" + methodName + //$NON-NLS-1$
+            return anchorError("methodName '" + methodName + //$NON-NLS-1$
                 "' was not found in the current module. Read it again with " + //$NON-NLS-1$
                 "read_module_source or read_method_source and retry."); //$NON-NLS-1$
         }
         if (targets.size() > 1)
         {
-            return methodEditError("methodName '" + methodName + "' is ambiguous: " + //$NON-NLS-1$ //$NON-NLS-2$
+            return anchorError("methodName '" + methodName + "' is ambiguous: " + //$NON-NLS-1$ //$NON-NLS-2$
                 targets.size() + " declarations exist in the current module. " + //$NON-NLS-1$
                 "Method-targeted writes do not choose between preprocessor branches."); //$NON-NLS-1$
         }
         if (!targets.get(0).complete)
         {
-            return methodEditError("methodName '" + methodName + //$NON-NLS-1$
+            return anchorError("methodName '" + methodName + //$NON-NLS-1$
                 "' has no matching method terminator in the current module. " + //$NON-NLS-1$
                 "The target span is incomplete, so no write was performed."); //$NON-NLS-1$
         }
+        return new Anchor(null, moduleSpans, targets.get(0));
+    }
+
+    /**
+     * The method-targeted splice of {@code source} at an anchor already found by {@link #findAnchor}.
+     */
+    private static MethodEditResult applyToAnchor(List<String> originalLines, String mode, String methodName,
+        String source, List<BslModuleUtils.MethodSpan> moduleSpans, BslModuleUtils.MethodSpan anchorSpan)
+    {
 
         List<String> sourceLines = splitSourceLines(source);
         // The same guard on the PAYLOAD: a declaration the scanner cannot address hides inside an
@@ -921,7 +1664,7 @@ public class WriteModuleSourceTool implements IMcpTool
             }
         }
 
-        BslModuleUtils.MethodSpan target = targets.get(0);
+        BslModuleUtils.MethodSpan target = anchorSpan;
         if (MODE_REPLACE_METHOD.equals(mode) && incoming.isFunction != target.isFunction)
         {
             // Refused for the same reason a rename is: matching the NAME is not the whole
@@ -934,7 +1677,8 @@ public class WriteModuleSourceTool implements IMcpTool
                 + (target.isFunction ? "a Function" : "a Procedure") //$NON-NLS-1$ //$NON-NLS-2$
                 + " in the module. replaceMethod does not change the kind of a method, because " //$NON-NLS-1$
                 + "callers of a Function consume its return value; declare the same kind in " //$NON-NLS-1$
-                + "source, or change the kind deliberately with delete plus insert."); //$NON-NLS-1$
+                + "source, or change the kind deliberately: delete the method with mode=deleteMethods, then add " //$NON-NLS-1$
+                + "the new one with insertBefore, insertAfter or append."); //$NON-NLS-1$
         }
         List<String> result;
         if (MODE_REPLACE_METHOD.equals(mode))
@@ -998,13 +1742,31 @@ public class WriteModuleSourceTool implements IMcpTool
      * (pure string building — no side effects), preserving the exact keys and the
      * {@code linesBefore}/{@code newFile} branch the inline flow used. Package-visible for tests.
      *
+     * @param contentHash the {@code contentHash} of the text the write produced, see {@link #writeFile}
      * @param moduleState the adopted-module step's result: a key and, when it has one, a paragraph
      *     for the module of an adopted object; nothing for any other module
      * @return the wrapped success response
      */
     static String buildSuccessResponse(String projectName, String modulePath, String mode, // NOSONAR the response's facts; a parameter object would only rename them
         boolean skipSyntaxCheck, List<String> newLines, boolean fileExists, int totalOriginal,
-        String normalizedCharacters, AdoptedModuleState.Result moduleState)
+        String contentHash, String normalizedCharacters, AdoptedModuleState.Result moduleState)
+    {
+        return buildSuccessResponse(projectName, modulePath, mode, skipSyntaxCheck, newLines, fileExists,
+            totalOriginal, contentHash, normalizedCharacters, moduleState, null);
+    }
+
+    /**
+     * {@link #buildSuccessResponse(String, String, String, boolean, List, boolean, int, String, String,
+     * AdoptedModuleState.Result)} with what a copy or a deletion of methods reports (#978): a copy names the
+     * methods, its source and the source's token ({@code fromContentHash}), and says how to finish a move; a
+     * deletion names the methods and warns about the calls left behind; a repeated method name that does not
+     * block the write joins the frontmatter's {@code warning} (#987). Package-visible for tests.
+     *
+     * @param facts the copy's, deletion's or repeated-name facts, or {@code null} when there are none
+     */
+    static String buildSuccessResponse(String projectName, String modulePath, String mode, // NOSONAR the response's facts; a parameter object would only rename them
+        boolean skipSyntaxCheck, List<String> newLines, boolean fileExists, int totalOriginal,
+        String contentHash, String normalizedCharacters, AdoptedModuleState.Result moduleState, MethodFacts facts)
     {
         FrontMatter fm = FrontMatter.create()
             .put("tool", NAME) //$NON-NLS-1$
@@ -1023,6 +1785,44 @@ public class WriteModuleSourceTool implements IMcpTool
         {
             fm.put("newFile", true); //$NON-NLS-1$
         }
+        // The token of the text just written - the one read_module_source reports for it - so the next guarded
+        // edit carries it as expectedHash without reading the module again (#978).
+        if (contentHash != null)
+        {
+            fm.put(CONTENT_HASH, contentHash);
+        }
+        if (facts != null && facts.copiedMethods != null)
+        {
+            fm.putList("copiedMethods", facts.copiedMethods) //$NON-NLS-1$
+                .put(FROM_MODULE_PATH, facts.fromModulePath)
+                .put("fromContentHash", facts.fromContentHash); //$NON-NLS-1$
+        }
+        if (facts != null && facts.deletedMethods != null)
+        {
+            fm.putList("deletedMethods", facts.deletedMethods); //$NON-NLS-1$
+        }
+        // A replaceAll (#996) names how many occurrences it replaced and on which lines of the text before it.
+        if (facts != null && facts.replaceAll != null)
+        {
+            fm.put("replacements", facts.replaceAll.replacements()) //$NON-NLS-1$
+                .put("replacedLines", facts.replaceAll.replacedLinesText()); //$NON-NLS-1$
+        }
+        List<String> warnings = new ArrayList<>();
+        if (facts != null && !facts.stillCalled.isEmpty())
+        {
+            warnings.add("Deleted methods are still called in this module (a text check of unqualified calls " //$NON-NLS-1$
+                + "outside comments and strings): " + String.join(", ", facts.stillCalled) //$NON-NLS-1$ //$NON-NLS-2$
+                + ". Qualify the calls with the new module's name or move the callers too."); //$NON-NLS-1$
+        }
+        if (facts != null && facts.duplicateWarning != null)
+        {
+            warnings.add(facts.duplicateWarning);
+        }
+        String caseVariants = facts == null || facts.replaceAll == null ? null : facts.replaceAll.caseVariantWarning();
+        if (caseVariants != null)
+        {
+            warnings.add(caseVariants);
+        }
 
         // Only when something WAS replaced: a key that is always there would be noise on every
         // write, while a silent replacement would leave the caller believing it wrote what it
@@ -1030,6 +1830,18 @@ public class WriteModuleSourceTool implements IMcpTool
         if (normalizedCharacters != null)
         {
             fm.put("normalizedCharacters", normalizedCharacters); //$NON-NLS-1$
+        }
+        // Written as asked (the platform accepts it), but EDT's model will miss what follows.
+        String overlap = BslSyntaxChecker.directiveOverlap(newLines);
+        if (overlap != null)
+        {
+            warnings.add(0, overlap + ". The 1C platform accepts overlapping #Region and #If blocks, " //$NON-NLS-1$
+                + "but EDT cannot parse them: EDT-based tools will not see the methods after this point. " //$NON-NLS-1$
+                + "Nest the blocks inside each other."); //$NON-NLS-1$
+        }
+        if (!warnings.isEmpty())
+        {
+            fm.put("warning", String.join(" ", warnings)); //$NON-NLS-1$ //$NON-NLS-2$
         }
 
         // The same rule: only for the module of an object adopted into an extension (#711) - every
@@ -1042,8 +1854,14 @@ public class WriteModuleSourceTool implements IMcpTool
             fm.put(AdoptedModuleState.FRONT_MATTER_KEY, extensionState);
         }
         String note = moduleState.bodySentence();
-        return fm.wrapContent(note == null ? "File written successfully" //$NON-NLS-1$
-            : "File written successfully\n\n" + note); //$NON-NLS-1$
+        String body = note == null ? "File written successfully" //$NON-NLS-1$
+            : "File written successfully\n\n" + note; //$NON-NLS-1$
+        if (facts != null && facts.copiedMethods != null)
+        {
+            body += "\n\nTo finish a move, call mode=deleteMethods on fromModulePath with the same methodNames and " //$NON-NLS-1$
+                + "expectedHash=" + facts.fromContentHash + "."; //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        return fm.wrapContent(body);
     }
 
     /**
@@ -1258,6 +2076,25 @@ public class WriteModuleSourceTool implements IMcpTool
         // Determine default moduleType based on metadata type
         moduleType = resolveDefaultModuleType(moduleType, englishType);
 
+        EClass ownerClass = (EClass)MdClassPackage.eINSTANCE.getEClassifier(englishType);
+        boolean supported = switch (moduleType)
+        {
+            case "FormModule" -> "CommonForm".equals(englishType) //$NON-NLS-1$ //$NON-NLS-2$
+                || ownerClass.getEStructuralFeature("forms") instanceof EReference; //$NON-NLS-1$
+            case MODULE_TYPE_COMMAND_MODULE -> "CommonCommand".equals(englishType) //$NON-NLS-1$
+                || ownerClass.getEStructuralFeature("commands") instanceof EReference; //$NON-NLS-1$
+            case MODULE_TYPE_MODULE -> "CommonForm".equals(englishType) //$NON-NLS-1$
+                || AdoptedModuleState.moduleFeature(ownerClass, moduleType) != null;
+            case MODULE_TYPE_OBJECT_MODULE, "ManagerModule", "RecordSetModule" -> //$NON-NLS-1$ //$NON-NLS-2$
+                AdoptedModuleState.moduleFeature(ownerClass, moduleType) != null;
+            default -> true;
+        };
+        if (!supported)
+        {
+            return ToolResult.error("metadata type '" + typePart + "' has no " + moduleType //$NON-NLS-1$ //$NON-NLS-2$
+                + ". Use list_modules and pass an existing modulePath.").toJson(); //$NON-NLS-1$
+        }
+
         // Build path based on moduleType
         switch (moduleType)
         {
@@ -1308,7 +2145,7 @@ public class WriteModuleSourceTool implements IMcpTool
      * Returns the supplied {@code moduleType} unchanged when it is non-empty,
      * otherwise derives the default module type from the English metadata type:
      * {@code Module} for module-bearing singletons (CommonModule, CommonForm,
-     * WebService, HTTPService), {@code CommandModule} for CommonCommand, and
+     * WebService, HTTPService, Bot, IntegrationService, WebSocketClient), {@code CommandModule} for CommonCommand, and
      * {@code ObjectModule} for everything else.
      *
      * @param moduleType the requested module type (may be {@code null} or empty)
@@ -1324,7 +2161,10 @@ public class WriteModuleSourceTool implements IMcpTool
         if ("CommonModule".equals(englishType) //$NON-NLS-1$
             || "CommonForm".equals(englishType) //$NON-NLS-1$
             || "WebService".equals(englishType) //$NON-NLS-1$
-            || "HTTPService".equals(englishType)) //$NON-NLS-1$
+            || "HTTPService".equals(englishType) //$NON-NLS-1$
+            || "Bot".equals(englishType) //$NON-NLS-1$
+            || "IntegrationService".equals(englishType) //$NON-NLS-1$
+            || "WebSocketClient".equals(englishType)) //$NON-NLS-1$
         {
             return MODULE_TYPE_MODULE;
         }
@@ -1459,20 +2299,89 @@ public class WriteModuleSourceTool implements IMcpTool
     }
 
     /**
-     * Writes lines to the file, preserving BOM if needed. {@code lineDelimiter} is the module's own
-     * separator (see {@link #resolveLineDelimiter}); {@code lines} are LF-normalized (no {@code \r}),
-     * so joining with it re-applies the file's convention verbatim.
+     * The text {@link #writeFile} writes for these lines: joined with the file's own delimiter and ending with it.
+     * A module with no lines stays empty (#978: deleting every method): a lone delimiter would be one empty line to
+     * every reader, against linesAfter=0. Package-visible for tests.
      */
-    private void writeFile(IFile file, List<String> lines, boolean withBom,
-        boolean fileExists, String lineDelimiter) throws Exception
+    static String fileContent(List<String> lines, String lineDelimiter)
     {
         String content = String.join(lineDelimiter, lines);
-
-        // Ensure file ends with a newline, in the file's own delimiter
-        if (!content.endsWith(lineDelimiter))
+        if (!lines.isEmpty() && !content.endsWith(lineDelimiter))
         {
             content += lineDelimiter;
         }
+        return content;
+    }
+
+    /**
+     * The length of {@link #fileContent} for these lines, computed from the line lengths without building the text
+     * (#999 review): the size bound of a replaceAll runs in both planning passes. Package-visible for tests.
+     */
+    static long fileContentLength(List<String> lines, String lineDelimiter)
+    {
+        if (lines.isEmpty())
+        {
+            return 0;
+        }
+        long length = (long) lineDelimiter.length() * (lines.size() - 1);
+        for (String line : lines)
+        {
+            length += line.length();
+        }
+        // The joined text ends with the delimiter exactly when its last delimiter.length() characters spell it; they
+        // lie in the last line, or in the delimiter before it and the last line.
+        String last = lines.get(lines.size() - 1);
+        String tail = lines.size() > 1 && last.length() < lineDelimiter.length() ? lineDelimiter + last : last;
+        return tail.endsWith(lineDelimiter) ? length : length + lineDelimiter.length();
+    }
+
+    /**
+     * Whether {@link #fileContent} of these lines equals {@code text}, decided without building it (local review of
+     * #999): the lengths first, then the lines and delimiters in place, stopping at the first difference.
+     * Package-visible for tests.
+     */
+    static boolean writesExactly(List<String> lines, String lineDelimiter, String text)
+    {
+        if (fileContentLength(lines, lineDelimiter) != text.length())
+        {
+            return false;
+        }
+        int offset = 0;
+        for (int index = 0; index < lines.size(); index++)
+        {
+            String line = lines.get(index);
+            if (!text.startsWith(line, offset))
+            {
+                return false;
+            }
+            offset += line.length();
+            if (index < lines.size() - 1)
+            {
+                if (!text.startsWith(lineDelimiter, offset))
+                {
+                    return false;
+                }
+                offset += lineDelimiter.length();
+            }
+        }
+        // The lengths agree, so what is left is the final delimiter the writer adds, or nothing.
+        return offset == text.length() || text.startsWith(lineDelimiter, offset);
+    }
+
+    /**
+     * Writes lines to the file, preserving BOM if needed. {@code lineDelimiter} is the module's own
+     * separator (see {@link #resolveLineDelimiter}); {@code lines} are LF-normalized (no {@code \r}),
+     * so joining with it re-applies the file's convention verbatim.
+     *
+     * @return the {@code contentHash} of the text written (#978): {@link ContentHash#of} over the written
+     *     bytes decoded as read_module_source decodes the file ({@link BslModuleUtils#decodeWrittenText}). It
+     *     is computed from the bytes written, not by reading the file again: a re-read could vouch for a later
+     *     write by someone else, which the next guarded edit must refuse.
+     */
+    private String writeFile(IFile file, List<String> lines, boolean withBom,
+        boolean fileExists, String lineDelimiter) throws Exception
+    {
+        String content = fileContent(lines, lineDelimiter);
 
         byte[] contentBytes = content.getBytes("UTF-8"); //$NON-NLS-1$
 
@@ -1500,6 +2409,10 @@ public class WriteModuleSourceTool implements IMcpTool
             createParentFolders(file);
             file.create(stream, true, null);
         }
+        // The written bytes decoded the way read_module_source decodes the file (a leading EF BB BF is a BOM even
+        // when the text itself began with U+FEFF; without a BOM the file's declared charset applies), so the token
+        // is the one a read reports, whatever the charset - and still not taken from a second read of the file.
+        return ContentHash.of(BslModuleUtils.decodeWrittenText(file, output));
     }
 
     /**

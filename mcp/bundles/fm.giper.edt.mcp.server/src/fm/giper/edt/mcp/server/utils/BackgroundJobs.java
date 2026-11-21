@@ -396,6 +396,33 @@ public final class BackgroundJobs implements AutoCloseable
         }
 
         /**
+         * Whether a cancellation has already won this job while its worker is still unwinding -
+         * the state in which {@link #tryCommit()} would refuse. Asked by work that never commits,
+         * because it stays abandonable throughout, before it starts a step that would otherwise
+         * run after its cancelled outcome was decided. Never commits anything.
+         *
+         * @return {@code true} once a cancellation of this job was accepted
+         */
+        default boolean isCancellationRequested()
+        {
+            return false;
+        }
+
+        /**
+         * Hands in the result of a committed cancellation that settled WITHOUT one - an owner's handler
+         * that gave up waiting and answered {@link CommittedCancellation#stopInitiated} with a
+         * {@code null} result - so the job, once cancelled, still carries the work's own account of what
+         * the stop left behind. Does nothing in every other case: before any cancellation, when the
+         * cancellation already carries a result, or for a reporter that is not registry-backed.
+         *
+         * @param result the work's report of the stopped run
+         */
+        default void cancellationResult(Object result)
+        {
+            // Not registry-backed: nothing to settle.
+        }
+
+        /**
          * What is left of the job's TOTAL budget, measured from submission.
          * <p>
          * The budget starts when the job is submitted, not when a worker picks it up, and the
@@ -716,7 +743,21 @@ public final class BackgroundJobs implements AutoCloseable
         return start(owningTool, timeoutMs, maxRunning, initialProgress, null, work);
     }
 
-    private JobSnapshot start(String owningTool, long timeoutMs, int maxRunning,
+    /**
+     * {@link #start(String, long, int, String, JobWork)} for an owner that also declares a
+     * committed-work cancellation capability: admitted only while fewer than {@code maxRunning}
+     * jobs run, and stoppable after its commit through {@code cancellation}.
+     *
+     * @param owningTool MCP tool that creates and owns the job
+     * @param timeoutMs total job budget in milliseconds
+     * @param maxRunning admit only while strictly fewer jobs are running
+     * @param initialProgress first domain-specific progress message
+     * @param cancellation owner-declared committed-work cancellation capability, or {@code null}
+     * @param work work to execute off the caller thread
+     * @return the initial snapshot, or {@code null} when the running limit is reached
+     * @throws RejectedExecutionException when the registry is stopped or full
+     */
+    public JobSnapshot start(String owningTool, long timeoutMs, int maxRunning,
         String initialProgress, CancellationCapability cancellation, JobWork work)
     {
         if (owningTool == null || owningTool.isBlank())
@@ -821,6 +862,32 @@ public final class BackgroundJobs implements AutoCloseable
             record = jobs.get(jobId);
         }
         return record != null ? record.snapshot() : null;
+    }
+
+    /**
+     * The jobs whose status is {@link Status#RUNNING}, oldest first (admission order). The records
+     * are collected under the registry lock and snapshotted outside it, as {@link #get} does, so a
+     * reader never holds the registry while it waits on a record.
+     *
+     * @return snapshots of the running jobs; never {@code null}
+     */
+    public List<JobSnapshot> running()
+    {
+        List<JobRecord> records;
+        synchronized (jobsLock)
+        {
+            records = new ArrayList<>(jobs.values());
+        }
+        List<JobSnapshot> running = new ArrayList<>();
+        for (JobRecord record : records)
+        {
+            JobSnapshot snapshot = record.snapshot();
+            if (snapshot.getStatus() == Status.RUNNING)
+            {
+                running.add(snapshot);
+            }
+        }
+        return running;
     }
 
     /**
@@ -1035,7 +1102,6 @@ public final class BackgroundJobs implements AutoCloseable
      * Publishes a failure for any Throwable raised by the work, including after commit.
      * Errors are logged and rethrown after recording the failure; existing terminal and
      * cancellation decisions remain authoritative.
-     * This rule must migrate to the MCP Tasks store when #338 lands.
      */
     private static void runWork(JobRecord record, long timeoutMs, JobWork work)
     {
@@ -1060,9 +1126,21 @@ public final class BackgroundJobs implements AutoCloseable
                 }
 
                 @Override
+                public boolean isCancellationRequested()
+                {
+                    return record.isCancellationRequested();
+                }
+
+                @Override
                 public long remainingMillis()
                 {
                     return record.remainingMillis(timeoutMs);
+                }
+
+                @Override
+                public void cancellationResult(Object result)
+                {
+                    record.lateCancellationResult(result);
                 }
             });
             record.complete(result);
@@ -1234,6 +1312,27 @@ public final class BackgroundJobs implements AutoCloseable
             }
             committed = true;
             return true;
+        }
+
+        synchronized boolean isCancellationRequested()
+        {
+            return cancellationRequested;
+        }
+
+        /** See {@link ProgressReporter#cancellationResult}: fills a committed cancellation's missing result. */
+        synchronized void lateCancellationResult(Object late)
+        {
+            boolean committedStop = cancellationOutcome == CancellationOutcome.TERMINATED
+                || cancellationOutcome == CancellationOutcome.TERMINATION_REQUESTED;
+            if (late == null || !cancellationRequested || !committedStop || cancellationResult != null)
+            {
+                return;
+            }
+            cancellationResult = late;
+            if (status == Status.CANCELLED && result == null)
+            {
+                result = late;
+            }
         }
 
         synchronized void setWorkFuture(Future<?> future)

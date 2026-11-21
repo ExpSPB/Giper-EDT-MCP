@@ -110,7 +110,7 @@ public final class Toolsets
         define(TESTING, "Testing",
             "YAXUnit unit testing, 1C:Workmate assistance, and shared background-job polling."); //$NON-NLS-1$
         define(PROFILING, "Profiling",
-            "Performance profiling: start/stop a measurement and read the results."); //$NON-NLS-1$
+            "Performance profiling and 1C technological logs: capture, inspect, compare and exchange."); //$NON-NLS-1$
         define(FORMS, "Forms",
             "Forms: layout snapshot, form screenshot, template screenshot, and structural " //$NON-NLS-1$
                 + "validation of a form model."); //$NON-NLS-1$
@@ -165,7 +165,8 @@ public final class Toolsets
             "get_job_status", "cancel_job"); //$NON-NLS-1$ //$NON-NLS-2$
 
         assign(PROFILING,
-            "start_profiling", "stop_profiling", "get_profiling_results"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            "get_tech_log", "manage_tech_log", //$NON-NLS-1$ //$NON-NLS-2$
+            "start_profiling", "stop_profiling", "get_profiling_results", "manage_profiling_results"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 
         assign(FORMS,
             "get_form_layout_snapshot", "get_form_screenshot", "get_template_screenshot", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -300,6 +301,17 @@ public final class Toolsets
     static final String ENV_PROGRESSIVE_DISCLOSURE = "EDT_MCP_PROGRESSIVE_DISCLOSURE"; //$NON-NLS-1$
 
     /**
+     * Whether {@link #ENV_PROGRESSIVE_DISCLOSURE} is set, so it wins over the stored preference.
+     *
+     * @return {@code true} if the environment variable decides disclosure for this session
+     */
+    public static boolean hasProgressiveDisclosureOverride()
+    {
+        String env = System.getenv(ENV_PROGRESSIVE_DISCLOSURE);
+        return env != null && !env.isBlank();
+    }
+
+    /**
      * Whether progressive tool disclosure is enabled. The {@link #ENV_PROGRESSIVE_DISCLOSURE}
      * environment variable wins when set; otherwise the
      * {@link PreferenceConstants#PREF_PROGRESSIVE_DISCLOSURE} preference is read.
@@ -310,10 +322,9 @@ public final class Toolsets
      */
     public static boolean isProgressiveDisclosureEnabled()
     {
-        String env = System.getenv(ENV_PROGRESSIVE_DISCLOSURE);
-        if (env != null && !env.isBlank())
+        if (hasProgressiveDisclosureOverride())
         {
-            String v = env.trim();
+            String v = System.getenv(ENV_PROGRESSIVE_DISCLOSURE).trim();
             return "true".equalsIgnoreCase(v) || "1".equals(v) || "yes".equalsIgnoreCase(v); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         }
         Activator activator = Activator.getDefault();

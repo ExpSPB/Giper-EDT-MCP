@@ -8,19 +8,18 @@ Start a new EDT configuration, extension, or external-objects project. Parameter
 | projectKind | yes | string (one of: configuration, extension, externalObjects) | Kind of project to create (required): 'configuration' = standalone 1C configuration; 'extension' = configuration extension bound to a base project; 'externalObjects' = external data processors/reports project. |
 | name | yes | string | Name of the new Configuration object (required). For configuration/extension: the programmatic Configuration name. For externalObjects: used as the default project name (no Configuration object exists). Must be a valid 1C identifier: starts with a letter or underscore, then letters, digits and underscores only (Cyrillic allowed). Also used as the default EDT project name if projectName is not supplied. |
 | projectName | — | string | EDT workspace project name to create. Default: extension -> '<baseProjectName>.<name>'; configuration/externalObjects -> 'name'. |
-| version | — | string | Platform version string, e.g. '8.3.27' (configuration and externalObjects only; for extension: REJECTED — version is always inherited from the base configuration). Default: base runtime when bound, otherwise Version.LATEST; must match the base. |
-| externalObject | — | string | Optional root to seed for projectKind=externalObjects: 'ExternalDataProcessor.<Name>' or 'ExternalReport.<Name>'; the TYPE token may be English or Russian and is not normalized; Name is a programmatic identifier whose 'ё'/'Ё' is normalized by default according to normalizeYo. Omit for an empty project; REJECTED for other project kinds. |
-| normalizeYo | — | boolean | Normalize the Russian letter 'ё'->'е' / 'Ё'->'Е' in the seeded externalObject root NAME (default true). 'ё' in a Name is flagged by the 1C standard mdo-ru-name-unallowed-letter, so normalizing on input stores a compliant name. Set false to keep 'ё' exactly as supplied. The TYPE token is never normalized. |
-| baseProjectName | — | string | Name of the BASE configuration EDT project (required for extension; optional for externalObjects; REJECTED for configuration). Must be an existing, open V8 configuration project. Use list_projects to find it. |
+| version | — | string | Platform version, e.g. '8.3.27'; default: the base runtime when bound, else the latest; must match the base. REJECTED for an extension (inherited from the base). |
+| externalObject | — | string | externalObjects only (REJECTED otherwise): the root to seed, 'ExternalDataProcessor.<Name>' or 'ExternalReport.<Name>' (type token English or Russian); omit for an empty project. |
+| normalizeYo | — | boolean | Default true: stores 'ё' / 'Ё' as 'е' / 'Е' in the seeded externalObject root Name (never in the type token); false keeps 'ё'. |
+| baseProjectName | — | string | The open BASE configuration project (see list_projects): required for extension, optional for externalObjects, REJECTED for configuration. |
 | prefix | — | string | NamePrefix for the extension (extension only; REJECTED for other kinds). Default: empty string. The wizard generates a value like 'Ext1_'; pass an explicit value or omit for empty. |
 | purpose | — | string (one of: Customization, AddOn, Patch) | Extension purpose (extension only; REJECTED for other kinds). Default: Customization. Customization = user adaptation; AddOn = add-on functionality; Patch = hotfix. |
 | compatibilityMode | — | string | Optional extension compatibility-mode string matching a CompatibilityMode enum literal (e.g. 'Version8_3_24'); omitted or empty = the base configuration's compatibility mode, the one EDT's new-extension wizard always uses. Unknown values are rejected, and so is 8.3.13 or lower over a base above 8.3.13. Extension only; REJECTED for other kinds. |
 | synonym | — | string | Human-readable synonym for the Configuration (configuration and extension only; REJECTED for externalObjects). Defaults to the 'name' value if omitted. |
 | comment | — | string | Optional free-text comment set on the Configuration (configuration and extension only; REJECTED for externalObjects). |
-| scriptVariant | — | string (one of: Russian, English) | Script variant (Russian or English). configuration: sets the Configuration scriptVariant and default Language code (default Russian). externalObjects: applied post-create via setScriptVariant (non-fatal on failure). extension: REJECTED — scriptVariant is always inherited from the base configuration. |
+| scriptVariant | — | string (one of: Russian, English) | configuration: the script variant and default language (default Russian); externalObjects: applied after creation (a failure there does not fail the create); extension: REJECTED (inherited from the base). |
 | standardChecks | — | boolean | Enable 1C:Standards BSL checks for the new project (default true). Applied to all kinds only when com.e1c.v8codestyle is installed; ignored otherwise. |
 | commonChecks | — | boolean | Enable common (project-level) BSL checks for the new project (default true). Applied to all kinds only when com.e1c.v8codestyle is installed; ignored otherwise. |
-| autoSortTopObjects | — | boolean | Reserved for future use: auto-sort top-level metadata objects. Accepted but not yet applied in this release (see codestyle.autoSortNote in the response). |
 
 ## Guide
 Creates a new 1C project in the EDT workspace. The `projectKind` parameter selects which
@@ -58,9 +57,6 @@ The `name` must not already exist as a workspace project (the tool rejects dupli
   applied when `com.e1c.v8codestyle` is installed; otherwise ignored.
 - **commonChecks** (optional, default `true`): enable common project-level BSL checks.
   Same condition as `standardChecks`.
-- **autoSortTopObjects** (optional): accepted for API stability but **not yet applied** in
-  this release. The response carries `codestyle.autoSortNote` to explain this.
-
 ### configuration kind
 
 - **version** (optional): platform version string, e.g. `'8.3.27'`. Default: `Version.LATEST`.
@@ -279,7 +275,7 @@ On success the response includes:
   project's derived data: `list_projects` may still report it `building` for a while.
 - `message` — for an extension: how its root was built, what was not confirmed (its root
   file, its command interface files), and the wizard's default role this tool does not create.
-- `codestyle` — `{applied: bool, note: string, autoSortNote: string}` reporting the
+- `codestyle` — `{applied: bool, note: string}` reporting the
   v8codestyle preference write result.
 - `synonymNote` — present only when the synonym (configuration/extension) could not be
   applied (no resolvable language code).
@@ -325,7 +321,6 @@ On success the response includes:
   have the command interface files, remove the project with `delete_project` and
   `deleteContent=true` (without it the project's directory stays on disk and
   `create_project` refuses it) and run `create_project` again.
-- **autoSortTopObjects is not yet applied.** See `codestyle.autoSortNote` in the response.
 - **Client-side timeouts.** A create normally answers within seconds, but on a busy
   workspace the create operation alone may take up to its 120 s limit. If your MCP client
   times out first, the creation usually still completes server-side — re-check with

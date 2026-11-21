@@ -721,6 +721,58 @@ public final class LaunchLifecycleUtils
         }
     }
 
+    /** Launch refuses a busy infobase promptly instead of waiting behind a potentially hours-long load. */
+    public static final long LAUNCH_LOCK_TIMEOUT_MS = 1_000L;
+
+    /** One calling thread's admission through preparation or the launch delegate, never client lifetime. */
+    public static final class LaunchOperation implements AutoCloseable
+    {
+        private final LaunchLock lock;
+        private final String error;
+
+        private LaunchOperation(LaunchLock lock, String error)
+        {
+            this.lock = lock;
+            this.error = error;
+        }
+
+        public String error() { return error; }
+
+        @Override
+        public void close()
+        {
+            if (lock != null) { lock.unlock(); }
+        }
+    }
+
+    /** Acquires the canonical infobase lock and names any background update blocking this launch. */
+    public static LaunchOperation tryLaunchOperation(String projectName, String applicationId)
+    {
+        if (projectName == null || projectName.isBlank() || applicationId == null || applicationId.isBlank())
+        {
+            return new LaunchOperation(null, "The launch target's project/application could not be resolved. "
+                + "Check list_configurations and get_applications before retrying launch.");
+        }
+        LaunchLock lock = lockFor(projectName, applicationId);
+        boolean reentrant = lock.isHeldByCurrentThread();
+        Acquisition acquisition = lock.tryAcquire(LAUNCH_LOCK_TIMEOUT_MS, null);
+        String jobId = ApplicationUpdateJobs.shared().runningJobId(projectName, applicationId);
+        String update = jobId == null ? "" : "update_database job " + jobId
+            + " is loading the configuration into this infobase; poll get_job_status and launch after it finishes.";
+        if (!acquisition.acquired())
+        {
+            return new LaunchOperation(null, lockNotAcquiredMessage(acquisition, projectName,
+                applicationId, LAUNCH_LOCK_TIMEOUT_MS) + " "
+                + (update.isEmpty() ? "Wait for that operation to finish and retry launch." : update));
+        }
+        if (!reentrant && jobId != null)
+        {
+            lock.unlock();
+            return new LaunchOperation(null, update);
+        }
+        return new LaunchOperation(lock, null);
+    }
+
     /**
      * How one {@link LaunchLock#tryAcquire} ended. Not a boolean: the three failures have nothing
      * in common for the caller's message, and reporting an interruption or a cancellation as
@@ -1660,8 +1712,8 @@ public final class LaunchLifecycleUtils
             ApplicationSupport.getDefaultApplicationBounded(appManager, project, timeoutMs);
         if (!read.concluded())
         {
-            Activator.logError("Error resolving default application for project " //$NON-NLS-1$
-                + project.getName() + ": " + read.deadlineFailure(), null); //$NON-NLS-1$
+            Activator.logWarning("Error resolving default application for project " //$NON-NLS-1$
+                + project.getName() + ": " + read.deadlineFailure()); //$NON-NLS-1$
             return new DefaultApplicationLookup(applicationId, read.deadlineFailure());
         }
         try
@@ -1853,7 +1905,7 @@ public final class LaunchLifecycleUtils
     {
         if (appManager == null)
         {
-            return Optional.of("IApplicationManager service is not available"); //$NON-NLS-1$
+            return Optional.of(ApplicationSupport.MANAGER_UNAVAILABLE); //$NON-NLS-1$
         }
         if (project == null || !project.exists() || !project.isOpen())
         {
@@ -1927,6 +1979,63 @@ public final class LaunchLifecycleUtils
             // PlatformFailures, not getMessage(): EDT wraps IStatus failures, so the exception's
             // own message is routinely empty or generic while the reason sits in the status tree.
             return Optional.of("Database update failed: " + PlatformFailures.describe(e)); //$NON-NLS-1$
+        }
+    }
+
+    /**
+     * The pre-launch check of a launch whose infobase update EDT's launch delegate performs inside
+     * the launch Job (its "Application update" dialog is pressed by the armed confirmer), so the call
+     * returns "launching" at once and {@code debug_status} reports {@code state: starting} until the
+     * client is up. Refuses an unreadable/missing application or an update EDT reports in progress.
+     *
+     * @return {@link Optional#empty()} to launch, otherwise an actionable refusal
+     */
+    public static Optional<String> deferredUpdatePreflight(IProject project, String applicationId,
+        IApplicationManager appManager)
+    {
+        if (appManager == null)
+        {
+            return Optional.of(ApplicationSupport.MANAGER_UNAVAILABLE); //$NON-NLS-1$
+        }
+        if (project == null || !project.exists() || !project.isOpen())
+        {
+            return Optional.of("Project is not available: " //$NON-NLS-1$
+                + (project != null ? project.getName() : "<null>")); //$NON-NLS-1$
+        }
+        ApplicationSupport.BoundedRead<Optional<IApplication>> lookup =
+            ApplicationSupport.getApplicationBounded(appManager, project, applicationId,
+                ApplicationSupport.LOOKUP_TIMEOUT_MS);
+        if (!lookup.concluded())
+        {
+            return Optional.of("Application '" + applicationId + "' could not be resolved: " //$NON-NLS-1$ //$NON-NLS-2$
+                + lookup.deadlineFailure() + "."); //$NON-NLS-1$
+        }
+        try
+        {
+            Optional<IApplication> application = lookup.valueOrRethrow();
+            if (application.isEmpty())
+            {
+                return Optional.of("Application not found: " + applicationId); //$NON-NLS-1$
+            }
+            ApplicationUpdateState state = appManager.getUpdateState(application.get());
+            if (isInProgress(state))
+            {
+                return Optional.of("The infobase of application '" + applicationId //$NON-NLS-1$
+                    + "' is being updated right now (by update_database or another launch). Wait until " //$NON-NLS-1$
+                    + "get_applications shows its updateState as UPDATED, then launch again."); //$NON-NLS-1$
+            }
+            if (!isSynced(state))
+            {
+                Activator.logInfo("launch: the infobase needs an update (" + state //$NON-NLS-1$
+                    + "); EDT's launch delegate performs it (auto-confirmed): applicationId=" //$NON-NLS-1$
+                    + applicationId);
+            }
+            return Optional.empty();
+        }
+        catch (ApplicationException e)
+        {
+            return Optional.of("Application '" + applicationId + "' could not be read: " //$NON-NLS-1$ //$NON-NLS-2$
+                + PlatformFailures.describe(e));
         }
     }
 
@@ -2086,27 +2195,6 @@ public final class LaunchLifecycleUtils
     }
 
     /**
-     * Resolves the display name of {@code applicationId} — the string EDT interpolates into its
-     * "Infobase \"<name>\" configuration was changed…" conflict modal — so a launch window can
-     * arm the auto-confirmer with an ATTRIBUTABLE name. Fully guarded and best-effort: a name
-     * that cannot be resolved simply yields {@code null}.
-     *
-     * <p>A caller that also needs the server name, or that has to tell "no name" from "the name
-     * could not be READ", uses {@link #attributionNames} instead — this form collapses both into
-     * {@code null} and pays a second bounded read for the second name.
-     *
-     * @param appManager the EDT application manager (may be {@code null})
-     * @param project the project the application belongs to (may be {@code null})
-     * @param applicationId the application id (may be {@code null})
-     * @return the application display name, or {@code null}
-     */
-    public static String attributionInfobaseName(IApplicationManager appManager, IProject project,
-        String applicationId)
-    {
-        return attributionNames(appManager, project, applicationId).infobaseName();
-    }
-
-    /**
      * Resolves BOTH attribution names from ONE bounded application read.
      *
      * <p>The two names come off the same {@link IApplication}, so reading it twice doubled the
@@ -2219,8 +2307,8 @@ public final class LaunchLifecycleUtils
             {
                 // Logged, not swallowed: this is the read whose failure silently degrades a
                 // writing policy to 'cancel', so it must leave a trace the reader can find.
-                Activator.logError("Attribution lookup for application '" + applicationId //$NON-NLS-1$
-                    + "' did not conclude: " + read.deadlineFailure(), null); //$NON-NLS-1$
+                Activator.logWarning("Attribution lookup for application '" + applicationId //$NON-NLS-1$
+                    + "' did not conclude: " + read.deadlineFailure()); //$NON-NLS-1$
                 return new AttributionNames(null, null, true);
             }
             if (read.failure() != null)
@@ -3557,6 +3645,44 @@ public final class LaunchLifecycleUtils
         // a standalone-server / profiling session. Do NOT short-circuit; the client
         // proceeds and attaches.
         return null;
+    }
+
+    /**
+     * True when the launch holds neither a process nor a debug target: it is still starting
+     * (a database update or an EDT dialog) or was cancelled at a dialog. Eclipse never reports
+     * such a launch as terminated.
+     */
+    public static boolean emptyLaunch(ILaunch launch)
+    {
+        if (launch == null)
+        {
+            return false;
+        }
+        var processes = launch.getProcesses();
+        var targets = launch.getDebugTargets();
+        // Unknown children (null) are never read as "nothing started".
+        return processes != null && targets != null && processes.length == 0 && targets.length == 0;
+    }
+
+    /**
+     * True when the launch started processes and every one has exited, although the launch
+     * itself may still hold a debug target EDT has not finished ending.
+     */
+    public static boolean clientExited(ILaunch launch)
+    {
+        var processes = launch == null ? null : launch.getProcesses();
+        if (processes == null || processes.length == 0)
+        {
+            return false;
+        }
+        for (org.eclipse.debug.core.model.IProcess process : processes)
+        {
+            if (process != null && !process.isTerminated())
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

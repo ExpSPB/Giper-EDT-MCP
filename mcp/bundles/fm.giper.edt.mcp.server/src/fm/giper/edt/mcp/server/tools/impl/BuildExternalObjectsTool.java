@@ -39,6 +39,7 @@ import com._1c.g5.v8.dt.core.platform.IV8Project;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
+import fm.giper.edt.mcp.server.utils.BmModelResolver;
 import fm.giper.edt.mcp.server.Activator;
 import fm.giper.edt.mcp.server.protocol.JsonSchemaBuilder;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
@@ -246,7 +247,8 @@ public class BuildExternalObjectsTool implements IMcpTool
 
         // 3. Refuse only the transient BUILDING state; a missing/closed project falls through
         //    to the value-naming "Project not found" below (same idiom as update_database).
-        String building = ProjectStateChecker.buildingErrorOrNull(projectName);
+        //    A project this server just switched still holds the previous branch's model (#922).
+        String building = ProjectStateChecker.strictWriteErrorOrNull(projectName);
         if (building != null)
         {
             return ToolResult.error(building).toJson();
@@ -294,7 +296,8 @@ public class BuildExternalObjectsTool implements IMcpTool
      */
     static boolean parseRecordBuildTime(String raw)
     {
-        return raw == null || raw.trim().isEmpty() || "true".equalsIgnoreCase(raw.trim()); //$NON-NLS-1$
+        return raw == null || raw.trim().isEmpty()
+            || JsonUtils.extractBooleanArgument(java.util.Map.of("v", raw), "v", false); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     /**
@@ -384,7 +387,7 @@ public class BuildExternalObjectsTool implements IMcpTool
         if (outsideWorkspace)
         {
             Activator.logWarning(NAME + ": outputDir is OUTSIDE the EDT workspace: " + outputDir //$NON-NLS-1$
-                + " (trusted-caller-only — see README Security & trust model)."); //$NON-NLS-1$
+                + " (trusted-caller-only — see docs/security.md)."); //$NON-NLS-1$
         }
         return OutputDirResolution.ok(outputDir, outsideWorkspace);
     }
@@ -408,7 +411,7 @@ public class BuildExternalObjectsTool implements IMcpTool
         {
             return EnumerationResult.failure(ToolResult.error("IBmModelManager not available").toJson()); //$NON-NLS-1$
         }
-        IBmModel bmModel = bmModelManager.getModel(resolved.project);
+        IBmModel bmModel = BmModelResolver.resolve(resolved.project, bmModelManager).getModel();
         if (bmModel == null)
         {
             return EnumerationResult.failure(ToolResult.error(
@@ -543,7 +546,8 @@ public class BuildExternalObjectsTool implements IMcpTool
                     // stopped" refusal. Settling the state first turns that race into a short wait.
                     // The pre-flight and every dump run under the default application's infobase
                     // lock, so an explicit standalone_server stop cannot land between them.
-                    StandaloneServerStateRecovery.ensureDefaultApplicationStartableThen(bc.project,
+                    StandaloneServerStateRecovery.ensureDefaultApplicationStartableThen(
+                        ExternalObjectDumpSupport.infobaseProject(bc.project),
                         APPLICATION_LOCK_TIMEOUT_MS, monitor, "Nothing was built.", () -> { //$NON-NLS-1$
                             for (Target target : bc.targets)
                             {
@@ -790,6 +794,15 @@ public class BuildExternalObjectsTool implements IMcpTool
      * @param results the per-object result maps
      * @return the JSON response
      */
+    /** Text-channel clients see only this message, not {@code results}, so it carries the first failure's reason. */
+    static String failureMessage(List<Map<String, Object>> results, int built, int failed, long elapsedMs)
+    {
+        String first = results.stream().filter(r -> !Boolean.TRUE.equals(r.get(RES_SUCCESS))).findFirst()
+            .map(r -> ". First failure - " + r.get(RES_NAME) + ": " + r.get(RES_ERROR)).orElse("."); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        return "Built " + built + " of " + (built + failed) + " external object(s) in " + elapsedMs //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            + " ms; " + failed + " failed" + first; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
     private static String buildResponse(BuildContext bc, List<Map<String, Object>> results, long elapsedMs)
     {
         int built = 0;
@@ -806,14 +819,11 @@ public class BuildExternalObjectsTool implements IMcpTool
             }
         }
 
+        String failure = failureMessage(results, built, failed, elapsedMs);
         boolean allOk = failed == 0;
         ToolResult tr = allOk ? ToolResult.success()
-            : bc.mutationCommitted.get() ? ToolResult.errorAfterMutation("Built " + built //$NON-NLS-1$
-                + " of " + (built + failed) + " external object(s) in " + elapsedMs + " ms; " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-                + failed + " failed.") //$NON-NLS-1$
-            : ToolResult.error("Built " + built //$NON-NLS-1$
-            + " of " + (built + failed) + " external object(s) in " + elapsedMs + " ms; " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            + failed + " failed."); //$NON-NLS-1$
+            : bc.mutationCommitted.get() ? ToolResult.errorAfterMutation(failure)
+            : ToolResult.error(failure);
         tr.put(McpKeys.PROJECT, bc.project.getName())
             .put(KEY_OUTPUT_DIR, bc.outputDir.toString())
             .put(KEY_BUILT, built)

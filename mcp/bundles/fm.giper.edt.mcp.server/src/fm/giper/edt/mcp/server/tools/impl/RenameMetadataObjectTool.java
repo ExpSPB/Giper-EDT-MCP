@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import fm.giper.edt.mcp.server.utils.MetadataRegistration;
 
 import java.util.Map;
@@ -14,7 +15,11 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.swt.widgets.Display;
 
 import fm.giper.edt.mcp.server.utils.ReadToolExecution;
@@ -60,9 +65,12 @@ import com.google.gson.JsonParser;
  * distinguishes them - see {@link MetadataRenameService} for what each cascade covers and
  * which form shapes it refuses.
  * <p>
- * Thin adapter: parameter parsing, the required-argument guards, the UI-thread
- * {@code Display.syncExec} boundary and the deadline that keeps a wedged cascade from holding the
- * MCP call open forever live here; all domain logic lives in {@link MetadataRenameService}.
+ * Thin adapter: parameter parsing, the required-argument guards, the thread boundary and the
+ * deadline that keeps a wedged cascade from holding the MCP call open forever live here; all domain
+ * logic lives in {@link MetadataRenameService}. The thread boundary follows EDT's own rename (issue
+ * #975): a preview is computed on a background job thread, as EDT's rename computes its refactoring
+ * on a forked worker, so EDT's UI thread stays free and the deadline can cancel the passes that poll
+ * their monitor; a confirm still applies on the UI thread, where EDT's wizard performs it.
  */
 public class RenameMetadataObjectTool implements IMcpTool
 {
@@ -127,7 +135,7 @@ public class RenameMetadataObjectTool implements IMcpTool
      * timeout error is what a caller sees, never the registry's generic budget text.
      */
     static final long PREVIEW_JOB_MARGIN_MS = 30_000L;
-    /** Smallest bound handed to the bounded UI-thread hand-off when the settle used up the budget. */
+    /** Smallest bound handed to the bounded preview work when the settle used up the budget. */
     private static final long MIN_PREVIEW_RENAME_BOUND_MS = 1_000L;
     private static final Object PREVIEW_JOBS_LOCK = new Object();
     private static final Map<String, PreviewSubmission> SUBMISSION_JOBS = new ConcurrentHashMap<>();
@@ -137,13 +145,14 @@ public class RenameMetadataObjectTool implements IMcpTool
     /**
      * One rename preview's place among the {@value #MAX_RUNNING_PREVIEWS}, and its attach entry.
      * <p>
-     * The place is held until BOTH the registry job has left RUNNING and every UI-thread hand-off
-     * it started has actually ended. A hand-off timeout only stops the WAITING: EDT keeps building
-     * the preview on its UI thread, so freeing the place together with the FAILED job would let
-     * retries stack new previews on top of ones EDT is still building. There is no time cap on
-     * that hold: a hand-off whose work never ends means EDT's UI thread is wedged, and a new
-     * preview would only queue behind it, so refusing it until EDT is restarted is the honest
-     * answer. Options are retained so
+     * The place is held until BOTH the registry job has left RUNNING and every hand-off of the
+     * preview work it started has actually ended. A timeout or a {@code cancel_job} cancels the
+     * work's monitor, and our own passes stop at their next check, but EDT's own refactoring pass
+     * takes no monitor and runs to its end; freeing the place together with the FAILED job would
+     * let retries stack new previews on top of a pass EDT is still running, so the place comes back
+     * when that pass returns. There is no time cap on that hold: a pass that never ends means EDT
+     * is wedged, and a new preview would only queue behind it, so refusing it until EDT is
+     * restarted is the honest answer. Options are retained so
      * attaching cannot silently return another requested plan or slice; the target (the key
      * without the timeout) is retained so such a still-building preview refuses a new preview of
      * the same rename whatever its timeout.
@@ -176,15 +185,15 @@ public class RenameMetadataObjectTool implements IMcpTool
          * in the same order - so the check and the count are one step against the release, and
          * {@link #jobId} (set under that lock right after admission) is visible.
          * <p>
-         * Work handed to EDT's UI thread cannot be recalled, so the registry's commit handshake
-         * ({@link BackgroundJobs.ProgressReporter#tryCommit()}) is taken under the same locks
-         * before the count: a {@code cancel_job} that already won it aborts the hand-off, and the
-         * job ends cancelled without the UI-thread work ever running; once the commit wins, a
-         * later {@code cancel_job} reports {@code alreadyCommitted} instead of a false stop.
+         * A preview mutates nothing and its work polls a monitor, so the job never takes the
+         * registry's commit handshake: a {@code cancel_job} stays a real stop for the whole run -
+         * before this point it keeps the work from starting, after it it cancels the work's
+         * monitor (issue #975). A cancellation that already won is checked here without
+         * committing, so a cancelled job never starts the work.
          *
-         * @param progress the job's reporter, whose {@code tryCommit} is the registry handshake
+         * @param progress the job's reporter, asked whether a cancellation already won
          * @return {@code false} when the job already left RUNNING, the place was given back, or a
-         *     cancellation won the commit handshake, so no hand-off may start
+         *     cancellation was accepted, so no hand-off may start
          */
         boolean beginHandOff(BackgroundJobs.ProgressReporter progress)
         {
@@ -192,7 +201,7 @@ public class RenameMetadataObjectTool implements IMcpTool
             {
                 synchronized (this)
                 {
-                    if (released || !jobRunning() || !progress.tryCommit())
+                    if (released || !jobRunning() || progress.isCancellationRequested())
                     {
                         return false;
                     }
@@ -347,7 +356,7 @@ public class RenameMetadataObjectTool implements IMcpTool
             + "the modules you changed.\n"; //$NON-NLS-1$
     }
 
-    /** Package-visible test seam for settling before the UI-thread hand-off. */
+    /** Package-visible test seam for settling before the rename work starts. */
     RenameMetadataObjectTool(CascadeSettler cascadeSettler)
     {
         this(cascadeSettler, BackgroundJobs.shared());
@@ -386,7 +395,9 @@ public class RenameMetadataObjectTool implements IMcpTool
                 "EDT project name.", true) //$NON-NLS-1$
             .stringProperty(KEY_OBJECT_FQN,
                 "FQN of the rename target: an object ('Catalog.Products'), a member " + //$NON-NLS-1$
-                "('Document.SalesOrder.Attribute.Amount'), or a managed-form element " + //$NON-NLS-1$
+                "('Document.SalesOrder.Attribute.Amount', 'DataProcessor.Import.Command.Open', " + //$NON-NLS-1$
+                "'Catalog.Products.Form.ItemForm'), a predefined item " + //$NON-NLS-1$
+                "('Catalog.Units.Predefined.Piece'), or a managed-form element " + //$NON-NLS-1$
                 "('Catalog.Products.Form.ItemForm.Field.Price', " + //$NON-NLS-1$
                 "'CommonForm.Settings.Group.Main', " + //$NON-NLS-1$
                 "'Catalog.Products.Form.ItemForm.Attribute.Rows.Column.Price'). Russian type " + //$NON-NLS-1$
@@ -438,7 +449,7 @@ public class RenameMetadataObjectTool implements IMcpTool
         String projectName = JsonUtils.extractStringArgument(params, McpKeys.PROJECT_NAME);
         if (projectName != null && !projectName.isEmpty())
         {
-            return "rename-refactoring-" + projectName.toLowerCase() + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
+            return "rename-refactoring-" + projectName.toLowerCase(Locale.ROOT) + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
         }
         return "rename-refactoring.md"; //$NON-NLS-1$
     }
@@ -496,6 +507,13 @@ public class RenameMetadataObjectTool implements IMcpTool
         {
             return ToolResult.error(badName).toJson();
         }
+        // The same holds for an address with an empty or padded segment: it can never resolve, so it is
+        // refused here rather than behind the settle or in a preview job slot (the service checks too).
+        String malformedAddress = MetadataRenameService.malformedAddressRefusal(MetadataTypeUtils.normalizeFqn(objectFqn));
+        if (malformedAddress != null)
+        {
+            return ToolResult.error(malformedAddress).toJson();
+        }
 
         // Same place and the same reason as the name check above: an entry that cannot be an index
         // under ANY tree is a defect of the REQUEST, and no amount of waiting or project state can
@@ -539,37 +557,33 @@ public class RenameMetadataObjectTool implements IMcpTool
 
         // Resolve the workbench only INSIDE the bounded action. Preview settling, the hand-off and
         // the unchanged EDT pipeline all belong to the registry worker, never the HTTP caller.
-        IRenameAction action = progress -> {
-            AtomicReference<String> resultRef = new AtomicReference<>();
-            ReadToolExecution.dispatch(() -> {
-                try
-                {
-                    resultRef.set(new MetadataRenameService(excludeText).rename(projectName,
-                        objectFqn, newName, confirm, disableRequest, expectedHash, maxResults, progress));
-                }
-                catch (Exception e)
-                {
-                    Activator.logError("Error in rename_metadata_object", e); //$NON-NLS-1$
-                    resultRef.set(ToolResult.error(e.getMessage()).toJson());
-                }
-            });
+        IRenameAction hosted = hostedAction(objectFqn, newName, confirm, ReadToolExecution::dispatch,
+            (progress, monitor) -> new MetadataRenameService(excludeText).rename(projectName,
+                objectFqn, newName, confirm, disableRequest, expectedHash, maxResults, progress, monitor));
+        IRenameAction action = (progress, monitor) -> {
+            String renamed = hosted.rename(progress, monitor);
             if (HostKind.current() == HostKind.HEADLESS && progress.getPhase() == RenameProgress.Phase.APPLIED)
             {
                 // Native rename exports the object; explicitly export its registering root before answering.
+                // An external-objects project has no Configuration: its root object is the top object.
+                fm.giper.edt.mcp.server.utils.MetadataScope externalRoot = externalObjectsScope(projectName);
+                boolean externalObjects = externalRoot != null;
+                String exportFqn = headlessExportFqn(objectFqn, newName, externalObjects,
+                    top -> storedTopFqn(projectName, externalRoot, top));
                 WriteScope scope = new WriteScope();
                 AtomicBoolean queued = new AtomicBoolean();
                 WriteScope.runWithScope(scope, () -> queued.set(BmTransactions.forceExportToDisk(
-                    ProjectContext.of(projectName).project(), "Configuration")));
+                    ProjectContext.of(projectName).project(), exportFqn)));
                 WriteExportBarrier.Outcome export = queued.get()
                     ? WriteExportBarrier.await(scope, WriteExportBarrier.DEADLINE_MS, WriteExportBarrier.PLATFORM)
                     : new WriteExportBarrier.Outcome(false, null);
                 if (queued.get() && !export.drained())
                     return WriteExportBarrier.notConfirmedAfterMutation(projectName, export.pendingProject() != null
                         ? BuildUtils.DiskExportState.PENDING : BuildUtils.DiskExportState.UNOBSERVABLE);
-                return withAutoBuildNote(finishHeadlessRename(projectName, objectFqn, newName, resultRef.get(),
-                    queued.get(), export.drained()), BuildUtils.isAutoBuilding());
+                return withAutoBuildNote(finishHeadlessRename(projectName, objectFqn, newName, renamed,
+                    queued.get(), export.drained(), externalObjects), BuildUtils.isAutoBuilding());
             }
-            return withAutoBuildNote(resultRef.get(), BuildUtils.isAutoBuilding());
+            return withAutoBuildNote(renamed, BuildUtils.isAutoBuilding());
         };
         if (!confirm)
         {
@@ -587,9 +601,165 @@ public class RenameMetadataObjectTool implements IMcpTool
         return runRenameBounded(objectFqn, newName, true, timeoutMs, action);
     }
 
+    /** The rename service call itself, with the monitor its preview passes poll. */
+    @FunctionalInterface
+    interface RenameWork
+    {
+        String run(RenameProgress progress, IProgressMonitor monitor) throws Exception; // NOSONAR arbitrary platform code
+    }
+
+    /**
+     * Puts the rename on the thread it belongs to (issue #975).
+     * <p>
+     * A PREVIEW runs right here, on the bounded job's own thread, with that job's monitor: the same
+     * shape as EDT's own rename, which builds its refactoring on a forked worker while the UI thread
+     * keeps pumping, and as the headless host already did. EDT's UI thread is therefore free for the
+     * whole preview - the platform code that needs it (an open editor's save or reconcile) dispatches
+     * itself there and gets through - and the deadline's cancel reaches the passes that poll their
+     * monitor. A preview stopped that way answers with an error saying so, not with a stack trace.
+     * <p>
+     * A CONFIRM goes through {@code uiExecutor}, EDT's UI thread on the windowed host, where EDT's
+     * rename wizard applies a rename too, and with a never-cancelled monitor: what a confirm writes,
+     * and when it stops, is exactly as before.
+     *
+     * @param objectFqn the rename target, for the stopped-preview message
+     * @param newName the new name, for the stopped-preview message
+     * @param confirm whether this is the apply call
+     * @param uiExecutor runs the confirm on EDT's UI thread (inline on the headless host)
+     * @param work the service call
+     * @return the action the bounded job runs
+     */
+    static IRenameAction hostedAction(String objectFqn, String newName, boolean confirm,
+        Consumer<Runnable> uiExecutor, RenameWork work)
+    {
+        return (progress, monitor) -> {
+            AtomicReference<String> resultRef = new AtomicReference<>();
+            IProgressMonitor serviceMonitor = confirm ? new NullProgressMonitor() : monitor;
+            Runnable body = () -> {
+                try
+                {
+                    resultRef.set(work.run(progress, serviceMonitor));
+                }
+                catch (Exception e)
+                {
+                    if (!confirm && (serviceMonitor.isCanceled() || isCancellation(e)))
+                    {
+                        resultRef.set(ToolResult.error(previewStoppedError(objectFqn, newName)).toJson());
+                        return;
+                    }
+                    Activator.logError("Error in rename_metadata_object", e); //$NON-NLS-1$
+                    resultRef.set(ToolResult.error(e.getMessage()).toJson());
+                }
+            };
+            if (confirm)
+            {
+                uiExecutor.accept(body);
+            }
+            else
+            {
+                body.run();
+            }
+            return resultRef.get();
+        };
+    }
+
+    /** Whether {@code failure} is, or was caused by, a cancelled monitor. */
+    static boolean isCancellation(Throwable failure)
+    {
+        int depth = 0;
+        for (Throwable current = failure; current != null && depth < 16; current = current.getCause(), depth++)
+        {
+            if (current instanceof OperationCanceledException)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The answer of a preview whose monitor was cancelled before it finished. */
+    static String previewStoppedError(String objectFqn, String newName)
+    {
+        return "The preview of '" + objectFqn + "' -> '" + newName + "' was stopped at its " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            + "deadline or by cancel_job before EDT finished computing the change points. Nothing " //$NON-NLS-1$
+            + "was renamed. Retry with a larger '" + KEY_TIMEOUT + "', or rename the object in EDT's " //$NON-NLS-1$ //$NON-NLS-2$
+            + "metadata editor."; //$NON-NLS-1$
+    }
+
     static String finishHeadlessRename(String projectName, String oldFqn, String newName, String result,
         boolean queued, boolean drained)
     {
+        return finishHeadlessRename(projectName, oldFqn, newName, result, queued, drained, false);
+    }
+
+    /**
+     * Whether {@code projectName} is an external data processors/reports project: it has no
+     * {@code Configuration}, so a headless rename there exports and confirms its own root object instead.
+     */
+    static fm.giper.edt.mcp.server.utils.MetadataScope externalObjectsScope(String projectName)
+    {
+        ProjectContext.ConfigurationResult root = ProjectContext.resolveMetadataRoot(projectName);
+        return root.ok() && root.scope() != null && root.scope().isExternalObjects() ? root.scope() : null;
+    }
+
+    /**
+     * The stored BM FQN of the external root {@code top} ({@code Type.Name}) names: the address resolves its
+     * Name ignoring case, BM's top-object lookup does not, so the export must use the Name as stored.
+     * Falls back to {@code top} when the root does not resolve.
+     */
+    private static String storedTopFqn(String projectName,
+        fm.giper.edt.mcp.server.utils.MetadataScope scope, String top)
+    {
+        String[] parts = top.split("\\.", 2); //$NON-NLS-1$
+        if (parts.length != 2)
+        {
+            return top;
+        }
+        String stored = ReadToolExecution.readOnHost(ProjectContext.of(projectName).project(),
+            "Resolve the renamed external root", () -> { //$NON-NLS-1$
+                com._1c.g5.v8.dt.metadata.mdclass.MdObject root = scope.findObject(parts[0], parts[1]);
+                return root instanceof com._1c.g5.v8.bm.core.IBmObject bm && bm.bmIsTop() ? bm.bmGetFqn() : null;
+            });
+        return stored == null ? top : stored;
+    }
+
+    /**
+     * The top object a headless rename exports before answering: the {@code Configuration} that registers
+     * a configuration's objects, or - in an external-objects project, which has none - the root object the
+     * renamed target belongs to, under its NEW name when the root itself was renamed (issue #994).
+     *
+     * @param objectFqn the rename target as the caller addressed it
+     * @param newName the new Name
+     * @param externalObjects whether the project is an external-objects one
+     * @param storedTop maps a member's root {@code Type.Name} as addressed to the root's stored FQN (the
+     *     address matches the Name ignoring case, the BM lookup of the export does not)
+     * @return the FQN of the top object to export
+     */
+    static String headlessExportFqn(String objectFqn, String newName, boolean externalObjects,
+        java.util.function.UnaryOperator<String> storedTop)
+    {
+        if (!externalObjects)
+        {
+            return "Configuration"; //$NON-NLS-1$
+        }
+        String[] parts = MetadataTypeUtils.toCanonicalEnglishFqn(objectFqn).split("\\."); //$NON-NLS-1$
+        // A renamed root carries the new Name exactly as given; a member's root keeps its stored Name.
+        return parts.length == 2 ? parts[0] + "." + newName : storedTop.apply(parts[0] + "." + parts[1]); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
+     * {@link #finishHeadlessRename(String, String, String, String, boolean, boolean)} for either kind of
+     * project: in an external-objects project there is no {@code Configuration.mdo} registration to
+     * confirm, so the drained export of the root object is the confirmation.
+     */
+    static String finishHeadlessRename(String projectName, String oldFqn, String newName, String result,
+        boolean queued, boolean drained, boolean externalObjects)
+    {
+        if (externalObjects)
+        {
+            return queued && drained ? result
+                : WriteExportBarrier.notConfirmedAfterMutation(projectName, BuildUtils.DiskExportState.UNOBSERVABLE);
+        }
         if (queued && !drained)
             return WriteExportBarrier.notConfirmedAfterMutation(projectName, BuildUtils.DiskExportState.UNOBSERVABLE);
         String canonical = MetadataTypeUtils.toCanonicalEnglishFqn(oldFqn);
@@ -618,7 +788,7 @@ public class RenameMetadataObjectTool implements IMcpTool
             synchronized (PREVIEW_JOBS_LOCK)
             {
                 // After this purge the map holds the rename previews that still hold a place: a
-                // running job, or a finished one whose UI-thread hand-off EDT is still building.
+                // running job, or a finished one whose preview work EDT is still running.
                 SUBMISSION_JOBS.entrySet().removeIf(entry -> entry.getValue().releaseIfIdle());
                 PreviewSubmission submission = SUBMISSION_JOBS.get(key);
                 if (submission != null && submission.owner != jobs)
@@ -637,8 +807,8 @@ public class RenameMetadataObjectTool implements IMcpTool
                 if (started == null)
                 {
                     // Keyed WITHOUT the timeout: a retry with a larger timeout - what the timeout
-                    // error suggests - would otherwise queue a second build of the same preview
-                    // behind the one EDT is still building on its UI thread.
+                    // error suggests - would otherwise start a second build of the same preview
+                    // beside the refactoring pass EDT is still running for the first.
                     PreviewSubmission orphan = orphanedPreviewOf(target);
                     if (orphan != null)
                     {
@@ -689,15 +859,16 @@ public class RenameMetadataObjectTool implements IMcpTool
                                     {
                                         // The job already left RUNNING (its registry deadline, or
                                         // EDT-MCP stopping), whether or not a later request gave
-                                        // its place back, or a cancel_job won the commit handshake:
-                                        // building the preview now would run after its FAILED or
-                                        // cancelled outcome. That outcome stands, so this failure
-                                        // only stops the work; its text is a fallback.
+                                        // its place back, or a cancel_job was accepted: building
+                                        // the preview now would run after its FAILED or cancelled
+                                        // outcome. That outcome stands, so this failure only stops
+                                        // the work; its text is a fallback.
                                         throw new BackgroundJobs.MarkedFailure("The rename preview " //$NON-NLS-1$
-                                            + "ended before its hand-off to EDT's UI thread began. " //$NON-NLS-1$
+                                            + "ended before its computation began. " //$NON-NLS-1$
                                             + "Nothing was renamed. Start a new preview.", null); //$NON-NLS-1$
                                     }
-                                    progress.add("Building the refactoring on EDT's UI thread"); //$NON-NLS-1$
+                                    progress.add("Computing the change points in the background; " //$NON-NLS-1$
+                                        + "EDT's UI thread stays free"); //$NON-NLS-1$
                                     String result = runRenameBounded(objectFqn, newName, false,
                                         previewRenameBoundMs(jobDeadlineNanos, System.nanoTime(), timeoutMs),
                                         action, placed::endHandOff);
@@ -745,7 +916,7 @@ public class RenameMetadataObjectTool implements IMcpTool
 
     /**
      * How many rename previews of this registry hold a place right now, after giving back the
-     * places whose job and UI-thread hand-off have both ended.
+     * places whose job and preview work have both ended.
      *
      * @return the number of held places
      */
@@ -765,7 +936,7 @@ public class RenameMetadataObjectTool implements IMcpTool
 
     /**
      * A preview of the same rename (project, target, new name - any timeout) of this registry whose
-     * job already ended while its UI-thread hand-off is still running. Called under
+     * job already ended while its preview work is still running. Called under
      * {@link #PREVIEW_JOBS_LOCK}.
      */
     private PreviewSubmission orphanedPreviewOf(String target)
@@ -788,24 +959,25 @@ public class RenameMetadataObjectTool implements IMcpTool
         {
             return text + "Poll them with get_job_status and retry when one finishes."; //$NON-NLS-1$
         }
-        return text + orphaned + " of them already ended (typically a timeout), but EDT is " //$NON-NLS-1$
-            + "still building " + (orphaned == 1 ? "that preview" : "those previews") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            + " on its UI thread: ending a job stops the waiting, not EDT's work, so such a place " //$NON-NLS-1$
-            + "is freed only when EDT finishes. Nothing was renamed. Retry after EDT finishes; " //$NON-NLS-1$
-            + "get_job_status shows the state of the others."; //$NON-NLS-1$
+        return text + orphaned + " of them already ended (a timeout or cancel_job), but EDT's own " //$NON-NLS-1$
+            + "refactoring pass for " + (orphaned == 1 ? "it" : "them") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            + " is still running in the background: our part stopped, EDT's pass cannot be " //$NON-NLS-1$
+            + "interrupted, so such a place is freed only when that pass returns. Nothing was " //$NON-NLS-1$
+            + "renamed. Retry shortly; get_job_status shows the state of the others."; //$NON-NLS-1$
     }
 
     private static String orphanedPreviewRefusal(String objectFqn, String newName, String jobId)
     {
         return "A previous preview of '" + objectFqn + "' -> '" + newName + "' (job '" + jobId //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-            + "') already ended (typically a timeout), but EDT is still building it on its UI " //$NON-NLS-1$
-            + "thread: ending the job stops the waiting, not EDT's work. A new preview of the same " //$NON-NLS-1$
-            + "rename is not started on top of it, whatever its timeout. Nothing was renamed. Retry " //$NON-NLS-1$
-            + "after EDT finishes that work; this refusal stops then."; //$NON-NLS-1$
+            + "') already ended (a timeout or cancel_job), but EDT's own refactoring pass for it " //$NON-NLS-1$
+            + "is still running in the background: our part stopped, EDT's pass cannot be " //$NON-NLS-1$
+            + "interrupted. A new preview of the same rename is not started beside it, whatever its " //$NON-NLS-1$
+            + "timeout. Nothing was renamed. Retry shortly; this refusal stops once that pass " //$NON-NLS-1$
+            + "returns."; //$NON-NLS-1$
     }
 
     /**
-     * The bound for the UI-thread hand-off inside a preview job: the caller's {@code timeout}, cut
+     * The bound for the preview work inside a preview job: the caller's {@code timeout}, cut
      * down when the settle ran long so the stage-named timeout still fires
      * {@link #PREVIEW_JOB_MARGIN_MS} before the registry deadline would fail the job with its
      * generic budget text.
@@ -910,10 +1082,11 @@ public class RenameMetadataObjectTool implements IMcpTool
      * actionable error.
      *
      * <p>The work runs in a {@link BoundedJob}, so the caller stops waiting when the deadline
-     * elapses even though the UI thread cannot be preempted. That is the whole guarantee: the job
-     * is asked to cancel, but a rename already inside EDT's refactoring polls nothing and WILL run
-     * to completion on its own. The error therefore never claims the rename was undone - it reports
-     * the {@link RenameProgress.Phase} the work had reached, which is the difference between "the
+     * elapses whatever the work does. At the deadline the job's monitor - the one handed to the
+     * action - is cancelled: a preview's own passes poll it and stop, but EDT's refactoring polls
+     * nothing and WILL run to completion on its own, and a confirm is not cut short by it at all.
+     * The error therefore never claims the rename was undone - it reports the
+     * {@link RenameProgress.Phase} the work had reached, which is the difference between "the
      * model is untouched" and "the model may be half renamed".
      *
      * @param objectFqn the rename target, for the message
@@ -921,8 +1094,8 @@ public class RenameMetadataObjectTool implements IMcpTool
      * @param confirm whether this call was allowed to apply anything at all - a preview cannot
      *     reach the apply path, so no phase it times out in may be reported as possibly-applied
      * @param timeoutMs the bound, in milliseconds
-     * @param action the rename action (production drives the service through the UI thread; tests
-     *     substitute a controllable action to exercise the deadline without a workbench)
+     * @param action the rename action (production: {@link #hostedAction}; tests substitute a
+     *     controllable action to exercise the deadline without a workbench)
      * @return the action's own payload when it completed, otherwise the error JSON
      */
     static String runRenameBounded(String objectFqn, String newName, boolean confirm, long timeoutMs,
@@ -934,11 +1107,12 @@ public class RenameMetadataObjectTool implements IMcpTool
     /**
      * {@link #runRenameBounded(String, String, boolean, long, IRenameAction)} that also reports when
      * the bounded work has ACTUALLY ended, which after a timeout or an interruption is later than
-     * this method's return: the deadline stops the waiting, not the work on EDT's UI thread.
+     * this method's return: the deadline stops the waiting and cancels the monitor, not EDT's own
+     * refactoring work.
      *
      * @param workEnded run exactly once when the work has ended - at once after a conclusive
      *     outcome, else ONLY on the Job's terminal notification. There is no time cap: work that
-     *     never ends is a wedged UI thread, and its place stays held until EDT is restarted;
+     *     never ends means EDT is wedged, and its place stays held until EDT is restarted;
      *     {@code null} for none
      */
     static String runRenameBounded(String objectFqn, String newName, boolean confirm, long timeoutMs,
@@ -955,8 +1129,10 @@ public class RenameMetadataObjectTool implements IMcpTool
             // or was cancelled before it started - and BoundedJob runs the callback itself when
             // scheduling raises. So the done notification is the release for every inconclusive
             // outcome; no timer stands in for it.
+            // The job's own monitor goes to the action: BoundedJob cancels it at the deadline and
+            // on an interruption (a cancel_job of the preview job), which is what stops a preview.
             result = BoundedJob.run(NAME + ": " + objectFqn, timeoutMs, //$NON-NLS-1$
-                monitor -> resultRef.set(action.rename(progress)), ended);
+                monitor -> resultRef.set(action.rename(progress, monitor)), ended);
         }
         finally
         {
@@ -1173,8 +1349,11 @@ public class RenameMetadataObjectTool implements IMcpTool
             // the model - and warning that it "may still apply" would be plainly false.
             return "This was a PREVIEW (confirm was not set): nothing was renamed and this call " //$NON-NLS-1$
                 + "cannot rename anything. EDT did not finish computing the change points in " //$NON-NLS-1$
-                + "time and keeps building them on its UI thread, so a new preview of this rename, " //$NON-NLS-1$
-                + "with any timeout, is refused until EDT finishes. Then retry, or raise the bound."; //$NON-NLS-1$
+                + "time, so the preview was stopped: its own passes end at their next check, but " //$NON-NLS-1$
+                + "EDT's refactoring pass cannot be interrupted and runs to its end in the " //$NON-NLS-1$
+                + "background (EDT's UI thread stays free). A new preview of this rename, with any " //$NON-NLS-1$
+                + "timeout, is refused until the stopped work has ended. Then retry with a larger " //$NON-NLS-1$
+                + "bound, or rename the object in EDT's metadata editor."; //$NON-NLS-1$
         }
         switch (phase)
         {
@@ -1209,8 +1388,9 @@ public class RenameMetadataObjectTool implements IMcpTool
     }
 
     /**
-     * The rename action run under the deadline. Production hands the service to the UI thread;
-     * tests substitute a controllable action to exercise the deadline without a live workbench.
+     * The rename action run under the deadline. Production runs a preview on the bounded job's own
+     * thread and hands a confirm to the UI thread (see {@link #hostedAction}); tests substitute a
+     * controllable action to exercise the deadline without a live workbench.
      */
     @FunctionalInterface
     interface IRenameAction
@@ -1219,10 +1399,12 @@ public class RenameMetadataObjectTool implements IMcpTool
          * Performs the rename.
          *
          * @param progress the sink the work publishes its phase to
+         * @param monitor the bounded job's monitor, cancelled at the deadline and when the job is
+         *     interrupted; work that polls it stops early
          * @return the tool's response payload
          * @throws Exception any failure - captured by {@link BoundedJob}, never propagated out of
          *     the job thread
          */
-        String rename(RenameProgress progress) throws Exception; // NOSONAR the work is arbitrary platform code
+        String rename(RenameProgress progress, IProgressMonitor monitor) throws Exception; // NOSONAR the work is arbitrary platform code
     }
 }

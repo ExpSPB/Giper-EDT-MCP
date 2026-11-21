@@ -319,7 +319,7 @@ public class CreateMetadataToolTest
     {
         // generateContent is a form-object-create flag, defaults false -> must not be required.
         String schema = new CreateMetadataTool().getInputSchema();
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         String tail = schema.substring(requiredIdx);
         assertFalse("generateContent must not be required (defaults false)", //$NON-NLS-1$
@@ -349,7 +349,7 @@ public class CreateMetadataToolTest
         String block = nextIdx > idx ? schema.substring(idx, nextIdx) : schema.substring(idx);
         assertTrue("objectFields must be an array", block.contains("\"array\"")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("objectFields items must be strings", block.contains("\"string\"")); //$NON-NLS-1$ //$NON-NLS-2$
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         assertFalse("objectFields must not be required (defaults to the per-kind fields)", //$NON-NLS-1$
             schema.substring(requiredIdx).contains("\"objectFields\"")); //$NON-NLS-1$
@@ -360,7 +360,7 @@ public class CreateMetadataToolTest
     {
         // setAsDefault is a form-object-create flag, defaults false -> must not be required.
         String schema = new CreateMetadataTool().getInputSchema();
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         String tail = schema.substring(requiredIdx);
         assertFalse("setAsDefault must not be required (defaults false)", //$NON-NLS-1$
@@ -393,7 +393,7 @@ public class CreateMetadataToolTest
         assertTrue("callType enum must offer Before", block.contains("\"Before\"")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("callType enum must offer After", block.contains("\"After\"")); //$NON-NLS-1$ //$NON-NLS-2$
         assertTrue("callType enum must offer Instead", block.contains("\"Instead\"")); //$NON-NLS-1$ //$NON-NLS-2$
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         assertFalse("callType must not be required (defaults to a base handler)", //$NON-NLS-1$
             schema.substring(requiredIdx).contains("\"callType\"")); //$NON-NLS-1$
@@ -432,7 +432,7 @@ public class CreateMetadataToolTest
     public void testNormalizeYoIsOptional()
     {
         String schema = new CreateMetadataTool().getInputSchema();
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         String tail = schema.substring(requiredIdx);
         assertFalse("normalizeYo must not be required (defaults true)", //$NON-NLS-1$
@@ -443,7 +443,7 @@ public class CreateMetadataToolTest
     public void testNewOptionalParametersAreNotRequired()
     {
         String schema = new CreateMetadataTool().getInputSchema();
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         String tail = schema.substring(requiredIdx);
         assertFalse("commonModuleKind must not be required", tail.contains("\"commonModuleKind\"")); //$NON-NLS-1$ //$NON-NLS-2$
@@ -581,7 +581,7 @@ public class CreateMetadataToolTest
     public void testRequiredParameters()
     {
         String schema = new CreateMetadataTool().getInputSchema();
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue("schema must declare a required array", requiredIdx >= 0); //$NON-NLS-1$
         String tail = schema.substring(requiredIdx);
         assertTrue("projectName must be required", tail.contains("\"projectName\"")); //$NON-NLS-1$ //$NON-NLS-2$
@@ -592,7 +592,7 @@ public class CreateMetadataToolTest
     public void testOptionalParametersNotRequired()
     {
         String schema = new CreateMetadataTool().getInputSchema();
-        int requiredIdx = schema.indexOf("\"required\""); //$NON-NLS-1$
+        int requiredIdx = schema.lastIndexOf("\"required\""); // top-level, after nested ones //$NON-NLS-1$
         assertTrue(requiredIdx >= 0);
         String tail = schema.substring(requiredIdx);
         assertFalse("properties must not be required", tail.contains("\"properties\"")); //$NON-NLS-1$ //$NON-NLS-2$
@@ -665,6 +665,28 @@ public class CreateMetadataToolTest
             new CreateMetadataTool().getGuide().contains("ObjectType")); //$NON-NLS-1$
         assertTrue("description should mention a nested Property member FQN shape", //$NON-NLS-1$
             new CreateMetadataTool().getGuide().contains("XDTOPackage.<Package>.ObjectType.<Type>.Property.<Name>")); //$NON-NLS-1$
+    }
+
+    /** The common-module modifiers state the same kind rules their validators enforce. */
+    @Test
+    public void testCommonModuleModifierDescriptionsMatchTheirValidators()
+    {
+        com.google.gson.JsonObject props = com.google.gson.JsonParser.parseString(
+            new CreateMetadataTool().getInputSchema()).getAsJsonObject().getAsJsonObject("properties"); //$NON-NLS-1$
+        assertTrue(description(props, "serverCall").contains( //$NON-NLS-1$
+            "Only with the 'Server', 'ServerCall' or 'ClientServer' kind; not with privileged.")); //$NON-NLS-1$
+        assertTrue(description(props, "privileged").contains( //$NON-NLS-1$
+            "'Server' kind only, not with serverCall or returnValuesReuse.")); //$NON-NLS-1$
+        String reuse = description(props, "returnValuesReuse"); //$NON-NLS-1$
+        assertTrue(reuse, reuse.contains("'DuringSession' (a cached module) only with the 'Server', 'ServerCall', " //$NON-NLS-1$
+            + "'ClientManaged' or 'ClientOrdinary' kind; 'DuringRequest' is refused.")); //$NON-NLS-1$
+        assertFalse("DuringRequest is refused for every kind, not for some", //$NON-NLS-1$
+            reuse.contains("not every kind")); //$NON-NLS-1$
+    }
+
+    private static String description(com.google.gson.JsonObject props, String name)
+    {
+        return props.getAsJsonObject(name).get("description").getAsString(); //$NON-NLS-1$
     }
 
     @Test

@@ -9,6 +9,8 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.any;
 
+import java.util.UUID;
+
 import org.junit.Test;
 
 import com._1c.g5.v8.bm.core.IBmTransaction;
@@ -31,7 +33,7 @@ public class NativeMetadataCloneTest
         when(services.getInstance(com._1c.g5.v8.dt.core.naming.ITopObjectFqnGenerator.class)).thenReturn(generator);
         when(generator.generateStandaloneObjectFqn(any(), any())).thenReturn("Catalog.Copy");
         IBmTransaction tx = mock(IBmTransaction.class);
-        NativeMetadataClone copier = new NativeMetadataClone(services, tx, mock(IBmModel.class),
+        NativeMetadataClone copier = new NativeMetadataClone(services, tx, mock(IBmModel.class), null,
             MdClassFactory.eINSTANCE.createCatalog(), "Copy");
         var root = mock(com._1c.g5.v8.bm.core.IBmObject.class, withSettings().extraInterfaces(MdObject.class));
         when(root.eClass()).thenReturn(MdClassPackage.Literals.CATALOG);
@@ -71,6 +73,28 @@ public class NativeMetadataCloneTest
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
+    public void exchangePlanCopyPreservesTheInitializedThisNode()
+    {
+        Injector services = mock(Injector.class);
+        when(services.getInstance(any(Class.class))).thenAnswer(call -> mock((Class)call.getArgument(0)));
+        var source = MdClassFactory.eINSTANCE.createExchangePlan();
+        UUID sourceNode = UUID.randomUUID();
+        source.setThisNode(sourceNode);
+        var target = MdClassFactory.eINSTANCE.createExchangePlan();
+        UUID initializedNode = UUID.randomUUID();
+        target.setThisNode(initializedNode);
+        var config = MdClassFactory.eINSTANCE.createConfiguration();
+        var copier = new NativeMetadataClone(services, mock(IBmTransaction.class), mock(IBmModel.class),
+            config, source, "Copy");
+        var thisNode = MdClassPackage.Literals.EXCHANGE_PLAN__THIS_NODE;
+        copier.copyAttribute(source, thisNode, target, thisNode, config,
+            MdClassPackage.Literals.CONFIGURATION__EXCHANGE_PLANS, new CopyContext());
+        assertEquals(initializedNode, target.getThisNode());
+        assertEquals(sourceNode, source.getThisNode());
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void rootNameIsChosenBeforeAttachmentForEverySupportedType()
     {
         for (String type : MetadataClonePlan.SUPPORTED)
@@ -81,7 +105,7 @@ public class NativeMetadataCloneTest
             Injector services = mock(Injector.class);
             when(services.getInstance(any(Class.class))).thenAnswer(call -> mock((Class)call.getArgument(0)));
             NativeMetadataClone copier = new NativeMetadataClone(services, mock(IBmTransaction.class),
-                mock(IBmModel.class), source, "Requested");
+                mock(IBmModel.class), null, source, "Requested");
             assertEquals(type, "Requested", copier.generateMdCopyName(source, target,
                 MdClassFactory.eINSTANCE.createConfiguration(), null, new CopyContext()));
         }

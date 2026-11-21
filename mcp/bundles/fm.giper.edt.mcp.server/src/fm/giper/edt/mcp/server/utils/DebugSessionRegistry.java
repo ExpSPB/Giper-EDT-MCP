@@ -42,6 +42,7 @@ public final class DebugSessionRegistry // NOSONAR intentional singleton (Eclips
     private static final DebugSessionRegistry INSTANCE = new DebugSessionRegistry();
 
     private final AtomicBoolean listenerRegistered = new AtomicBoolean(false);
+    private Runnable listenerDisposable;
     private final AtomicLong idGenerator = new AtomicLong(1);
 
     /** applicationId → most recent suspend snapshot. */
@@ -82,19 +83,19 @@ public final class DebugSessionRegistry // NOSONAR intentional singleton (Eclips
     /**
      * Lazily installs the global debug event listener. Safe to call from any thread.
      */
-    public void ensureListenerRegistered()
+    public synchronized Runnable ensureListenerRegistered()
     {
         if (!listenerRegistered.compareAndSet(false, true))
         {
-            return;
+            return listenerDisposable;
         }
         DebugPlugin debugPlugin = DebugPlugin.getDefault();
         if (debugPlugin == null)
         {
             listenerRegistered.set(false);
-            return;
+            return listenerDisposable;
         }
-        debugPlugin.addDebugEventListener(new IDebugEventSetListener()
+        IDebugEventSetListener listener = new IDebugEventSetListener()
         {
             @Override
             public void handleDebugEvents(DebugEvent[] events)
@@ -104,8 +105,14 @@ public final class DebugSessionRegistry // NOSONAR intentional singleton (Eclips
                     handleEvent(ev);
                 }
             }
+        };
+        debugPlugin.addDebugEventListener(listener);
+        listenerDisposable = ListenerDisposables.register(() -> {
+            debugPlugin.removeDebugEventListener(listener);
+            listenerRegistered.set(false);
         });
         Activator.logInfo("DebugSessionRegistry: event listener registered"); //$NON-NLS-1$
+        return listenerDisposable;
     }
 
     /** Package-visible for headless unit testing (a {@link DebugEvent} is a plain DTO). */
@@ -612,26 +619,68 @@ public final class DebugSessionRegistry // NOSONAR intentional singleton (Eclips
             return null;
         }
         ILaunchManager mgr = debugPlugin.getLaunchManager();
-        for (ILaunch launch : mgr.getLaunches()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability
+        for (boolean byDelegate : new boolean[] { false, true })
         {
-            if (launch.isTerminated())
+            for (ILaunch launch : mgr.getLaunches()) // NOSONAR intentional multiple loop exits; restructuring with flags would reduce readability
             {
-                continue;
-            }
-            String appId = findApplicationIdFor(launch);
-            if (!applicationId.equals(appId))
-            {
-                continue;
-            }
-            for (IDebugTarget target : launch.getDebugTargets())
-            {
-                if (target != null && !target.isTerminated())
+                if (launch.isTerminated() || !matches(launch, applicationId, byDelegate))
                 {
-                    return target;
+                    continue;
+                }
+                for (IDebugTarget target : launch.getDebugTargets())
+                {
+                    if (target != null && !target.isTerminated())
+                    {
+                        return target;
+                    }
                 }
             }
         }
         return null;
+    }
+
+    /**
+     * Exact pass: the launch's own id. Delegate pass: a config without a persisted
+     * {@code ATTR_APPLICATION_ID} (EDT clears it when its infobase is deleted or re-added)
+     * runs the project's default application, so the real id get_applications returns
+     * still names that session. The id is read from the launch's live debug targets, which
+     * keep the application they started against even if the project default changes later.
+     */
+    private static boolean matches(ILaunch launch, String applicationId, boolean byDelegate)
+    {
+        String own = findApplicationIdFor(launch);
+        if (!byDelegate)
+        {
+            return applicationId.equals(own);
+        }
+        return matchesDelegate(applicationId, own, () -> liveApplicationIds(launch));
+    }
+
+    /** Applications the launch's live debug targets were started against. */
+    private static List<String> liveApplicationIds(ILaunch launch)
+    {
+        List<String> ids = new ArrayList<>();
+        for (IDebugTarget target : launch.getDebugTargets())
+        {
+            String id = target == null || target.isTerminated() ? null : DebugServerTargetSupport.applicationIdOf(target);
+            if (id != null)
+            {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    /** Pure delegate-pass rule; live application ids are read only for an unbound EDT launch. */
+    static boolean matchesDelegate(String requested, String ownId,
+        java.util.function.Supplier<? extends java.util.Collection<String>> liveIds)
+    {
+        if (requested == null || ownId == null || LaunchConfigUtils.isSyntheticApplicationId(requested)
+            || !ownId.startsWith(LaunchConfigUtils.LAUNCH_APP_ID_PREFIX))
+        {
+            return false;
+        }
+        return liveIds.get().contains(requested);
     }
 
     /**
@@ -716,15 +765,14 @@ public final class DebugSessionRegistry // NOSONAR intentional singleton (Eclips
             return null;
         }
         ILaunchManager mgr = debugPlugin.getLaunchManager();
-        for (ILaunch launch : mgr.getLaunches())
+        for (boolean byDelegate : new boolean[] { false, true })
         {
-            if (launch.isTerminated())
+            for (ILaunch launch : mgr.getLaunches())
             {
-                continue;
-            }
-            if (applicationId.equals(findApplicationIdFor(launch)))
-            {
-                return launch;
+                if (!launch.isTerminated() && matches(launch, applicationId, byDelegate))
+                {
+                    return launch;
+                }
             }
         }
         return null;

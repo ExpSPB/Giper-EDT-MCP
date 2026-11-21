@@ -4,7 +4,6 @@
  */
 package fm.giper.edt.mcp.server.utils;
 
-import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.widgets.Button;
@@ -21,6 +21,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Link;
 import org.eclipse.swt.widgets.Shell;
@@ -35,14 +36,19 @@ public class EdtDialogs
 {
     private static final EdtDialogs INSTANCE = new EdtDialogs();
     private static final String HUMAN_KEY = EdtDialogs.class.getName() + ".humanOnly";
+    private static final String CUTOFF_KEY = EdtDialogs.class.getName() + ".cutoffNanos";
     private static final Object HUMAN_IDENTITY = new Object();
     private static final String HUMAN_REASON = "ask the user to answer it in EDT";
+    private static final String ACKNOWLEDGE_REASON = "informational: only OK can be pressed, which closes it";
     private static final long UI_TIMEOUT_MS = 500;
     private final AtomicReference<Display> installing = new AtomicReference<>();
     private final Map<Shell, Entry> entries = new IdentityHashMap<>();
-    private volatile List<JsonObject> snapshot = List.of();
+    private volatile List<Listed> snapshot = List.of();
     private volatile Display installedDisplay;
+    private Runnable filterDisposable;
     private final java.util.function.Supplier<Display> displaySource;
+    /** The {@link System#nanoTime()} scale a {@link #answerableUntil} cutoff is on. */
+    private final java.util.function.LongSupplier clock;
 
     public EdtDialogs()
     {
@@ -51,14 +57,25 @@ public class EdtDialogs
 
     public EdtDialogs(java.util.function.Supplier<Display> displaySource)
     {
+        this(displaySource, System::nanoTime);
+    }
+
+    EdtDialogs(java.util.function.Supplier<Display> displaySource, java.util.function.LongSupplier clock)
+    {
         this.displaySource = displaySource;
+        this.clock = clock;
     }
 
     private static final class Entry
     {
         final String id = UUID.randomUUID().toString();
         JsonObject data;
+        /** The shell's {@link #answerableUntil} cutoff, or {@code null}. */
+        Long cutoffNanos;
     }
+
+    /** One published dialog: what is listed, and until when an answer to it still counts. */
+    private record Listed(JsonObject data, Long cutoffNanos) {}
 
     public static EdtDialogs getInstance()
     {
@@ -69,6 +86,21 @@ public class EdtDialogs
     public static void protect(Shell shell)
     {
         shell.setData(HUMAN_KEY, HUMAN_IDENTITY);
+    }
+
+    /**
+     * Called by the owner of a dialog whose answer stops counting at a known instant, before its shell
+     * becomes visible: the consent prompt, whose verdict is TIMEOUT from its cutoff on. From that instant
+     * the dialog leaves the open-dialog list and the notice of every response, and {@code edt_dialog}
+     * treats it as closed - also while its close still waits for the UI thread, which can be busy past
+     * the cutoff on either of the gate's paths - so nobody is told to answer a prompt that is decided.
+     *
+     * @param shell the dialog's shell (UI thread)
+     * @param cutoffNanos the {@link System#nanoTime()} at which an answer stops counting
+     */
+    public static void answerableUntil(Shell shell, long cutoffNanos)
+    {
+        shell.setData(CUTOFF_KEY, Long.valueOf(cutoffNanos));
     }
 
     public void ensureInstalled()
@@ -112,20 +144,41 @@ public class EdtDialogs
         }
     }
 
-    void install(Display display)
+    Runnable install(Display display)
     {
         if (display.isDisposed() || installedDisplay == display)
         {
-            return;
+            return filterDisposable;
         }
         entries.clear();
         snapshot = List.of();
-        for (int type : new int[] {SWT.Show, SWT.Activate, SWT.Hide, SWT.Dispose})
-        {
-            display.addFilter(type, event -> observe(display, event));
-        }
+        org.eclipse.swt.widgets.Listener listener = event -> observe(display, event);
+        int[] types = {SWT.Show, SWT.Activate, SWT.Hide, SWT.Dispose};
+        for (int type : types) { display.addFilter(type, listener); }
         installedDisplay = display;
         sweep(display);
+        filterDisposable = ListenerDisposables.register(() -> removeFilters(display, () -> {
+            for (int type : types) { display.removeFilter(type, listener); }
+            installedDisplay = null;
+            entries.clear();
+            snapshot = List.of();
+        }));
+        return filterDisposable;
+    }
+
+    /** Dispatches filter removal on its owning display without blocking bundle shutdown. */
+    static void removeFilters(Display display, Runnable removal)
+    {
+        if (display == null || display.isDisposed()) { return; }
+        try
+        {
+            if (Display.getCurrent() == display) { removal.run(); }
+            else { display.asyncExec(() -> { if (!display.isDisposed()) { removal.run(); } }); }
+        }
+        catch (org.eclipse.swt.SWTException e)
+        {
+            if (!display.isDisposed()) { throw e; }
+        }
     }
 
     private void observe(Display display, Event event)
@@ -163,9 +216,85 @@ public class EdtDialogs
     private static boolean answerable(Shell shell, Map<String, List<Button>> buttons, boolean complete)
     {
         return shell.getData(HUMAN_KEY) == null
-            && (LaunchUpdateDialogAutoConfirmer.isTargetTitle(shell.getText())
-                || LaunchUpdateDialogAutoConfirmer.isConflictTitle(shell.getText())
-                || LaunchUpdateDialogAutoConfirmer.isExclusiveLockQuestion(shell.getText(), buttons, complete));
+            && (questionAnswerable(shell, buttons, complete)
+                || acknowledgeOnly(buttons, complete) && onlyPassiveControls(shell, 0));
+    }
+
+    /**
+     * Whether everything under {@code control} only shows text: labels, links, read-only text, push buttons
+     * and plain containers. A checkbox, a choice, an editable field or any control of an unknown class makes
+     * OK submit a decision, so the dialog is not merely informational.
+     */
+    static boolean onlyPassiveControls(Control control, int depth)
+    {
+        if (depth > 6)
+        {
+            return false;
+        }
+        for (Control child : ((Composite)control).getChildren())
+        {
+            if (child.isDisposed())
+            {
+                continue;
+            }
+            boolean container = child.getClass() == Composite.class || child.getClass() == Group.class;
+            boolean passive = container || child instanceof Label || child instanceof CLabel || child instanceof Link
+                || child instanceof Button && (child.getStyle() & SWT.PUSH) != 0
+                || child instanceof Text && (child.getStyle() & SWT.READ_ONLY) != 0;
+            if (!passive || container && !onlyPassiveControls(child, depth + 1))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** A known EDT question: any of its buttons may be pressed. */
+    private static boolean questionAnswerable(Shell shell, Map<String, List<Button>> buttons, boolean complete)
+    {
+        return LaunchUpdateDialogAutoConfirmer.isTargetTitle(shell.getText())
+            || LaunchUpdateDialogAutoConfirmer.isConflictTitle(shell.getText())
+            || LaunchUpdateDialogAutoConfirmer.isExclusiveLockQuestion(shell.getText(), buttons, complete);
+    }
+
+    /**
+     * A message with nothing to decide: its only action is OK (an error dialog's Details toggle aside), so
+     * pressing OK only closes it. Such a dialog still blocks EDT until someone does.
+     */
+    public static boolean acknowledgeOnly(Map<String, ? extends List<?>> buttons, boolean complete)
+    {
+        if (!complete || buttons == null)
+        {
+            return false;
+        }
+        boolean ok = false;
+        for (Map.Entry<String, ? extends List<?>> entry : buttons.entrySet())
+        {
+            if (entry.getValue() == null || entry.getValue().size() != 1)
+            {
+                return false;
+            }
+            if (isOkLabel(entry.getKey()))
+            {
+                ok = true;
+            }
+            else if (!isDetailsLabel(entry.getKey()))
+            {
+                return false;
+            }
+        }
+        return ok;
+    }
+
+    private static boolean isOkLabel(String label)
+    {
+        return "OK".equals(label) || IDialogConstants.OK_LABEL.equals(label);
+    }
+
+    private static boolean isDetailsLabel(String label)
+    {
+        return IDialogConstants.SHOW_DETAILS_LABEL.equals(label) || IDialogConstants.HIDE_DETAILS_LABEL.equals(label)
+            || "&Details >>".equals(label) || "<< &Details".equals(label);
     }
 
     private void capture(Shell shell)
@@ -179,11 +308,11 @@ public class EdtDialogs
         Entry entry = entries.computeIfAbsent(shell, ignored -> new Entry());
         JsonObject data = new JsonObject();
         data.addProperty("dialogId", entry.id);
-        data.addProperty("title", shell.getText());
-        StringBuilder message = new StringBuilder();
-        Map<String, List<Button>> buttons = new LinkedHashMap<>();
-        boolean complete = readControls(shell, 0, new int[] {500}, message, buttons);
-        data.addProperty("message", message.toString().strip());
+        var shellSnapshot = fm.giper.edt.mcp.server.utils.ui.ShellSnapshot.read(shell);
+        data.addProperty("title", shellSnapshot.title());
+        Map<String, List<Button>> buttons = shellSnapshot.buttons();
+        boolean complete = shellSnapshot.complete();
+        data.addProperty("message", shellSnapshot.message());
         JsonArray labels = new JsonArray();
         buttons.keySet().forEach(labels::add);
         data.add("buttons", labels);
@@ -193,6 +322,10 @@ public class EdtDialogs
         {
             data.addProperty("reason", HUMAN_REASON);
         }
+        else if (!questionAnswerable(shell, buttons, complete))
+        {
+            data.addProperty("reason", ACKNOWLEDGE_REASON);
+        }
         if (entry.data != null && !entry.data.equals(data))
         {
             entry = new Entry();
@@ -200,88 +333,81 @@ public class EdtDialogs
             data.addProperty("dialogId", entry.id);
         }
         entry.data = data;
+        entry.cutoffNanos = shell.getData(CUTOFF_KEY) instanceof Long cutoff ? cutoff : null;
         publish();
-    }
-
-    private static boolean readControls(Control control, int depth, int[] budget, StringBuilder text,
-        Map<String, List<Button>> buttons)
-    {
-        if (control.isDisposed())
-        {
-            return true;
-        }
-        if (depth > 6 || budget[0] <= 0)
-        {
-            return false;
-        }
-        budget[0]--;
-        String value = null;
-        if (control instanceof Button && (control.getStyle() & SWT.PUSH) != 0)
-        {
-            Button button = (Button)control;
-            buttons.computeIfAbsent(button.getText(), ignored -> new ArrayList<>()).add(button);
-        }
-        else if (control instanceof Label)
-        {
-            value = ((Label)control).getText();
-        }
-        else if (control instanceof CLabel)
-        {
-            value = ((CLabel)control).getText();
-        }
-        else if (control instanceof Link)
-        {
-            value = ((Link)control).getText();
-        }
-        else if (control instanceof Text && (control.getStyle() & SWT.READ_ONLY) != 0
-            && (control.getStyle() & SWT.PASSWORD) == 0)
-        {
-            value = ((Text)control).getText();
-        }
-        if (value != null && !value.isBlank() && text.length() < 8192)
-        {
-            text.append(value, 0, Math.min(value.length(), 8192 - text.length())).append('\n');
-        }
-        boolean complete = true;
-        if (control instanceof Composite)
-        {
-            for (Control child : ((Composite)control).getChildren())
-            {
-                complete &= readControls(child, depth + 1, budget, text, buttons);
-            }
-        }
-        return complete;
     }
 
     private void publish()
     {
         snapshot = entries.values().stream().filter(entry -> entry.data != null)
-            .map(entry -> entry.data).sorted((a, b) -> a.get("dialogId").getAsString()
-                .compareTo(b.get("dialogId").getAsString())).toList();
+            .map(entry -> new Listed(entry.data, entry.cutoffNanos))
+            .sorted((a, b) -> a.data().get("dialogId").getAsString()
+                .compareTo(b.data().get("dialogId").getAsString())).toList();
         synchronized (this)
         {
             notifyAll();
         }
     }
 
+    /**
+     * @param cutoffNanos a dialog's {@link #answerableUntil} cutoff, or {@code null}
+     * @return whether an answer to it no longer counts
+     */
+    private boolean pastCutoff(Long cutoffNanos)
+    {
+        return cutoffNanos != null && clock.getAsLong() - cutoffNanos.longValue() >= 0;
+    }
+
+    /**
+     * @return the published dialogs whose answer still counts, from any thread: one past its
+     *         {@link #answerableUntil} cutoff is decided, even while its shell waits to be closed
+     */
+    private List<JsonObject> undecided()
+    {
+        return snapshot.stream().filter(listed -> !pastCutoff(listed.cutoffNanos())).map(Listed::data).toList();
+    }
+
     public JsonArray cachedDialogs()
     {
         JsonArray result = new JsonArray();
-        snapshot.forEach(data -> result.add(data.deepCopy()));
+        undecided().forEach(data -> result.add(data.deepCopy()));
         return result;
     }
 
     public String notice()
     {
-        List<JsonObject> current = snapshot;
+        List<JsonObject> current = undecided();
         if (current.isEmpty())
         {
             return null;
         }
-        String title = current.get(0).get("title").getAsString();
+        return noticeFor(current);
+    }
+
+    /**
+     * The notice line for the listed dialogs: names a dialog only the user can answer (a consent
+     * dialog, for one) when there is one, and says so, so that the agent asks the user instead of
+     * trying {@code edt_dialog}; otherwise names the first dialog.
+     *
+     * @param dialogs the dialogs as {@link #cachedDialogs()} lists them, at least one
+     * @return the notice line
+     */
+    static String noticeFor(List<JsonObject> dialogs)
+    {
+        JsonObject dialog = dialogs.stream().filter(d -> !answerableEntry(d)).findFirst().orElse(dialogs.get(0));
+        String title = dialog.get("title").getAsString();
         title = title.replace('\r', ' ').replace('\n', ' ');
-        return "EDT dialog open: \"" + title.substring(0, Math.min(title.length(), 160))
-            + "\". Call edt_dialog with action=list.";
+        String quoted = "EDT dialog open: \"" + title.substring(0, Math.min(title.length(), 160)) + "\"";
+        if (!answerableEntry(dialog))
+        {
+            return quoted + " - only the user can answer it in EDT; ask them. Details: edt_dialog action=list.";
+        }
+        return quoted + ". Call edt_dialog with action=list.";
+    }
+
+    private static boolean answerableEntry(JsonObject dialog)
+    {
+        return !dialog.has("answerable") || dialog.get("answerable").getAsBoolean();
     }
 
     public String list()
@@ -307,7 +433,8 @@ public class EdtDialogs
     {
         Shell shell = entries.entrySet().stream().filter(e -> e.getValue().id.equals(dialogId))
             .map(Map.Entry::getKey).findFirst().orElse(null);
-        if (shell == null || !openModal(shell))
+        // Past its cutoff the dialog's question is decided and its close is queued: it has closed.
+        if (shell == null || !openModal(shell) || pastCutoff(entries.get(shell).cutoffNanos))
         {
             return ToolResult.error("Dialog '" + dialogId
                 + "' has closed or been replaced. Call edt_dialog with action=list again.").toJson();
@@ -319,10 +446,15 @@ public class EdtDialogs
                 + "' has changed or been replaced. Call edt_dialog with action=list again.").toJson();
         }
         Map<String, List<Button>> buttons = new LinkedHashMap<>();
-        boolean complete = readControls(shell, 0, new int[] {500}, new StringBuilder(), buttons);
+        boolean complete = fm.giper.edt.mcp.server.utils.ui.ShellSnapshot.readControls(shell, 0, new int[] {500}, new StringBuilder(), buttons);
         if (!answerable(shell, buttons, complete))
         {
             return ToolResult.error("Dialog '" + dialogId + "': " + HUMAN_REASON + ".").toJson();
+        }
+        if (!questionAnswerable(shell, buttons, complete) && !isOkLabel(label))
+        {
+            return ToolResult.error("Dialog '" + dialogId + "' is informational: only OK can be pressed. "
+                + "Its message is in edt_dialog action=list.").toJson();
         }
         List<Button> matches = buttons.get(label);
         if (matches == null || matches.size() != 1 || !matches.get(0).isEnabled()
@@ -372,7 +504,7 @@ public class EdtDialogs
             return new JsonArray();
         }
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-        while (snapshot.isEmpty())
+        while (undecided().isEmpty())
         {
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0)

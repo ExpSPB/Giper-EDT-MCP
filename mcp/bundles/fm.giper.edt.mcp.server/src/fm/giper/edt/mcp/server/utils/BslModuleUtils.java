@@ -15,7 +15,9 @@ import java.io.File;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -660,21 +662,21 @@ public final class BslModuleUtils
      * terminator. An unterminated declaration is returned with {@code complete=false}
      * and an end line clamped to the final source line.
      *
-     * @param lines BSL module or fragment lines
+     * @param lines BSL module or fragment lines, never {@code null} - no caller has a null module
+     *        to scan, and a null branch here only made every caller's list look nullable
      * @return all discovered method spans
      */
     public static List<MethodSpan> findMethodSpansViaText(List<String> lines)
     {
-        List<MethodSpan> spans = new ArrayList<>();
-        if (lines == null)
-        {
-            return spans;
-        }
+        return findMethodSpansViaText(lines, BslSyntaxChecker.maskLiteralsAndComments(lines));
+    }
 
+    static List<MethodSpan> findMethodSpansViaText(List<String> lines, List<String> scan)
+    {
         // Every rule below reads text whose string literals and comments are blanked out: a
         // keyword inside a default value or behind a trailing comment is not code, and the
         // splice still uses the ORIGINAL lines.
-        List<String> scan = BslSyntaxChecker.maskLiteralsAndComments(lines);
+        List<MethodSpan> spans = new ArrayList<>();
         for (int declarationLine = 0; declarationLine < scan.size(); declarationLine++)
         {
             Matcher startMatcher = METHOD_START_PATTERN.matcher(scan.get(declarationLine));
@@ -787,8 +789,13 @@ public final class BslModuleUtils
      * {@code EndProcedure; ModuleValue = Call();} is valid code whose terminator does NOT
      * end the line - and every span here is measured in whole lines, so without this the
      * statement would ride along inside the method span.
+     * <p>
+     * The blank runs are possessive and the second one belongs to the separator: two adjacent
+     * optional runs split one run of blanks every possible way, which took seconds on a long
+     * blank tail ending in a stray character.
+     * </p>
      */
-    private static final Pattern METHOD_END_TAIL_PATTERN = Pattern.compile("^\\s*;?\\s*(?://.*)?$"); //$NON-NLS-1$
+    private static final Pattern METHOD_END_TAIL_PATTERN = Pattern.compile("^\\s*+(?:;\\s*+)?(?://.*)?$"); //$NON-NLS-1$
 
     /**
      * Where a real method DECLARATION begins at or after {@code from}, or -1.
@@ -938,10 +945,12 @@ public final class BslModuleUtils
      * points cuts a supplementary letter into two halves that are neither.
      * </p>
      *
+     * Package-visible: {@link BslWholeWordReplace} draws its word boundary with the same class (#996).
+     *
      * @param codePoint the code point to test
      * @return whether it belongs in a pragma name
      */
-    private static boolean isIdentifierCharacter(int codePoint)
+    static boolean isIdentifierCharacter(int codePoint)
     {
         if (codePoint == '_')
         {
@@ -1051,15 +1060,11 @@ public final class BslModuleUtils
      * method gets written as if it were valid. Such a line is refused instead.
      * </p>
      *
-     * @param lines BSL module or fragment lines
+     * @param lines BSL module or fragment lines, never {@code null}
      * @return the 0-based line index, or -1 when every declaration line opens exactly one
      */
     public static int secondDeclarationOnLine(List<String> lines)
     {
-        if (lines == null)
-        {
-            return -1;
-        }
         List<String> scan = BslSyntaxChecker.maskLiteralsAndComments(lines);
         for (int i = 0; i < scan.size(); i++)
         {
@@ -1178,15 +1183,11 @@ public final class BslModuleUtils
      * 2.5.16.41's 22 786 modules.
      * </p>
      *
-     * @param lines BSL module or fragment lines
+     * @param lines BSL module or fragment lines, never {@code null}
      * @return the finding, or {@code null} when every line can be addressed
      */
     public static Unaddressable unaddressable(List<String> lines)
     {
-        if (lines == null)
-        {
-            return null;
-        }
         List<String> scan = BslSyntaxChecker.maskLiteralsAndComments(lines);
         for (int i = 0; i < scan.size(); i++)
         {
@@ -1544,12 +1545,17 @@ public final class BslModuleUtils
             sb.append('\'').append(requestedNames.get(i)).append('\'');
         }
         sb.append(" not found in ").append(modulePath).append("\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
+        appendAvailableMethods(sb, allMethodNames);
+        return sb.toString();
+    }
+
+    public static void appendAvailableMethods(StringBuilder sb, List<String> allMethodNames)
+    {
         sb.append("**Available methods** (").append(allMethodNames.size()).append("):\n\n"); //$NON-NLS-1$ //$NON-NLS-2$
         for (String name : allMethodNames)
         {
             sb.append("- ").append(name).append("\n"); //$NON-NLS-1$ //$NON-NLS-2$
         }
-        return sb.toString();
     }
 
     /**
@@ -1672,7 +1678,26 @@ public final class BslModuleUtils
             }
             rawIs = new FileInputStream(fsFile);
         }
+        return decodeText(rawIs, file, strict);
+    }
 
+    /**
+     * Decodes bytes just written to {@code file} exactly as {@link #readFileText(IFile)} would decode them when it
+     * reads the file back: a leading UTF-8 BOM is dropped, and without one the file's declared charset applies. A
+     * writer hashes this to answer the token a later read reports (#978), without reading the file again.
+     *
+     * @param file the file the bytes were written to (its charset decides a BOM-less decode)
+     * @param written the exact bytes written
+     * @return the text a read of the file returns
+     * @throws Exception if decoding fails
+     */
+    public static String decodeWrittenText(IFile file, byte[] written) throws Exception
+    {
+        return decodeText(new java.io.ByteArrayInputStream(written), file, false);
+    }
+
+    private static String decodeText(InputStream rawIs, IFile file, boolean strict) throws Exception
+    {
         try (InputStream input = new BufferedInputStream(rawIs))
         {
             input.mark(3);
@@ -1700,6 +1725,10 @@ public final class BslModuleUtils
                         throw ce;
                     }
                     charset = UTF_8;
+                }
+                if (charset == null || charset.isBlank())
+                {
+                    charset = UTF_8; // no declared charset: the same default as an unreadable one
                 }
             }
             CodingErrorAction action = strict ? CodingErrorAction.REPORT : CodingErrorAction.REPLACE;
@@ -1922,6 +1951,24 @@ public final class BslModuleUtils
         }
 
         return null;
+    }
+
+    static Map<Integer, String> findMethodRegions(List<String> lines, List<MethodSpan> spans)
+    {
+        Map<Integer, String> regions = new HashMap<>();
+        List<String> stack = new ArrayList<>();
+        int next = 0;
+        for (int line = 0; next < spans.size() && line < lines.size(); line++)
+        {
+            int target = spans.get(next).declarationLine;
+            RegionScanResult result = scanRegionLine(lines.get(line), line + 1, target + 1, stack);
+            if (result.resolved)
+            {
+                regions.put(target, result.regionName);
+                next++;
+            }
+        }
+        return regions;
     }
 
     /**

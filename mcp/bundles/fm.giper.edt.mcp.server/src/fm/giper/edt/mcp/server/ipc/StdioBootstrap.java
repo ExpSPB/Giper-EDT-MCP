@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import com.google.gson.JsonArray;
@@ -38,16 +39,19 @@ public final class StdioBootstrap implements AutoCloseable
     @FunctionalInterface public interface RegistryProvider { EndpointRegistry open() throws IOException; }
     private final RegistryProvider registries;
     private final StartupCoordinator.Starter starter;
-    private final OutputStream output;
+    /** The client's stdout: written by the request thread, the attach worker and the reply threads. */
+    private final JsonFrames.Writer output;
     private final JsonObject catalog;
     private final boolean headless;
+    private final Boolean plainTextMode;
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "edt-mcp-attach"); t.setDaemon(true); return t;
     });
     private final AtomicBoolean attaching = new AtomicBoolean();
     private record Pending(JsonElement id, boolean toolCall, JsonFrames.Socket owner) { }
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
-    private volatile JsonFrames.Socket connection;
+    /** The attached EDT connection, or null while none is attached. */
+    private final AtomicReference<JsonFrames.Socket> connection = new AtomicReference<>();
     private volatile String status = "EDT is connecting. Retry the same call in about 2 seconds. No tool ran.";
     private volatile String launchFailure;
     private CompletableFuture<String> preparation;
@@ -65,14 +69,40 @@ public final class StdioBootstrap implements AutoCloseable
 
     public StdioBootstrap(RegistryProvider registries, StartupCoordinator.Starter starter, OutputStream output,
         JsonObject catalog, boolean headless)
-    { this.registries = registries; this.starter = starter; this.output = output; this.catalog = catalog; this.headless = headless; }
+    { this(registries, starter, output, catalog, headless, null); }
+
+    public StdioBootstrap(RegistryProvider registries, StartupCoordinator.Starter starter, OutputStream output,
+        JsonObject catalog, boolean headless, Boolean plainTextMode)
+    {
+        this.registries = registries; this.starter = starter; this.output = new JsonFrames.Writer(output);
+        this.catalog = catalog; this.headless = headless; this.plainTextMode = plainTextMode;
+    }
 
     public static boolean headlessRequested(String[] args) { return java.util.Arrays.asList(args).contains("-headless"); }
+
+    /** An omitted override follows the host preference; an explicit value belongs to this bridge. */
+    public static Boolean plainTextMode(String[] args) throws IOException
+    {
+        for (int i = 0; i < args.length; i++)
+        {
+            if ("-resultMode".equals(args[i]))
+            {
+                if (i + 1 < args.length)
+                {
+                    if ("plaintext".equals(args[i + 1])) { return true; }
+                    if ("structured".equals(args[i + 1])) { return false; }
+                }
+                throw new IOException("Set -resultMode to plaintext or structured in the stdio launcher arguments.");
+            }
+        }
+        return null;
+    }
 
     public static void main(String[] args)
     {
         try
         {
+            Boolean deliveryMode = plainTextMode(args);
             Path install = explicitPath(args, "-install");
             String installFix = "Set -install to the EDT installation directory in .mcp.json.";
             try { install = install.toRealPath(); }
@@ -101,7 +131,7 @@ public final class StdioBootstrap implements AutoCloseable
                 return new EndpointRegistry(EndpointRegistry.privateDirectory(EndpointRegistry.userDirectory().resolve("ipc")), workspace);
             };
             try (var bootstrap = new StdioBootstrap(registries, new WindowsEdtStarter(install, workspace, configuration, headlessRequested(args)),
-                System.out, catalog, headlessRequested(args)))
+                System.out, catalog, headlessRequested(args), deliveryMode))
             {
                 var input = new BufferedInputStream(System.in);
                 String frame;
@@ -179,13 +209,13 @@ public final class StdioBootstrap implements AutoCloseable
         if (method.equals("notifications/initialized")) { initialized = initialize != null; return; }
         if (id.isJsonNull())
         {
-            JsonFrames.Socket current = connection;
+            JsonFrames.Socket current = connection.get();
             if (current != null) { try { current.write(frame); } catch (IOException e) { disconnected(current); } }
             return;
         }
         if (method.equals("ping")) { send(success(id, new JsonObject())); return; }
         if (!initialized) { send(error(id, -32600, "Initialize this MCP connection first")); return; }
-        JsonFrames.Socket current = connection;
+        JsonFrames.Socket current = connection.get();
         if (current != null) { forward(request, id, current); return; }
         if (method.equals("tools/list"))
         {
@@ -216,10 +246,10 @@ public final class StdioBootstrap implements AutoCloseable
         if (!known) { send(error(id, -32601, "Unknown tool; use tools/list")); return; }
         String refusal = status;
         try { refusal = prepareConnection().get(ATTACH_WAIT_MS, TimeUnit.MILLISECONDS); }
-        catch (java.util.concurrent.TimeoutException e) { /* No invocation is retained by preparation. */ }
+        catch (java.util.concurrent.TimeoutException | java.util.concurrent.ExecutionException e)
+        { /* No invocation is retained by preparation, and preparation sets the actionable refusal. */ }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        catch (java.util.concurrent.ExecutionException e) { /* Preparation sets the actionable refusal. */ }
-        current = connection;
+        current = connection.get();
         if (current != null) { forward(request, id, current); }
         else
         {
@@ -236,7 +266,7 @@ public final class StdioBootstrap implements AutoCloseable
         // IPC-owned string ids preserve external numeric ids beyond the dispatcher's Double precision.
         String key = "request-" + UUID.randomUUID();
         pending.put(key, new Pending(id.deepCopy(), "tools/call".equals(request.get("method").getAsString()), current));
-        if (connection != current) { disconnected(current); return; }
+        if (connection.get() != current) { disconnected(current); return; }
         JsonObject forwarded = request.deepCopy(); forwarded.addProperty("id", key);
         try { current.write(forwarded.toString()); }
         catch (IOException e) { disconnected(current); }
@@ -293,7 +323,7 @@ public final class StdioBootstrap implements AutoCloseable
             // A wedged listener must not hang the client's bootstrap or leak attach workers.
             var timeout = CompletableFuture.delayedExecutor(ATTACH_WAIT_MS, TimeUnit.MILLISECONDS);
             AtomicBoolean ready = new AtomicBoolean();
-            timeout.execute(() -> { if (!ready.get()) { try { socket.close(); } catch (IOException ignored) { } } });
+            timeout.execute(() -> { if (!ready.get()) { try { socket.close(); } catch (IOException ignored) { /* Best effort: the attach path reports the failure. */ } } });
             try
             {
                 // Connect on the channel before constructing any stream wrapper.
@@ -306,7 +336,7 @@ public final class StdioBootstrap implements AutoCloseable
                 socket.write("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
                 ready.set(true);
                 if (closed) { socket.close(); return; }
-                connection = socket;
+                connection.set(socket);
                 launchFailure = null;
                 Thread receiver = new Thread(() -> receive(socket), "edt-mcp-replies");
                 receiver.setDaemon(true); receiver.start();
@@ -325,7 +355,7 @@ public final class StdioBootstrap implements AutoCloseable
     }
 
     private void connect(JsonFrames.Socket socket, EndpointRegistry.Endpoint endpoint) throws IOException
-    { socket.connect(UnixDomainSocketAddress.of(endpoint.socket())); IpcHandshake.client(socket, endpoint); }
+    { socket.connect(UnixDomainSocketAddress.of(endpoint.socket())); IpcHandshake.client(socket, endpoint, plainTextMode); }
 
     private void receive(JsonFrames.Socket socket)
     {
@@ -350,12 +380,11 @@ public final class StdioBootstrap implements AutoCloseable
 
     private synchronized void disconnected(JsonFrames.Socket socket)
     {
-        if (connection == socket)
+        if (connection.compareAndSet(socket, null))
         {
-            connection = null;
             status = "EDT disconnected. Retry a read to reconnect. This call has not executed.";
         }
-        try { socket.close(); } catch (IOException ignored) { }
+        try { socket.close(); } catch (IOException ignored) { /* The socket is being discarded either way. */ }
         pending.forEach((key, call) -> {
             if (call.owner() == socket && pending.remove(key, call))
             {
@@ -365,12 +394,12 @@ public final class StdioBootstrap implements AutoCloseable
                         + "Read back the state before deciding whether to retry. The bootstrap has not replayed the call.";
                     send(call.toolCall() ? toolError(call.id(), message) : error(call.id(), -32002, "EDT disconnected; reconnect and retry this request."));
                 }
-                catch (IOException ignored) { }
+                catch (IOException ignored) { /* The client channel is gone; no one is left to tell. */ }
             }
         });
     }
 
-    private void send(String json) throws IOException { JsonFrames.write(output, json); }
+    private void send(String json) throws IOException { output.write(json); }
     private static String idKey(JsonElement id)
     {
         return id.getAsJsonPrimitive().isNumber() ? "n:" + id.getAsBigDecimal().stripTrailingZeros().toString()
@@ -398,7 +427,7 @@ public final class StdioBootstrap implements AutoCloseable
     {
         closed = true;
         worker.shutdownNow();
-        JsonFrames.Socket current = connection;
+        JsonFrames.Socket current = connection.get();
         if (current != null) { disconnected(current); }
     }
 }

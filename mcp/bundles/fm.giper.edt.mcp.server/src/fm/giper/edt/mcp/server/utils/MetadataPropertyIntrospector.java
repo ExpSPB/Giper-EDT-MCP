@@ -87,6 +87,8 @@ public final class MetadataPropertyIntrospector
     {
         /** A free-text string (e.g. name, comment). */
         STRING,
+        /** An ExchangePlan's this-node UUID. */
+        UUID,
         /** A boolean flag. */
         BOOLEAN,
         /** An integer (e.g. a length / precision). */
@@ -218,12 +220,8 @@ public final class MetadataPropertyIntrospector
          * therefore called two different targets equal. This field carries the target qualified by
          * its metadata type, so a comparison sees the difference the display legitimately hides.
          * <p>
-         * A 1C type is the second such kind, and it hides more than a name. A
-         * {@link ValueKind#TYPE_DESCRIPTION} renders as its type names alone - {@code String},
-         * {@code Number} - while the value ALSO carries the qualifiers that say how long that
-         * string is and how many digits that number has. A {@code String} bounded at 10
-         * characters and an unbounded {@code String} are one word on the page and two different
-         * columns in the database, so this field spells the qualifiers out; see
+         * A type description also includes a comparison identity independent of its compact
+         * display. Defaulted qualifier groups compare like absent groups; see
          * {@link MetadataPropertyIntrospector#renderTypeDescription}.
          * <p>
          * A LOCALIZED STRING is the third, and it hides the STRUCTURE rather than a detail of the
@@ -688,6 +686,10 @@ public final class MetadataPropertyIntrospector
     private static ValueKind classifyAttribute(EAttribute feature)
     {
         EClassifier type = feature.getEAttributeType();
+        if (type == McorePackage.Literals.UUID)
+        {
+            return feature == MdClassPackage.Literals.EXCHANGE_PLAN__THIS_NODE ? ValueKind.UUID : null;
+        }
         if (type instanceof EEnum)
         {
             return feature.isMany() ? ValueKind.MANY_ENUM : ValueKind.ENUM;
@@ -706,6 +708,13 @@ public final class MetadataPropertyIntrospector
             return ValueKind.LONG;
         }
         return ValueKind.STRING;
+    }
+
+    static boolean isReadOnlyUuid(EObject object, String name)
+    {
+        return object.eClass().getEAllAttributes().stream().anyMatch(feature ->
+            feature.getName().equalsIgnoreCase(name) && feature.getEAttributeType() == McorePackage.Literals.UUID
+                && classifyAttribute(feature) == null);
     }
 
     /**
@@ -1762,32 +1771,7 @@ public final class MetadataPropertyIntrospector
             : "{" + nsUri + "}" + name; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
-    /**
-     * Renders a {@code TypeDescription} for a reader, and beside it - in the same walk - the form
-     * that says WHICH {@code TypeDescription} it is.
-     *
-     * <p>The two are not the same string, and the gap is not cosmetic. A {@code TypeDescription}
-     * is a set of type names PLUS the qualifiers that bound them: {@code String} carries a length
-     * and a fixed flag, {@code Number} a precision, a scale and a sign, {@code Date} which of the
-     * date and the time it stores, and a binary type its own length and fixed flag. The cell shows
-     * the names only, because that is what a type column is for - and it means a {@code String}
-     * bounded at 10 characters and a {@code String} bounded at 100 print the same six letters.
-     * Comparing those cells answered SAME for two attributes EDT stores as different columns.
-     * Both spellings occur side by side in an ordinary configuration: an attribute typed
-     * {@code String} with an empty {@code <stringQualifiers/>} and another with
-     * {@code <length>10</length>} sit in one {@code .mdo} file.</p>
-     *
-     * <p>A qualifier group whose every field still holds the model default is left OUT of the
-     * identity, and that is deliberate rather than an optimisation. EDT writes the empty element
-     * {@code <stringQualifiers/>} for an unbounded string, so one side can hold a defaulted
-     * qualifier object where the other holds none at all while both mean the same unbounded type.
-     * Spelling the group out unconditionally would turn that into a reported difference - the
-     * opposite error to the one this method exists to stop, and the more annoying of the two,
-     * because it would fire on ordinary configurations rather than on a specific pair of values.</p>
-     *
-     * @param typeDesc the value to render, never {@code null}
-     * @return the rendering, or {@link Rendered#ABSENT} when the description names no type
-     */
+    /** Keeps the comparison identity stable while displaying qualified type alternatives. */
     private static Rendered renderTypeDescription(TypeDescription typeDesc)
     {
         EList<TypeItem> types = typeDesc.getTypes();
@@ -1809,7 +1793,55 @@ public final class MetadataPropertyIntrospector
         String qualifiers = renderQualifiers(typeDesc);
         // The separator is one no 1C type name can carry, so a type list and a qualifier list
         // cannot be read as each other however either of them is spelled.
-        return Rendered.of(text, qualifiers.isEmpty() ? text : text + " | " + qualifiers); //$NON-NLS-1$
+        return Rendered.of(formatTypeDescription(typeDesc),
+            qualifiers.isEmpty() ? text : text + " | " + qualifiers); //$NON-NLS-1$
+    }
+
+    /** Formats the English type alternatives with their stored primitive qualifiers. */
+    public static String formatTypeDescription(TypeDescription description)
+    {
+        if (description == null || description.getTypes() == null || description.getTypes().isEmpty())
+        {
+            return "-"; //$NON-NLS-1$
+        }
+        List<String> parts = new ArrayList<>();
+        AdoptedPropertyRouter.Qualifiers qualifiers = AdoptedPropertyRouter.Qualifiers.of(description);
+        for (TypeItem item : description.getTypes())
+        {
+            String name = McoreUtil.getTypeName(item);
+            if (name == null || name.isEmpty())
+            {
+                name = McoreUtil.getTypeNameRu(item);
+            }
+            if (name == null || name.isEmpty())
+            {
+                name = item.getClass().getSimpleName();
+            }
+            parts.add(formatQualifiedType(name, qualifiers));
+        }
+        return String.join(", ", parts); //$NON-NLS-1$
+    }
+
+    static String formatQualifiedType(String name, AdoptedPropertyRouter.Qualifiers q)
+    {
+        return switch (name)
+        {
+            case "String" -> name + formatLength(q.stringLength == null ? 0 : q.stringLength,
+                Boolean.TRUE.equals(q.stringFixed), true);
+            case "Number" -> q.numberPrecision == null ? name : name + "(" + q.numberPrecision + ", "
+                + q.numberScale + (Boolean.TRUE.equals(q.numberNonNegative) ? ", Nonnegative)" : ", Signed)");
+            case "Date" -> name + "(" + (q.dateFractions == null ? DateFractions.DATE_TIME : q.dateFractions)
+                .getLiteral() + ")";
+            case "BinaryData" -> q.binaryLength == null ? name
+                : name + formatLength(q.binaryLength, Boolean.TRUE.equals(q.binaryFixed), false);
+            default -> name;
+        };
+    }
+
+    private static String formatLength(int length, boolean fixed, boolean omitUnlimitedVariable)
+    {
+        return "(" + (length == 0 ? "unlimited" : Integer.toString(length))
+            + (fixed ? ", Fixed" : length == 0 && omitUnlimitedVariable ? "" : ", Variable") + ")";
     }
 
     /**

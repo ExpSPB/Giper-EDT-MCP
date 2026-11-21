@@ -6,6 +6,7 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -32,7 +33,6 @@ import org.eclipse.emf.ecore.resource.ResourceSet;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.xtext.nodemodel.INode;
-import org.eclipse.xtext.resource.XtextResource;
 import org.eclipse.xtext.nodemodel.util.NodeModelUtils;
 
 import com._1c.g5.v8.dt.bsl.model.DynamicFeatureAccess;
@@ -52,6 +52,7 @@ import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.CallGraphTraversal;
 import fm.giper.edt.mcp.server.utils.MarkdownUtils;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
+import fm.giper.edt.mcp.server.utils.BslMethodRecovery;
 import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.Refusals;
@@ -72,6 +73,18 @@ import fm.giper.edt.mcp.server.utils.Refusals;
 public class GetMethodCallHierarchyTool implements IMcpTool
 {
     public static final String NAME = "get_method_call_hierarchy"; //$NON-NLS-1$
+
+    private final java.util.function.BiFunction<IProject, String, Module> moduleLoader;
+
+    public GetMethodCallHierarchyTool()
+    {
+        this(BslModuleUtils::loadModule);
+    }
+
+    GetMethodCallHierarchyTool(java.util.function.BiFunction<IProject, String, Module> moduleLoader)
+    {
+        this.moduleLoader = moduleLoader;
+    }
 
     /** Input param: name of the procedure/function to analyze. */
     private static final String KEY_METHOD_NAME = "methodName"; //$NON-NLS-1$
@@ -220,7 +233,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         String direction = normalizeArg(JsonUtils.extractStringArgument(params, KEY_DIRECTION));
         if (methodName != null && !methodName.isEmpty())
         {
-            return "call-hierarchy-" + methodName.toLowerCase() + //$NON-NLS-1$
+            return "call-hierarchy-" + methodName.toLowerCase(Locale.ROOT) + //$NON-NLS-1$
                    "-" + (direction != null ? direction : KEY_CALLERS) + ".md"; //$NON-NLS-1$ //$NON-NLS-2$
         }
         // Module-wide outgoing scope has no method name; keep a distinct, descriptive file name.
@@ -318,7 +331,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         {
             direction = KEY_CALLERS;
         }
-        direction = direction.toLowerCase();
+        direction = direction.toLowerCase(Locale.ROOT);
         request.direction = direction;
 
         if (!KEY_CALLERS.equals(direction) && !"callees".equals(direction) //$NON-NLS-1$
@@ -455,7 +468,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         }
         IProject project = ctx.project();
 
-        Module module = BslModuleUtils.loadModule(project, modulePath);
+        Module module = moduleLoader.apply(project, modulePath);
         if (module == null)
         {
             return moduleLoadFailure(modulePath);
@@ -464,7 +477,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         Method method = BslModuleUtils.findMethod(module, methodName);
         if (method == null)
         {
-            return BslModuleUtils.buildMethodNotFoundResponse(module, modulePath, methodName);
+            return ToolResult.error(BslMethodRecovery.missingMethodForAnalysis(module, project, modulePath, methodName)).toJson();
         }
 
         final URI methodUri = EcoreUtil.getURI(method);
@@ -588,7 +601,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         {
             return candidates;
         }
-        final String lowerName = methodName.toLowerCase();
+        final String lowerName = methodName.toLowerCase(Locale.ROOT);
         try
         {
             srcFolder.accept(res -> {
@@ -597,7 +610,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
                 {
                     IFile file = (IFile)res;
                     String text = readCandidateText(file);
-                    if (text != null && text.toLowerCase().contains(lowerName))
+                    if (text != null && text.toLowerCase(Locale.ROOT).contains(lowerName))
                     {
                         candidates.add(file);
                     }
@@ -851,7 +864,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         }
         IProject project = ctx.project();
 
-        Module module = BslModuleUtils.loadModule(project, modulePath);
+        Module module = moduleLoader.apply(project, modulePath);
         if (module == null)
         {
             return moduleLoadFailure(modulePath);
@@ -860,7 +873,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         Method method = BslModuleUtils.findMethod(module, methodName);
         if (method == null)
         {
-            return BslModuleUtils.buildMethodNotFoundResponse(module, modulePath, methodName);
+            return ToolResult.error(BslMethodRecovery.missingMethodForAnalysis(module, project, modulePath, methodName)).toJson();
         }
 
         // Traverse AST of this method to find invocations
@@ -1021,7 +1034,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
     {
         try
         {
-            Module module = BslModuleUtils.loadModule(project, modulePath);
+            Module module = moduleLoader.apply(project, modulePath);
             if (module == null)
             {
                 out.error = moduleLoadFailure(modulePath);
@@ -1030,7 +1043,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
             Method method = BslModuleUtils.findMethod(module, methodName);
             if (method == null)
             {
-                out.error = BslModuleUtils.buildMethodNotFoundResponse(module, modulePath, methodName);
+                out.error = ToolResult.error(BslMethodRecovery.missingMethodForAnalysis(module, project, modulePath, methodName)).toJson();
                 return;
             }
             if (method.eResource() == null || method.eResource().getResourceSet() == null)
@@ -1479,7 +1492,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
                 }
                 return null;
             }
-            if (isParseUnverified(res) && ctx.unverified.add(relToSrc))
+            if (BslMethodRecovery.isParseUnverified(res) && ctx.unverified.add(relToSrc))
             {
                 // Xtext recovers from a syntax error and still hands back a Module - a PARTIAL one.
                 // An invocation swallowed by that recovery is invisible to any AST walk, so this
@@ -1503,34 +1516,6 @@ public class GetMethodCallHierarchyTool implements IMcpTool
             }
             return null;
         }
-    }
-
-    /**
-     * Whether this resource's syntax tree can NOT be vouched for as a faithful reading of its
-     * source - either because the parser recovered from a syntax error, or because there is no
-     * parse result to ask.
-     * <p>
-     * Deliberately narrower than {@code Resource.getErrors()}: that list also carries linking and
-     * validation diagnostics, and a project with ordinary semantic errors would then report every
-     * single walk as incomplete - a flag that fires always is a flag nobody reads. The parse result
-     * answers the one question an AST search depends on: did some source text fail to become syntax
-     * tree.
-     * <p>
-     * Absence of evidence is NOT evidence of a clean parse. A resource that is not an
-     * {@link XtextResource}, or that has no parse result, is counted too: the walk still searches
-     * whatever tree is there, but it cannot claim that tree represents the file.
-     *
-     * @param resource the loaded resource
-     * @return {@code true} when the tree may not represent the source
-     */
-    private static boolean isParseUnverified(Resource resource)
-    {
-        if (!(resource instanceof XtextResource))
-        {
-            return true;
-        }
-        org.eclipse.xtext.parser.IParseResult parseResult = ((XtextResource)resource).getParseResult();
-        return parseResult == null || parseResult.hasSyntaxErrors();
     }
 
     /**
@@ -1971,7 +1956,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
         }
         IProject project = ctx.project();
 
-        Module module = BslModuleUtils.loadModule(project, modulePath);
+        Module module = moduleLoader.apply(project, modulePath);
         if (module == null)
         {
             return moduleLoadFailure(modulePath);
@@ -1984,7 +1969,7 @@ public class GetMethodCallHierarchyTool implements IMcpTool
             Method method = BslModuleUtils.findMethod(module, methodName);
             if (method == null)
             {
-                return BslModuleUtils.buildMethodNotFoundResponse(module, modulePath, methodName);
+                return ToolResult.error(BslMethodRecovery.missingMethodForAnalysis(module, project, modulePath, methodName)).toJson();
             }
             scope = method;
         }

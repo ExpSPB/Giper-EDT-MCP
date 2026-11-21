@@ -32,7 +32,7 @@ import fm.giper.edt.mcp.server.protocol.McpSessionRegistry.Session;
 import fm.giper.edt.mcp.server.protocol.JsonUtils;
 import fm.giper.edt.mcp.server.protocol.jsonrpc.JsonRpcRequest;
 import fm.giper.edt.mcp.server.tools.McpToolRegistry;
-import fm.giper.edt.mcp.server.tools.impl.GetEdtVersionTool;
+import fm.giper.edt.mcp.server.utils.EdtVersion;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
@@ -509,7 +509,7 @@ public class McpHttpHandler implements HttpHandler
             // proceed, and it spends a slot toward MAX_SESSIONS - so a stream of malformed
             // initialize requests could exhaust the registry without ever completing a handshake.
             issuedSessionId = sessions.create(endpoint.path(), effectiveProfileId(profile),
-                McpProtocolHandler.parseClientCapabilities(request));
+                McpProtocolHandler.parseClientCapabilities(request).withPlainTextMode(endpoint.plainTextMode()));
             if (issuedSessionId == null)
             {
                 response = JsonUtils.buildJsonRpcError(McpConstants.ERROR_INTERNAL,
@@ -671,7 +671,7 @@ public class McpHttpHandler implements HttpHandler
         String response = JsonUtils.buildServerInfo(
             McpConstants.SERVER_NAME,
             McpConstants.PLUGIN_VERSION,
-            GetEdtVersionTool.getEdtVersion(),
+            EdtVersion.getEdtVersion(),
             McpConstants.PROTOCOL_VERSION);
         exchange.getResponseHeaders().add(CONTENT_TYPE, "application/json"); //$NON-NLS-1$
         HttpTransport.sendResponse(exchange, 200, response);

@@ -303,6 +303,187 @@ public final class BslSyntaxChecker
         }
     }
 
+    /** Directive word (lower case) -> "open:", "mid:" or "close:" plus the block: R(egion) or I(f). */
+    private static final Map<String, String> DIRECTIVE_KINDS = Map.ofEntries( //$NON-NLS-1$
+        Map.entry("region", "open:R"),
+        Map.entry("\u043E\u0431\u043B\u0430\u0441\u0442\u044C", "open:R"),
+        Map.entry("endregion", "close:R"),
+        Map.entry("\u043A\u043E\u043D\u0435\u0446\u043E\u0431\u043B\u0430\u0441\u0442\u0438", "close:R"),
+        Map.entry("if", "open:I"),
+        Map.entry("\u0435\u0441\u043B\u0438", "open:I"),
+        Map.entry("elsif", "mid:I"),
+        Map.entry("\u0438\u043D\u0430\u0447\u0435\u0435\u0441\u043B\u0438", "mid:I"),
+        Map.entry("else", "mid:I"),
+        Map.entry("\u0438\u043D\u0430\u0447\u0435", "mid:I"),
+        Map.entry("endif", "close:I"),
+        Map.entry("\u043A\u043E\u043D\u0435\u0446\u0435\u0441\u043B\u0438", "close:I")); //$NON-NLS-1$
+
+    /**
+     * Finds the first #Region / #If pair that overlaps instead of nesting. The platform's
+     * line-based preprocessor accepts it; EDT's grammar does not, and its model loses every
+     * method after that point.
+     *
+     * @param lines raw module lines
+     * @return a description naming both lines, or {@code null} when the directives nest
+     */
+    public static String directiveOverlap(List<String> lines)
+    {
+        List<String> masked = maskLiteralsAndComments(lines);
+        Deque<String[]> open = new ArrayDeque<>();
+        for (int i = 0; i < masked.size(); i++)
+        {
+            String code = masked.get(i);
+            if (!isPreprocessorDirective(code))
+            {
+                continue;
+            }
+            String word = directiveWord(code);
+            String kind = DIRECTIVE_KINDS.get(word.toLowerCase(Locale.ROOT));
+            if (kind == null)
+            {
+                continue;
+            }
+            String block = kind.substring(kind.indexOf(':') + 1);
+            String line = String.valueOf(i + 1);
+            if (kind.startsWith("open:")) //$NON-NLS-1$
+            {
+                open.push(new String[] {block, "#" + word, line}); //$NON-NLS-1$
+                continue;
+            }
+            String[] top = open.peek();
+            if (top != null && !top[0].equals(block))
+            {
+                return "#" + word + " at line " + line + " is not in the innermost block: " //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+                    + top[1] + " opened at line " + top[2] + " is still open"; //$NON-NLS-1$ //$NON-NLS-2$
+            }
+            if (top != null && kind.startsWith("close:")) //$NON-NLS-1$
+            {
+                open.pop();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * For every line, the 1-based line of the innermost {@code #If}/{@code #Если} block that is open at
+     * that line, or {@code 0} when none is. An {@code #Else}/{@code #ElsIf} keeps the block open; the
+     * {@code #EndIf} line itself already reads the enclosing block. Region directives are ignored. Reads the
+     * same directives, by the same rules, as {@link #directiveOverlap}.
+     *
+     * @param lines raw module lines
+     * @return a same-sized array of 1-based opening lines ({@code 0} = outside every conditional block)
+     */
+    public static int[] openConditionalLines(List<String> lines)
+    {
+        List<String> masked = maskLiteralsAndComments(lines);
+        int[] open = new int[masked.size()];
+        Deque<Integer> conditionals = new ArrayDeque<>();
+        for (int i = 0; i < masked.size(); i++)
+        {
+            String code = masked.get(i);
+            String kind = isPreprocessorDirective(code)
+                ? DIRECTIVE_KINDS.get(directiveWord(code).toLowerCase(Locale.ROOT)) : null;
+            if ("close:I".equals(kind) && !conditionals.isEmpty()) //$NON-NLS-1$
+            {
+                conditionals.pop();
+            }
+            open[i] = conditionals.isEmpty() ? 0 : conditionals.peek();
+            if ("open:I".equals(kind)) //$NON-NLS-1$
+            {
+                conditionals.push(i + 1);
+            }
+        }
+        return open;
+    }
+
+    /**
+     * For every line, the path of {@code #If}/{@code #Если} branches it sits in, outermost first: pairs of
+     * the block's 1-based opening line and the 0-based index of its arm ({@code 0} the {@code #If} arm, each
+     * {@code #ElsIf}/{@code #Else} the next). An empty array means outside every conditional block. Two lines
+     * whose paths reach one block through DIFFERENT arms are never compiled together - the preprocessor keeps
+     * one arm of a block. Reads the same directives, by the same rules, as {@link #openConditionalLines}; a
+     * directive line itself reads the path before it takes effect, except an arm switch, which reads its new arm.
+     *
+     * @param lines raw module lines
+     * @return a same-sized array of paths; consecutive lines with one path share its array
+     */
+    public static int[][] conditionalBranches(List<String> lines)
+    {
+        List<String> masked = maskLiteralsAndComments(lines);
+        int[][] paths = new int[masked.size()][];
+        Deque<int[]> conditionals = new ArrayDeque<>();
+        int[] current = new int[0];
+        for (int i = 0; i < masked.size(); i++)
+        {
+            String code = masked.get(i);
+            String kind = isPreprocessorDirective(code)
+                ? DIRECTIVE_KINDS.get(directiveWord(code).toLowerCase(Locale.ROOT)) : null;
+            if ("close:I".equals(kind) && !conditionals.isEmpty()) //$NON-NLS-1$
+            {
+                conditionals.pop();
+                current = flatten(conditionals);
+            }
+            else if ("mid:I".equals(kind) && !conditionals.isEmpty()) //$NON-NLS-1$
+            {
+                int[] block = conditionals.peek();
+                // An #ElsIf or a second #Else after the block's #Else is malformed: no new arm is granted, so what
+                // follows reads as the same context as the #Else arm and is never taken for mutually exclusive.
+                if (block[2] == 0)
+                {
+                    block[1]++;
+                    if (isElseWord(directiveWord(code)))
+                    {
+                        block[2] = 1;
+                    }
+                }
+                current = flatten(conditionals);
+            }
+            paths[i] = current;
+            if ("open:I".equals(kind)) //$NON-NLS-1$
+            {
+                conditionals.push(new int[] {i + 1, 0, 0});
+                current = flatten(conditionals);
+            }
+        }
+        return paths;
+    }
+
+    /** Whether a directive word is {@code #Else}/{@code #Иначе} (not {@code #ElsIf}), either case. */
+    private static boolean isElseWord(String word)
+    {
+        String lower = word.toLowerCase(Locale.ROOT);
+        return "else".equals(lower) || "иначе".equals(lower); //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /** The open blocks as {@code [line, arm, line, arm, ...]}, outermost first. */
+    private static int[] flatten(Deque<int[]> conditionals)
+    {
+        int[] path = new int[conditionals.size() * 2];
+        int at = path.length;
+        for (int[] block : conditionals)
+        {
+            // The deque iterates from the innermost (the head) outwards.
+            path[--at] = block[1];
+            path[--at] = block[0];
+        }
+        return path;
+    }
+
+    private static String directiveWord(String code)
+    {
+        int start = code.indexOf('#') + 1;
+        while (start < code.length() && Character.isWhitespace(code.charAt(start)))
+        {
+            start++;
+        }
+        int end = start;
+        while (end < code.length() && Character.isLetter(code.charAt(end)))
+        {
+            end++;
+        }
+        return code.substring(start, end);
+    }
+
     /**
      * Tells whether a whole line is a preprocessor directive, which is skipped.
      * <p>

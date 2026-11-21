@@ -298,6 +298,45 @@ public class DcsToolTest
         assertTrue(ToolResult.isErrorPayload(result));
     }
 
+    /**
+     * A body at a node under the schema (a data-set link, a template, a grouping binding) is that
+     * node's own body: it is not judged by the root member list, not trimmed to root members, and
+     * not sent to the settings planner. Before #662 an update of #/dataSetLinks/0 was refused as
+     * "Unknown schema body member", and a replace entered the settings planner.
+     */
+    @Test
+    public void testASchemaNodeBodyIsNotRoutedAsARootBody()
+    {
+        String[][] cases = {
+            {"update", "Report.Sales#/dataSetLinks/0", "{\"sourceExpression\":\"Key\"}"},
+            {"replace", "Report.Sales#/dataSetLinks/0", "{\"sourceDataSet\":\"A\",\"destinationDataSet\":\"B\","
+                + "\"sourceExpression\":\"K\",\"destinationExpression\":\"K\"}"},
+            {"update", "Report.Sales#/templates/Totals", "{\"cells\":[{\"row\":0,\"col\":0,\"text\":\"x\"}]}"},
+            {"replace", "Report.Sales#/groupTemplates/0", "{\"groupName\":\"G\",\"template\":\"T\"}"},
+        };
+        for (String[] item : cases)
+        {
+            JsonObject body = JsonParser.parseString(item[2]).getAsJsonObject();
+            DcsTool.SchemaBodyRoute route = DcsTool.schemaBodyRoute(item[0], "schema", //$NON-NLS-1$
+                DcsAddress.parse(item[1]).address(), body);
+            assertNull(item[1] + ": " + route.membersError(), route.membersError());
+            assertFalse(item[1], route.settingsWrite());
+            assertEquals(item[1], body, route.schemaBody());
+        }
+        // The bare root keeps its split: settings members to the planner, the rest to the writer.
+        JsonObject root = JsonParser.parseString("{\"templates\":[],\"defaultSettings\":{},\"bogus\":1}")
+            .getAsJsonObject();
+        DcsTool.SchemaBodyRoute bare = DcsTool.schemaBodyRoute("upsert", "schema", //$NON-NLS-1$ //$NON-NLS-2$
+            DcsAddress.parse("Report.Sales").address(), root); //$NON-NLS-1$
+        assertTrue(bare.membersError(), bare.membersError().contains("Unknown schema body member 'bogus'"));
+        root.remove("bogus"); //$NON-NLS-1$
+        bare = DcsTool.schemaBodyRoute("upsert", "schema", DcsAddress.parse("Report.Sales").address(), root); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+        assertNull(bare.membersError());
+        assertTrue(bare.settingsWrite());
+        assertTrue(bare.schemaBody().toString(), bare.schemaBody().has("templates")); //$NON-NLS-1$
+        assertFalse(bare.schemaBody().toString(), bare.schemaBody().has("defaultSettings")); //$NON-NLS-1$
+    }
+
     @Test
     public void testExactDataSetLinkMutationIsRefusedWithoutExpectedHash()
     {
@@ -523,6 +562,29 @@ public class DcsToolTest
             assertTrue(result, result.contains("retry with the complete DataCompositionSchema XML"));
             assertTrue(result, result.contains("action='get', type='schema', format='xml'"));
         }
+    }
+
+    @Test
+    public void testExactIntegerValidationPreservesPublicErrors()
+    {
+        for (String key : new String[] {"limit", "offset"})
+        {
+            for (String raw : new String[] {"1.0000000000000001", "2147483647.00000001", "1.5", "NaN", "2147483648"})
+            {
+                var params = baseGet("Report.Sales", "schema");
+                params.put(key, raw);
+                String error = JsonParser.parseString(new DcsTool().execute(params))
+                    .getAsJsonObject().get("error").getAsString();
+                assertEquals(key + " '" + raw + "' is not an integer. " + (key.equals("limit")
+                    ? "Pass a whole number; Markdown collection reads clamp it to 1..1000 items, "
+                        + "while exact-value and XML reads bound it by their serialized-character output envelope."
+                    : "Pass a zero-based whole-number offset."), error);
+            }
+        }
+        var negative = baseGet("Report.Sales", "schema");
+        negative.put("offset", "-1.0");
+        assertEquals("offset '-1' is negative. Pass offset=0 or a later zero-based collection offset.",
+            JsonParser.parseString(new DcsTool().execute(negative)).getAsJsonObject().get("error").getAsString());
     }
 
     private static Map<String, String> baseGet(String fqn, String type)

@@ -12,6 +12,7 @@
 
 package fm.giper.edt.mcp.server.tools.impl;
 
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -43,6 +44,7 @@ import fm.giper.edt.mcp.server.protocol.McpKeys;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
+import fm.giper.edt.mcp.server.utils.BslMethodRecovery;
 import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
 import fm.giper.edt.mcp.server.utils.Refusals;
@@ -243,7 +245,7 @@ public class GetOutgoingStructuresTool implements IMcpTool
                 // make the JSON delivery path (JsonParser.parseString) throw and surface a
                 // protocol-level error instead of a clean isError result.
                 return ToolResult.error(
-                    BslModuleUtils.buildMethodNotFoundResponse(module, modulePath, methodFilter)).toJson();
+                    BslMethodRecovery.missingMethodForAnalysis(module, project, modulePath, methodFilter)).toJson();
             }
             methods.add(one);
         }
@@ -375,8 +377,8 @@ public class GetOutgoingStructuresTool implements IMcpTool
         {
             return false;
         }
-        String lowerQualifier = qualifier.toLowerCase();
-        String lowerFilter = filter.toLowerCase();
+        String lowerQualifier = qualifier.toLowerCase(Locale.ROOT);
+        String lowerFilter = filter.toLowerCase(Locale.ROOT);
         return lowerQualifier.equals(lowerFilter) || lowerQualifier.startsWith(lowerFilter);
     }
 

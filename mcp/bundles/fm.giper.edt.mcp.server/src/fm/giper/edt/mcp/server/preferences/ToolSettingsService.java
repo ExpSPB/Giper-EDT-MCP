@@ -25,7 +25,7 @@ import fm.giper.edt.mcp.server.SseStreamRegistry;
 /**
  * Service managing tool enablement state.
  * Keeps stored preferences separate from the effective launch-preset view used for tool enablement.
- * Thread-safe: the launch selection is resolved once and published through an immutable volatile holder.
+ * Thread-safe: the launch selection is resolved once and published as one enum constant in a volatile field.
  */
 public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse service / getInstance); a single instance is by design
 {
@@ -113,6 +113,8 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
 
     private static final Set<String> READ_ONLY_V23_ADDITIONS = Set.of("standalone_server"); //$NON-NLS-1$
 
+    private static final Set<String> READ_ONLY_V24_ADDITIONS = Set.of("manage_profiling_results", "manage_tech_log"); //$NON-NLS-1$ //$NON-NLS-2$
+
     /** Actual disabled-name additions registered for each Analysis Only migration. */
     static final Map<Integer, Set<String>> ANALYSIS_ONLY_MIGRATION_ADDITIONS_BY_VERSION = Map.ofEntries(
         Map.entry(1, STORED_PROFILE_V1_ADDITIONS),
@@ -135,7 +137,8 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         Map.entry(20, READ_ONLY_V20_ADDITIONS),
         Map.entry(21, READ_ONLY_V21_ADDITIONS),
         Map.entry(22, READ_ONLY_V22_ADDITIONS),
-        Map.entry(23, READ_ONLY_V23_ADDITIONS));
+        Map.entry(23, READ_ONLY_V23_ADDITIONS),
+        Map.entry(24, READ_ONLY_V24_ADDITIONS));
 
     /** Actual disabled-name additions registered for each Code Review migration. */
     static final Map<Integer, Set<String>> CODE_REVIEW_MIGRATION_ADDITIONS_BY_VERSION = Map.ofEntries(
@@ -158,7 +161,8 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         Map.entry(20, READ_ONLY_V20_ADDITIONS),
         Map.entry(21, READ_ONLY_V21_ADDITIONS),
         Map.entry(22, READ_ONLY_V22_ADDITIONS),
-        Map.entry(23, READ_ONLY_V23_ADDITIONS));
+        Map.entry(23, READ_ONLY_V23_ADDITIONS),
+        Map.entry(24, READ_ONLY_V24_ADDITIONS));
 
     /*
      * Frozen history for v1-v12 and the one-shot v13 stamp only. Newer preset-owed steps use
@@ -247,12 +251,12 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
     /** Package-visible environment seam; tests never change the process environment. */
     Function<String, String> environment = System::getenv;
 
-    /** Null until first use; a holder with a null preset records a resolved stored-selection launch. */
-    private volatile SessionPreset sessionPreset;
-
-    private record SessionPreset(ToolPreset preset)
-    {
-    }
+    /**
+     * The launch decision: null until first use, then the resolved preset, with {@link ToolPreset#CUSTOM}
+     * recording a launch that uses the stored selection (an enum constant is immutable, so publishing it
+     * through the volatile field publishes the whole decision).
+     */
+    private volatile ToolPreset sessionPreset;
 
     private ToolSettingsService()
     {
@@ -273,11 +277,11 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
      * An unset or blank value, or {@code custom}, uses the stored selection. Explicit {@code custom}
      * logs once at INFO; unknown IDs log once at WARNING with only the predefined override IDs.
      * Resolves once on first use, including bridge calls and manual starts without earlyStartup.
-     * The immutable holder publishes the complete decision atomically, including blank/invalid values.
+     * The decision is published as one enum constant, including blank/invalid values (as {@code CUSTOM}).
      */
     public ToolPreset getSessionPreset()
     {
-        SessionPreset resolved = sessionPreset;
+        ToolPreset resolved = sessionPreset;
         if (resolved == null)
         {
             synchronized (this)
@@ -286,12 +290,12 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
                 if (resolved == null)
                 {
                     ToolPreset preset = resolveSessionPreset(environment.apply(ENV_TOOL_PRESET));
-                    resolved = new SessionPreset(preset);
+                    resolved = preset == null ? ToolPreset.CUSTOM : preset;
                     sessionPreset = resolved;
                 }
             }
         }
-        return resolved.preset();
+        return resolved == ToolPreset.CUSTOM ? null : resolved;
     }
 
     private ToolPreset resolveSessionPreset(String value)
@@ -589,6 +593,10 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
             {
                 changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V23_ADDITIONS);
             }
+            if (storedVersion < 24)
+            {
+                changed |= storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V24_ADDITIONS);
+            }
             if (changed)
             {
                 store.setValue(PreferenceConstants.PREF_DISABLED_TOOLS, serializeDisabledTools(disabled));
@@ -602,7 +610,7 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
     private static boolean migrateMutatingToolsIntoReadOnlyPresets(IPreferenceStore store,
         Set<String> disabled)
     {
-        return storedPreset(store).isReadOnly() ? disabled.addAll(READ_ONLY_V14_ADDITIONS) : false;
+        return storedPreset(store).isReadOnly() && disabled.addAll(READ_ONLY_V14_ADDITIONS);
     }
 
     /** One-shot v13 backfill; later preset migrations must use recorded provenance instead. */
@@ -932,6 +940,58 @@ public final class ToolSettingsService // NOSONAR intentional singleton (Eclipse
         {
             // Before the preference page's server restart, the only order in which an open stream
             // can still receive it - but bounded, since this may be the UI thread.
+            notifyToolsListChangedBounded(NOTIFY_WAIT_MS);
+        }
+        return changed;
+    }
+
+    /**
+     * The stored progressive-disclosure preference, without the environment override.
+     *
+     * @return {@code true} if the saved setting turns disclosure on
+     */
+    public boolean getStoredProgressiveDisclosure()
+    {
+        IPreferenceStore store = getStore();
+        return store == null ? PreferenceConstants.DEFAULT_PROGRESSIVE_DISCLOSURE
+            : store.getBoolean(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE);
+    }
+
+    /**
+     * Saves the progressive-disclosure preference.
+     *
+     * @param enabled {@code true} to list only the core toolset until a client reveals more
+     */
+    public void setProgressiveDisclosure(boolean enabled)
+    {
+        IPreferenceStore store = getStore();
+        if (store != null)
+        {
+            applyProgressiveDisclosure(store, enabled);
+        }
+    }
+
+    /**
+     * Writes the preference and pushes {@code notifications/tools/list_changed} when it changed:
+     * disclosure decides which tools {@code tools/list} shows, like the disabled set.
+     *
+     * @param store the preference store to write (never {@code null})
+     * @param enabled the new value
+     * @return {@code true} when the stored value changed and clients were notified
+     */
+    boolean applyProgressiveDisclosure(IPreferenceStore store, boolean enabled)
+    {
+        boolean changed;
+        synchronized (this)
+        {
+            changed = store.getBoolean(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE) != enabled;
+            if (changed)
+            {
+                store.setValue(PreferenceConstants.PREF_PROGRESSIVE_DISCLOSURE, enabled);
+            }
+        }
+        if (changed)
+        {
             notifyToolsListChangedBounded(NOTIFY_WAIT_MS);
         }
         return changed;

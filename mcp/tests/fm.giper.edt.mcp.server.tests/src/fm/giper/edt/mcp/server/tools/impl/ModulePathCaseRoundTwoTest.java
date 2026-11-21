@@ -40,14 +40,18 @@ import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IResourceRuleFactory;
 import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.ICoreRunnable;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.emf.common.util.BasicEList;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.resource.Resource;
@@ -82,6 +86,7 @@ public class ModulePathCaseRoundTwoTest
     private Tree tree;
     private final List<Runnable> restores = new ArrayList<>();
     private final List<IStatus> statuses = new ArrayList<>();
+    private int reads;
 
     @Before
     public void setUp() throws Exception
@@ -94,6 +99,12 @@ public class ModulePathCaseRoundTwoTest
         when(workspace.getRoot()).thenReturn(root);
         when(root.getProject(anyString())).thenReturn(tree.project);
         when(root.getProjects()).thenReturn(new IProject[] { tree.project });
+        // A write into an existing module compares and writes inside ONE workspace operation: run it in place.
+        IResourceRuleFactory rules = mock(IResourceRuleFactory.class);
+        when(rules.modifyRule(any(IResource.class))).thenReturn(mock(ISchedulingRule.class));
+        when(workspace.getRuleFactory()).thenReturn(rules);
+        doAnswer(call -> { ((ICoreRunnable) call.getArgument(0)).run(null); return null; })
+            .when(workspace).run(any(ICoreRunnable.class), any(ISchedulingRule.class), anyInt(), (IProgressMonitor) isNull());
         Field customizerField = ResourcesPlugin.class.getDeclaredField("workspaceInitCustomizer");
         customizerField.setAccessible(true);
         Object customizer = customizerField.get(ResourcesPlugin.getPlugin());
@@ -121,6 +132,14 @@ public class ModulePathCaseRoundTwoTest
         config.setName("CaseFixture");
         when(provider.getConfiguration(tree.project)).thenReturn(config);
         when(activator.getConfigurationProvider()).thenReturn(provider);
+        var models = mock(com._1c.g5.v8.dt.core.platform.IBmModelManager.class);
+        var model = mock(com._1c.g5.v8.bm.integration.IBmModel.class);
+        when(activator.getBmModelManager()).thenReturn(models);
+        when(models.getModel(tree.project)).thenReturn(model);
+        when(model.executeReadonlyTask(any())).thenAnswer(call -> {
+            reads++;
+            return ((com._1c.g5.v8.bm.integration.IBmTask<?>)call.getArgument(0)).execute(null, null);
+        });
         replace(null, Activator.class.getDeclaredField("plugin"), activator);
         IModelEditingSupport support = mock(IModelEditingSupport.class);
         when(support.canEdit(any(), any())).thenReturn(true);
@@ -167,11 +186,14 @@ public class ModulePathCaseRoundTwoTest
         Method fallback = SymbolInfoService.class.getDeclaredMethod("getSymbolInfoViaEmf",
             IProject.class, String.class, int.class, int.class);
         fallback.setAccessible(true);
-        String result = (String)fallback.invoke(new SymbolInfoService(), tree.project, REQUEST, 1, 1);
+        SymbolInfoService.Outcome result = (SymbolInfoService.Outcome)
+            fallback.invoke(new SymbolInfoService(), tree.project, REQUEST, 1, 1);
         assertNotNull("the fallback must preserve the refusal", result);
-        assertTrue(result, result.startsWith("Error: Ambiguous modulePath"));
-        assertTrue(result, result.contains(REQUEST));
-        assertTrue(result, result.contains("list_modules"));
+        assertNull(result.text());
+        assertFalse("A resolution refusal must stop fallback", result.canFallback());
+        assertTrue(result.error(), result.error().startsWith("Ambiguous modulePath"));
+        assertTrue(result.error(), result.error().contains(REQUEST));
+        assertTrue(result.error(), result.error().contains("list_modules"));
     }
 
     @Test
@@ -198,6 +220,7 @@ public class ModulePathCaseRoundTwoTest
         ambiguousTree();
         assertResolutionError(new GoToDefinitionTool(), Map.of("symbol", "DoWork"));
         assertInfoRefusal();
+        assertEquals("Module resolution must run inside a BM read task", 1, reads);
     }
 
     @Test
@@ -622,6 +645,7 @@ public class ModulePathCaseRoundTwoTest
             when(file.getCharset()).thenReturn("UTF-8");
             when(file.getType()).thenReturn(IResource.FILE);
             when(file.getProject()).thenReturn(project);
+            when(file.getWorkspace()).thenAnswer(call -> ResourcesPlugin.getWorkspace());
             when(file.getFullPath()).thenReturn(new Path("/CaseFixture").append(relative));
             when(file.getProjectRelativePath()).thenReturn(relative);
             when(file.getParent()).thenAnswer(call -> folders.get(relative.removeLastSegments(1).toString()));

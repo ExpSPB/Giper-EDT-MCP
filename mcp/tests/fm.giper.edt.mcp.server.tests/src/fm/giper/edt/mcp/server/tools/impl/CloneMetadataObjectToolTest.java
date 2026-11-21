@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import org.junit.Test;
 
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
 import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.tools.IMcpTool.ResponseType;
@@ -148,7 +149,9 @@ public class CloneMetadataObjectToolTest
         assertTrue(tool.getDescription().contains("get_tool_guide('clone_metadata_object')"));
         JsonObject schema = JsonParser.parseString(tool.getInputSchema()).getAsJsonObject();
         assertEquals(2, schema.getAsJsonArray("required").size());
-        assertEquals(6, schema.getAsJsonObject("properties").size());
+        assertEquals(7, schema.getAsJsonObject("properties").size());
+        assertEquals("string", schema.getAsJsonObject("properties").getAsJsonObject("targetProjectName")
+            .get("type").getAsString());
         JsonObject item = schema.getAsJsonObject("properties").getAsJsonObject("transfer").getAsJsonObject("items");
         assertEquals(2, item.getAsJsonArray("required").size());
         assertFalse(item.get("additionalProperties").getAsBoolean());
@@ -177,7 +180,7 @@ public class CloneMetadataObjectToolTest
     @Test
     public void rejectsUnsupportedSourceBeforeWorkbench()
     {
-        for (String fqn : new String[] {"Role.Source", "Configuration", "Catalog.Source.Attribute.X"})
+        for (String fqn : new String[] {"AccumulationRegister.Source", "Configuration", "Catalog.Source.Attribute.X"})
         {
             String result = new CloneMetadataObjectTool().execute(Map.of("projectName", "NoProject", "fqn", fqn));
             assertTrue(result, ToolResult.isErrorPayload(result));
@@ -202,6 +205,26 @@ public class CloneMetadataObjectToolTest
         {
             assertTrue(expected.getMessage().contains("new identity"));
         }
+    }
+
+    @Test
+    public void exchangePlanRequiresAFreshThisNode()
+    {
+        var source = MdClassFactory.eINSTANCE.createExchangePlan();
+        source.setUuid(UUID.randomUUID());
+        source.setThisNode(UUID.randomUUID());
+        var clone = MdClassFactory.eINSTANCE.createExchangePlan();
+        clone.setUuid(UUID.randomUUID());
+        clone.setName("Copy");
+        for (UUID invalid : new UUID[] {null, source.getThisNode()})
+        {
+            clone.setThisNode(invalid);
+            var error = assertThrows(IllegalStateException.class,
+                () -> CloneMetadataObjectTool.validateClone(source, clone, "Copy"));
+            assertTrue(error.getMessage(), error.getMessage().contains("ExchangePlan.Copy has no fresh thisNode UUID"));
+        }
+        clone.setThisNode(UUID.randomUUID());
+        CloneMetadataObjectTool.validateClone(source, clone, "Copy");
     }
 
     @Test

@@ -1,8 +1,9 @@
-A self-diagnosis snapshot of the running MCP server. Reach for it when something behaves oddly and you want the facts instead of guessing - especially a blank form screenshot or a JSON tool that came back as plain text.
+Snapshot of the running server, transport listeners, preferences, form-render flags, and the tool calls and background jobs running right now.
 
 ## When to use
+- A call seems stuck: see what is running and for how long (`activeCalls`, `runningJobs`).
 - `get_form_screenshot` / `get_form_layout_snapshot` returned blank - check the form-render modes here.
-- A JSON-response tool gave you plain text - check `plainTextMode`.
+- Unexpected text delivery: `plainTextMode` is the saved default; `/mcp/plaintext` or stdio `-resultMode` overrides it per client.
 - You want to confirm the port, protocol version, plugin/EDT version, or how many tools are enabled vs. registered (e.g. when progressive disclosure is hiding tools).
 - You want to verify which profile applies to the current HTTP session or discover other enabled profile endpoints.
 - Quick "is the server actually up and reachable" check.
@@ -19,6 +20,8 @@ JSON with: `port`, `running`, `protocolVersion`, `pluginVersion`, `edtVersion`, 
 `activeProfile` describes the effective profile with `id`, `requestedProfileId`, `displayName`, `description`, `revision`, `endpoint` and `allowedToolCount`. On fallback, `fallbackApplied` is true and the response also includes `fallbackReason` and `warning`. The endpoint is a loopback URL built from the configured or bound HTTP port. Discovery lists enabled profiles at `/mcp/profiles/<id>`, including `/mcp/profiles/default`.
 
 On an explicit profile endpoint, `enabledTools` counts the tools permitted by the request's profile, launch preset and host. On `/mcp` and stdio it counts enabled registrations, while `activeProfile.allowedToolCount` reports the number advertised by the compatibility catalog after host filtering and progressive disclosure.
+
+`activeCalls` lists the tool calls whose EDT work is running now, oldest first, on every transport (HTTP, stdio, the Workmate bridge): `tool`, `projectName` (only when the call passed one; no other argument is reported), `startedAtMs` (epoch milliseconds) and `elapsedMs`. Your own `get_server_status` call is not listed. An entry stays until the EDT work ends, not until the response is sent: `responseSent: true` marks a call whose client already has an answer (a user interrupt) while its operation keeps running. A listed call is RUNNING, not necessarily healthy - a wedged call looks the same as a long one; judge by `elapsedMs` against the tool's usual time. `activeCallsUntracked` appears only when more calls were running than the registry holds (256). `runningJobs` lists the background jobs whose status is running, oldest first: `jobId`, `tool`, `startedAtMs`, `elapsedMs` - poll one with `get_job_status`. A tool that answered with a `jobId` is in `runningJobs`, not in `activeCalls`. Both arrays are always present; an empty one means nothing of that kind is running.
 
 `hostKind` is `WINDOWED` or `HEADLESS`, selected by the host application. A headless host has no workbench; its tool catalog excludes mandatory UI tools. Removing `-headless` from the client configuration changes the next cold start, not an already running host.
 
