@@ -15,12 +15,14 @@ MCP (Model Context Protocol) server plugin for 1C:EDT. AI assistants (Claude, Gi
 **Giper-EDT-MCP** is a fork of [EDT-MCP](https://github.com/DitriXNew/EDT-MCP) by DitriX, maintained by ExpSPB. Version 1.0.16 was verified on **1C:EDT 2026.2.2.21**. Releases for EDT 2025.2.5 are documented on the [archived branch](https://github.com/ExpSPB/Giper-EDT-MCP/blob/giper-2025.2/README.md).
 
 <details open>
-<summary><strong>1.0.17</strong> (unreleased)</summary>
+<summary><strong>1.0.17</strong></summary>
 
 - Git can initialize and clone repositories, and metadata writes wait for EDT to reload the model after a branch switch.
 - Metadata tools support cloning across projects, renaming more member types, and editing DCS layouts. BSL edits can replace whole words and copy or remove methods.
 - Profiling and technological log tools have more ways to capture and analyze results. `get_server_status` shows active calls and background jobs.
 - The server validates tool arguments against their schemas. The confirmation dialog wait is configurable and defaults to 45 seconds.
+
+[Release v1.0.17](https://github.com/ExpSPB/Giper-EDT-MCP/releases/tag/v1.0.17)
 
 </details>
 
@@ -64,7 +66,7 @@ The active allowlist controls both `tools/list` and `tools/call`. An unknown or 
 2. Add the [Giper-EDT-MCP update site](https://expspb.github.io/Giper-EDT-MCP/).
 3. Select **EDT MCP Server (for Giper.fm)** and restart EDT.
 
-When switching from upstream EDT-MCP, uninstall its feature first. The update site currently serves `1.0.16`. [Installation options](EDT-MCP.md#installation)
+When switching from upstream EDT-MCP, uninstall its feature first. [Installation options](EDT-MCP.md#installation) · [Latest release](https://github.com/ExpSPB/Giper-EDT-MCP/releases/latest)
 
 ### Upgrade from 1.0.15 to 1.0.16 on Windows
 
