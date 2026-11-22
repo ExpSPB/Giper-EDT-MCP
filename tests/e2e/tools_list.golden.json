@@ -2064,6 +2064,77 @@
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Save or clear one project's diagnostic baseline for get_project_errors sinceBaseline. Full parameters and examples: call get_tool_guide('diagnostic_baseline').",
+    "inputSchema": {
+      "properties": {
+        "objectFqns": {
+          "description": "Save only. Exact model addresses; omit or pass [] for the whole project.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "enum": [
+            "save",
+            "clear"
+          ],
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "projectName"
+      ],
+      "type": "object"
+    },
+    "name": "diagnostic_baseline",
+    "outputSchema": {
+      "properties": {
+        "cleared": {
+          "type": "boolean"
+        },
+        "diagnosticsTotal": {
+          "type": "integer"
+        },
+        "operation": {
+          "enum": [
+            "save",
+            "clear"
+          ],
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "savedAt": {
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": false,
@@ -3493,7 +3564,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Find detailed validation errors and warnings in an EDT project. Parameters and examples: get_tool_guide('get_project_errors').",
+    "description": "Find EDT validation problems, or report new and resolved diagnostics since a saved baseline. Parameters and examples: get_tool_guide('get_project_errors').",
     "inputSchema": {
       "properties": {
         "checkId": {
@@ -3547,6 +3618,10 @@
             "NONE"
           ],
           "type": "string"
+        },
+        "sinceBaseline": {
+          "description": "Return new diagnostics and the resolved count since a saved baseline. Requires projectName.",
+          "type": "boolean"
         }
       },
       "required": [],

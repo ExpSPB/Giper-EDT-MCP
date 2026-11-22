@@ -23,7 +23,7 @@ Build the EDT MCP plugin and produce a versioned p2 update-site zip.
 Build options:
   --skip-tests                Skip running Maven Surefire tests
   --version X.Y.Z             Version label for the output archive
-                              (default: parsed from README.md, falls back to 'dev')
+                              (default: bundle manifest, then README.md, then 'dev')
   --archive-prefix PREFIX     Archive name prefix
                               (default: ${DEFAULT_ARCHIVE_PREFIX} → ${DEFAULT_ARCHIVE_PREFIX}X.Y.Z.zip)
 
@@ -78,13 +78,23 @@ to_windows_path() {
     fi
 }
 
+parse_version_from_manifest() {
+    local manifest="$1"
+    [[ -f "$manifest" ]] || return 1
+
+    local version
+    version=$(sed -nE 's/^Bundle-Version:[[:blank:]]+([0-9]+\.[0-9]+\.[0-9]+)(\.[^[:space:]]+)?[[:space:]]*$/\1/p' "$manifest" | head -n 1 || true)
+    [[ -n "$version" ]] || return 1
+    printf '%s' "$version"
+}
+
 parse_version_from_readme() {
     local readme="$1"
     if [[ ! -f "$readme" ]]; then
         return 1
     fi
     local version
-    version=$(grep -oP '<summary><strong>\K[\d.]+(?=</strong>)' "$readme" | head -n 1 || true)
+    version=$(sed -nE 's@.*<summary><strong>([0-9.]+)</strong>.*@\1@p' "$readme" | head -n 1 || true)
     if [[ -n "$version" ]]; then
         printf '%s' "$version"
         return 0
@@ -207,10 +217,11 @@ main() {
     mvn="$(resolve_mvn "$maven_home")"
 
     if [[ -z "$version" ]]; then
-        if v="$(parse_version_from_readme "$project_root/README.md")"; then
+        if v="$(parse_version_from_manifest "$mcp_dir/bundles/fm.giper.edt.mcp.server/META-INF/MANIFEST.MF")" \
+            || v="$(parse_version_from_readme "$project_root/README.md")"; then
             version="$v"
         else
-            echo "Warning: could not parse version from README.md, using 'dev'" >&2
+            echo "Warning: could not parse version from the bundle manifest or README.md, using 'dev'" >&2
             version="dev"
         fi
     fi

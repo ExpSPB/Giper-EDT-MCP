@@ -5,12 +5,11 @@ name: Coverage
 # Triggered by workflow_run AFTER an E2E workflow finishes: it rebuilds + runs the unit
 # tests (fresh unit jacoco.exec), downloads the e2e jacoco.exec that the triggering E2E
 # run dumped out of the EDT JVM, MERGES the two, and runs `sonar:sonar` once with the
-# combined coverage. build.yml still runs a unit-only Sonar analysis as an always-on
-# baseline; this run supersedes it with the merged number whenever e2e succeeds (if e2e
-# fails, the guard below skips this and the unit-only baseline stands).
+# combined coverage. When CI analysis is enabled, build.yml submits unit-only coverage
+# first, and this run replaces it with the merged coverage after a successful e2e run.
 #
 # NOTE: workflow_run always executes the copy of this file on the DEFAULT branch, so it
-# only takes effect once merged to master. The e2e-side changes (agent + dump + upload)
+# only takes effect once merged to that branch. The e2e-side changes (agent + dump + upload)
 # are exercised by the E2E workflows directly on every PR.
 
 on:
@@ -26,7 +25,7 @@ permissions:
 
 jobs:
   coverage:
-    # Only when the e2e run passed and originates from this repo (forks have no SONAR_TOKEN).
+    # Only consume successful runs from this repository.
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -73,6 +72,7 @@ jobs:
             ${{ runner.os }}-tycho-p2-
 
       - name: Cache SonarQube packages
+        if: vars.SONAR_CI_ANALYSIS == 'true' && env.SONAR_TOKEN != ''
         uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
@@ -119,6 +119,7 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress -pl targets/default,bundles/fm.giper.edt.mcp.server jacoco:report
 
       - name: Compute Sonar PR/branch args
+        if: vars.SONAR_CI_ANALYSIS == 'true' && env.SONAR_TOKEN != ''
         id: sonarargs
         shell: bash
         run: |
@@ -142,7 +143,8 @@ jobs:
           fi
 
       - name: SonarQube Cloud analysis (unit + e2e)
-        if: env.SONAR_TOKEN != ''
+        # Enable SONAR_CI_ANALYSIS only after disabling Automatic Analysis in SonarQube Cloud.
+        if: vars.SONAR_CI_ANALYSIS == 'true' && env.SONAR_TOKEN != ''
         working-directory: mcp
         shell: bash
         env:

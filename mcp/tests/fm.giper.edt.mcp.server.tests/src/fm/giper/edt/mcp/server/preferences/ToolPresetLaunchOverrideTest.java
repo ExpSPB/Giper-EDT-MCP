@@ -27,7 +27,7 @@ public class ToolPresetLaunchOverrideTest extends ToolPresetSessionTestSupport
 {
     private static final Set<String> WRITERS = Set.of("switch_git_branch", "create_git_branch",
         "set_branch_infobase", "create_project", "resync_to_disk", "clean_project");
-    private static final Set<String> KEEPS = Set.of("compare_configurations", "enable_toolset",
+    private static final Set<String> KEEPS = Set.of("compare_configurations", "diagnostic_baseline", "enable_toolset",
         "revalidate_objects");
 
     @Test

@@ -72,6 +72,7 @@ jobs:
             ${{ runner.os }}-tycho-p2-
 
       - name: Cache SonarQube packages
+        if: vars.SONAR_CI_ANALYSIS == 'true' && env.SONAR_TOKEN != ''
         uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
@@ -93,7 +94,10 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress -pl targets/default,bundles/fm.giper.edt.mcp.server jacoco:report
 
       - name: SonarQube Cloud analysis
-        if: env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        # Enable SONAR_CI_ANALYSIS only after disabling Automatic Analysis in SonarQube Cloud.
+        if: >
+          vars.SONAR_CI_ANALYSIS == 'true' && env.SONAR_TOKEN != '' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         working-directory: mcp
         env:
           MAVEN_OPTS: -Xmx2g -XX:+UseParallelGC

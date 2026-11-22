@@ -15,12 +15,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.emf.common.util.URI;
+import org.eclipse.emf.ecore.EObject;
 
+import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.validation.marker.IExtraInfoMap;
 import com._1c.g5.v8.dt.validation.marker.IMarkerManager;
 import com._1c.g5.v8.dt.validation.marker.Marker;
@@ -216,6 +219,34 @@ public final class MarkerRows
     }
 
     /**
+     * Builds a comparable row, or returns null when the lookup failed. The ordinary listing
+     * can show the short UID after a lookup failure, but a comparison could mistake that for
+     * a different check and count the saved diagnostic as resolved.
+     */
+    public static <R extends Row> R buildComparableRow(Marker marker, Match match, IDtProject project,
+        ICheckRepository checkRepository, IFixRepository fixRepository, int[] unresolvedShown, Supplier<R> newRow)
+    {
+        if (!match.checkUidResolved && !match.shortUid.isEmpty())
+        {
+            if (checkRepository == null || project == null)
+            {
+                return null;
+            }
+            try
+            {
+                // This overload distinguishes uninitialised project check metadata from an unmapped id.
+                match.checkUid = checkRepository.getUidForShortUid(match.shortUid, project);
+            }
+            catch (RuntimeException e)
+            {
+                return null;
+            }
+        }
+        match.checkUidResolved = true;
+        return buildRow(marker, match, checkRepository, fixRepository, unresolvedShown, true, newRow);
+    }
+
+    /**
      * Whether one marker passes the severity / module-path / checkId / objects filters - the SAME
      * decision {@link #buildIfMatches} makes, without building the row. See {@link #matchOf}.
      *
@@ -251,6 +282,46 @@ public final class MarkerRows
         boolean needsPresentation = objects != null && !objects.isEmpty();
         return match(marker, severityFilter, checkId, objects, modulePathKeys, checkRepository,
             unresolvedFilteredOut, exactScope, needsPresentation);
+    }
+
+    /** Resolves the location even without an object filter, for a detached baseline identity. */
+    public static Match comparableMatchOf(Marker marker, MarkerSeverity severityFilter, Set<String> savedScope,
+        Set<String> requestedScope, Set<String> modulePathKeys, int[] unresolved, boolean exactRequestedScope)
+    {
+        MarkerSeverity severity = marker.getSeverity();
+        if (severityFilter != null && severityFilter != (severity == null ? MarkerSeverity.NONE : severity))
+        {
+            return null;
+        }
+        Match match = match(marker, null, null, Set.of(), modulePathKeys, null, unresolved, false, true);
+        if (match == null)
+        {
+            return null;
+        }
+        if (!match.presentationResolved || match.objectPresentation.isEmpty() && !hasMarkerTarget(marker))
+        {
+            unresolved[0]++;
+            return null;
+        }
+        if (excludedByObjectsFilter(savedScope, true, match.objectPresentation, unresolved, true)
+            || excludedByObjectsFilter(requestedScope, true, match.objectPresentation, unresolved, exactRequestedScope))
+        {
+            return null;
+        }
+        return match;
+    }
+
+    private static boolean hasMarkerTarget(Marker marker)
+    {
+        // EDT can cache an empty presentation when the BM entity cannot be loaded.
+        try
+        {
+            return Boolean.TRUE.equals(marker.provideObject((Function<EObject, Boolean>) object -> object != null));
+        }
+        catch (RuntimeException e)
+        {
+            return false;
+        }
     }
 
     /**
