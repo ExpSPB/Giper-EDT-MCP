@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:Catalog xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="c924909e-10e0-4c11-8e06-000000000003">
+  <producedTypes>
+    <objectType typeId="c924909e-10e0-4c11-8e06-000000000004" valueTypeId="c924909e-10e0-4c11-8e06-000000000005"/>
+    <refType typeId="c924909e-10e0-4c11-8e06-000000000006" valueTypeId="c924909e-10e0-4c11-8e06-000000000007"/>
+    <selectionType typeId="c924909e-10e0-4c11-8e06-000000000008" valueTypeId="c924909e-10e0-4c11-8e06-000000000009"/>
+    <listType typeId="c924909e-10e0-4c11-8e06-000000000010" valueTypeId="c924909e-10e0-4c11-8e06-000000000011"/>
+    <managerType typeId="c924909e-10e0-4c11-8e06-000000000012" valueTypeId="c924909e-10e0-4c11-8e06-000000000013"/>
+  </producedTypes>
+  <name>GraphRoot</name>
+  <synonym>
+    <key>en</key>
+    <value>Graph root display name</value>
+  </synonym>
+  <codeLength>9</codeLength>
+  <descriptionLength>25</descriptionLength>
+  <codeType>String</codeType>
+  <attributes uuid="c924909e-10e0-4c11-8e06-000000000014">
+    <name>Next</name>
+    <type>
+      <types>CatalogRef.GraphNext</types>
+    </type>
+  </attributes>
+  <attributes uuid="c924909e-10e0-4c11-8e06-000000000015">
+    <name>NextAgain</name>
+    <type>
+      <types>CatalogRef.GraphNext</types>
+    </type>
+  </attributes>
+</mdclass:Catalog>

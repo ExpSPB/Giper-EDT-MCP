@@ -24,6 +24,7 @@ import static org.mockito.Mockito.withSettings;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -35,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.junit.Test;
 
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAccessManager;
@@ -543,6 +545,16 @@ public class InfobaseAccessSupportTest
         try
         {
             assertTrue(started.await(HANDOFF_WAIT_MS, TimeUnit.MILLISECONDS));
+            // The worker can enter while the caller is still scheduling the Eclipse job.
+            // Interrupt the join itself to exercise cancellation of the waiting caller.
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(HANDOFF_WAIT_MS);
+            boolean joining = isWaitingInJobJoin(caller);
+            while (!joining && caller.isAlive() && System.nanoTime() < deadline)
+            {
+                Thread.sleep(10);
+                joining = isWaitingInJobJoin(caller);
+            }
+            assertTrue("the caller must be waiting for the job before it is interrupted", joining); //$NON-NLS-1$
             caller.interrupt();
             caller.join(HANDOFF_WAIT_MS);
             assertFalse("the interrupted caller must return, not outlive its bound", //$NON-NLS-1$
@@ -564,6 +576,12 @@ public class InfobaseAccessSupportTest
             caller.join(HANDOFF_WAIT_MS);
             finished.await(HANDOFF_WAIT_MS, TimeUnit.MILLISECONDS);
         }
+    }
+
+    private static boolean isWaitingInJobJoin(Thread caller)
+    {
+        return caller.getState() == Thread.State.TIMED_WAITING && Arrays.stream(caller.getStackTrace()).anyMatch(frame ->
+            Job.class.getName().equals(frame.getClassName()) && "join".equals(frame.getMethodName())); //$NON-NLS-1$
     }
 
     @Test

@@ -388,12 +388,13 @@ jobs:
           # This WINDOWED workbench under Xvfb retains its explicit consent override for CI.
           # The separate HostKind.HEADLESS acceptance below removes the variable.
           export EDT_MCP_DESTRUCTIVE_CONSENT=allow
-          # Four fixture projects: one per EDT project KIND - the base configuration, the
+          # Main fixture projects: the base configuration, the
           # extension, and the external-objects project (issue #309 - a project whose roots are
           # its own external data processors / reports, which resolves nothing like the other two) -
           # plus a second base configuration on vendor support (issue #642: a Configuration.distr
           # that locks some objects, for the writing tools' support guard).
-          export EDT_MCP_IMPORT_PROJECTS="$GITHUB_WORKSPACE/tests/TestConfiguration:$GITHUB_WORKSPACE/tests/tests:$GITHUB_WORKSPACE/tests/ExternalObjects:$GITHUB_WORKSPACE/tests/SupportedConfiguration"
+          # The separate metadata-analysis fixture supplies a known directed cycle and a BSL usage.
+          export EDT_MCP_IMPORT_PROJECTS="$GITHUB_WORKSPACE/tests/TestConfiguration:$GITHUB_WORKSPACE/tests/tests:$GITHUB_WORKSPACE/tests/ExternalObjects:$GITHUB_WORKSPACE/tests/SupportedConfiguration:$GITHUB_WORKSPACE/tests/fixtures/metadata-analysis"
           echo "[edt] importing: $EDT_MCP_IMPORT_PROJECTS"
           # EDT runs Apache Ignite (BM store) which needs java.nio/sun.nio.ch opened and the
           # module system relaxed — exactly the flags EDT's own 1cedt.ini ships (the set is

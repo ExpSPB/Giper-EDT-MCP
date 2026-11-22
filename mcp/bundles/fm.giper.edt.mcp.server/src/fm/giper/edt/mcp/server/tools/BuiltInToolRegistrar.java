@@ -41,6 +41,8 @@ import fm.giper.edt.mcp.server.tools.impl.ExportCommonPictureTool;
 import fm.giper.edt.mcp.server.tools.impl.ExportConfigurationToFileTool;
 import fm.giper.edt.mcp.server.tools.impl.ExportConfigurationToXmlTool;
 import fm.giper.edt.mcp.server.tools.impl.FindReferencesTool;
+import fm.giper.edt.mcp.server.tools.impl.DependencyGraphTool;
+import fm.giper.edt.mcp.server.tools.impl.ImpactAnalysisTool;
 import fm.giper.edt.mcp.server.tools.impl.GenerateTranslationStringsTool;
 import fm.giper.edt.mcp.server.tools.impl.GetApplicationsTool;
 import fm.giper.edt.mcp.server.tools.impl.GetCheckDescriptionTool;
@@ -199,6 +201,8 @@ public final class BuiltInToolRegistrar
         catalogue.add(new ListSubsystemsTool());
         catalogue.add(new GetSubsystemContentTool());
         catalogue.add(new FindReferencesTool());
+        catalogue.add(new DependencyGraphTool());
+        catalogue.add(new ImpactAnalysisTool());
 
         // Tag tools
         catalogue.add(new GetTagsTool());

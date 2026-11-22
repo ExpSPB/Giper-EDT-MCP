@@ -19,6 +19,14 @@ The diagnostic baseline behavior was adapted to Giper-EDT-MCP from the
 public contract and reference tests of Desko77's AI-EDT v0.2.60
 (https://github.com/Desko77/ai-edt/commit/b5925cc0a4be439a3e3f8ea9b0f2b50fa6c9f7d7).
 
+The metadata dependency graph and impact analysis, including reference tests,
+were adapted from Desko77's AI-EDT v0.2.60 (AGPL-3.0-or-later), pinned at
+https://github.com/Desko77/ai-edt/commit/b5925cc0a4be439a3e3f8ea9b0f2b50fa6c9f7d7.
+The donor sources are DependencyGraphTool, BmReferencesHelper,
+DependencyGraphBuilder and ImpactAnalysisTool. Impact results use Giper's
+existing MetadataReferenceService with completeness tracked as structured data,
+following the contract in AI-EDT's ReferenceLocator.
+
 Upstream copyright holders (preserved)
 --------------------------------------
 

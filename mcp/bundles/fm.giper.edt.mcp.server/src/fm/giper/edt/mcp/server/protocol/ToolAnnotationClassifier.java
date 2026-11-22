@@ -76,6 +76,8 @@ public final class ToolAnnotationClassifier
      * "other writes" bucket and are published to clients as mutations.
      */
     private static final Set<String> READ_ONLY_TOOLS = Set.of(
+        "dependency_graph", //$NON-NLS-1$
+        "impact_analysis", //$NON-NLS-1$
         "go_to_definition", //$NON-NLS-1$
         "debug_status", //$NON-NLS-1$
         // observes a debug session; the snapshot it records is our own registry, not the debuggee

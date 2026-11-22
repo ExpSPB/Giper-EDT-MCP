@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:Catalog xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="c924909e-10e0-4c11-8e06-000000000028">
+  <producedTypes>
+    <objectType typeId="c924909e-10e0-4c11-8e06-000000000029" valueTypeId="c924909e-10e0-4c11-8e06-000000000030"/>
+    <refType typeId="c924909e-10e0-4c11-8e06-000000000031" valueTypeId="c924909e-10e0-4c11-8e06-000000000032"/>
+    <selectionType typeId="c924909e-10e0-4c11-8e06-000000000033" valueTypeId="c924909e-10e0-4c11-8e06-000000000034"/>
+    <listType typeId="c924909e-10e0-4c11-8e06-000000000035" valueTypeId="c924909e-10e0-4c11-8e06-000000000036"/>
+    <managerType typeId="c924909e-10e0-4c11-8e06-000000000037" valueTypeId="c924909e-10e0-4c11-8e06-000000000038"/>
+  </producedTypes>
+  <name>GraphTail</name>
+  <synonym>
+    <key>en</key>
+    <value>GraphTail</value>
+  </synonym>
+  <codeLength>9</codeLength>
+  <descriptionLength>25</descriptionLength>
+  <codeType>String</codeType>
+  <attributes uuid="c924909e-10e0-4c11-8e06-000000000039">
+    <name>Root</name>
+    <type>
+      <types>CatalogRef.GraphRoot</types>
+    </type>
+  </attributes>
+</mdclass:Catalog>

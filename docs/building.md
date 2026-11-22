@@ -59,7 +59,7 @@ bash source/compile.sh \
     --java-home "/c/Program Files/Java/jdk-25" \
     --maven-home /d/Soft/maven \
     --skip-tests \
-    --version 1.0.18
+    --version 1.0.19
 
 # Drop the artifact somewhere else
 bash source/compile.sh --output-dir /tmp/edt-mcp-builds

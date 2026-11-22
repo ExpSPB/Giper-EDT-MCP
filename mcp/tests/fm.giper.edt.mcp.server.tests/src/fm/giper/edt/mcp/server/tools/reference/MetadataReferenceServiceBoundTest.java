@@ -35,6 +35,7 @@ import org.junit.Test;
 import com._1c.g5.v8.bm.core.IBmCrossReference;
 import com._1c.g5.v8.bm.core.IBmEngine;
 import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import fm.giper.edt.mcp.server.tools.reference.MetadataReferenceService.ReferenceCollector;
 import fm.giper.edt.mcp.server.tools.reference.MetadataReferenceService.ReferenceInfo;
@@ -192,6 +193,41 @@ public class MetadataReferenceServiceBoundTest
     }
 
     // ==================== the bound stops the walk ====================
+
+    @Test
+    public void impactKeepsDecodedLocalBslRowsAndReportsTheSpacedProjectIndexGap()
+    {
+        IProject source = mock(IProject.class);
+        when(source.getName()).thenReturn("My Project"); //$NON-NLS-1$
+        var tx = mock(IBmTransaction.class);
+        var collector = new ReferenceCollector(source, mock(IBmModel.class), target(), 5,
+            ReferenceSearchBound.unbounded(), tx, false)
+        {
+            @Override
+            int resolveLine(URI sourceUri)
+            {
+                return 7;
+            }
+        };
+        String module = "CommonModules/Тест/Module.bsl"; //$NON-NLS-1$
+        for (String project : List.of("My Project", "Another Project")) //$NON-NLS-1$ //$NON-NLS-2$
+        {
+            var description = mock(IReferenceDescription.class);
+            URI uri = URI.createPlatformResourceURI("/" + project + "/src/" + module, true).appendFragment("0"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+            when(description.getSourceEObjectUri()).thenReturn(uri);
+            collector.collectBslReferenceDescription(description);
+        }
+
+        var result = collector.impactResult(FQN);
+        assertEquals(1, result.references().size());
+        assertEquals(module, result.references().get(0).source());
+        assertEquals(7, result.references().get(0).line());
+        assertEquals(List.of("EDT can omit indexed BSL references for project names containing spaces"), //$NON-NLS-1$
+            result.incompleteReasons());
+        var metadataOnly = new ReferenceCollector(source, mock(IBmModel.class), target(), 5,
+            ReferenceSearchBound.unbounded(), tx, true);
+        assertTrue(metadataOnly.impactResult(FQN).incompleteReasons().isEmpty());
+    }
 
     @Test
     public void aBoundedBslScanStopsTheIndexWalkOneReferencePastTheLimit() throws Exception
