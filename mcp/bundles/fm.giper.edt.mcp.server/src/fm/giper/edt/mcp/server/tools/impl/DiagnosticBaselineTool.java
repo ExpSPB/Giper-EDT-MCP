@@ -79,8 +79,8 @@ public class DiagnosticBaselineTool implements IMcpTool
     {
         return JsonSchemaBuilder.object()
             .booleanProperty("success", "Whether the operation succeeded.", true) //$NON-NLS-1$ //$NON-NLS-2$
-            .stringProperty("projectName", "Project whose baseline was changed.", true) //$NON-NLS-1$ //$NON-NLS-2$
-            .enumProperty("operation", "Completed operation.", true, "save", "clear") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            .stringProperty("projectName", "Project whose baseline was changed.") //$NON-NLS-1$ //$NON-NLS-2$
+            .enumProperty("operation", "Completed operation.", false, "save", "clear") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             .booleanProperty("cleared", "Clear only. Whether a baseline file was removed.") //$NON-NLS-1$ //$NON-NLS-2$
             .stringProperty("savedAt", "Save only. Snapshot timestamp in UTC.") //$NON-NLS-1$ //$NON-NLS-2$
             .stringArrayProperty("scope", "Save only. Requested exact addresses, or [] for the whole project.") //$NON-NLS-1$ //$NON-NLS-2$

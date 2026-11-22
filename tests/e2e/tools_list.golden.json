@@ -2128,9 +2128,7 @@
         }
       },
       "required": [
-        "success",
-        "projectName",
-        "operation"
+        "success"
       ],
       "type": "object"
     }

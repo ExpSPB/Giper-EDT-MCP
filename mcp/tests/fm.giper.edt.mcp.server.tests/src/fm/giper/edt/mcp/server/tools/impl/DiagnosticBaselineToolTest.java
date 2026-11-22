@@ -53,7 +53,13 @@ public class DiagnosticBaselineToolTest
         JsonObject input = json(tool.getInputSchema());
         assertEquals(2, input.getAsJsonArray("required").size());
         assertTrue(input.getAsJsonObject("properties").has("objectFqns"));
-        assertTrue(json(tool.getOutputSchema()).getAsJsonObject("properties").has("cleared"));
+        JsonObject output = json(tool.getOutputSchema());
+        assertEquals(1, output.getAsJsonArray("required").size());
+        assertEquals("success", output.getAsJsonArray("required").get(0).getAsString());
+        JsonObject properties = output.getAsJsonObject("properties");
+        assertTrue(properties.has("projectName"));
+        assertTrue(properties.has("operation"));
+        assertTrue(properties.has("cleared"));
     }
 
     @Test
