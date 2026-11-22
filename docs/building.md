@@ -41,7 +41,7 @@ This is a valid p2 update site — install via EDT → *Help → Install New Sof
 | Flag | ENV fallback | Default | Meaning |
 |---|---|---|---|
 | `--skip-tests` | — | off | Skip Maven Surefire tests |
-| `--version X.Y.Z` | — | parsed from `README.md`, falls back to `dev` | Version label used in the output zip name |
+| `--version X.Y.Z` | — | bundle manifest, then `README.md`, then `dev` | Version label used in the output zip name |
 | `--archive-prefix PREFIX` | — | `MCP-EDT.v` | Archive name prefix (final name: `<prefix><version>.zip`) |
 | `--project-root PATH` | `EDT_MCP_PROJECT_ROOT` | parent of script dir | Repo root containing `mcp/` |
 | `--mcp-dir PATH` | — | `<project-root>/mcp` | Maven project directory |
@@ -59,7 +59,7 @@ bash source/compile.sh \
     --java-home "/c/Program Files/Java/jdk-25" \
     --maven-home /d/Soft/maven \
     --skip-tests \
-    --version 1.0.17
+    --version 1.0.18
 
 # Drop the artifact somewhere else
 bash source/compile.sh --output-dir /tmp/edt-mcp-builds
