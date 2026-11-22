@@ -41,10 +41,12 @@ public enum ToolPreset
     /**
      * Explicit exceptions to the write hint: comparison takes EDT's single comparison slot but
      * reads the project; toolset enablement changes session visibility only; revalidation refreshes
-     * derived markers without discarding workspace content. The policy ratchet checks each one.
+     * derived markers without discarding workspace content. Diagnostic baselines change only
+     * derived diagnostics in the plugin state. The policy ratchet checks each one.
      */
     static final Set<String> READ_ONLY_KEEPS_DESPITE_WRITE_HINT = Set.of(
         "compare_configurations", //$NON-NLS-1$
+        "diagnostic_baseline", //$NON-NLS-1$
         "enable_toolset", //$NON-NLS-1$
         "revalidate_objects"); //$NON-NLS-1$
 

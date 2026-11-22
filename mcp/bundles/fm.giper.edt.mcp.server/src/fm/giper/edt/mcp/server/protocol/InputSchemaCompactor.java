@@ -157,7 +157,8 @@ public final class InputSchemaCompactor
         keep.put("get_markers", asSet("markerKind", "priority")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // Two filters that are mutually exclusive and differ in matching semantics; modulePaths carries
         // its value shape (a src-relative module path), which the plain string array cannot state.
-        keep.put("get_project_errors", asSet("objects", "objectFqns", "modulePaths")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+        keep.put("get_project_errors", asSet("objects", "objectFqns", "modulePaths", "sinceBaseline")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+        keep.put("diagnostic_baseline", asSet("objectFqns")); //$NON-NLS-1$ //$NON-NLS-2$
         // Name-only compatibility filter vs Name-or-localized-Synonym discovery filter.
         keep.put("get_metadata_objects", asSet("nameFilter", "textFilter")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
         // 'callers' vs 'callees' - the enum values alone do not say which way they point.

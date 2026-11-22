@@ -96,6 +96,8 @@ public class GetProjectErrorsTool implements IMcpTool
     /** The EXACT (normalised) module-path filter, AND-ed with every other filter. */
     static final String PARAM_MODULE_PATHS = "modulePaths"; //$NON-NLS-1$
 
+    static final String PARAM_SINCE_BASELINE = "sinceBaseline"; //$NON-NLS-1$
+
     /** structuredContent field: the addresses that resolved to a real model node. */
     static final String KEY_OBJECTS_RESOLVED = "objectsResolved"; //$NON-NLS-1$
 
@@ -149,7 +151,7 @@ public class GetProjectErrorsTool implements IMcpTool
     @Override
     public String getDescription()
     {
-        return "Find detailed validation errors and warnings in an EDT project. Parameters and examples: " //$NON-NLS-1$
+        return "Find EDT validation problems, or report new and resolved diagnostics since a saved baseline. Parameters and examples: " //$NON-NLS-1$
             + "get_tool_guide('get_project_errors')."; //$NON-NLS-1$
     }
 
@@ -172,6 +174,8 @@ public class GetProjectErrorsTool implements IMcpTool
             .stringArrayProperty(PARAM_MODULE_PATHS,
                 "Exact module paths as shown in the Module path column, e.g. 'CommonModules/X/Module.bsl'; " //$NON-NLS-1$
                     + "AND-ed with the other filters.") //$NON-NLS-1$
+            .booleanProperty(PARAM_SINCE_BASELINE,
+                "Return new diagnostics and the resolved count since a saved baseline. Requires projectName.") //$NON-NLS-1$
             .integerProperty(McpKeys.LIMIT, "Max problems per page; default 100, max 1000 (optional)") //$NON-NLS-1$
             .integerProperty(PARAM_OFFSET, "Skip this many matching problems - the next page; default 0 (optional)") //$NON-NLS-1$
             .enumProperty("responseFormat", //$NON-NLS-1$
@@ -190,7 +194,8 @@ public class GetProjectErrorsTool implements IMcpTool
     @Override
     public ResponseType getResponseType(Map<String, String> params)
     {
-        return exactAddressesOf(params).isEmpty() ? ResponseType.MARKDOWN : ResponseType.JSON;
+        return JsonUtils.extractBooleanArgument(params, PARAM_SINCE_BASELINE, false)
+            || !exactAddressesOf(params).isEmpty() ? ResponseType.JSON : ResponseType.MARKDOWN;
     }
 
     /** The cleaned {@code objectFqns} entries of a call (never {@code null}). */
@@ -233,6 +238,7 @@ public class GetProjectErrorsTool implements IMcpTool
         String projectName = JsonUtils.extractStringArgument(params, "projectName"); //$NON-NLS-1$
         String severity = JsonUtils.extractStringArgument(params, "severity"); //$NON-NLS-1$
         String checkId = JsonUtils.extractStringArgument(params, "checkId"); //$NON-NLS-1$
+        boolean sinceBaseline = JsonUtils.extractBooleanArgument(params, PARAM_SINCE_BASELINE, false);
 
         // Detailed adds saved text ranges and documentation availability to the compact table.
         // An absent/blank/unrecognized value falls back to concise.
@@ -292,6 +298,11 @@ public class GetProjectErrorsTool implements IMcpTool
 
         List<String> modulePaths = modulePathsOf(params);
 
+        if (sinceBaseline)
+        {
+            return DiagnosticBaselineTool.compare(projectName, parseSeverityFilter(severity), checkId,
+                objects, objectFqns, modulePaths, limit, offset, detailed);
+        }
         if (!objectFqns.isEmpty())
         {
             return getProjectErrorsByAddress(projectName, severity, checkId, objectFqns, limit,
@@ -320,7 +331,7 @@ public class GetProjectErrorsTool implements IMcpTool
      * Appends the not-found note for {@code modulePaths} entries that name no module file - only when
      * {@code projectName} is given (with no project there is no single place to look the path up).
      */
-    private static void appendModulePathsNotFound(StringBuilder md, String projectName, List<String> modulePaths)
+    static void appendModulePathsNotFound(StringBuilder md, String projectName, List<String> modulePaths)
     {
         if (projectName == null || projectName.isEmpty() || modulePaths == null || modulePaths.isEmpty())
         {
@@ -842,7 +853,7 @@ public class GetProjectErrorsTool implements IMcpTool
      * @param resolution the per-address verdicts, none of which resolved
      * @return the refusal message
      */
-    private static String unscannableRefusal(AddressResolution resolution)
+    static String unscannableRefusal(AddressResolution resolution)
     {
         StringBuilder message = new StringBuilder("Cannot scan ").append(PARAM_OBJECT_FQNS) //$NON-NLS-1$
             .append(" because no requested address could be scanned."); //$NON-NLS-1$
@@ -889,6 +900,12 @@ public class GetProjectErrorsTool implements IMcpTool
     static String addressPayload(String report, List<ErrorInfo> problems, AddressResolution resolution,
         int total, int offset)
     {
+        return problemPagePayload(report, problems, resolution, total, offset).toJson();
+    }
+
+    static ToolResult problemPagePayload(String report, List<ErrorInfo> problems, AddressResolution resolution,
+        int total, int offset)
+    {
         int nextOffset = offset + problems.size();
         return ToolResult.success()
             .put(KEY_REPORT, report)
@@ -899,8 +916,7 @@ public class GetProjectErrorsTool implements IMcpTool
             .put("problems", problems) //$NON-NLS-1$
             .put(KEY_OBJECTS_RESOLVED, resolution.resolved)
             .put(KEY_OBJECTS_NOT_FOUND, resolution.notFound)
-            .put(KEY_OBJECTS_UNSUPPORTED, resolution.unsupported)
-            .toJson();
+            .put(KEY_OBJECTS_UNSUPPORTED, resolution.unsupported);
     }
 
     /**

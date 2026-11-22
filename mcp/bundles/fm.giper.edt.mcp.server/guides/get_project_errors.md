@@ -16,8 +16,24 @@ Lists EDT configuration problems (validation markers: the same set EDT shows in 
 - `objectFqns` - EXACT filter: an array of full model addresses, each resolved against the model before the marker scan. Mutually exclusive with `objects`. The response is a machine-readable payload in `structuredContent` (see *Exact addressing* below).
 - `modulePaths` - an array of EXACT module paths, as shown in the `Module path` column (`CommonModules/Sales/Module.bsl`, the path `read_module_source` takes). A leading `src/`, backslashes and letter case are normalised; anything else must match the whole path. An entry that normalisation leaves empty (`src/`, `/`) is refused, not dropped. AND-ed with every other filter and applied before `limit`. A problem without a BSL module never matches. With `projectName`, a path that names no module is reported as not found instead of reading like a clean module.
 - `limit` - max rows per page; default 100, max 1000. It counts problems, not characters.
+- `sinceBaseline` - compare with the saved `diagnostic_baseline`; requires an exact `projectName`. See *Compare with a baseline* below.
 - `offset` - how many matching problems to skip: the page starts at the next one (default 0). Every matching problem is counted, so the `**Found:**` line carries the TOTAL and, when the page is not the whole result, the window and the next offset: `**Found:** 245 (showing 101-200 of 245; next page: offset=200)`. A page is never cut mid-list: if its rows would pass the response size limit (~100,000 characters), the table stops at a row boundary and says that the rest start at the named offset. An offset past the last problem is reported with the total, not as "No Errors Found". Pages follow EDT's marker order; if EDT re-validates between two calls, rows can shift - restart from offset 0 when that matters.
 - `responseFormat` - `concise` (default) or `detailed`. `concise` trims tokens by dropping the secondary `Has docs` column; every actionable column (`Description`, `Location`, `Module path`, `Line`, `Check code`, `Fix registered`) and the unresolved-marker warnings are kept. `detailed` adds `Has docs` (true when `get_check_description` has detail for that check). An absent/unrecognized value defaults to `concise`.
+
+## Compare with a baseline
+
+Save current diagnostics with `diagnostic_baseline` before editing. Wait for EDT to validate the
+edits, then call `{projectName: "MyConfig", sinceBaseline: true}`. The comparison applies the
+request filters within the saved scope and paginates new diagnostics after comparison.
+
+With `sinceBaseline: true`, `structuredContent` contains the new `problems`, their Markdown
+`report`, normal pagination keys, `baselineSavedAt`, `baselineScope` and `comparisonComplete`.
+When complete, `resolvedSinceBaseline` counts the saved occurrences that disappeared. Identity
+uses a structural marker location, check and message. Text coordinates are for navigation.
+Moving a diagnostic to a different line leaves its identity intact. Repeated occurrences count
+separately. Missing or unreadable snapshots produce an error with the command to save a new one.
+If a scan exceeds 5,000 matches or marker locations cannot be read, the response describes the
+incomplete scan, shows new diagnostics among the markers read and omits `resolvedSinceBaseline`.
 
 ## Output columns
 `Description` | `Location` | `Module path` | `Line` | `Check code` | `Fix registered` | (`Has docs`, detailed only). `Module path` + `Line` are populated only for problems that resolve to a `.bsl` module under `src/` (empty for metadata-only problems). `Check code` shows the symbolic id when known, else the short UID. `Fix registered=yes` means the check's TYPE has an official EDT auto-fix registered — it is NOT a promise that this exact marker will produce an applicable fix (context-specific filtering inside `apply_quick_fix` can still yield none for a particular occurrence even when its check type is registered here). Pass that row's `Check code` (+ `Module path` + `Line` to narrow) to **`apply_quick_fix`** to try applying it (EDT markers have no opaque per-marker id); read its error if it turns out not to be applicable. `Has docs=true` means `get_check_description` has detail for that check (`Has docs` appears only with `responseFormat: detailed`).
@@ -79,4 +95,4 @@ For a LOOSE `objects` fragment the offset is NOT known - the entry may start on 
 - `severity` matches exactly; to see everything at or above a level, omit it and read the `Check code` / severity yourself, or call once per band.
 - The `objects` match is a substring of the location, so an overly short fragment can over-match, and a MISSPELT entry silently matches nothing and reads exactly like a clean object. That is inherent to a substring filter: when you need to know whether the object exists, use `objectFqns`.
 - Passing both `objects` and `objectFqns` is rejected: they answer different questions and combining them would silently apply one semantics to the other's entries.
-- `objectFqns` changes the response format: the Markdown report moves into the `report` field of the `structuredContent` payload (the warnings are mirrored there as blockquotes for a human reader). A call without `objectFqns` returns Markdown exactly as before.
+- `objectFqns` and `sinceBaseline: true` return the Markdown report in the `report` field of `structuredContent`. Other calls return Markdown directly.

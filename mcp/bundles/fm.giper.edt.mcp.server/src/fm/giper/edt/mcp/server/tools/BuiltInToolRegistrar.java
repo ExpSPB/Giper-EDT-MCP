@@ -32,6 +32,7 @@ import fm.giper.edt.mcp.server.tools.impl.DeleteInfobaseTool;
 import fm.giper.edt.mcp.server.tools.impl.DeleteLaunchConfigTool;
 import fm.giper.edt.mcp.server.tools.impl.DeleteMetadataTool;
 import fm.giper.edt.mcp.server.tools.impl.DeleteProjectTool;
+import fm.giper.edt.mcp.server.tools.impl.DiagnosticBaselineTool;
 import fm.giper.edt.mcp.server.tools.impl.DcsTool;
 import fm.giper.edt.mcp.server.tools.impl.BusinessProcessRouteMapTool;
 import fm.giper.edt.mcp.server.tools.impl.EnableToolsetTool;
@@ -174,6 +175,7 @@ public final class BuiltInToolRegistrar
         catalogue.add(new GetProblemSummaryTool());
         catalogue.add(new ApplyQuickFixTool());
         catalogue.add(new GetProjectErrorsTool());
+        catalogue.add(new DiagnosticBaselineTool());
         catalogue.add(new GetMarkersTool());
         catalogue.add(new GetEventLogTool());
         catalogue.add(new GetTechLogTool());

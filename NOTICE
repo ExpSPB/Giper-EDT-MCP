@@ -15,6 +15,10 @@ Modified by ExpSPB in 2026: rebranded the Java packages, Eclipse bundle and
 feature identifiers, display names, provider, and build metadata. Original
 copyright and license notices are preserved.
 
+The diagnostic baseline behavior was adapted to Giper-EDT-MCP from the
+public contract and reference tests of Desko77's AI-EDT v0.2.60
+(https://github.com/Desko77/ai-edt/commit/b5925cc0a4be439a3e3f8ea9b0f2b50fa6c9f7d7).
+
 Upstream copyright holders (preserved)
 --------------------------------------
 

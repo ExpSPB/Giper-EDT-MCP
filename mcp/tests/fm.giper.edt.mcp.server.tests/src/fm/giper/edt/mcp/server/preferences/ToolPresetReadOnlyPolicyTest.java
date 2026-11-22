@@ -49,7 +49,7 @@ public class ToolPresetReadOnlyPolicyTest
     {
         Set<String> writers = Set.of("switch_git_branch", "create_git_branch", "set_branch_infobase",
             "create_project", "resync_to_disk", "clean_project");
-        Set<String> kept = Set.of("revalidate_objects", "list_git_branches", "compare_configurations",
+        Set<String> kept = Set.of("revalidate_objects", "list_git_branches", "compare_configurations", "diagnostic_baseline",
             "enable_toolset", "get_comparison_node");
         for (ToolPreset preset : READ_ONLY)
         {
@@ -120,7 +120,7 @@ public class ToolPresetReadOnlyPolicyTest
     public void testTheReadOnlyKeepListNamesOnlyEnabledToolsWithoutAReadOnlyHint() throws Exception
     {
         Set<String> kept = keepList();
-        assertEquals(Set.of("compare_configurations", "enable_toolset", "revalidate_objects"), kept);
+        assertEquals(Set.of("compare_configurations", "diagnostic_baseline", "enable_toolset", "revalidate_objects"), kept);
         for (String name : kept)
         {
             IMcpTool tool = registry.getTool(name);

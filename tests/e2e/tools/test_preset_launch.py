@@ -19,7 +19,7 @@ from harness import (
     initialize, wait_for_server,
 )
 
-_KEEP = {"compare_configurations", "enable_toolset", "revalidate_objects"}
+_KEEP = {"compare_configurations", "diagnostic_baseline", "enable_toolset", "revalidate_objects"}
 _WRITERS = {"switch_git_branch", "create_git_branch", "set_branch_infobase",
             "create_project", "resync_to_disk", "clean_project"}
 

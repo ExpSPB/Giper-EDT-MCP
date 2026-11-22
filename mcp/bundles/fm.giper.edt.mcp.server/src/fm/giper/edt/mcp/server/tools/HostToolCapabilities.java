@@ -35,6 +35,7 @@ public final class HostToolCapabilities
         define("get_problem_summary", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");
         define("apply_quick_fix", Capability.HEADLESS_DEGRADED, "EDT 2026.2.2 real headless host applied the native md-object-duplicate-uuid fix and rewrote .mdo bytes; interactive BSL fixes require their native UI context");
         define("get_project_errors", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");
+        define("diagnostic_baseline", Capability.HEADLESS, "Reads EDT markers and stores snapshots in the workspace plugin state");
         define("get_markers", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");
         define("get_event_log", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");
         define("get_tech_log", Capability.HEADLESS, "Pure local JSON file analysis/reference; unit fixtures cover parser, groups and correlation; live wire acceptance remains separate");

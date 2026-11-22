@@ -4,7 +4,7 @@ This reference provides generated descriptions, parameters and guides; [tool ove
 
 One page per tool: what it does, every parameter, and how it works. Generated from the live server by `docs/generate_tool_docs.py` (re-run to refresh; the source of truth is each tool's Java).
 
-**111 tools.**
+**112 tools.**
 
 ## Core
 
@@ -159,6 +159,7 @@ One page per tool: what it does, every parameter, and how it works. Generated fr
 | [`create_project`](create_project.md) | Start a new EDT configuration, extension, or external-objects project. Parameters and examples: get_tool_guide('create_project'). |
 | [`delete_infobase`](delete_infobase.md) | Remove a project's infobase or its standalone-server registration, optionally deleting the database files. DESTRUCTIVE and IRREVERSIBLE. Two-phase: call once… |
 | [`delete_project`](delete_project.md) | Remove an EDT project from the workspace, optionally with its sources on disk. DESTRUCTIVE and IRREVERSIBLE. Two-phase: call once WITHOUT confirm to preview,… |
+| [`diagnostic_baseline`](diagnostic_baseline.md) | Save or clear one project's diagnostic baseline for get_project_errors sinceBaseline. Full parameters and examples: call get_tool_guide('diagnostic_baseline'). |
 | [`export_configuration_to_file`](export_configuration_to_file.md) | Export the configuration (.cf) or an extension (.cfe) FROM an application's infobase to a file via the 1C thick client - the infobase's content, not the proj… |
 | [`export_configuration_to_xml`](export_configuration_to_xml.md) | Export an EDT configuration into 1C XML files. Parameters and examples: get_tool_guide('export_configuration_to_xml'). |
 | [`get_check_description`](get_check_description.md) | Understand an EDT validation rule and how to fix its diagnostic. Parameters and examples: get_tool_guide('get_check_description'). |
@@ -167,7 +168,7 @@ One page per tool: what it does, every parameter, and how it works. Generated fr
 | [`get_mcp_history`](get_mcp_history.md) | Diagnose MCP tool calls by reviewing recent requests, failures, timings, and context usage. Parameters and examples: get_tool_guide('get_mcp_history'). |
 | [`get_platform_documentation`](get_platform_documentation.md) | Look up a built-in 1C type or global function in the platform documentation. Returns headers and member names by default - pass responseFormat='detailed' for… |
 | [`get_problem_summary`](get_problem_summary.md) | See validation problem counts grouped by project, severity, check, module or object. Parameters and examples: get_tool_guide('get_problem_summary'). |
-| [`get_project_errors`](get_project_errors.md) | Find detailed validation errors and warnings in an EDT project. Parameters and examples: get_tool_guide('get_project_errors'). |
+| [`get_project_errors`](get_project_errors.md) | Find EDT validation problems, or report new and resolved diagnostics since a saved baseline. Parameters and examples: get_tool_guide('get_project_errors'). |
 | [`import_configuration_from_xml`](import_configuration_from_xml.md) | Create an EDT project from exported 1C configuration XML files. Use platformVersion for the new project's runtime, derived from the dump by default (xmlVersi… |
 | [`import_project_from_file`](import_project_from_file.md) | Create a NEW EDT project from a 1C binary file: .cf (configuration), .cfe (extension; baseProjectName required) or .epf/.erf (external data processor/report)… |
 | [`infobase_extensions`](infobase_extensions.md) | List installed infobase extensions and install, update or uninstall .cfe files. DESTRUCTIVE: call once WITHOUT confirm to preview a write, then with confirm=… |
