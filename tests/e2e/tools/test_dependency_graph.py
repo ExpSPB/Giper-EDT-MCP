@@ -1,11 +1,11 @@
-"""Exercise the metadata graph on the dedicated MetadataAnalysisFixture project."""
+"""Exercise the metadata graph on the dedicated Metadata Analysis Fixture project."""
 
 from hashlib import sha256
 from pathlib import Path
 
 from harness import REPO_ROOT, assert_error, assert_no_diff_rel, assert_ok, call, e2e_test, wait_for_named_projects_ready
 
-PROJECT = "MetadataAnalysisFixture"
+PROJECT = "Metadata Analysis Fixture"
 FIXTURE = "tests/fixtures/metadata-analysis"
 ROOT = "Catalog.GraphRoot"
 NEXT = "Catalog.GraphNext"

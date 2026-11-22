@@ -32,6 +32,16 @@ def test_impact_analysis_distinguishes_metadata_and_indexed_bsl():
 
 
 @e2e_test(tool="impact_analysis", kind="read")
+def test_impact_analysis_reports_authored_configuration_settings():
+    _wait_ready()
+    report = _report("Language.English", skipBsl=True)
+    assert "**Total references:** 1" in report, report
+    assert "Configuration.MetadataAnalysisFixture" in report and "defaultLanguage" in report, report
+    assert "**Incomplete search:**" not in report, report
+    assert_no_diff_rel(FIXTURE, "configuration usage scan preserves fixture files")
+
+
+@e2e_test(tool="impact_analysis", kind="read")
 def test_impact_analysis_distinguishes_exact_zero_from_a_lower_bound():
     files_before = _fixture_bytes()
     empty = _report("Catalog.GraphIsolated", skipBsl=True)

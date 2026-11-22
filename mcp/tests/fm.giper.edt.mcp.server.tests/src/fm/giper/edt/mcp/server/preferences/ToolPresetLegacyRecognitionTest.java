@@ -61,6 +61,19 @@ public class ToolPresetLegacyRecognitionTest
         "validate_query", "wait_for_break", "write_module_source");
 
     @Test
+    public void testLegacyAllToolsAllowlistPredatesMetadataAnalysis()
+    {
+        Set<String> allowed = new HashSet<>();
+        for (ToolGroup group : ToolGroup.values())
+        {
+            allowed.addAll(group.getToolNames());
+        }
+        allowed.removeAll(Set.of("dependency_graph", "impact_analysis"));
+
+        assertEquals(ToolPreset.ALL_TOOLS, ToolPreset.matchLegacyAllowlist(allowed));
+    }
+
+    @Test
     public void testRealVersion4CodeReviewReceivesOwedAdditionsAndIdentity()
     {
         assertFalse(CODE_REVIEW_V4.contains("dcs"));

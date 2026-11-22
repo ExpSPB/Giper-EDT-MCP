@@ -84,6 +84,13 @@ public final class MetadataAnalysis
             try
             {
                 IProject project = context.project();
+                // Refresh the selected project's readiness after settling and dispatching. This
+                // also guards callers that already ran on the UI thread and could not wait.
+                String notReady = ProjectStateChecker.checkReadyOrError(project);
+                if (notReady != null)
+                {
+                    throw Refusals.state(notReady);
+                }
                 IBmModel model = BmModelResolver.resolve(project).getModel();
                 if (model == null)
                 {

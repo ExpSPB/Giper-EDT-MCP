@@ -19,6 +19,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.OperationCanceledException;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
@@ -1191,9 +1192,16 @@ public class MetadataReferenceService
                 return false;
             }
             IBmObject owner = source.bmIsTop() ? source : source.bmGetTopObject();
-            // Configuration membership alone is not a place the caller needs to change.
-            return !(owner instanceof Configuration) && BmObjectOwnership.isPrimary(impactTransaction, owner)
-                && MetadataAnalysis.isAuthoredSource(source);
+            return BmObjectOwnership.isPrimary(impactTransaction, owner) && MetadataAnalysis.isAuthoredSource(source)
+                && !(source instanceof Configuration && isConfigurationMembership(ref.getFeature()));
+        }
+
+        private static boolean isConfigurationMembership(EStructuralFeature feature)
+        {
+            // The registered collection for each metadata type lists its objects. Other settings
+            // can reference the same type, for example roles versus defaultRoles.
+            return feature instanceof EReference reference && reference.getName().equals(
+                MetadataTypeUtils.getConfigReferenceName(reference.getEReferenceType().getName()));
         }
 
         /**
@@ -1390,34 +1398,33 @@ public class MetadataReferenceService
                 return;
             }
 
-            // Get the resource path (without fragment)
             String path = sourceUri.path();
             if (path == null)
             {
                 path = sourceUri.toString();
             }
+            String modulePath;
             if (impactTransaction != null)
             {
-                String project = extractProjectName(path);
-                if (project == null)
+                String workspacePath = sourceUri.isPlatformResource() ? sourceUri.toPlatformString(true) : null;
+                var sourcePath = workspacePath == null ? Path.EMPTY : Path.fromPortableString(workspacePath);
+                if (sourcePath.segmentCount() < 2)
                 {
                     markBslScanIncomplete();
                     return;
                 }
-                if (!sourceProject.getName().equals(project))
+                if (!sourceProject.getName().equals(sourcePath.segment(0)))
                 {
                     return;
                 }
+                modulePath = extractModulePath(sourcePath.removeFirstSegments(1).makeAbsolute().toPortableString());
             }
-
-            // Extract module path from URI, keeping the OWNING PROJECT whenever it is not the project
-            // being searched. An adopted copy in an extension keeps the base module's relative path,
-            // so two genuinely different usages would otherwise collapse: identical relative path plus
-            // identical line IS the whole deduplication key, and even with different lines the rows
-            // would read as one module. Only cross-project rows are qualified, so a search that stays
-            // inside its own project renders exactly as before.
-            String modulePath = qualifyWithProject(extractModulePath(path), extractProjectName(path),
-                sourceProject == null ? null : sourceProject.getName());
+            else
+            {
+                // Adopted copies can share a relative path and line with a base module.
+                modulePath = qualifyWithProject(extractModulePath(path), extractProjectName(path),
+                    sourceProject == null ? null : sourceProject.getName());
+            }
 
             // Extract line number - we need to load the EObject and use NodeModelUtils. This parse is
             // the per-reference cost a bounded search caps (capReached above runs first).
