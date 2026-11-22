@@ -327,9 +327,6 @@ public class DiagnosticBaselineTool implements IMcpTool
         List<Diagnostic> diagnostics = new ArrayList<>();
         int[] unreadable = new int[1];
         int failedChecks = 0;
-        Set<String> scanScope = filters.saved().isEmpty() ? filters.requested() : filters.saved();
-        boolean exactScope = !filters.saved().isEmpty() || filters.exact();
-        MarkerSeverity severityFilter = filters.severity() == MarkerSeverity.NONE ? null : filters.severity();
         try (Stream<Marker> stream = manager.markers(MarkerFilter.createProjectFilter(project)))
         {
             Iterator<Marker> markers = stream.iterator();
@@ -338,8 +335,8 @@ public class DiagnosticBaselineTool implements IMcpTool
                 checkInterrupted();
                 Marker marker = markers.next();
                 // Delay filtering by check so a failed symbolic lookup cannot masquerade as no match.
-                MarkerRows.Match match = MarkerRows.comparableMatchOf(marker, severityFilter,
-                    scanScope, filters.modulePaths(), unreadable, exactScope);
+                MarkerRows.Match match = MarkerRows.comparableMatchOf(marker, filters.severity(), filters.saved(),
+                    filters.requested(), filters.modulePaths(), unreadable, filters.exact());
                 if (match == null)
                 {
                     continue;

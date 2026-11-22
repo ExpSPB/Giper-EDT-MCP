@@ -285,10 +285,15 @@ public final class MarkerRows
     }
 
     /** Resolves the location even without an object filter, for a detached baseline identity. */
-    public static Match comparableMatchOf(Marker marker, MarkerSeverity severityFilter, Set<String> objects,
-        Set<String> modulePathKeys, int[] unresolved, boolean exactScope)
+    public static Match comparableMatchOf(Marker marker, MarkerSeverity severityFilter, Set<String> savedScope,
+        Set<String> requestedScope, Set<String> modulePathKeys, int[] unresolved, boolean exactRequestedScope)
     {
-        Match match = match(marker, severityFilter, null, Set.of(), modulePathKeys, null, unresolved, false, true);
+        MarkerSeverity severity = marker.getSeverity();
+        if (severityFilter != null && severityFilter != (severity == null ? MarkerSeverity.NONE : severity))
+        {
+            return null;
+        }
+        Match match = match(marker, null, null, Set.of(), modulePathKeys, null, unresolved, false, true);
         if (match == null)
         {
             return null;
@@ -298,7 +303,12 @@ public final class MarkerRows
             unresolved[0]++;
             return null;
         }
-        return excludedByObjectsFilter(objects, true, match.objectPresentation, unresolved, exactScope) ? null : match;
+        if (excludedByObjectsFilter(savedScope, true, match.objectPresentation, unresolved, true)
+            || excludedByObjectsFilter(requestedScope, true, match.objectPresentation, unresolved, exactRequestedScope))
+        {
+            return null;
+        }
+        return match;
     }
 
     private static boolean hasMarkerTarget(Marker marker)

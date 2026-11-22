@@ -83,7 +83,7 @@ parse_version_from_manifest() {
     [[ -f "$manifest" ]] || return 1
 
     local version
-    version=$(grep -oP '^Bundle-Version:[[:blank:]]+\K[0-9]+\.[0-9]+\.[0-9]+(?=[.[:space:]]|$)' "$manifest" | head -n 1 || true)
+    version=$(sed -nE 's/^Bundle-Version:[[:blank:]]+([0-9]+\.[0-9]+\.[0-9]+)(\.[^[:space:]]+)?[[:space:]]*$/\1/p' "$manifest" | head -n 1 || true)
     [[ -n "$version" ]] || return 1
     printf '%s' "$version"
 }
@@ -94,7 +94,7 @@ parse_version_from_readme() {
         return 1
     fi
     local version
-    version=$(grep -oP '<summary><strong>\K[\d.]+(?=</strong>)' "$readme" | head -n 1 || true)
+    version=$(sed -nE 's@.*<summary><strong>([0-9.]+)</strong>.*@\1@p' "$readme" | head -n 1 || true)
     if [[ -n "$version" ]]; then
         printf '%s' "$version"
         return 0

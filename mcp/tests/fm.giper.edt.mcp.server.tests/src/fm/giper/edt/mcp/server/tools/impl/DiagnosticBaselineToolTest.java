@@ -12,6 +12,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -24,6 +26,7 @@ import org.junit.Test;
 
 import com._1c.g5.v8.dt.core.platform.IDtProject;
 import com._1c.g5.v8.dt.validation.marker.Marker;
+import com._1c.g5.v8.dt.validation.marker.MarkerSeverity;
 import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -125,8 +128,35 @@ public class DiagnosticBaselineToolTest
         when(marker.getObjectPresentation()).thenReturn("");
         int[] unreadable = {0};
         assertNull(MarkerRows.comparableMatchOf(marker, null, Set.of("commonmodule.example"),
-            Set.of(), unreadable, true));
+            Set.of(), Set.of(), unreadable, true));
         assertEquals(1, unreadable[0]);
+    }
+
+    @Test
+    public void comparisonSkipsAnObjectInTheSavedScopeThatTheRequestExcludes()
+    {
+        Set<String> saved = Set.of("commonmodule.a", "commonmodule.b");
+        Set<String> requested = Set.of("commonmodule.a");
+        int[] unreadable = {0};
+        Marker marker = mock(Marker.class);
+        when(marker.getObjectPresentation()).thenReturn("CommonModule.B.Module", "CommonModule.A.Module");
+
+        assertNull(MarkerRows.comparableMatchOf(marker, null, saved, requested, Set.of(), unreadable, true));
+        assertNotNull(MarkerRows.comparableMatchOf(marker, null, saved, requested, Set.of(), unreadable, true));
+        assertEquals(0, unreadable[0]);
+    }
+
+    @Test
+    public void severityNoneSkipsOtherLevelsBeforeReadingTheirLocations()
+    {
+        Marker marker = mock(Marker.class);
+        when(marker.getSeverity()).thenReturn(MarkerSeverity.ERRORS);
+        int[] unreadable = {0};
+
+        assertNull(MarkerRows.comparableMatchOf(marker, MarkerSeverity.NONE, Set.of(), Set.of(),
+            Set.of(), unreadable, false));
+        verify(marker, never()).getObjectPresentation();
+        assertEquals(0, unreadable[0]);
     }
 
     private static ErrorInfo problem(String message)
