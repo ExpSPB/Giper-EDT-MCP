@@ -1,6 +1,6 @@
 """Exercise exact and capped usage reports on a real indexed EDT project."""
 
-from harness import assert_error, assert_no_diff_rel, assert_ok, call, e2e_test
+from harness import assert_error, assert_no_diff_rel, assert_ok, call, e2e_test, wait_for_named_projects_ready
 from tools.test_dependency_graph import FIXTURE, PROJECT, ROOT, _fixture_bytes, _wait_ready
 
 
@@ -33,12 +33,16 @@ def test_impact_analysis_distinguishes_metadata_and_indexed_bsl():
 
 @e2e_test(tool="impact_analysis", kind="read")
 def test_impact_analysis_reports_authored_configuration_settings():
-    _wait_ready()
-    report = _report("Language.English", skipBsl=True)
+    project = "TestConfiguration.tests"
+    states = wait_for_named_projects_ready([project])
+    assert states.get(project) == "ready", states
+    result = call("impact_analysis", {"projectName": project, "objectFqn": "Role.tests_DefaultRole", "skipBsl": True})
+    assert_ok(result, "impact of the extension's default role")
+    report = result.text
     assert "**Total references:** 1" in report, report
-    assert "Configuration.MetadataAnalysisFixture" in report and "defaultLanguage" in report, report
+    assert "Configuration - Default roles" in report and "defaultRoles" in report, report
     assert "**Incomplete search:**" not in report, report
-    assert_no_diff_rel(FIXTURE, "configuration usage scan preserves fixture files")
+    assert_no_diff_rel("tests/tests", "configuration usage scan preserves fixture files")
 
 
 @e2e_test(tool="impact_analysis", kind="read")
@@ -59,7 +63,7 @@ def test_impact_analysis_rejects_unknown_roots_and_bad_options():
     for patch, expected in [({"objectFqn": "Catalog.MissingImpactRoot"}, "MissingImpactRoot"),
                             ({"projectName": "MissingImpactProject"}, "MissingImpactProject"),
                             ({"action": "archive"}, "action"), ({"skipBsl": "maybe"}, "skipBsl"),
-                            ({"limit": 501}, "limit")]:
+                            ({"limit": 501}, "limit"), ({"objectFqn": "Language.English"}, "top-level")]:
         result = call("impact_analysis", {"projectName": PROJECT, "objectFqn": ROOT, **patch})
         assert_error(result, f"refuse impact {patch}")
         assert expected in result.error_text(), result.error_text()

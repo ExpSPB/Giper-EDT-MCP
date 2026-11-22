@@ -84,9 +84,7 @@ public class MetadataReferenceService
         return MetadataAnalysis.read("Read metadata impact", project, fqn, bound, //$NON-NLS-1$
             (selected, config, model, tx, monitor, target) -> {
                 IBmObject object = (IBmObject)target;
-                var collector = new ReferenceCollector(selected, model, object, limit, bound);
-                collector.impactTransaction = tx;
-                collector.skipBsl = skipBsl;
+                var collector = new ReferenceCollector(selected, model, object, limit, bound, tx, skipBsl);
                 collector.collect();
                 bound.shouldStop(collector.references.size());
                 return collector.impactResult(MetadataTypeUtils.toCanonicalEnglishFqn(object.bmGetFqn()));
@@ -759,11 +757,11 @@ public class MetadataReferenceService
          * with no extension project holds no adopted copy (see {@link #recordAdoptedTargetsOutcome}).
          */
         private boolean bslScanIncompleteForReport;
-        private IBmTransaction impactTransaction;
-        private boolean skipBsl;
+        private final IBmTransaction impactTransaction;
+        private final boolean skipBsl;
         private boolean metadataScanIncomplete;
 
-        private ImpactResult impactResult(String fqn)
+        ImpactResult impactResult(String fqn)
         {
             List<String> reasons = new ArrayList<>();
             switch (bound.stopReason())
@@ -780,6 +778,12 @@ public class MetadataReferenceService
             if (!skipBsl && !bslScanComplete)
             {
                 reasons.add("the BSL index or project search scope was incomplete"); //$NON-NLS-1$
+            }
+            // EDT 2026.2 can resolve BSL symbols interactively yet omit those references from
+            // the index when the workspace project name contains spaces.
+            if (!skipBsl && sourceProject.getName().contains(" ")) //$NON-NLS-1$
+            {
+                reasons.add("EDT can omit indexed BSL references for project names containing spaces"); //$NON-NLS-1$
             }
             var rows = references.stream().limit(limit)
                 .map(ref -> new ImpactReference(ref.category, ref.sourcePath, ref.feature, ref.line)).toList();
@@ -834,6 +838,12 @@ public class MetadataReferenceService
         ReferenceCollector(IProject sourceProject, IBmModel bmModel, IBmObject target, int limit,
             ReferenceSearchBound bound)
         {
+            this(sourceProject, bmModel, target, limit, bound, null, false);
+        }
+
+        ReferenceCollector(IProject sourceProject, IBmModel bmModel, IBmObject target, int limit,
+            ReferenceSearchBound bound, IBmTransaction impactTransaction, boolean skipBsl)
+        {
             super("Find references to " + safeTargetName(target)); //$NON-NLS-1$
             this.sourceProject = sourceProject;
             this.bmModel = bmModel;
@@ -841,6 +851,8 @@ public class MetadataReferenceService
             this.targetAsMdObject = (target instanceof MdObject) ? (MdObject)target : null;
             this.limit = limit;
             this.bound = bound;
+            this.impactTransaction = impactTransaction;
+            this.skipBsl = skipBsl;
         }
 
         /**
@@ -1380,7 +1392,7 @@ public class MetadataReferenceService
             }
         }
 
-        private void collectBslReferenceDescription(IReferenceDescription refDesc)
+        void collectBslReferenceDescription(IReferenceDescription refDesc)
         {
             if (capReached())
             {

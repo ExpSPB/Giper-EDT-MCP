@@ -116,6 +116,11 @@ public final class MetadataAnalysis
                         throw Refusals.argument("Object not found in project '" + projectName + "': " //$NON-NLS-1$ //$NON-NLS-2$
                             + objectFqn + ". Use the programmatic FQN from get_metadata_objects."); //$NON-NLS-1$
                     }
+                    if (!bm.bmIsTop())
+                    {
+                        throw Refusals.argument("Object '" + objectFqn //$NON-NLS-1$
+                            + "' is stored inside another object. Use a top-level metadata object."); //$NON-NLS-1$
+                    }
                     return analysis.read(project, config, model, tx, monitor, root);
                 }));
             }

@@ -115,10 +115,10 @@ These tests send real HTTP requests to a running MCP server and validate every t
    - `tests/tests` - project `TestConfiguration.tests` (the extension);
    - `tests/ExternalObjects` - project `ExternalObjects`;
    - `tests/SupportedConfiguration` - project `SupportedConfiguration` (vendor support).
-   - `tests/fixtures/metadata-analysis` - project `Metadata Analysis Fixture` (a directed reference cycle and an indexed BSL usage in a project whose name contains spaces).
+   - `tests/fixtures/metadata-analysis` - project `MetadataAnalysisFixture` (a directed reference cycle and an indexed BSL usage).
 
    CI imports all five. The tool cases for `dependency_graph` and `impact_analysis`
-   use `Metadata Analysis Fixture` and check that the queries preserve its files.
+   use `MetadataAnalysisFixture` and check that the queries preserve its files.
 
    Instead of the import wizard, EDT can import them at startup: set
    `EDT_MCP_IMPORT_PROJECTS` on the EDT process to the listed directories, separated by
