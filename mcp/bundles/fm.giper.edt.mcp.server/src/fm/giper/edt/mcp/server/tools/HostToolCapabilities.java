@@ -59,6 +59,8 @@ public final class HostToolCapabilities
         define("list_subsystems", Capability.HEADLESS, "EDT 2026.2.2 real headless probe returned content on the caller thread; stdio_headless exercises this path");
         define("get_subsystem_content", Capability.HEADLESS, "EDT 2026.2.2 real headless probe returned content on the caller thread; stdio_headless exercises this path");
         define("find_references", Capability.HEADLESS, "EDT 2026.2.2 real headless probe returned content on the caller thread; stdio_headless exercises this path");
+        define("dependency_graph", Capability.HEADLESS, "Read-only BM traversal with no workbench dependency");
+        define("impact_analysis", Capability.HEADLESS, "Read-only BM and BSL index scan via the shared reference collector");
         define("get_tags", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");
         define("get_objects_by_tags", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");
         define("get_applications", Capability.HEADLESS, "Core/file service path; platform readiness and ordinary tool preconditions still apply");

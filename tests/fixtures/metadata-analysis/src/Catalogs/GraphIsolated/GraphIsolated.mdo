@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:Catalog xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="c924909e-10e0-4c11-8e06-000000000052">
+  <producedTypes>
+    <objectType typeId="c924909e-10e0-4c11-8e06-000000000053" valueTypeId="c924909e-10e0-4c11-8e06-000000000054"/>
+    <refType typeId="c924909e-10e0-4c11-8e06-000000000055" valueTypeId="c924909e-10e0-4c11-8e06-000000000056"/>
+    <selectionType typeId="c924909e-10e0-4c11-8e06-000000000057" valueTypeId="c924909e-10e0-4c11-8e06-000000000058"/>
+    <listType typeId="c924909e-10e0-4c11-8e06-000000000059" valueTypeId="c924909e-10e0-4c11-8e06-000000000060"/>
+    <managerType typeId="c924909e-10e0-4c11-8e06-000000000061" valueTypeId="c924909e-10e0-4c11-8e06-000000000062"/>
+  </producedTypes>
+  <name>GraphIsolated</name>
+  <synonym>
+    <key>en</key>
+    <value>GraphIsolated</value>
+  </synonym>
+  <codeLength>9</codeLength>
+  <descriptionLength>25</descriptionLength>
+  <codeType>String</codeType>
+</mdclass:Catalog>

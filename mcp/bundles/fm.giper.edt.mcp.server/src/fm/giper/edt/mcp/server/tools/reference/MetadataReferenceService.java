@@ -31,6 +31,7 @@ import org.eclipse.xtext.ui.editor.findrefs.IReferenceFinder;
 import com._1c.g5.v8.bm.core.IBmCrossReference;
 import com._1c.g5.v8.bm.core.IBmEngine;
 import com._1c.g5.v8.bm.core.IBmObject;
+import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.AbstractBmTask;
 import com._1c.g5.v8.bm.integration.IBmModel;
 import com._1c.g5.v8.dt.common.StringUtils;
@@ -52,6 +53,7 @@ import fm.giper.edt.mcp.server.protocol.ToolResult;
 import fm.giper.edt.mcp.server.utils.AdoptedReferenceTargets;
 import fm.giper.edt.mcp.server.utils.BslModuleUtils;
 import fm.giper.edt.mcp.server.utils.BslReferenceSearch;
+import fm.giper.edt.mcp.server.utils.BmObjectOwnership;
 import fm.giper.edt.mcp.server.utils.MetadataTypeUtils;
 import fm.giper.edt.mcp.server.utils.Pagination;
 import fm.giper.edt.mcp.server.utils.ProjectContext;
@@ -66,6 +68,30 @@ import fm.giper.edt.mcp.server.utils.ProjectStateChecker.SearchDependenciesResul
 @SuppressWarnings("restriction")
 public class MetadataReferenceService
 {
+    public record ImpactReference(String category, String source, String feature, int line)
+    {
+    }
+
+    public record ImpactResult(String objectFqn, List<ImpactReference> references, List<String> incompleteReasons)
+    {
+    }
+
+    /** A bounded, selected-project scan. Only immutable data leaves the model transaction. */
+    public ImpactResult analyzeImpact(String project, String fqn, boolean skipBsl, int limit)
+    {
+        var bound = ReferenceSearchBound.of(limit, ReferenceSearchBound.TIME_BUDGET_MS, System::nanoTime);
+        return MetadataAnalysis.read("Read metadata impact", project, fqn, bound, //$NON-NLS-1$
+            (selected, config, model, tx, monitor, target) -> {
+                IBmObject object = (IBmObject)target;
+                var collector = new ReferenceCollector(selected, model, object, limit, bound);
+                collector.impactTransaction = tx;
+                collector.skipBsl = skipBsl;
+                collector.collect();
+                bound.shouldStop(collector.references.size());
+                return collector.impactResult(MetadataTypeUtils.toCanonicalEnglishFqn(object.bmGetFqn()));
+            });
+    }
+
     /**
      * Finds the references to the metadata object identified by {@code objectFqn}, within {@code
      * bound}: the search stops one reference past {@link ReferenceSearchBound#limit()} or when the time
@@ -732,6 +758,32 @@ public class MetadataReferenceService
          * with no extension project holds no adopted copy (see {@link #recordAdoptedTargetsOutcome}).
          */
         private boolean bslScanIncompleteForReport;
+        private IBmTransaction impactTransaction;
+        private boolean skipBsl;
+        private boolean metadataScanIncomplete;
+
+        private ImpactResult impactResult(String fqn)
+        {
+            List<String> reasons = new ArrayList<>();
+            switch (bound.stopReason())
+            {
+                case LIMIT -> reasons.add("the reference limit was reached"); //$NON-NLS-1$
+                case TIME_BUDGET -> reasons.add("the time budget expired"); //$NON-NLS-1$
+                case CANCELLED -> reasons.add("the search was cancelled"); //$NON-NLS-1$
+                case NONE -> { }
+            }
+            if (metadataScanIncomplete)
+            {
+                reasons.add("some metadata references could not be resolved"); //$NON-NLS-1$
+            }
+            if (!skipBsl && !bslScanComplete)
+            {
+                reasons.add("the BSL index or project search scope was incomplete"); //$NON-NLS-1$
+            }
+            var rows = references.stream().limit(limit)
+                .map(ref -> new ImpactReference(ref.category, ref.sourcePath, ref.feature, ref.line)).toList();
+            return new ImpactResult(fqn, rows, List.copyOf(reasons));
+        }
 
         /** See {@link #bslScanComplete}. */
         boolean isBslScanComplete()
@@ -889,7 +941,7 @@ public class MetadataReferenceService
 
             // 5. Collect BSL code references - applies to ANY IBmObject. MdObject targets add their
             // produced types; MdObject and PredefinedItem targets can add adopted-extension copies.
-            if (!stopped())
+            if (!skipBsl && !stopped())
             {
                 collectBslReferences(target, resourceServiceProviderLookup, searchScopeLookup);
             }
@@ -938,7 +990,7 @@ public class MetadataReferenceService
                 }
 
                 IBmObject sourceObject = ref.getObject();
-                if (sourceObject == null)
+                if (!acceptMetadataSource(ref, sourceObject))
                 {
                     continue;
                 }
@@ -997,7 +1049,7 @@ public class MetadataReferenceService
                 }
 
                 IBmObject sourceObject = ref.getObject();
-                if (sourceObject == null || isInternalReference(ref))
+                if (!acceptMetadataSource(ref, sourceObject) || isInternalReference(ref))
                 {
                     continue;
                 }
@@ -1044,7 +1096,7 @@ public class MetadataReferenceService
                     }
 
                     IBmObject sourceObject = ref.getObject();
-                    if (sourceObject == null)
+                    if (!acceptMetadataSource(ref, sourceObject))
                     {
                         continue;
                     }
@@ -1100,7 +1152,7 @@ public class MetadataReferenceService
                 }
 
                 IBmObject sourceObject = ref.getObject();
-                if (sourceObject == null)
+                if (!acceptMetadataSource(ref, sourceObject))
                 {
                     continue;
                 }
@@ -1121,6 +1173,27 @@ public class MetadataReferenceService
 
                 addReference(new ReferenceInfo(category, sourcePath, feature, sourceObject));
             }
+        }
+
+        private boolean acceptMetadataSource(IBmCrossReference ref, IBmObject source)
+        {
+            if (impactTransaction == null)
+            {
+                return source != null;
+            }
+            if (ref.getNamespace() != impactTransaction.getNamespace())
+            {
+                return false;
+            }
+            if (source == null || source.eIsProxy())
+            {
+                metadataScanIncomplete = true;
+                return false;
+            }
+            IBmObject owner = source.bmIsTop() ? source : source.bmGetTopObject();
+            // Configuration membership alone is not a place the caller needs to change.
+            return !(owner instanceof Configuration) && BmObjectOwnership.isPrimary(impactTransaction, owner)
+                && MetadataAnalysis.isAuthoredSource(source);
         }
 
         /**
@@ -1191,6 +1264,12 @@ public class MetadataReferenceService
                     }
                 }
 
+                if (impactTransaction != null)
+                {
+                    scanProjectBsl(resourceServiceProvider, finder, targetURIs, searchDependencies);
+                    return;
+                }
+
                 AdoptedReferenceTargets.Resolution adoptedTargets =
                     AdoptedReferenceTargets.resolve(target, searchDependencies);
                 targetURIs.addAll(adoptedTargets.getTargetURIs());
@@ -1249,6 +1328,33 @@ public class MetadataReferenceService
             }
         }
 
+        private void scanProjectBsl(IResourceServiceProvider provider, IReferenceFinder finder,
+            List<URI> targetURIs, SearchDependenciesResult snapshot)
+        {
+            String projectName = safeProjectName(sourceProject);
+            if (snapshot == null || !snapshot.isDetermined() || !snapshot.getProjectNames().contains(projectName)
+                || snapshot.getNotReadyProjectNames().contains(projectName))
+            {
+                markBslScanIncomplete();
+            }
+            try
+            {
+                boolean stable = BslReferenceSearch.findReferences(provider, finder, sourceProject,
+                    targetURIs, this::collectBslReferenceDescription, bound.monitor(references::size), snapshot);
+                if (!stable)
+                {
+                    markBslScanIncomplete();
+                }
+            }
+            catch (OperationCanceledException e)
+            {
+                if (!bound.isStopped())
+                {
+                    markBslScanIncomplete();
+                }
+            }
+        }
+
         private static String safeProjectName(IProject project)
         {
             if (project == null)
@@ -1277,6 +1383,10 @@ public class MetadataReferenceService
             URI sourceUri = refDesc.getSourceEObjectUri();
             if (sourceUri == null)
             {
+                if (impactTransaction != null)
+                {
+                    markBslScanIncomplete();
+                }
                 return;
             }
 
@@ -1285,6 +1395,19 @@ public class MetadataReferenceService
             if (path == null)
             {
                 path = sourceUri.toString();
+            }
+            if (impactTransaction != null)
+            {
+                String project = extractProjectName(path);
+                if (project == null)
+                {
+                    markBslScanIncomplete();
+                    return;
+                }
+                if (!sourceProject.getName().equals(project))
+                {
+                    return;
+                }
             }
 
             // Extract module path from URI, keeping the OWNING PROJECT whenever it is not the project
@@ -1301,7 +1424,8 @@ public class MetadataReferenceService
             int line = resolveLine(sourceUri);
 
             // Use addReference for deduplication
-            addReference(new ReferenceInfo("BSL modules", modulePath, line, path)); //$NON-NLS-1$
+            String identity = impactTransaction == null ? path : sourceUri.toString();
+            addReference(new ReferenceInfo("BSL modules", modulePath, line, identity)); //$NON-NLS-1$
         }
 
         private String extractModulePath(String path)

@@ -59,6 +59,8 @@ def test_preset_launch_only_advertises_read_only_tools_and_explicit_keeps():
             "%s must keep %s with its existing readOnlyHint=false" % (preset, name))
     assert {"list_projects", "get_edt_version", "list_git_branches", "get_comparison_node"} <= tools.keys(), (
         "%s tools/list lost baseline read tools; disable progressive disclosure for this check" % preset)
+    assert {"dependency_graph", "impact_analysis"} <= tools.keys(), (
+        "%s tools/list lost metadata analysis reads" % preset)
     # A distinct read-tool control proves which of the two presets reached the server.
     assert ("read_module_source" in tools) == (preset == "code-review"), (
         "tools/list does not match EDT_MCP_TOOL_PRESET=%s: read_module_source visibility is wrong" % preset)

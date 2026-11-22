@@ -115,12 +115,13 @@ These tests send real HTTP requests to a running MCP server and validate every t
    - `tests/tests` - project `TestConfiguration.tests` (the extension);
    - `tests/ExternalObjects` - project `ExternalObjects`;
    - `tests/SupportedConfiguration` - project `SupportedConfiguration` (vendor support).
+   - `tests/fixtures/metadata-analysis` - project `MetadataAnalysisFixture` (a directed reference cycle and an indexed BSL usage).
 
-   CI imports all four; `ExternalObjects` and `SupportedConfiguration` are needed only by
-   the tests that address them.
+   CI imports all five. The tool cases for `dependency_graph` and `impact_analysis`
+   use `MetadataAnalysisFixture` and check that the queries preserve its files.
 
    Instead of the import wizard, EDT can import them at startup: set
-   `EDT_MCP_IMPORT_PROJECTS` on the EDT process to the four directories, separated by
+   `EDT_MCP_IMPORT_PROJECTS` on the EDT process to the listed directories, separated by
    the platform path separator (`;` on Windows, `:` on Linux), as CI does.
 3. Start the MCP server on port 8765 from the EDT status bar or enable HTTP
    **Auto-start** in **Window > Preferences > MCP Server > General**.
@@ -247,7 +248,7 @@ Runs unit tests on every push/PR to master. Test results are published to PR che
 
 ### e2e-2026.2.yml → e2e-tests.yml (automatic)
 `e2e-2026.2.yml` runs on every push/PR to master and calls the reusable `e2e-tests.yml`: on a stock
-GitHub-hosted runner it installs a headless EDT 2026.2, imports the four fixture projects through
+GitHub-hosted runner it installs EDT 2026.2, imports the five fixture projects through
 `EDT_MCP_IMPORT_PROJECTS`, writes the tool profile above and runs the suite in four shards. No 1C
 platform is installed, so the live-infobase tests skip.
 

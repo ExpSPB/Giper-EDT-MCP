@@ -2064,6 +2064,137 @@
   },
   {
     "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Trace direct and transitive metadata dependencies and cycles from one object. Parameters and examples: get_tool_guide('dependency_graph').",
+    "inputSchema": {
+      "properties": {
+        "depth": {
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "in",
+            "out",
+            "both"
+          ],
+          "type": "string"
+        },
+        "maxEdges": {
+          "type": "integer"
+        },
+        "maxNodes": {
+          "type": "integer"
+        },
+        "objectFqn": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectName",
+        "objectFqn"
+      ],
+      "type": "object"
+    },
+    "name": "dependency_graph",
+    "outputSchema": {
+      "properties": {
+        "cycles": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "in",
+            "out",
+            "both"
+          ],
+          "type": "string"
+        },
+        "edges": {
+          "items": {
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "via": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "via",
+              "count"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "properties": {
+              "depth": {
+                "type": "integer"
+              },
+              "fqn": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "fqn",
+              "depth"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "partialReasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": false
@@ -4063,6 +4194,45 @@
       "type": "object"
     },
     "name": "go_to_definition",
+    "outputSchema": null
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Review direct metadata and indexed BSL usages before changing one metadata object. Parameters and examples: get_tool_guide('impact_analysis').",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "enum": [
+            "modify",
+            "rename",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "objectFqn": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "skipBsl": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectName",
+        "objectFqn"
+      ],
+      "type": "object"
+    },
+    "name": "impact_analysis",
     "outputSchema": null
   },
   {

@@ -7,6 +7,7 @@
 package fm.giper.edt.mcp.server.tools.reference;
 
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 
@@ -39,7 +40,9 @@ public final class ReferenceSearchBound
         /** One reference more than the limit was collected: more exist, the total is unknown. */
         LIMIT,
         /** The time budget ran out: more may exist, the total is unknown. */
-        TIME_BUDGET
+        TIME_BUDGET,
+        /** The caller or EDT progress monitor cancelled an analysis. */
+        CANCELLED
     }
 
     /** Default {@code limit} of {@code find_references}. */
@@ -66,6 +69,7 @@ public final class ReferenceSearchBound
     private final long budgetMillis;
     private final long deadlineNanos;
     private final LongSupplier nanoClock;
+    private BooleanSupplier cancelled = () -> false;
     private StopReason stopReason = StopReason.NONE;
 
     private ReferenceSearchBound(boolean bounded, int limit, long budgetMillis, long deadlineNanos,
@@ -123,6 +127,13 @@ public final class ReferenceSearchBound
         return budgetMillis;
     }
 
+    /** Add a cancellation signal before entering a bounded model operation. */
+    public void cancelWhen(BooleanSupplier signal)
+    {
+        BooleanSupplier previous = cancelled;
+        cancelled = () -> previous.getAsBoolean() || signal.getAsBoolean();
+    }
+
     /**
      * Decides whether the search must stop, given how many unique references it holds. The first reason
      * found sticks: once stopped, a search stays stopped for the same reason.
@@ -138,6 +149,11 @@ public final class ReferenceSearchBound
         }
         if (stopReason != StopReason.NONE)
         {
+            return true;
+        }
+        if (cancelled.getAsBoolean())
+        {
+            stopReason = StopReason.CANCELLED;
             return true;
         }
         if (collected > limit)

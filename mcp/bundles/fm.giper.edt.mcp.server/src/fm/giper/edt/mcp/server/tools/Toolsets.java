@@ -151,6 +151,7 @@ public final class Toolsets
             "open_editor",
             "write_module_source", "read_method_source", "get_method_call_hierarchy", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             "get_outgoing_structures", "go_to_definition", "get_symbol_info", "find_references", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+            "dependency_graph", "impact_analysis", //$NON-NLS-1$ //$NON-NLS-2$
             "get_content_assist", "validate_query"); //$NON-NLS-1$ //$NON-NLS-2$
 
         assign(DEBUG,

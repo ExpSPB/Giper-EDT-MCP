@@ -98,6 +98,7 @@ public enum ToolPreset
             "delete_launch_config", //$NON-NLS-1$
             "delete_metadata", //$NON-NLS-1$
             "delete_project", //$NON-NLS-1$
+            "dependency_graph", //$NON-NLS-1$
             "enable_toolset", //$NON-NLS-1$
             "evaluate_expression", //$NON-NLS-1$
             "export_common_picture", //$NON-NLS-1$
@@ -137,6 +138,7 @@ public enum ToolPreset
             "get_variables", //$NON-NLS-1$
             "git", //$NON-NLS-1$
             "go_to_definition", //$NON-NLS-1$
+            "impact_analysis", //$NON-NLS-1$
             "import_configuration_from_xml", //$NON-NLS-1$
             "import_project_from_file", //$NON-NLS-1$
             "infobase_sessions", //$NON-NLS-1$
