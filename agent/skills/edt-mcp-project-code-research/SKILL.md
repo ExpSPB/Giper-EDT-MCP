@@ -66,7 +66,9 @@ example `Catalog.Products` or `Справочник.Products`.
   incoming graph when you also need to trace indirect dependents.
 
 Both tools cover the selected project. State which relevant extensions or other
-projects were checked, and name those that need separate investigation.
+projects were checked, and name those that need separate investigation. If a
+result conflicts with a known reference, check the referring object directly and
+report the discrepancy before recommending a change.
 
 ## Authority rule
 
