@@ -7,7 +7,7 @@ remain authoritative. The validator enforces agreement among them.
 | Skill | Named tools |
 |---|---|
 | `edt-mcp-project-session` | `get_edt_version`, `list_projects`, `get_configuration_properties`, `get_problem_summary`, `list_subsystems`, `router_status`, `get_server_status`, `list_toolsets`, `enable_toolset`, `get_tool_guide` |
-| `edt-mcp-project-code-research` | `get_metadata_objects`, `list_modules`, `search_in_code`, `get_module_structure`, `read_method_source`, `read_module_source`, `go_to_definition`, `find_references`, `get_method_call_hierarchy`, `get_outgoing_structures`, `get_symbol_info`, `get_platform_documentation` |
+| `edt-mcp-project-code-research` | `get_metadata_objects`, `list_modules`, `search_in_code`, `get_module_structure`, `read_method_source`, `read_module_source`, `go_to_definition`, `find_references`, `get_method_call_hierarchy`, `get_outgoing_structures`, `get_symbol_info`, `get_platform_documentation`, `dependency_graph`, `impact_analysis` |
 | `edt-mcp-project-local-fix` | `read_method_source`, `validate_query`, `get_tool_guide`, `write_module_source`, `revalidate_objects`, `get_project_errors` |
 | `edt-mcp-project-metadata` | `get_metadata_details`, `find_references`, `create_metadata`, `modify_metadata`, `rename_metadata_object`, `delete_metadata`, `adopt_metadata_object` |
 | `edt-mcp-project-forms` | `get_metadata_details`, `get_module_structure`, `read_method_source`, `create_metadata`, `modify_metadata`, `delete_metadata`, `validate_query`, `get_form_layout_snapshot`, `get_form_screenshot` |

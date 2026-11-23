@@ -68,6 +68,31 @@ The active allowlist controls both `tools/list` and `tools/call`. An unknown or 
 
 When switching from upstream EDT-MCP, uninstall its feature first. [Installation options](EDT-MCP.md#installation) · [Latest release](https://github.com/ExpSPB/Giper-EDT-MCP/releases/latest)
 
+### Install project skills for Codex or Claude Code
+
+Run this PowerShell example from the root of your 1C project. Set `$pack` to the
+`agent` directory in your Giper-EDT-MCP checkout. The example uses Codex's
+`.agents/skills`. For Claude Code, set `$skillDirectory` to `.claude/skills`.
+
+```powershell
+$pack = 'C:\src\Giper-EDT-MCP\agent'
+$skillDirectory = '.agents/skills'
+$routerDirectory = '.agents/edt-mcp'
+New-Item -ItemType Directory -Force -Path $skillDirectory, $routerDirectory | Out-Null
+Copy-Item -Path "$pack/skills/edt-mcp-project-*" -Destination $skillDirectory -Recurse -Force
+Copy-Item -LiteralPath "$pack/skills/COMMON.md" -Destination $skillDirectory -Force
+Copy-Item -LiteralPath "$pack/ROUTER.md" -Destination $routerDirectory -Force
+```
+
+Add the following instruction to the project root's `AGENTS.md` for Codex or
+`CLAUDE.md` for Claude Code.
+
+> For 1C project tasks, read and follow `.agents/edt-mcp/ROUTER.md`.
+
+With the MCP client connected, start a session in the project and ask it to
+show the metadata dependencies of a known object. Both dependency analysis
+tools are available starting with 1.0.19. [Client setup](EDT-MCP.md#connecting-ai-assistants) · [Skill pack](agent/README.md)
+
 ### Upgrade from 1.0.15 to 1.0.16 on Windows
 
 This procedure was verified on EDT 2026.2.2.21 with Giper-EDT-MCP 1.0.15 already installed.
